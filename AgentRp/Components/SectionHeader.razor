@@ -1,0 +1,28 @@
+<div class="@CssClass" @onclick="OnClick">
+    <span class="section-bar"></span>
+    <span class="section-title-text">@Title</span>
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <span class="section-hint">@Hint</span>
+    }
+    @if (Count.HasValue)
+    {
+        <span class="section-count">@(MaxCount.HasValue ? $"{Count}/{MaxCount}" : Count.ToString())</span>
+    }
+    @if (RightContent is not null)
+    {
+        <span class="section-header-right">@RightContent</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public int? Count { get; set; }
+    [Parameter] public int? MaxCount { get; set; }
+    [Parameter] public RenderFragment? RightContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    string CssClass => $"section-header {(OnClick.HasDelegate ? "is-clickable" : "")} {Class}".Trim();
+}

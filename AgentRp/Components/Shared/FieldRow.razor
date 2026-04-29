@@ -1,0 +1,22 @@
+<label class="field-row @Class">
+    <span class="field-label-row">
+        <span class="field-label">@Label</span>
+        @if (LabelAction is not null)
+        {
+            <span class="field-label-action">@LabelAction</span>
+        }
+    </span>
+    @ChildContent
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <span class="field-hint">@Hint</span>
+    }
+</label>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? LabelAction { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,20 @@
+<FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
+<FieldRow Label="Summary"><textarea class="field" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="Description"><textarea class="field" @bind="Location.Description" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="Atmosphere"><textarea class="field" @bind="Location.Atmosphere" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="Features"><textarea class="field" @bind="Location.Features" @bind:after="Changed"></textarea></FieldRow>
+<AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+
+@if (ConfirmDelete)
+{
+    <ConfirmDialog Title="Delete location?" Body="@($"Remove {Location.Name}.")" OnCancel="@(() => ConfirmDelete = false)" OnConfirm="Delete" />
+}
+
+@code {
+    bool ConfirmDelete;
+    [Parameter] public RpLocation Location { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    Task Changed() => OnChanged.InvokeAsync();
+    async Task Delete() { ConfirmDelete = false; await OnDelete.InvokeAsync(); }
+}

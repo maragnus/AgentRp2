@@ -1,0 +1,57 @@
+<div class="character-editor">
+    <div class="character-editor-head">
+        <div style="display:flex;align-items:center;gap:10px">
+            <Avatar Name="@Character.Name" Size="36" />
+            <div>
+                <strong>@Character.Name</strong>
+                <div style="color:var(--c-text3);font-size:12px">@(Character.Version == "v2" ? "Guided V2 profile" : "Classic profile")</div>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <AppButton Variant="secondary" OnClick="@(_ => WizardOpen = true)"><FaIcon Name="sliders" /> Edit in Wizard</AppButton>
+            <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+        </div>
+    </div>
+
+    <FieldRow Label="Name"><input class="field" @bind="Character.Name" @bind:after="Changed" /></FieldRow>
+    <FieldRow Label="Summary"><textarea class="field" @bind="Character.Summary" @bind:after="Changed"></textarea></FieldRow>
+    <FieldRow Label="Personality"><textarea class="field" @bind="Character.Personality" @bind:after="Changed"></textarea></FieldRow>
+    <FieldRow Label="Appearance"><textarea class="field" @bind="Character.Appearance" @bind:after="Changed"></textarea></FieldRow>
+    <FieldRow Label="Relationships"><textarea class="field" @bind="Character.Relationships" @bind:after="Changed"></textarea></FieldRow>
+    <FieldRow Label="Backstory"><textarea class="field" @bind="Character.Backstory" @bind:after="Changed"></textarea></FieldRow>
+    <FieldRow Label="Voice"><textarea class="field" @bind="Character.Voice" @bind:after="Changed"></textarea></FieldRow>
+
+    <div class="profile-blocks">
+        <Section Title="Traits" Class="profile-block"><div class="pill-list">@foreach (var trait in Character.Traits) { <Badge @key="trait" Tone="violet">@trait</Badge> }</div></Section>
+        <Section Title="Drives" Class="profile-block"><div class="pill-list">@foreach (var drive in Character.Drives) { <Badge @key="drive" Tone="amber">@drive</Badge> }</div></Section>
+        <Section Title="Limits" Class="profile-block"><div class="pill-list">@foreach (var limit in Character.Limits) { <Badge @key="limit" Tone="emerald">@limit</Badge> }</div></Section>
+    </div>
+</div>
+
+@if (WizardOpen)
+{
+    <V2WizardModal Character="Character" ExistingCharacters="ExistingCharacters" OnClose="@(() => WizardOpen = false)" OnChanged="Changed" />
+}
+
+@if (ConfirmDelete)
+{
+    <ConfirmDialog Title="Delete character?" Body="@($"Remove {Character.Name} from the local prototype data.")" OnCancel="@(() => ConfirmDelete = false)" OnConfirm="Delete" />
+}
+
+@code {
+    bool WizardOpen;
+    bool ConfirmDelete;
+
+    [Parameter] public RpCharacter Character { get; set; } = new();
+    [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    Task Changed() => OnChanged.InvokeAsync();
+
+    async Task Delete()
+    {
+        ConfirmDelete = false;
+        await OnDelete.InvokeAsync();
+    }
+}

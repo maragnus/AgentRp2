@@ -1,0 +1,140 @@
+<ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="OnClose">
+    <div class="generate-layout">
+        <aside class="generate-settings">
+            <Section Title="Settings" Class="generate-block">
+                <FieldRow Label="Image Model">
+                    <select class="select" @bind="Model">
+                        <option>gpt-image-1.5 (OpenAI)</option>
+                        <option>DALL·E 3 (OpenAI)</option>
+                        <option>FLUX 1.1 Pro (Black Forest)</option>
+                        <option>Stable Diffusion 3.5 (Stability)</option>
+                    </select>
+                </FieldRow>
+                <div style="display:flex;gap:8px">
+                    <FieldRow Label="Size"><select class="select" @bind="Size"><option>Landscape</option><option>Portrait</option><option>Square</option></select></FieldRow>
+                    <FieldRow Label="Quality"><select class="select" @bind="Quality"><option>Auto</option><option>High</option><option>Medium</option></select></FieldRow>
+                    <FieldRow Label="Refs"><select class="select" @bind="Refs"><option>Low</option><option>Medium</option><option>High</option></select></FieldRow>
+                </div>
+                <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
+                    <textarea class="field" rows="4" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
+                </FieldRow>
+            </Section>
+
+            <Section Title="Entity Context" Class="generate-block">
+                @foreach (var character in Characters)
+                {
+                    var selected = SelectedCharacters.Contains(character.Id);
+                    <SelectableButton @key="character.Id" Class="@($"entity-check {(selected ? "is-active" : "")}")" OnClick="@(_ => Toggle(character.Id))">
+                        <span class="check-box">@if (selected) { <FaIcon Name="check" /> }</span>
+                        <Avatar Name="@character.Name" Size="22" />
+                        <span><strong>@character.Name</strong><small>Character</small></span>
+                    </SelectableButton>
+                }
+            </Section>
+
+            <Section Title="Reference Images" Class="generate-block">
+                <div class="reference-strip">
+                    @foreach (var image in Images)
+                    {
+                        var selected = SelectedRefs.Contains(image.Id);
+                        <SelectableButton @key="image.Id" Class="@($"ref-thumb {(selected ? "is-active" : "")}")" OnClick="@(_ => ToggleRef(image.Id))">
+                            <span class="img-placeholder" style="--hue:@image.Hue">@image.Name.Split(' ')[0]</span>
+                            <small>@image.Name.Split(' ')[0]</small>
+                        </SelectableButton>
+                    }
+                </div>
+            </Section>
+        </aside>
+
+        <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
+            <div class="generated-frame">
+                @if (Generating)
+                {
+                    <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Rationale))
+                {
+                    <div class="img-placeholder" style="height:100%;--hue:@Hue">Generated scene</div>
+                }
+                else
+                {
+                    <div class="empty-preview"><FaIcon Name="image" /><span>Your image will appear here</span></div>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(Rationale))
+            {
+                <div class="model-card" style="margin:0"><strong style="color:var(--c-text2)">Rationale</strong><p>@Rationale</p></div>
+            }
+            @if (History.Count > 1)
+            {
+                <div class="reference-strip">
+                    @foreach (var hue in History)
+                    {
+                        <span @key="hue" class="img-placeholder history-thumb" style="--hue:@hue"></span>
+                    }
+                </div>
+            }
+        </Section>
+    </div>
+    <div class="modal-local-footer">
+        <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
+        <AppButton Variant="outline" Disabled="@(string.IsNullOrWhiteSpace(Rationale))"><FaIcon Name="star" />Save Default</AppButton>
+        <span style="flex:1"></span>
+        <AppButton Variant="secondary" Disabled="@(string.IsNullOrWhiteSpace(Prompt) || Generating)" OnClick="Generate"><FaIcon Name="refresh" />Generate More</AppButton>
+        <AppButton Variant="primary" Disabled="@(string.IsNullOrWhiteSpace(Prompt) || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@(Generating ? "Generating…" : "Generate")</AppButton>
+        @if (!string.IsNullOrWhiteSpace(Rationale))
+        {
+            <AppButton Variant="blue" OnClick="@(_ => Save())"><FaIcon Name="download" />Save to Gallery</AppButton>
+        }
+    </div>
+</ModalShell>
+
+@code {
+    bool Generating;
+    int Hue = 210;
+    string Prompt = "";
+    string Model = "gpt-image-1.5 (OpenAI)";
+    string Size = "Landscape";
+    string Quality = "Auto";
+    string Refs = "Low";
+    string ResultTitle = "No image yet";
+    string Rationale = "";
+    HashSet<string> SelectedCharacters = ["c3"];
+    HashSet<string> SelectedRefs = ["g1", "g2"];
+    List<int> History = [];
+
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    void Toggle(string id)
+    {
+        if (!SelectedCharacters.Add(id))
+            SelectedCharacters.Remove(id);
+    }
+
+    void ToggleRef(string id)
+    {
+        if (!SelectedRefs.Add(id))
+            SelectedRefs.Remove(id);
+    }
+
+    async Task Generate()
+    {
+        if (string.IsNullOrWhiteSpace(Prompt))
+            return;
+
+        Generating = true;
+        await Task.Delay(1800);
+        Hue = 200;
+        ResultTitle = Prompt.Length > 28 ? Prompt[..28] : Prompt;
+        Rationale = "The prompt incorporates selected entity context while focusing on the user's scene description.";
+        History.Insert(0, Hue + History.Count * 20);
+        Generating = false;
+    }
+
+    void Save()
+    {
+        Images.Insert(0, new GalleryImage { Id = $"g{Images.Count + 1}", Name = ResultTitle, Entity = "Generated", EntityType = "scene", Date = "today", Hue = Hue });
+    }
+}

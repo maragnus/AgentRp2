@@ -1,0 +1,35 @@
+@inject IJSRuntime JS
+
+<div class="theme-toggle" aria-label="Theme">
+    @foreach (var option in Options)
+    {
+        <AppButton @key="option.Key" Size="icon" Active="@(Theme == option.Key)" Title="@option.Title" OnClick="@(_ => Pick(option.Key))">
+            <FaIcon Name="@option.Icon" />
+        </AppButton>
+    }
+</div>
+
+@code {
+    string Theme = "system";
+    readonly (string Key, string Icon, string Title)[] Options =
+    [
+        ("light", "sun", "Light"),
+        ("system", "monitor", "System"),
+        ("dark", "moon", "Dark")
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Theme = await JS.InvokeAsync<string>("agentRp.applyStoredTheme");
+            StateHasChanged();
+        }
+    }
+
+    async Task Pick(string theme)
+    {
+        Theme = theme;
+        await JS.InvokeVoidAsync("agentRp.setTheme", theme);
+    }
+}

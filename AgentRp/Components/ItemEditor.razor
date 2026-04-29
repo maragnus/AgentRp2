@@ -1,0 +1,20 @@
+<FieldRow Label="Name"><input class="field" @bind="Item.Name" @bind:after="Changed" /></FieldRow>
+<FieldRow Label="Summary"><textarea class="field" @bind="Item.Summary" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="Description"><textarea class="field" @bind="Item.Description" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="History"><textarea class="field" @bind="Item.History" @bind:after="Changed"></textarea></FieldRow>
+<FieldRow Label="Properties"><textarea class="field" @bind="Item.Properties" @bind:after="Changed"></textarea></FieldRow>
+<AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+
+@if (ConfirmDelete)
+{
+    <ConfirmDialog Title="Delete item?" Body="@($"Remove {Item.Name}.")" OnCancel="@(() => ConfirmDelete = false)" OnConfirm="Delete" />
+}
+
+@code {
+    bool ConfirmDelete;
+    [Parameter] public RpItem Item { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    Task Changed() => OnChanged.InvokeAsync();
+    async Task Delete() { ConfirmDelete = false; await OnDelete.InvokeAsync(); }
+}

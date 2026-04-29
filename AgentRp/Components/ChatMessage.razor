@@ -1,0 +1,187 @@
+@if (Message.Type == "process")
+{
+    @if (ShowProcess)
+    {
+        <ProcessTrace Message="Message" />
+    }
+}
+else if (Message.Type == "appearance")
+{
+    @if (ShowAppearance)
+    {
+        <div class="appearance-row">
+            <FaIcon Name="eye" />
+            <span style="flex:1">@Message.Summary</span>
+            <Badge Tone="blue">@Message.CharacterCount chars</Badge>
+        </div>
+    }
+}
+else
+{
+    <article class="narrative-message">
+        <div class="narrative-card">
+            <div class="narrative-head">
+                <div class="message-author">
+                    @if (IsNarrator)
+                    {
+                        <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
+                    }
+                    else
+                    {
+                        <Avatar Name="@Message.Author" Size="26" />
+                    }
+                    <span>@Message.Author</span>
+                </div>
+                <span style="margin-left:auto">@Message.Timestamp</span>
+                <span class="mode-badge @ModeClass">@Message.Mode</span>
+            </div>
+            <p class="narrative-body @ProseClass">@Message.Body</p>
+            <div class="narrative-actions">
+                @if (!string.IsNullOrWhiteSpace(Message.Branch))
+                {
+                    <div class="branch-nav">
+                        <IconButton Icon="chevron-left" Title="Previous branch" />
+                        <code>@Message.Branch</code>
+                        <IconButton Icon="chevron-right" Title="Next branch" />
+                    </div>
+                }
+                else
+                {
+                    <div></div>
+                }
+                <div class="action-cluster">
+                    <div class="dropdown-wrap">
+                        <IconButton Icon="users" Title="Change author" Active="@AuthorOpen" OnClick="@(_ => AuthorOpen = !AuthorOpen)" />
+                        @if (AuthorOpen)
+                        {
+                            <div class="popover message-popover">
+                                <div class="popover-label">Change Author</div>
+                                <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" OnClick="@(_ => AuthorOpen = false)"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
+                                @foreach (var character in Characters)
+                                {
+                                    var current = Message.Author == character.Name;
+                                    <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" OnClick="@(_ => AuthorOpen = false)"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <IconButton Icon="edit" Title="Edit message" />
+                    <span class="v-divider"></span>
+                    <div class="regen-group">
+                        <IconButton Icon="refresh" Title="Regenerate from saved plan" />
+                        <span></span>
+                        <AppButton Variant="ghost" Size="icon" Title="Change turn shape & regenerate" OnClick="@(_ => ShapeOpen = !ShapeOpen)"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
+                        <span></span>
+                        <IconButton Icon="sliders" Title="Edit saved plan" OnClick="@(_ => EditPlan = true)" />
+                        @if (ShapeOpen)
+                        {
+                            <div class="popover message-popover shape-popover">
+                                <div class="popover-label">Turn Shape</div>
+                                @foreach (var shape in TurnShapes)
+                                {
+                                    <SelectableButton @key="shape" Class="select-row" OnClick="@(_ => ShapeOpen = false)"><span>@shape</span></SelectableButton>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <span class="v-divider"></span>
+                    <IconButton Icon="flag" Title="Create snapshot here" />
+                    <IconButton Icon="copy" Title="Copy message" OnClick="@CopyMessage" />
+                    <IconButton Icon="trash" Title="Delete message" OnClick="@(_ => ConfirmDelete = true)" />
+                </div>
+            </div>
+        </div>
+    </article>
+}
+
+@if (ConfirmDelete)
+{
+    <div class="modal-backdrop confirm-backdrop" @onclick="@(() => ConfirmDelete = false)">
+        <section class="confirm-dialog" @onclick:stopPropagation="true">
+            <div class="confirm-head">
+                <span class="danger-mark"><FaIcon Name="trash" /></span>
+                <strong>Delete this message?</strong>
+            </div>
+            <p>This removes this turn only. You can also delete this turn and @SubsequentCount later turns as a branch.</p>
+            <div class="confirm-actions">
+                <AppButton Variant="secondary" OnClick="@(_ => ConfirmDelete = false)">Cancel</AppButton>
+                @if (SubsequentCount > 0)
+                {
+                    <AppButton Variant="danger" OnClick="DeleteBranch"><FaIcon Name="branch" /> Delete Branch</AppButton>
+                }
+                <AppButton Variant="rose" OnClick="DeleteSingle"><FaIcon Name="trash" /> Delete</AppButton>
+            </div>
+        </section>
+    </div>
+}
+
+@if (EditPlan)
+{
+    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.Author} · {Message.Timestamp}")" MaxWidth="620px" OnClose="@(() => EditPlan = false)">
+        <FieldRow Label="Turn Shape">
+            <select class="select" @bind="PlanShape">
+                @foreach (var shape in TurnShapes)
+                {
+                    <option @key="shape" value="@shape">@shape</option>
+                }
+            </select>
+        </FieldRow>
+        <FieldRow Label="Beat">
+            <textarea class="field" @bind="Beat"></textarea>
+        </FieldRow>
+        <FieldRow Label="Intent">
+            <textarea class="field" @bind="Intent"></textarea>
+        </FieldRow>
+        <FieldRow Label="Guardrails">
+            <textarea class="field" @bind="Guardrails"></textarea>
+        </FieldRow>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+            <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
+            <AppButton Variant="primary" OnClick="@(_ => EditPlan = false)"><FaIcon Name="check" /> Save</AppButton>
+        </div>
+    </ModalShell>
+}
+
+@code {
+    bool ConfirmDelete;
+    bool EditPlan;
+    bool AuthorOpen;
+    bool ShapeOpen;
+    string PlanShape = "Brief";
+    string Beat = "Arrival and de-escalation attempt.";
+    string Intent = "Move the scene forward while preserving character tension.";
+    string Guardrails = "Keep the prose compact and grounded in observable action.";
+    readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
+
+    [Parameter] public RpMessage Message { get; set; } = new();
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public bool ShowAppearance { get; set; }
+    [Parameter] public bool ShowProcess { get; set; }
+    [Parameter] public int SubsequentCount { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteMessage { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteBranch { get; set; }
+    [Inject] IJSRuntime JS { get; set; } = default!;
+
+    bool IsNarrator => Message.Author == "Narrator";
+    string ProseClass => IsNarrator ? "is-narrator" : "is-character";
+    string ModeClass => Message.Mode switch
+    {
+        "Guided AI" => "is-guided",
+        "Automatic AI" => "is-auto",
+        _ => "is-manual"
+    };
+
+    async Task DeleteSingle()
+    {
+        ConfirmDelete = false;
+        await OnDeleteMessage.InvokeAsync(Message.Id);
+    }
+
+    async Task DeleteBranch()
+    {
+        ConfirmDelete = false;
+        await OnDeleteBranch.InvokeAsync(Message.Id);
+    }
+
+    async Task CopyMessage(MouseEventArgs args) => await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Body);
+}

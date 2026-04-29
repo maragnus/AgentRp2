@@ -1,0 +1,190 @@
+<main class="chat claude-chat">
+    <header class="claude-chat-head">
+        <div>
+            <h1>@Chat.Title</h1>
+            <div class="claude-chat-meta">
+                <FaIcon Name="map-pin" />
+                <span>@Chat.Location</span>
+                <span>·</span>
+                <span>@Chat.Messages messages</span>
+            </div>
+        </div>
+        <div class="chat-menu-wrap">
+            <IconButton Icon="more-h" Title="Chat menu" Active="@MenuOpen" OnClick="@(_ => MenuOpen = !MenuOpen)" />
+            @if (MenuOpen)
+            {
+                <div class="popover menu-popover">
+                    <div class="popover-label">Visible Blocks</div>
+                    <SelectableButton Class="toggle-row" OnClick="@(_ => ShowAppearance = !ShowAppearance)">
+                        <FaIcon Name="eye" />
+                        <span>Appearance Blocks</span>
+                        <span class="toggle-pill @(ShowAppearance ? "is-on" : "")"><span></span></span>
+                    </SelectableButton>
+                    <SelectableButton Class="toggle-row" OnClick="@(_ => ShowProcess = !ShowProcess)">
+                        <FaIcon Name="zap" />
+                        <span>Process Traces</span>
+                        <span class="toggle-pill @(ShowProcess ? "is-on" : "")"><span></span></span>
+                    </SelectableButton>
+                    <div class="divider"></div>
+                    <div class="popover-label">Appearance</div>
+                    <div style="padding:4px 12px 8px"><ThemeToggle /></div>
+                </div>
+            }
+        </div>
+    </header>
+
+    <section class="claude-chat-scroll">
+        <div style="flex:1">
+            @for (var i = 0; i < Messages.Count; i++)
+            {
+                var message = Messages[i];
+                var subsequentCount = Messages.Count - i - 1;
+                <ChatMessage @key="message.Id"
+                             Message="message"
+                             Characters="Characters"
+                             ShowAppearance="ShowAppearance"
+                             ShowProcess="ShowProcess"
+                             SubsequentCount="subsequentCount"
+                             OnDeleteMessage="OnDeleteMessage"
+                             OnDeleteBranch="OnDeleteBranch" />
+            }
+        </div>
+        <div class="claude-footer">
+            <div class="claude-composer">
+                <textarea @bind="Draft" @onkeydown="HandleKeyDown" placeholder="Write a message, or let AI continue the scene…"></textarea>
+                <div class="claude-composer-actions">
+                    <div class="dropdown-wrap">
+                        <AppButton Variant="secondary" Size="xs" OnClick="@(_ => SpeakerOpen = !SpeakerOpen)">
+                            @if (SpeakingAs is null)
+                            {
+                                <span class="mini-narrator"><FaIcon Name="book-open" /></span>
+                            }
+                            else
+                            {
+                                <Avatar Name="@SpeakingAs.Name" Size="14" />
+                            }
+                            <span>@SpeakerName</span>
+                            <FaIcon Name="chevron-down" />
+                        </AppButton>
+                        @if (SpeakerOpen)
+                        {
+                            <div class="popover composer-popover bottom-left">
+                                <SelectableButton Class="select-row" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
+                                @foreach (var character in Characters)
+                                {
+                                    <SelectableButton @key="character.Id" Class="select-row" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex:1"></div>
+
+                    <div class="dropdown-wrap">
+                        <AppButton Size="xs" OnClick="@(_ => RespondOpen = !RespondOpen)">
+                            <FaIcon Name="user" /> Respond As <FaIcon Name="chevron-down" />
+                        </AppButton>
+                        @if (RespondOpen)
+                        {
+                            <div class="popover composer-popover bottom-right">
+                                <div class="popover-label">Respond As</div>
+                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                                @foreach (var character in Characters)
+                                {
+                                    <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <span class="v-divider"></span>
+
+                    <div class="send-combo">
+                        <SelectableButton Class="send-mode" Title="@ModeTitle" OnClick="@(_ => PostCombo())">
+                            <FaIcon Name="@ModeIcon" /> @ModeLabel
+                        </SelectableButton>
+                        <SelectableButton Class="send-shape" Title="Select Turn Shape" OnClick="@(_ => ShapeOpen = !ShapeOpen)">
+                            <FaIcon Name="chevron-down" />
+                        </SelectableButton>
+                        @if (ShapeOpen)
+                        {
+                            <div class="popover composer-popover bottom-right">
+                                <div class="popover-label">Turn Shape</div>
+                                @foreach (var shape in TurnShapes)
+                                {
+                                    <SelectableButton @key="shape" Class="@($"select-row {(TurnShape == shape ? "is-active" : "")}")" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (TurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <span class="v-divider"></span>
+
+                    <AppButton Variant="@(Draft.Trim().Length > 0 ? "primary" : "ghost")" Size="xs" Disabled="@(Draft.Trim().Length == 0)" Title="Send (⌘↵)" OnClick="@PostCombo">
+                        <FaIcon Name="send" /> Post
+                    </AppButton>
+                    <span class="shortcut">⌘↵</span>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+@code {
+    bool ShowProcess = true;
+    bool ShowAppearance = true;
+    bool MenuOpen;
+    bool SpeakerOpen;
+    bool RespondOpen;
+    bool ShapeOpen;
+    string Draft = "";
+    string TurnShape = "Brief";
+    RpCharacter? RespondAs;
+    readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
+
+    [Parameter] public RpChat Chat { get; set; } = new();
+    [Parameter] public List<RpMessage> Messages { get; set; } = [];
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public RpCharacter? SpeakingAs { get; set; }
+    [Parameter] public EventCallback<RpCharacter?> OnSpeakAs { get; set; }
+    [Parameter] public EventCallback<(string Text, RpCharacter? Speaker, string Mode)> OnPost { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteMessage { get; set; }
+    [Parameter] public EventCallback<string> OnDeleteBranch { get; set; }
+
+    bool IsGuided => Draft.Trim().Length > 0;
+    string SpeakerName => SpeakingAs?.Name ?? "Narrator";
+    string ModeLabel => IsGuided ? "Guided" : "Auto";
+    string ModeIcon => IsGuided ? "layers" : "zap";
+    string ModeTitle => IsGuided ? "Post guided message (⌘↵)" : "Auto-continue scene (⌘↵)";
+
+    async Task PickSpeaker(RpCharacter? character)
+    {
+        SpeakerOpen = false;
+        await OnSpeakAs.InvokeAsync(character);
+    }
+
+    void PickRespondAs(RpCharacter? character)
+    {
+        RespondAs = character;
+        RespondOpen = false;
+    }
+
+    void PickShape(string shape)
+    {
+        TurnShape = shape;
+        ShapeOpen = false;
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && (args.MetaKey || args.CtrlKey))
+            await PostCombo();
+    }
+
+    async Task PostCombo()
+    {
+        var text = Draft.Trim();
+        Draft = "";
+        await OnPost.InvokeAsync((text, SpeakingAs, IsGuided ? "guided" : "automatic"));
+    }
+}

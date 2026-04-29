@@ -1,0 +1,49 @@
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --c-bg: #0d0b09;
+        --c-surface: #131210;
+        --c-surface2: #1b1917;
+        --c-surface3: #232120;
+        --c-surface4: #2c2a27;
+        --c-border: rgba(255,255,255,0.07);
+        --c-borderMid: rgba(255,255,255,0.13);
+        --c-text: #f0ede8;
+        --c-text2: #9a9590;
+        --c-text3: #847e78;
+        --c-amber: oklch(72% 0.14 68);
+        --c-amberDim: oklch(55% 0.10 68);
+        --c-amberBg: oklch(30% 0.06 68);
+        --c-blue: oklch(65% 0.14 245);
+        --c-blueBg: oklch(28% 0.07 245);
+        --c-rose: oklch(65% 0.14 15);
+        --c-roseBg: oklch(28% 0.06 15);
+        --c-violet: oklch(62% 0.14 285);
+        --c-violetBg: oklch(28% 0.06 285);
+        --c-emerald: oklch(65% 0.13 160);
+        --c-emeraldBg: oklch(28% 0.06 160);
+    }
+}
+
+:root[data-theme="dark"] {
+    --c-bg: #0d0b09;
+    --c-surface: #131210;
+    --c-surface2: #1b1917;
+    --c-surface3: #232120;
+    --c-surface4: #2c2a27;
+    --c-border: rgba(255,255,255,0.07);
+    --c-borderMid: rgba(255,255,255,0.13);
+    --c-text: #f0ede8;
+    --c-text2: #9a9590;
+    --c-text3: #847e78;
+    --c-amber: oklch(72% 0.14 68);
+    --c-amberDim: oklch(55% 0.10 68);
+    --c-amberBg: oklch(30% 0.06 68);
+    --c-blue: oklch(65% 0.14 245);
+    --c-blueBg: oklch(28% 0.07 245);
+    --c-rose: oklch(65% 0.14 15);
+    --c-roseBg: oklch(28% 0.06 15);
+    --c-violet: oklch(62% 0.14 285);
+    --c-violetBg: oklch(28% 0.06 285);
+    --c-emerald: oklch(65% 0.13 160);
+    --c-emeraldBg: oklch(28% 0.06 160);
+}

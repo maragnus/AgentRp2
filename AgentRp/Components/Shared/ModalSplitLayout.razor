@@ -1,0 +1,36 @@
+<div class="@CssClass" style="@Style">
+    <aside class="@RailCssClass" style="@RailStyle">
+        @if (RailHeader is not null)
+        {
+            <div class="modal-split-rail-head">@RailHeader</div>
+        }
+        <div class="modal-split-rail-scroll">
+            @RailContent
+        </div>
+        @if (RailFooter is not null)
+        {
+            <div class="modal-split-rail-footer">@RailFooter</div>
+        }
+    </aside>
+    <main class="@MainCssClass">
+        @MainContent
+    </main>
+</div>
+
+@code {
+    [Parameter] public string Height { get; set; } = "600px";
+    [Parameter] public string RailWidth { get; set; } = "220px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? RailClass { get; set; }
+    [Parameter] public string? MainClass { get; set; }
+    [Parameter] public RenderFragment? RailHeader { get; set; }
+    [Parameter] public RenderFragment? RailContent { get; set; }
+    [Parameter] public RenderFragment? RailFooter { get; set; }
+    [Parameter] public RenderFragment? MainContent { get; set; }
+
+    string CssClass => $"modal-split {Class}".Trim();
+    string RailCssClass => $"modal-split-rail {RailClass}".Trim();
+    string MainCssClass => $"modal-split-main {MainClass}".Trim();
+    string Style => $"--modal-split-height:{Height};--modal-split-rail-width:{RailWidth};";
+    string RailStyle => $"width:{RailWidth};flex-basis:{RailWidth};";
+}

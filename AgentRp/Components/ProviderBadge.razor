@@ -1,0 +1,16 @@
+<span class="provider-badge provider-@Type" style="width:@SizePx;height:@SizePx;font-size:@FontSize">@Glyph</span>
+
+@code {
+    [Parameter] public string Type { get; set; } = "compatible";
+    [Parameter] public int Size { get; set; } = 28;
+    string SizePx => $"{Size}px";
+    string FontSize => $"{Size * .42}px";
+    string Glyph => Type switch
+    {
+        "grok" => "⚡",
+        "claude" => "✦",
+        "huggingface" => "🤗",
+        "openai" => "⬡",
+        _ => "⬡"
+    };
+}

@@ -1,0 +1,26 @@
+<div class="avatar" style="@Style" title="@Name">@Initial</div>
+
+@code {
+    [Parameter] public string Name { get; set; } = "?";
+    [Parameter] public int Size { get; set; } = 28;
+
+    string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
+
+    string Style
+    {
+        get
+        {
+            var colors = Colors(Name);
+            return $"width:{Size}px;height:{Size}px;font-size:{Size * 0.38}px;background:linear-gradient(135deg,{colors.From},{colors.To});";
+        }
+    }
+
+    static (string From, string To) Colors(string name) => (string.IsNullOrWhiteSpace(name) ? "?" : name[..1].ToUpperInvariant()) switch
+    {
+        "B" => ("oklch(60% 0.13 68)", "oklch(48% 0.10 55)"),
+        "G" => ("oklch(60% 0.13 15)", "oklch(48% 0.10 5)"),
+        "J" => ("oklch(56% 0.13 245)", "oklch(46% 0.10 255)"),
+        "T" => ("oklch(58% 0.13 160)", "oklch(46% 0.10 150)"),
+        _ => ("oklch(52% 0.07 200)", "oklch(42% 0.05 210)")
+    };
+}

@@ -1,0 +1,50 @@
+<div class="process-row">
+    <div class="process-summary" @onclick="() => Open = !Open">
+        <FaIcon Name="zap" />
+        <span style="flex:1">@Message.Summary</span>
+        @if (Message.Status == "completed")
+        {
+            <span style="color:var(--c-emerald)">Completed · @Message.Duration</span>
+        }
+        <FaIcon Name="@(Open ? "chevron-up" : "chevron-down")" />
+    </div>
+    @if (Open)
+    {
+        <div class="process-steps">
+            @foreach (var step in Message.Steps)
+            {
+                <div @key="step.Id" class="process-step">
+                    <div class="process-step-head" @onclick="() => Toggle(step.Id)">
+                        <FaIcon Name="@step.Icon" />
+                        <strong style="font-size:12px;flex:1">@step.Label</strong>
+                        <code>@step.TokensIn.ToString("N0") in</code>
+                        <code>@step.TokensOut.ToString("N0") out</code>
+                        <code>@step.Duration</code>
+                        <FaIcon Name="@(OpenSteps.Contains(step.Id) ? "chevron-up" : "chevron-down")" />
+                    </div>
+                    @if (OpenSteps.Contains(step.Id))
+                    {
+                        <div class="process-detail">
+                            <div class="prompt-block"><label>System Prompt</label><pre>@step.SystemPrompt</pre></div>
+                            <div class="prompt-block"><label>User Prompt</label><pre>@step.UserPrompt</pre></div>
+                            <div class="prompt-block"><label>Output</label><pre>@step.Output</pre></div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    bool Open;
+    HashSet<string> OpenSteps = [];
+
+    [Parameter] public RpMessage Message { get; set; } = new();
+
+    void Toggle(string id)
+    {
+        if (!OpenSteps.Add(id))
+            OpenSteps.Remove(id);
+    }
+}

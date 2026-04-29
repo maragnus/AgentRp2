@@ -1,0 +1,60 @@
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<ModalSplitLayout Height="@Height" RailWidth="@RailWidth" Class="@Class" RailClass="@RailClass" MainClass="@MainClass">
+    <RailHeader>@RailHeader</RailHeader>
+    <RailContent>
+        @foreach (var tab in Tabs)
+        {
+            <SidebarTabRow @key="tab.Id"
+                           Title="@tab.Title"
+                           Summary="@tab.Summary"
+                           Active="@(tab.Id == ActiveId)"
+                           Dirty="@tab.Dirty"
+                           Done="@tab.Done"
+                           Disabled="@tab.Disabled"
+                           Locked="@tab.Locked"
+                           LeadingContent="@tab.LeadingContent"
+                           IndexContent="@tab.IndexContent"
+                           TrailingContent="@tab.TrailingContent"
+                           OnClick="@(_ => Select(tab.Id))" />
+        }
+    </RailContent>
+    <RailFooter>@RailFooter</RailFooter>
+    <MainContent>
+        @(MainContent ?? ActiveTab?.ChildContent)
+    </MainContent>
+</ModalSplitLayout>
+
+@code {
+    readonly List<ModalTab> Tabs = [];
+
+    [Parameter] public string? ActiveId { get; set; }
+    [Parameter] public EventCallback<string?> ActiveIdChanged { get; set; }
+    [Parameter] public string Height { get; set; } = "600px";
+    [Parameter] public string RailWidth { get; set; } = "156px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? RailClass { get; set; }
+    [Parameter] public string? MainClass { get; set; }
+    [Parameter] public RenderFragment? RailHeader { get; set; }
+    [Parameter] public RenderFragment? RailFooter { get; set; }
+    [Parameter] public RenderFragment? MainContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    ModalTab? ActiveTab => Tabs.FirstOrDefault(tab => tab.Id == ActiveId) ?? Tabs.FirstOrDefault();
+
+    internal void Register(ModalTab tab)
+    {
+        if (!Tabs.Contains(tab))
+            Tabs.Add(tab);
+    }
+
+    internal void Unregister(ModalTab tab)
+    {
+        Tabs.Remove(tab);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    Task Select(string id) => ActiveIdChanged.InvokeAsync(id);
+}

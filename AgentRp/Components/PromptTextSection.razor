@@ -1,0 +1,20 @@
+<Section Title="@Label">
+    <RightContent>
+        <AppButton Variant="ghost" Size="xs" Disabled="@(!IsDirty)" Title="Reset to default" OnClick="@(_ => OnReset.InvokeAsync())">
+            <FaIcon Name="refresh" /> Reset
+        </AppButton>
+    </RightContent>
+    <ChildContent>
+        <textarea class="field mono prompt-textarea" rows="6" value="@Value" @onchange="HandleChange"></textarea>
+    </ChildContent>
+</Section>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public EventCallback OnReset { get; set; }
+
+    Task HandleChange(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+}

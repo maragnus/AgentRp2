@@ -1,0 +1,172 @@
+@inject IJSRuntime JS
+
+<ModalShell Title="Export" Subtitle="Choose what to include in your export file" MaxWidth="680px" OnClose="OnClose">
+    <div class="export-layout">
+        <section class="export-options">
+            <Section Title="Format">
+                <div class="export-choice-grid">
+                    @foreach (var format in Formats)
+                    {
+                        <SelectableButton @key="format.Id" Class="@($"export-choice {(Format == format.Id ? "is-active" : "")}")" OnClick="@(_ => Format = format.Id)">
+                            <FaIcon Name="@format.Icon" />
+                            <strong>@format.Label</strong>
+                            <code>@format.Ext</code>
+                        </SelectableButton>
+                    }
+                </div>
+            </Section>
+
+            <Section Title="Include">
+                <div class="include-list">
+                    @foreach (var item in IncludeItems)
+                    {
+                        var checkedItem = Included[item.Id];
+                        <SelectableButton @key="item.Id" Class="@($"include-row {(checkedItem ? "is-active" : "")}")" OnClick="@(_ => Toggle(item.Id))">
+                            <span class="export-check @(checkedItem ? "is-active" : "")">@if (checkedItem) { <FaIcon Name="check" /> } else if (item.Id == "transcript" && TranscriptIndeterminate) { <span></span> }</span>
+                            <span class="include-icon"><FaIcon Name="@item.Icon" /></span>
+                            <span class="include-main"><strong>@item.Label</strong><small>@item.Note</small></span>
+                            <code>@Counts[item.Id]</code>
+                        </SelectableButton>
+                        @if (item.Id == "transcript" && checkedItem)
+                        {
+                            <div class="transcript-note"><FaIcon Name="zap" />All sections below are required for a full transcript export</div>
+                        }
+                    }
+                </div>
+            </Section>
+
+            <Section Title="Images">
+                <div class="export-choice-grid">
+                    @foreach (var imageOption in ImageOptions)
+                    {
+                        <SelectableButton @key="imageOption.Id" Class="@($"export-choice {(Images == imageOption.Id ? "is-active" : "")}")" OnClick="@(_ => Images = imageOption.Id)">
+                            <FaIcon Name="@imageOption.Icon" />
+                            <strong>@imageOption.Label</strong>
+                            <small>@imageOption.Sub</small>
+                        </SelectableButton>
+                    }
+                </div>
+            </Section>
+        </section>
+
+        <Section Title="Summary" Class="export-summary" BodyClass="export-summary-body">
+            <div class="summary-format">
+                <FaIcon Name="@SelectedFormat.Icon" />
+                <span><strong>@SelectedFormat.Label</strong><code>@SelectedFormat.Ext</code></span>
+            </div>
+            @if (SummaryLines.Count > 0)
+            {
+                @foreach (var line in SummaryLines)
+                {
+                    <div @key="line" class="summary-line"><FaIcon Name="check" /><span>@line</span></div>
+                }
+            }
+            else
+            {
+                <div style="font-size:12px;color:var(--c-text3);font-style:italic">Nothing selected yet</div>
+            }
+            <div style="flex:1"></div>
+            <div class="divider"></div>
+            <div style="font-size:10.5px;color:var(--c-text3);line-height:1.6;margin-bottom:14px">Exporting "@ActiveChat.Title"</div>
+            <AppButton Variant="primary" Size="md" Disabled="@(SummaryLines.Count == 0)" OnClick="Download"><FaIcon Name="download" />Export</AppButton>
+        </Section>
+    </div>
+</ModalShell>
+
+@code {
+    string Format = "markdown";
+    string Images = "referenced";
+    Dictionary<string, bool> Included = new()
+    {
+        ["transcript"] = false,
+        ["timeline"] = true,
+        ["characters"] = true,
+        ["locations"] = true,
+        ["items"] = true
+    };
+
+    readonly (string Id, string Label, string Ext, string Icon)[] Formats =
+    [
+        ("markdown", "Markdown", ".md", "align-left"),
+        ("json", "JSON", ".json", "layers"),
+        ("txt", "Plain Text", ".txt", "book-open")
+    ];
+
+    readonly (string Id, string Label, string Icon, string Note)[] IncludeItems =
+    [
+        ("transcript", "Chat Transcript", "message-sq", "Full message history"),
+        ("timeline", "History / Timeline", "clock", "Chronological events"),
+        ("characters", "Characters", "users", "Profiles & context"),
+        ("locations", "Locations", "map-pin", "Descriptions & details"),
+        ("items", "Items", "box", "Scene props & objects")
+    ];
+
+    readonly (string Id, string Label, string Sub, string Icon)[] ImageOptions =
+    [
+        ("none", "No Images", "Text only", "x"),
+        ("referenced", "Referenced", "Cited only", "flag"),
+        ("all", "All Images", "Full gallery", "image")
+    ];
+
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public List<RpLocation> Locations { get; set; } = [];
+    [Parameter] public List<RpItem> Items { get; set; } = [];
+    [Parameter] public List<RpTimelineEntry> Timeline { get; set; } = [];
+    [Parameter] public List<RpChat> Chats { get; set; } = [];
+    [Parameter] public RpChat ActiveChat { get; set; } = new();
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    Dictionary<string, string> Counts => new()
+    {
+        ["transcript"] = ActiveChat is null ? $"{Chats.Count} chats" : "1 chat",
+        ["timeline"] = $"{Timeline.Count} events",
+        ["characters"] = $"{Characters.Count} characters",
+        ["locations"] = $"{Locations.Count} locations",
+        ["items"] = $"{Items.Count} items"
+    };
+
+    (string Id, string Label, string Ext, string Icon) SelectedFormat => Formats.First(format => format.Id == Format);
+    bool AllSubChecked => Included["timeline"] && Included["characters"] && Included["locations"] && Included["items"];
+    bool SomeSubChecked => Included["timeline"] || Included["characters"] || Included["locations"] || Included["items"];
+    bool TranscriptIndeterminate => !Included["transcript"] && SomeSubChecked && !AllSubChecked;
+
+    List<string> SummaryLines
+    {
+        get
+        {
+            var lines = IncludeItems.Where(item => Included[item.Id]).Select(item => $"{item.Label} · {Counts[item.Id]}").ToList();
+            if (Images != "none")
+                lines.Add(Images == "referenced" ? "Referenced images only" : "All images");
+            return lines;
+        }
+    }
+
+    void Toggle(string id)
+    {
+        if (id == "transcript")
+        {
+            var next = !Included["transcript"];
+            Included["transcript"] = next;
+            if (next)
+            {
+                Included["timeline"] = true;
+                Included["characters"] = true;
+                Included["locations"] = true;
+                Included["items"] = true;
+            }
+            return;
+        }
+
+        Included[id] = !Included[id];
+        if (!Included[id])
+            Included["transcript"] = false;
+    }
+
+    async Task Download()
+    {
+        await JS.InvokeVoidAsync("agentRp.downloadText", $"agentrp-export{SelectedFormat.Ext}", BuildExport(), "text/plain;charset=utf-8");
+        await OnClose.InvokeAsync();
+    }
+
+    string BuildExport() => string.Join("\n", SummaryLines.Prepend($"Exporting {ActiveChat.Title} as {SelectedFormat.Label}").Prepend("# AgentRp Export"));
+}

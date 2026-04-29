@@ -1,0 +1,12 @@
+<div class="step-pips" aria-hidden="true">
+    @for (var i = 0; i < Count; i++)
+    {
+        var index = i;
+        <span @key="index" class="@(index < Current ? "is-done" : index == Current ? "is-current" : "")"></span>
+    }
+</div>
+
+@code {
+    [Parameter] public int Current { get; set; }
+    [Parameter] public int Count { get; set; } = 3;
+}

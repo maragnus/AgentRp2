@@ -1,0 +1,53 @@
+<i class="fa-regular @Class" aria-hidden="true"></i>
+
+@code {
+    [Parameter] public string Name { get; set; } = "circle";
+
+    string Class => Name switch
+    {
+        "plus" => "fa-plus",
+        "x" => "fa-xmark",
+        "chevron-down" => "fa-chevron-down",
+        "chevron-up" => "fa-chevron-up",
+        "chevron-left" => "fa-chevron-left",
+        "chevron-right" => "fa-chevron-right",
+        "settings" => "fa-gear",
+        "sliders" => "fa-sliders",
+        "edit" => "fa-pen-to-square",
+        "trash" => "fa-trash",
+        "image" => "fa-image",
+        "user" => "fa-user",
+        "map-pin" => "fa-location-dot",
+        "box" => "fa-box",
+        "clock" => "fa-clock",
+        "refresh" => "fa-rotate",
+        "copy" => "fa-copy",
+        "star" => "fa-star",
+        "eye" => "fa-eye",
+        "send" => "fa-paper-plane",
+        "sparkle" => "fa-sparkles",
+        "check" => "fa-check",
+        "download" => "fa-download",
+        "upload" => "fa-upload",
+        "message-sq" => "fa-message",
+        "branch" or "git-branch" => "fa-code-branch",
+        "more-h" => "fa-ellipsis",
+        "zap" => "fa-bolt",
+        "layers" => "fa-layer-group",
+        "align-left" => "fa-align-left",
+        "camera" => "fa-camera",
+        "filter" => "fa-filter",
+        "search" => "fa-magnifying-glass",
+        "book-open" => "fa-book-open",
+        "flag" => "fa-flag",
+        "users" => "fa-users",
+        "pin" => "fa-thumbtack",
+        "shuffle" => "fa-shuffle",
+        "feather" => "fa-feather",
+        "wrench" => "fa-wrench",
+        "sun" => "fa-sun",
+        "moon" => "fa-moon",
+        "monitor" => "fa-display",
+        _ => "fa-circle"
+    };
+}

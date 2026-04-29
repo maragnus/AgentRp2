@@ -1,7 +1,126 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>AgentRp</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="app-shell">
+    <Sidebar Characters="Characters"
+             Locations="Locations"
+             Chats="Chats"
+             ActiveChat="ActiveChat"
+             SpeakingAs="SpeakingAs"
+             OnChatSelected="SelectChat"
+             OnSpeakAs="SetSpeakingAs"
+             OnToggleScene="ToggleScene"
+             OnSwitchLocation="SwitchLocation"
+             OnOpenModal="OpenModal"
+             OnOpenEntities="OpenEntities" />
 
-Welcome to your new app.
+    <ChatArea Chat="ActiveChat"
+              Messages="Messages"
+              Characters="Characters"
+              SpeakingAs="SpeakingAs"
+              OnSpeakAs="SetSpeakingAs"
+              OnPost="PostMessage"
+              OnDeleteMessage="DeleteMessage"
+              OnDeleteBranch="DeleteBranch" />
+
+    @switch (Modal)
+    {
+        case "entities":
+            <EntityManagerModal InitialType="@EntityType"
+                                InitialId="@EntityId"
+                                Characters="Characters"
+                                Locations="Locations"
+                                Items="Items"
+                                Timeline="Timeline"
+                                OnClose="CloseModal"
+                                OnChanged="Refresh" />
+            break;
+        case "gallery":
+            <ImageGalleryModal Images="Images" OnGenerate="@(() => OpenModal("generate"))" OnClose="CloseModal" />
+            break;
+        case "generate":
+            <GenerateImageModal Characters="Characters" Images="Images" OnClose="CloseModal" />
+            break;
+        case "aiProviders":
+            <AIProvidersModal Providers="Providers" OnClose="CloseModal" />
+            break;
+        case "promptLibrary":
+            <PromptLibraryModal OnClose="CloseModal" />
+            break;
+        case "modelTuning":
+            <ModelTuningModal OnClose="CloseModal" />
+            break;
+        case "export":
+            <ExportModal Characters="Characters" Locations="Locations" Items="Items" Timeline="Timeline" Chats="Chats" ActiveChat="ActiveChat" OnClose="CloseModal" />
+            break;
+    }
+</div>
+
+@code {
+    List<RpCharacter> Characters = SeedData.Characters();
+    List<RpLocation> Locations = SeedData.Locations();
+    List<RpItem> Items = SeedData.Items();
+    List<RpTimelineEntry> Timeline = SeedData.Timeline();
+    List<RpChat> Chats = SeedData.Chats();
+    List<RpMessage> Messages = SeedData.Messages();
+    List<GalleryImage> Images = SeedData.GalleryImages();
+    List<AiProvider> Providers = SeedData.Providers();
+    RpChat ActiveChat = SeedData.Chats()[0];
+    RpCharacter? SpeakingAs;
+    string? Modal;
+    string EntityType = "characters";
+    string? EntityId;
+
+    void SelectChat(RpChat chat) => ActiveChat = chat;
+    void SetSpeakingAs(RpCharacter? character) => SpeakingAs = character;
+
+    void ToggleScene(string id)
+    {
+        var character = Characters.First(c => c.Id == id);
+        character.InScene = !character.InScene;
+    }
+
+    void SwitchLocation(string id)
+    {
+        foreach (var location in Locations)
+            location.IsActive = location.Id == id;
+    }
+
+    void OpenModal(string name) => Modal = name;
+
+    void OpenEntities((string Type, string? Id) value)
+    {
+        EntityType = value.Type;
+        EntityId = value.Id;
+        Modal = "entities";
+    }
+
+    void CloseModal() => Modal = null;
+    void Refresh() => StateHasChanged();
+
+    void PostMessage((string Text, RpCharacter? Speaker, string Mode) post)
+    {
+        if (string.IsNullOrWhiteSpace(post.Text))
+            return;
+
+        Messages.Add(new RpMessage
+        {
+            Id = $"msg-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+            Type = "narrative",
+            Author = post.Speaker?.Name ?? "Narrator",
+            Mode = post.Mode == "guided" ? "Guided AI" : post.Mode == "automatic" ? "Automatic AI" : "Manual",
+            Timestamp = "just now",
+            Body = post.Text
+        });
+    }
+
+    void DeleteMessage(string id) => Messages.RemoveAll(message => message.Id == id);
+
+    void DeleteBranch(string id)
+    {
+        var index = Messages.FindIndex(message => message.Id == id);
+        if (index >= 0)
+            Messages.RemoveRange(index, Messages.Count - index);
+    }
+}

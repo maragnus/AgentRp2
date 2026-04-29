@@ -1,0 +1,23 @@
+<div class="modal-backdrop confirm-backdrop" @onclick="Cancel">
+    <section class="confirm-dialog" @onclick:stopPropagation="true">
+        <div class="confirm-head">
+            <span class="danger-mark"><FaIcon Name="trash" /></span>
+            <strong>@Title</strong>
+        </div>
+        <p>@Body</p>
+        <div class="confirm-actions">
+            <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
+            <AppButton Variant="rose" OnClick="@Confirm"><FaIcon Name="trash" /> Delete</AppButton>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Delete item?";
+    [Parameter] public string Body { get; set; } = "";
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    Task Cancel(MouseEventArgs args) => OnCancel.InvokeAsync();
+    Task Confirm(MouseEventArgs args) => OnConfirm.InvokeAsync();
+}

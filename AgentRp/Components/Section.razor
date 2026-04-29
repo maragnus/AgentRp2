@@ -1,0 +1,44 @@
+<section class="@CssClass">
+    <SectionHeader Title="@Title"
+                   Hint="@Hint"
+                   Count="@Count"
+                   MaxCount="@MaxCount"
+                   RightContent="@RightContent"
+                   Class="@HeaderClass"
+                   OnClick="@OnHeaderClick" />
+    @if (ChildContent is not null)
+    {
+        <div class="@BodyCssClass">
+            @ChildContent
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public int? Count { get; set; }
+    [Parameter] public int? MaxCount { get; set; }
+    [Parameter] public int? Tone { get; set; }
+    [Parameter] public RenderFragment? RightContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? HeaderClass { get; set; }
+    [Parameter] public string? BodyClass { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Flush { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnHeaderClick { get; set; }
+
+    string CssClass
+    {
+        get
+        {
+            var toneClass = Tone.HasValue ? $"tone-{NormalizeTone(Tone.Value)}" : "";
+            return $"section {toneClass} {(Compact ? "is-compact" : "")} {(Flush ? "is-flush" : "")} {(ChildContent is null ? "is-header-only" : "")} {Class}".Trim();
+        }
+    }
+
+    string BodyCssClass => $"section-body {BodyClass}".Trim();
+
+    static int NormalizeTone(int tone) => ((tone % 5) + 5) % 5;
+}

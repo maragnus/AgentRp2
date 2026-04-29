@@ -1,0 +1,28 @@
+<div class="modal-backdrop picker-backdrop" @onclick="@(() => OnClose.InvokeAsync())">
+    <section class="new-character-picker" @onclick:stopPropagation="true">
+        <header>
+            <strong>New Character</strong>
+            <IconButton Icon="x" Title="Close" OnClick="@(_ => OnClose.InvokeAsync())" />
+        </header>
+        <div class="picker-options">
+            <SelectableButton Class="picker-option" OnClick="@(_ => OnPickV1.InvokeAsync())">
+                <Badge>V1</Badge>
+                <span class="picker-icon"><FaIcon Name="edit" /></span>
+                <strong>Classic</strong>
+                <p>Write the character in your own words. Freeform fields. Full author control.</p>
+            </SelectableButton>
+            <SelectableButton Class="picker-option is-highlight" OnClick="@(_ => OnPickV2.InvokeAsync())">
+                <Badge Tone="amber">V2</Badge>
+                <span class="picker-icon"><FaIcon Name="sliders" /></span>
+                <strong>Guided</strong>
+                <p>Trait-based taxonomy wizard. Structured selections that auto-generate model context.</p>
+            </SelectableButton>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnPickV1 { get; set; }
+    [Parameter] public EventCallback OnPickV2 { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

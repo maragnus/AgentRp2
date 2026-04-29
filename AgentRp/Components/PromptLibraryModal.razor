@@ -1,0 +1,201 @@
+@inject IJSRuntime JS
+
+<ModalShell Title="Prompt Library" MaxWidth="860px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="156px">
+        <ChildContent>
+            @foreach (var step in Steps)
+            {
+                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Dirty="@IsDirtyStep(step.Id)" />
+            }
+        </ChildContent>
+        <RailFooter>
+            <div class="prompt-rail-note">
+                <div class="divider"></div>
+                <p>Appearance · Selection shape prompts per step.</p>
+                <p>Planning · Prose also include turn shape definitions.</p>
+            </div>
+        </RailFooter>
+        <MainContent>
+        <section class="modal-editor-main">
+            <header class="prompt-stepbar">
+                <div>
+                    <strong>@CurrentStep.Label</strong>
+                    @if (CurrentStep.HasTurnShapes)
+                    {
+                        <Badge Tone="amber">Turn Shapes</Badge>
+                    }
+                </div>
+                <SelectableButton Class="@($"placeholder-toggle {(ShowPlaceholders ? "is-active" : "")}")" OnClick="@(_ => ShowPlaceholders = !ShowPlaceholders)">
+                    <code>{…}</code>
+                    <span>Placeholders</span>
+                    <FaIcon Name="@(ShowPlaceholders ? "chevron-up" : "chevron-down")" />
+                </SelectableButton>
+            </header>
+
+            @if (ShowPlaceholders)
+            {
+                <div class="placeholder-panel">
+                    <div class="pill-list">
+                        @foreach (var placeholder in Placeholders[Active])
+                        {
+                            var copied = CopiedToken == placeholder.Token;
+                            <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" Title="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
+                                <code>@placeholder.Token</code>
+                                <FaIcon Name="@(copied ? "check" : "copy")" />
+                            </SelectableButton>
+                        }
+                    </div>
+                    <div style="font-size:10.5px;color:var(--c-text3);margin-top:7px">Click any placeholder to copy it to your clipboard.</div>
+                </div>
+            }
+
+            <div class="prompt-editor-scroll">
+                <PromptTextSection Label="System Prompt"
+                                   Value="@PromptValues[Active].System"
+                                   ValueChanged="@(value => SetSystem(value))"
+                                   IsDirty="@(PromptValues[Active].System != DefaultPrompts[Active].System)"
+                                   OnReset="@(() => ResetPrompt("system"))" />
+
+                <PromptTextSection Label="User Prompt Template"
+                                   Value="@PromptValues[Active].User"
+                                   ValueChanged="@(value => SetUser(value))"
+                                   IsDirty="@(PromptValues[Active].User != DefaultPrompts[Active].User)"
+                                   OnReset="@(() => ResetPrompt("user"))" />
+
+                @if (CurrentStep.HasTurnShapes)
+                {
+                    <Section Title="Turn Shapes">
+                        <div class="turn-shape-list">
+                            @foreach (var shape in TurnShapes[Active])
+                            {
+                                var dirty = shape.Value != DefaultTurnShapes[Active].First(def => def.Id == shape.Id).Value;
+                                <div @key="shape.Id" class="turn-shape-row">
+                                    <div>
+                                        <code class="@(dirty ? "is-dirty" : "")">@shape.Label</code>
+                                        <IconButton Icon="refresh" Title="Reset" Disabled="@(!dirty)" OnClick="@(_ => ResetTurnShape(shape.Id))" />
+                                    </div>
+                                    <textarea class="field mono" rows="2" value="@shape.Value" @onchange="@((ChangeEventArgs args) => UpdateTurnShape(shape.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                </div>
+                            }
+                        </div>
+                    </Section>
+                }
+            </div>
+
+            <footer class="prompt-footer">
+                <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
+                <AppButton Variant="primary"><FaIcon Name="check" />Save</AppButton>
+            </footer>
+        </section>
+        </MainContent>
+    </ModalTabGroup>
+</ModalShell>
+
+@code {
+    sealed record PromptStep(string Id, string Label, bool HasTurnShapes);
+    sealed record Placeholder(string Token, string Description);
+    sealed class PromptPair
+    {
+        public string System { get; set; } = "";
+        public string User { get; set; } = "";
+    }
+    sealed class ShapePrompt
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string Value { get; set; } = "";
+    }
+
+    string Active = "appearance";
+    bool ShowPlaceholders;
+    string? CopiedToken;
+
+    readonly PromptStep[] Steps =
+    [
+        new("appearance", "Appearance", false),
+        new("selection", "Selection", true),
+        new("planning", "Planning", true),
+        new("prose", "Prose", true)
+    ];
+
+    Dictionary<string, PromptPair> PromptValues = new();
+    Dictionary<string, PromptPair> DefaultPrompts = new();
+    Dictionary<string, List<ShapePrompt>> TurnShapes = new();
+    Dictionary<string, List<ShapePrompt>> DefaultTurnShapes = new();
+    Dictionary<string, Placeholder[]> Placeholders = new();
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    PromptStep CurrentStep => Steps.First(step => step.Id == Active);
+
+    protected override void OnInitialized()
+    {
+        DefaultPrompts = new()
+        {
+            ["appearance"] = new() { System = "You are a precise scene-state tracker for a collaborative fiction tool.", User = "Update observable positions, posture, expression, clothing, and proximity from {last_turn}." },
+            ["selection"] = new() { System = "Choose the next responder from the active scene.", User = "Scene: {scene}\nCharacters: {characters}\nRecent turns: {transcript}" },
+            ["planning"] = new() { System = "Produce a structured dramatic plan before prose.", User = "Character: {responder}\nTurn shape: {turn_shape}\nContext: {context}" },
+            ["prose"] = new() { System = "Write polished contemporary roleplay prose.", User = "Write the next turn using {plan} and current appearance state." }
+        };
+
+        PromptValues = DefaultPrompts.ToDictionary(pair => pair.Key, pair => new PromptPair { System = pair.Value.System, User = pair.Value.User });
+
+        DefaultTurnShapes = new()
+        {
+            ["selection"] = Shapes("Compact", "Brief", "Extended"),
+            ["planning"] = Shapes("Compact", "Brief", "Extended", "Monologue"),
+            ["prose"] = Shapes("Compact", "Brief", "Extended", "Monologue", "Silent")
+        };
+        TurnShapes = DefaultTurnShapes.ToDictionary(pair => pair.Key, pair => pair.Value.Select(Clone).ToList());
+
+        Placeholders = Steps.ToDictionary(
+            step => step.Id,
+            step => new[]
+            {
+                new Placeholder("{scene}", "Current scene and location"),
+                new Placeholder("{characters}", "Active character summaries"),
+                new Placeholder("{transcript}", "Recent chat transcript"),
+                new Placeholder("{turn_shape}", "Selected turn shape"),
+                new Placeholder("{appearance_state}", "Observable character state")
+            });
+    }
+
+    static List<ShapePrompt> Shapes(params string[] labels) => labels.Select(label => new ShapePrompt { Id = label.ToLowerInvariant().Replace(" ", "-"), Label = label, Value = $"Use {label.ToLowerInvariant()} pacing and scope." }).ToList();
+    static ShapePrompt Clone(ShapePrompt shape) => new() { Id = shape.Id, Label = shape.Label, Value = shape.Value };
+
+    void SwitchStep(string? id)
+    {
+        if (id is null)
+            return;
+
+        Active = id;
+        ShowPlaceholders = false;
+    }
+
+    bool IsDirtyStep(string id)
+    {
+        var promptDirty = PromptValues[id].System != DefaultPrompts[id].System || PromptValues[id].User != DefaultPrompts[id].User;
+        var shapeDirty = TurnShapes.ContainsKey(id) && TurnShapes[id].Any(shape => shape.Value != DefaultTurnShapes[id].First(def => def.Id == shape.Id).Value);
+        return promptDirty || shapeDirty;
+    }
+
+    void SetSystem(string value) => PromptValues[Active].System = value;
+    void SetUser(string value) => PromptValues[Active].User = value;
+
+    void ResetPrompt(string field)
+    {
+        if (field == "system")
+            PromptValues[Active].System = DefaultPrompts[Active].System;
+        else
+            PromptValues[Active].User = DefaultPrompts[Active].User;
+    }
+
+    void UpdateTurnShape(string id, string value) => TurnShapes[Active].First(shape => shape.Id == id).Value = value;
+    void ResetTurnShape(string id) => TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
+
+    async Task CopyToken(string token)
+    {
+        CopiedToken = token;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", token);
+    }
+}

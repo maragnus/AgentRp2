@@ -1,0 +1,12 @@
+<AppButton Bare Class="@CssClass" Title="@Title" AriaLabel="@Title" OnClick="@Toggle">
+    <span></span>
+</AppButton>
+
+@code {
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "Toggle";
+
+    Task Toggle(MouseEventArgs args) => ValueChanged.InvokeAsync(!Value);
+    string CssClass => $"toggle-switch {(Value ? "is-on" : "")}";
+}

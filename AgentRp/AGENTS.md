@@ -23,6 +23,10 @@ Do not force abstractions for one-off or highly local code. Prefer clarity over 
 
 Apply DRY at the small scale too. Avoid repeating literals, conditionals, or long call chains when a local variable, small helper, or shared expression would make the code clearer.
 
+For Razor UI, services, helpers, parsing, mapping, validation, and repeated business logic, look for an existing shared component/helper/service before adding new bootstrapping. If a pattern appears more than once, prefer a reusable primitive that makes future features feel native by default.
+
+Core values for this app are consistency, reusable foundations, small focused components, no repeated bootstrapping, and feature work that strengthens shared patterns when appropriate.
+
 If you choose not to reuse a similar existing implementation, briefly state why.
 
 ## Non-Negotiable Rules

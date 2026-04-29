@@ -1,0 +1,35 @@
+<div class="modal-backdrop" @onclick="BackdropClick">
+    <section class="modal @Class" style="max-width:@MaxWidth" @onclick:stopPropagation="true">
+        <header class="modal-header">
+            <div class="modal-title">
+                <span>@Title</span>
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <small>@Subtitle</small>
+                }
+            </div>
+            <IconButton Icon="x" Title="Close" OnClick="@CloseClick" />
+        </header>
+        <div class="modal-body @BodyClass">
+            @ChildContent
+        </div>
+        @if (Footer is not null)
+        {
+            <footer class="modal-footer">@Footer</footer>
+        }
+    </section>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string MaxWidth { get; set; } = "960px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? BodyClass { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    Task BackdropClick(MouseEventArgs args) => OnClose.InvokeAsync();
+    Task CloseClick(MouseEventArgs args) => OnClose.InvokeAsync();
+}

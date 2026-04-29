@@ -1,0 +1,35 @@
+<Section Title="@Title" Hint="@Hint" Count="@MultiValues?.Count" MaxCount="@Max">
+    <div class="v2-card-grid cols-@Columns">
+        @foreach (var item in Items)
+        {
+            var selected = MultiValues?.Contains(item.Id) ?? Selected == item.Id;
+            var disabled = MultiValues is not null && Max.HasValue && !selected && MultiValues.Count >= Max.Value;
+            <SelectableButton @key="item.Id" Title="@item.Hover" Disabled="@disabled" Class="@($"v2-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
+                <span class="v2-card-dot">
+                    @if (selected)
+                    {
+                        <FaIcon Name="check" />
+                    }
+                </span>
+                <span class="v2-card-copy">
+                    <strong>@item.Label</strong>
+                    <small>@item.Hover</small>
+                </span>
+            </SelectableButton>
+        }
+    </div>
+</Section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public int Columns { get; set; } = 2;
+    [Parameter] public IReadOnlyList<V2Option> Items { get; set; } = [];
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public List<string>? MultiValues { get; set; }
+    [Parameter] public int? Max { get; set; }
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+
+    Task Toggle(string id) => MultiValues is null ? OnSelect.InvokeAsync(id) : OnToggle.InvokeAsync(id);
+}

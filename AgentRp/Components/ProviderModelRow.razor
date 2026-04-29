@@ -1,0 +1,12 @@
+<div class="provider-model">
+    <SelectableButton Class="@DotClass" Title="@(Model.Enabled ? "Disable" : "Enable")" OnClick="@(_ => Model.Enabled = !Model.Enabled)"></SelectableButton>
+    <code>@Model.Id</code>
+    <CapabilityPill Tone="text" Active="@(Model.Enabled && Model.Text)" Disabled="@(!Model.Enabled)" OnClick="@(_ => Model.Text = !Model.Text)">Text</CapabilityPill>
+    <CapabilityPill Tone="image" Active="@(Model.Enabled && Model.Image)" Disabled="@(!Model.Enabled)" OnClick="@(_ => Model.Image = !Model.Image)">Image</CapabilityPill>
+</div>
+
+@code {
+    [Parameter] public AiProviderModel Model { get; set; } = new();
+
+    string DotClass => $"model-dot {(Model.Enabled ? "is-on" : "")}";
+}

@@ -1,0 +1,60 @@
+@typeparam TItem
+
+<ModalSplitLayout Height="@Height" RailWidth="@RailWidth" Class="@Class" RailClass="@RailClass" MainClass="@MainClass">
+    <RailHeader>@ListHeader</RailHeader>
+    <RailContent>
+        @if (ItemsList.Count == 0)
+        {
+            @EmptyListTemplate
+        }
+        else
+        {
+            @foreach (var item in ItemsList)
+            {
+                var id = GetId(item);
+                var context = new EntityListEditorItem<TItem>(item, id, id == SelectedId, args => Select(id));
+                <div @key="id" class="entity-list-editor-row">
+                    @ListItemTemplate(context)
+                </div>
+            }
+        }
+    </RailContent>
+    <RailFooter>@ListFooter</RailFooter>
+    <MainContent>
+        @if (SelectedItem is not null)
+        {
+            @ItemTemplate(SelectedItem)
+        }
+        else
+        {
+            @EmptySelectionTemplate
+        }
+    </MainContent>
+</ModalSplitLayout>
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter] public string? SelectedId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedIdChanged { get; set; }
+    [Parameter] public Func<TItem, string> GetId { get; set; } = _ => "";
+    [Parameter] public string Height { get; set; } = "580px";
+    [Parameter] public string RailWidth { get; set; } = "260px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? RailClass { get; set; }
+    [Parameter] public string? MainClass { get; set; }
+    [Parameter] public RenderFragment? ListHeader { get; set; }
+    [Parameter] public RenderFragment? ListFooter { get; set; }
+    [Parameter] public RenderFragment? EmptyListTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptySelectionTemplate { get; set; }
+    [Parameter] public RenderFragment<EntityListEditorItem<TItem>> ListItemTemplate { get; set; } = _ => builder => { };
+    [Parameter] public RenderFragment<TItem> ItemTemplate { get; set; } = _ => builder => { };
+
+    List<TItem> ItemsList => Items.ToList();
+    TItem? SelectedItem => ItemsList.FirstOrDefault(item => GetId(item) == SelectedId);
+
+    Task Select(string id) => SelectedIdChanged.InvokeAsync(id);
+}
+
+@code {
+    public sealed record EntityListEditorItem<T>(T Item, string Id, bool Active, Func<MouseEventArgs, Task> Select);
+}

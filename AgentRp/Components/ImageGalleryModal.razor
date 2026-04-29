@@ -1,0 +1,64 @@
+<ModalShell Title="Image Gallery" MaxWidth="860px" OnClose="OnClose">
+    <div class="modal-filter-bar">
+        <div style="position:relative;flex:1;max-width:240px">
+            <FaIcon Name="search" />
+            <input class="field search-field" placeholder="Search images…" @bind="Search" @bind:event="oninput" />
+        </div>
+        <div class="segmented">
+            @foreach (var type in Types)
+            {
+                <AppButton @key="type" Size="sm" Active="@(Filter == type)" OnClick="@(_ => Filter = type)">@type</AppButton>
+            }
+        </div>
+        <span style="flex:1"></span>
+        <AppButton Variant="primary" OnClick="@(_ => OnGenerate.InvokeAsync())"><FaIcon Name="sparkle" /> Generate</AppButton>
+    </div>
+    <div class="gallery-grid">
+        @foreach (var image in Filtered)
+        {
+            <div @key="image.Id" class="image-card @(Selected?.Id == image.Id ? "is-active" : "")" @onclick="() => Selected = image">
+                <div class="img-placeholder" style="--hue:@image.Hue">
+                    @image.Name
+                    <div class="gallery-overlay">
+                        <AppButton Variant="secondary" Size="xs">View</AppButton>
+                        <AppButton Variant="danger" Size="xs"><FaIcon Name="trash" /></AppButton>
+                    </div>
+                    @if (Selected?.Id == image.Id)
+                    {
+                        <span class="image-selected"><FaIcon Name="check" /></span>
+                    }
+                </div>
+                <div style="padding:8px 9px">
+                    <div style="font-size:12px;font-weight:600">@image.Name</div>
+                    <div style="font-size:10.5px;color:var(--c-text3);text-transform:capitalize">@image.EntityType · @image.Date</div>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="modal-local-footer">
+        <span>@Filtered.Count images@(Selected is null ? "" : " · 1 selected")</span>
+        <div style="display:flex;gap:8px">
+            @if (Selected is not null)
+            {
+                <AppButton Variant="primary">Use Selected</AppButton>
+            }
+            <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
+        </div>
+    </div>
+</ModalShell>
+
+@code {
+    string Search = "";
+    string Filter = "all";
+    GalleryImage? Selected;
+    readonly string[] Types = ["all", "character", "location", "item"];
+
+    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [Parameter] public EventCallback OnGenerate { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<GalleryImage> Filtered => Images
+        .Where(image => Filter == "all" || image.EntityType == Filter)
+        .Where(image => string.IsNullOrWhiteSpace(Search) || image.Name.Contains(Search, StringComparison.OrdinalIgnoreCase) || image.Entity.Contains(Search, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+}

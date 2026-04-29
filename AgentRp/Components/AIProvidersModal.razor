@@ -1,0 +1,375 @@
+<ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalSplitLayout Height="560px" RailWidth="230px">
+        <RailHeader>
+            <span>Providers</span>
+            <IconButton Icon="plus" Title="Add provider" Class="providers-add-button" OnClick="@(_ => StartAdd())" />
+        </RailHeader>
+        <RailContent>
+                @foreach (var provider in Providers)
+                {
+                    var selected = provider.Id == SelectedId && OnboardStep == 0;
+                    var counts = Counts(provider);
+                    <SidebarListRow @key="provider.Id"
+                                    Title="@provider.Name"
+                                    Summary="@($"{counts.TextCount}t · {counts.ImageCount}i")"
+                                    Count="@((counts.TextCount + counts.ImageCount).ToString())"
+                                    Active="@selected"
+                                    Class="provider-row"
+                                    OnClick="@(_ => Select(provider.Id))">
+                        <LeadingContent><ProviderBadge Type="@provider.Type" Size="28" /></LeadingContent>
+                    </SidebarListRow>
+                }
+                @if (Providers.Count == 0)
+                {
+                    <div class="providers-empty">No providers yet.<br />Click + to add one.</div>
+                }
+        </RailContent>
+        <RailFooter>
+            <AppButton Variant="outline" Size="xs" Class="providers-footer-button"><FaIcon Name="upload" />Export</AppButton>
+            <AppButton Variant="outline" Size="xs" Class="providers-footer-button"><FaIcon Name="download" />Import</AppButton>
+        </RailFooter>
+        <MainContent>
+            @if (OnboardStep == 1)
+            {
+                <section class="onboard-panel">
+                    <header class="onboard-head">
+                        <div class="onboard-kicker">New Provider</div>
+                        <h3>Connect a provider</h3>
+                        <p>Choose the platform you want to use for AI generation.</p>
+                    </header>
+                    <div class="onboard-provider-grid">
+                        @foreach (var meta in ProviderTypes)
+                        {
+                            <SelectableButton @key="meta.Id" Class="provider-pick" OnClick="@(_ => PickProviderType(meta.Id))">
+                                <ProviderBadge Type="@meta.Id" Size="32" />
+                                <span>
+                                    <strong>@meta.Name</strong>
+                                    <small>@meta.Description</small>
+                                </span>
+                            </SelectableButton>
+                        }
+                    </div>
+                    <footer class="onboard-footer">
+                        <StepPips Current="0" />
+                        <AppButton Variant="secondary" Size="sm" OnClick="@(_ => CancelOnboarding())">Cancel</AppButton>
+                    </footer>
+                </section>
+            }
+            else if (OnboardStep == 2 && OnboardMeta is not null)
+            {
+                <section class="onboard-panel">
+                    <header class="onboard-head">
+                        <div class="provider-config-title">
+                            <ProviderBadge Type="@OnboardMeta.Id" Size="28" />
+                            <span>
+                                <span class="onboard-kicker">Configure</span>
+                                <strong>@OnboardMeta.Name</strong>
+                            </span>
+                        </div>
+                        <p>Enter your credentials to connect this provider.</p>
+                    </header>
+                    <div class="onboard-form">
+                        @if (OnboardMeta.NeedsEndpoint)
+                        {
+                            <AppField Label="Endpoint URL" Hint="@EndpointHint">
+                                <LabelAction><span class="field-status-pill @(OnboardMeta.EndpointRequired ? "is-required" : "")">@(OnboardMeta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
+                                <ChildContent><input class="field" value="@OnboardEndpoint" placeholder="https://your-endpoint.example.com/v1" @oninput="args => OnboardEndpoint = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                            </AppField>
+                        }
+                        <AppField Label="@OnboardMeta.KeyLabel" Hint="Stored locally only, never sent to our servers.">
+                            <LabelAction>
+                                <span class="field-status-pill @(OnboardMeta.ApiKeyRequired ? "is-required" : "")">@(OnboardMeta.ApiKeyRequired ? "Required" : "Optional")</span>
+                                @if (!string.IsNullOrWhiteSpace(OnboardMeta.KeyLink))
+                                {
+                                    <a href="@OnboardMeta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
+                                }
+                            </LabelAction>
+                            <ChildContent><KeyInput @bind-Value="OnboardApiKey" /></ChildContent>
+                        </AppField>
+                    </div>
+                    <footer class="onboard-footer">
+                        <StepPips Current="1" />
+                        <span class="footer-actions">
+                            <AppButton Variant="secondary" Size="sm" OnClick="@(_ => BackToPick())">Back</AppButton>
+                            <BusyButton Variant="primary" Size="sm" Disabled="@(!CanFetchModels)" OnClick="FetchModels">
+                                Fetch models <FaIcon Name="chevron-right" />
+                            </BusyButton>
+                        </span>
+                    </footer>
+                </section>
+            }
+            else if (OnboardStep == 3 && OnboardMeta is not null)
+            {
+                <section class="onboard-panel">
+                    <header class="onboard-head">
+                        <h3>@(OnboardModels.Count == 0 ? "No models discovered" : "Choose your models")</h3>
+                        <p>@(OnboardModels.Count == 0 ? "You can configure models manually later." : $"{OnboardModels.Count} models found — enable the ones you want.")</p>
+                        @if (OnboardModels.Count > 0)
+                        {
+                            <div class="provider-success"><FaIcon Name="check" />Connection successful · @OnboardMeta.Name</div>
+                        }
+                    </header>
+                    <div class="onboard-models">
+                        @if (OnboardModels.Count == 0)
+                        {
+                            <div class="providers-empty-state">
+                                <FaIcon Name="layers" />
+                                <strong>No models returned from this endpoint.</strong>
+                                <span>You can add models manually after connecting.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="models-toolbar">
+                                <span>@OnboardModels.Count(model => model.Enabled) of @OnboardModels.Count enabled</span>
+                                <span>
+                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(true))">Enable all</AppButton>
+                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(false))">Disable all</AppButton>
+                                </span>
+                            </div>
+                            @foreach (var model in OnboardModels)
+                            {
+                                <ProviderModelRow @key="model.Id" Model="model" />
+                            }
+                        }
+                    </div>
+                    <footer class="onboard-footer">
+                        <StepPips Current="2" />
+                        <span class="footer-actions">
+                            <AppButton Variant="secondary" Size="sm" OnClick="@(_ => OnboardStep = 2)">Back</AppButton>
+                            <AppButton Variant="primary" Size="sm" OnClick="@(_ => FinishOnboarding())"><FaIcon Name="check" />Add provider</AppButton>
+                        </span>
+                    </footer>
+                </section>
+            }
+            else if (Selected is not null)
+            {
+                var meta = MetaFor(Selected.Type);
+                var counts = Counts(Selected);
+                <section class="provider-detail-panel">
+                    <header class="provider-detail-head">
+                        <div class="provider-title-lockup">
+                            <ProviderBadge Type="@Selected.Type" Size="40" />
+                            <span>
+                                <strong>@Selected.Name</strong>
+                                <small>@counts.TextCount text · @counts.ImageCount image · @Selected.Models.Count total</small>
+                            </span>
+                        </div>
+                        <div class="provider-enabled-wrap">
+                            <span>@(Selected.Enabled ? "Enabled" : "Disabled")</span>
+                            <ToggleSwitch @bind-Value="Selected.Enabled" Title="Toggle provider enabled" />
+                        </div>
+                    </header>
+
+                    <div class="provider-action-bar">
+                        <AppButton Variant="primary" Size="sm"><FaIcon Name="check" />Save</AppButton>
+                        <BusyButton Variant="secondary" Size="sm" OnClick="TestProvider"><FaIcon Name="zap" />Test connection</BusyButton>
+                        <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
+                        @if (TestOk is true)
+                        {
+                            <span class="provider-connected"><FaIcon Name="check" />Connected</span>
+                        }
+                        <span class="provider-action-spacer"></span>
+                        <AppButton Variant="danger" Size="sm" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" />Delete</AppButton>
+                    </div>
+
+                    <div class="provider-detail-scroll">
+                        <Section Title="Connection" Class="provider-section">
+                            <AppField Label="Display Name">
+                                <input class="field" value="@Selected.Name" @oninput="args => Selected.Name = args.Value?.ToString() ?? string.Empty" />
+                            </AppField>
+                            <AppField Label="@meta.KeyLabel" Hint="Stored locally, never sent to our servers.">
+                                <LabelAction>
+                                    @if (!string.IsNullOrWhiteSpace(meta.KeyLink))
+                                    {
+                                        <a href="@meta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
+                                    }
+                                </LabelAction>
+                                <ChildContent><KeyInput @bind-Value="Selected.ApiKey" /></ChildContent>
+                            </AppField>
+                            @if (meta.NeedsEndpoint)
+                            {
+                                <AppField Label="Endpoint URL">
+                                    <LabelAction><span class="field-status-pill @(meta.EndpointRequired ? "is-required" : "")">@(meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
+                                    <ChildContent><input class="field" value="@Selected.Endpoint" placeholder="https://..." @oninput="args => Selected.Endpoint = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                                </AppField>
+                            }
+                        </Section>
+
+                        <Section Title="Models" Hint="click dot · toggle caps" Class="provider-section">
+                            <RightContent>
+                                <span class="section-action-group">
+                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetModels(Selected, true))">All on</AppButton>
+                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetModels(Selected, false))">All off</AppButton>
+                                </span>
+                            </RightContent>
+                            <ChildContent>
+                                @foreach (var model in Selected.Models)
+                                {
+                                    <ProviderModelRow @key="model.Id" Model="model" />
+                                }
+                            </ChildContent>
+                        </Section>
+                    </div>
+                </section>
+            }
+            else
+            {
+                <div class="providers-empty-state">
+                    <FaIcon Name="zap" />
+                    <strong>No provider selected</strong>
+                    <span>Select a provider or add a new one.</span>
+                    <AppButton Variant="primary" Size="sm" OnClick="@(_ => StartAdd())"><FaIcon Name="plus" />Add provider</AppButton>
+                </div>
+            }
+        </MainContent>
+    </ModalSplitLayout>
+</ModalShell>
+
+@if (ConfirmDelete && Selected is not null)
+{
+    <ConfirmDialog Title="@($"Delete \"{Selected.Name}\" provider?")"
+                   Body="This provider and all its configured models will be removed."
+                   OnCancel="@(() => ConfirmDelete = false)"
+                   OnConfirm="DeleteProvider" />
+}
+
+@code {
+    string? SelectedId;
+    int OnboardStep;
+    string? OnboardType;
+    string OnboardApiKey = "";
+    string OnboardEndpoint = "";
+    bool? TestOk;
+    bool ConfirmDelete;
+    List<AiProviderModel> OnboardModels = [];
+    readonly IReadOnlyList<AiProviderMeta> ProviderTypes = SeedData.ProviderMetadata();
+
+    [Parameter] public List<AiProvider> Providers { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    AiProvider? Selected => Providers.FirstOrDefault(provider => provider.Id == SelectedId);
+    AiProviderMeta? OnboardMeta => OnboardType is null ? null : MetaFor(OnboardType);
+    bool CanFetchModels => OnboardMeta is not null
+        && (!OnboardMeta.ApiKeyRequired || !string.IsNullOrWhiteSpace(OnboardApiKey))
+        && (!OnboardMeta.EndpointRequired || !string.IsNullOrWhiteSpace(OnboardEndpoint));
+    string? EndpointHint => OnboardType switch
+    {
+        "compatible" => "Works with LM Studio, Ollama, or any OpenAI-compatible API. Point to the /v1 base URL.",
+        "huggingface" => "Leave blank to use the default HF Inference API endpoint.",
+        _ => null
+    };
+
+    protected override void OnInitialized() => SelectedId = Providers.FirstOrDefault()?.Id;
+
+    AiProviderMeta MetaFor(string type) => ProviderTypes.FirstOrDefault(provider => provider.Id == type) ?? ProviderTypes.Last();
+    static (int TextCount, int ImageCount) Counts(AiProvider provider)
+    {
+        var enabled = provider.Models.Where(model => model.Enabled).ToList();
+        return (enabled.Count(model => model.Text), enabled.Count(model => model.Image));
+    }
+
+    void Select(string id)
+    {
+        SelectedId = id;
+        OnboardStep = 0;
+        TestOk = null;
+    }
+
+    void StartAdd()
+    {
+        SelectedId = null;
+        OnboardStep = 1;
+        OnboardType = null;
+        OnboardApiKey = "";
+        OnboardEndpoint = "";
+        OnboardModels = [];
+    }
+
+    void CancelOnboarding()
+    {
+        OnboardStep = 0;
+        SelectedId = Providers.FirstOrDefault()?.Id;
+    }
+
+    void PickProviderType(string type)
+    {
+        OnboardType = type;
+        OnboardApiKey = "";
+        OnboardEndpoint = "";
+        OnboardStep = 2;
+    }
+
+    void BackToPick()
+    {
+        OnboardType = null;
+        OnboardStep = 1;
+    }
+
+    async Task FetchModels()
+    {
+        await Task.Delay(1300);
+        OnboardModels = OnboardMeta?.SampleModels.Select(CloneDisabled).ToList() ?? [];
+        OnboardStep = 3;
+    }
+
+    void FinishOnboarding()
+    {
+        if (OnboardMeta is null)
+            return;
+
+        var provider = new AiProvider
+        {
+            Id = $"ap{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+            Type = OnboardMeta.Id,
+            Name = OnboardMeta.Name,
+            Enabled = true,
+            ApiKey = OnboardApiKey,
+            Endpoint = OnboardMeta.NeedsEndpoint ? OnboardEndpoint : "",
+            Models = OnboardModels.Select(Clone).ToList()
+        };
+        Providers.Add(provider);
+        SelectedId = provider.Id;
+        OnboardStep = 0;
+    }
+
+    void SetModels(AiProvider provider, bool enabled)
+    {
+        foreach (var model in provider.Models)
+            model.Enabled = enabled;
+    }
+
+    void SetOnboardModels(bool enabled)
+    {
+        foreach (var model in OnboardModels)
+            model.Enabled = enabled;
+    }
+
+    async Task TestProvider()
+    {
+        TestOk = null;
+        await Task.Delay(1400);
+        TestOk = true;
+    }
+
+    async Task RefreshModels()
+    {
+        await Task.Delay(1200);
+    }
+
+    void DeleteProvider()
+    {
+        ConfirmDelete = false;
+        if (SelectedId is null)
+            return;
+
+        var provider = Providers.FirstOrDefault(provider => provider.Id == SelectedId);
+        if (provider is not null)
+            Providers.Remove(provider);
+
+        SelectedId = Providers.FirstOrDefault()?.Id;
+    }
+
+    static AiProviderModel Clone(AiProviderModel model) => new() { Id = model.Id, Enabled = model.Enabled, Text = model.Text, Image = model.Image };
+    static AiProviderModel CloneDisabled(AiProviderModel model) => new() { Id = model.Id, Text = model.Text, Image = model.Image };
+}

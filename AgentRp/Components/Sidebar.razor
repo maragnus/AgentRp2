@@ -1,0 +1,175 @@
+<aside class="sidebar">
+    <div class="sidebar-head">
+        <div class="brand">
+            <span class="brand-mark"><FaIcon Name="book-open" /></span>
+            <span>AgentRp</span>
+        </div>
+        <div>
+            <IconButton Icon="image" Title="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
+            <IconButton Icon="feather" Title="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+            <IconButton Icon="download" Title="Export" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
+        </div>
+    </div>
+
+    <div style="padding:0 10px 10px">
+        <AppButton Variant="primary" Size="md" OnClick="@(_ => AddChat())"><FaIcon Name="plus" /> New Chat</AppButton>
+    </div>
+
+    <div class="sidebar-scroll">
+        <Section Title="AI Model" Compact="true" OnHeaderClick="@(_ => ModelOpen = !ModelOpen)">
+            <RightContent>
+                <IconButton Icon="wrench" Title="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
+                <IconButton Icon="settings" Title="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
+                <FaIcon Name="@(ModelOpen ? "chevron-up" : "chevron-down")" />
+            </RightContent>
+        </Section>
+        <div style="padding:2px 14px 6px">
+            <div style="display:flex;align-items:center;gap:6px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--c-emerald)"></span>
+                <span style="font-size:12px;font-weight:500;color:var(--c-text)">grok-4-1-fast-non-reasoning</span>
+            </div>
+            <div style="font-size:11px;color:var(--c-text3);margin-top:2px;padding-left:12px">Grok / xAI</div>
+            @if (ModelOpen)
+            {
+                <div class="model-card">
+                    <div style="display:flex;justify-content:space-between"><span>Temp</span><code>0.9</code></div>
+                    <div style="display:flex;justify-content:space-between"><span>Top-P</span><code>0.9</code></div>
+                    <div class="divider"></div>
+                    <div>Tok In: <code>331,152</code> · Out: <code>18,974</code></div>
+                </div>
+            }
+        </div>
+
+        <div class="divider"></div>
+
+        <Section Title="Location" Compact="true">
+            <RightContent>
+            <IconButton Icon="edit" Title="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
+            </RightContent>
+        </Section>
+        <div class="row" @onclick="() => LocationOpen = !LocationOpen">
+            <FaIcon Name="map-pin" />
+            <span class="row-title">@ActiveLocation.Name</span>
+            <FaIcon Name="@(LocationOpen ? "chevron-up" : "chevron-down")" />
+        </div>
+        @if (LocationOpen)
+        {
+            @foreach (var location in Locations)
+            {
+                <div @key="location.Id" class="row @(location.IsActive ? "is-active" : "")" @onclick="() => SwitchLocation(location.Id)">
+                    <FaIcon Name="map-pin" />
+                    <span class="row-title">@location.Name</span>
+                    @if (location.IsActive)
+                    {
+                        <FaIcon Name="check" />
+                    }
+                </div>
+            }
+        }
+
+        <div class="divider"></div>
+
+        <Section Title="Characters" Compact="true">
+            <RightContent>
+            <IconButton Icon="edit" Title="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
+            </RightContent>
+        </Section>
+        <div class="row @(SpeakingAs is null ? "is-active" : "")" @onclick="() => OnSpeakAs.InvokeAsync(null)">
+            <span class="brand-mark" style="width:24px;height:24px;background:var(--c-surface4);color:var(--c-text3)"><FaIcon Name="book-open" /></span>
+            <span class="row-title" style="font-style:italic">Narrator</span>
+            <FaIcon Name="message-sq" />
+        </div>
+        @foreach (var character in Characters)
+        {
+            <div @key="character.Id" class="row @(SpeakingAs?.Id == character.Id ? "is-active" : "")">
+                <span class="avatar-wrap">
+                    <Avatar Name="@character.Name" Size="24" />
+                    @if (character.InScene)
+                    {
+                        <span class="scene-dot"></span>
+                    }
+                </span>
+                <span class="row-title">@character.Name</span>
+                <IconButton Icon="message-sq" Title="Speak as" OnClick="@(_ => OnSpeakAs.InvokeAsync(character))" />
+                <IconButton Icon="eye" Title="Toggle in scene" Active="@character.InScene" OnClick="@(_ => OnToggleScene.InvokeAsync(character.Id))" />
+                <IconButton Icon="edit" Title="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
+            </div>
+        }
+
+        <div class="divider"></div>
+
+        <Section Title="Items" Compact="true">
+            <RightContent>
+            <IconButton Icon="edit" Title="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
+            </RightContent>
+        </Section>
+        <div class="row" @onclick="@(() => OnOpenEntities.InvokeAsync(("items", null)))">
+            <FaIcon Name="box" />
+            <span class="row-title">Tesla Model S Plaid</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <Section Title="Chats" Compact="true">
+            <RightContent><span style="font-size:10px;color:var(--c-text3);letter-spacing:0;text-transform:none;font-weight:400">Starred first</span></RightContent>
+        </Section>
+        @foreach (var chat in Chats)
+        {
+            <div @key="chat.Id" class="row @(ActiveChat.Id == chat.Id ? "is-active" : "")" @onclick="() => OnChatSelected.InvokeAsync(chat)">
+                <div style="min-width:0;flex:1">
+                    <div style="display:flex;align-items:center;gap:5px">
+                        @if (chat.Starred)
+                        {
+                            <FaIcon Name="star" />
+                        }
+                        <span class="row-title">@chat.Title</span>
+                        <span style="font-size:10.5px;color:var(--c-text3)">@chat.Updated</span>
+                    </div>
+                    <div class="row-sub">@chat.Location</div>
+                </div>
+            </div>
+        }
+
+        <div class="divider"></div>
+        <div class="sidebar-user">
+            <span class="user-mark"><FaIcon Name="user" /></span>
+            <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:12px;font-weight:500;color:var(--c-text)">Primary User</span>
+                <span style="display:block;font-size:10px;color:var(--c-text3)">Admin</span>
+            </span>
+            <IconButton Icon="settings" Title="Settings" />
+        </div>
+    </div>
+</aside>
+
+@code {
+    bool ModelOpen;
+    bool LocationOpen;
+
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public List<RpLocation> Locations { get; set; } = [];
+    [Parameter] public List<RpChat> Chats { get; set; } = [];
+    [Parameter] public RpChat ActiveChat { get; set; } = new();
+    [Parameter] public RpCharacter? SpeakingAs { get; set; }
+    [Parameter] public EventCallback<RpChat> OnChatSelected { get; set; }
+    [Parameter] public EventCallback<RpCharacter?> OnSpeakAs { get; set; }
+    [Parameter] public EventCallback<string> OnToggleScene { get; set; }
+    [Parameter] public EventCallback<string> OnSwitchLocation { get; set; }
+    [Parameter] public EventCallback<string> OnOpenModal { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+
+    RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.First();
+
+    async Task SwitchLocation(string id)
+    {
+        LocationOpen = false;
+        await OnSwitchLocation.InvokeAsync(id);
+    }
+
+    void AddChat()
+    {
+        var chat = new RpChat { Id = $"ch{Chats.Count + 1}", Title = "Untitled Scene", Updated = "today", Location = ActiveLocation.Name };
+        Chats.Insert(0, chat);
+        _ = OnChatSelected.InvokeAsync(chat);
+    }
+}
