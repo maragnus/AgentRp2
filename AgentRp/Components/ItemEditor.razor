@@ -1,9 +1,17 @@
-<FieldRow Label="Name"><input class="field" @bind="Item.Name" @bind:after="Changed" /></FieldRow>
-<FieldRow Label="Summary"><textarea class="field" @bind="Item.Summary" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Description"><textarea class="field" @bind="Item.Description" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="History"><textarea class="field" @bind="Item.History" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Properties"><textarea class="field" @bind="Item.Properties" @bind:after="Changed"></textarea></FieldRow>
-<AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+<div class="entity-form-editor">
+    <Section Title="Identity" Class="entity-form-section">
+        <FieldRow Label="Name"><input class="field" @bind="Item.Name" @bind:after="Changed" /></FieldRow>
+        <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Item.Summary" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <Section Title="Object Details" Class="entity-form-section">
+        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Item.Description" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="History"><textarea class="field" rows="4" @bind="Item.History" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Properties"><textarea class="field" rows="4" @bind="Item.Properties" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <div class="entity-form-actions">
+        <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+    </div>
+</div>
 
 @if (ConfirmDelete)
 {

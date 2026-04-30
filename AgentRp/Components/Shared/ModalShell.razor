@@ -2,6 +2,10 @@
     <section class="modal @Class" style="max-width:@MaxWidth" @onclick:stopPropagation="true">
         <header class="modal-header">
             <div class="modal-title">
+                @if (!string.IsNullOrWhiteSpace(Icon))
+                {
+                    <FaIcon Name="@Icon" />
+                }
                 <span>@Title</span>
                 @if (!string.IsNullOrWhiteSpace(Subtitle))
                 {
@@ -23,6 +27,7 @@
 @code {
     [Parameter] public string Title { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Icon { get; set; }
     [Parameter] public string MaxWidth { get; set; } = "960px";
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? BodyClass { get; set; }

@@ -1,9 +1,17 @@
-<FieldRow Label="Title"><input class="field" @bind="Entry.Title" @bind:after="Changed" /></FieldRow>
-<FieldRow Label="Date"><input class="field" @bind="Entry.Date" @bind:after="Changed" /></FieldRow>
-<FieldRow Label="Description"><textarea class="field" @bind="Entry.Description" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Characters"><input class="field" value="@string.Join(", ", Entry.Characters)" @onchange="UpdateCharacters" /></FieldRow>
-<FieldRow Label="Significance"><textarea class="field" @bind="Entry.Significance" @bind:after="Changed"></textarea></FieldRow>
-<AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+<div class="entity-form-editor">
+    <Section Title="Event" Class="entity-form-section">
+        <FieldRow Label="Title"><input class="field" @bind="Entry.Title" @bind:after="Changed" /></FieldRow>
+        <FieldRow Label="Date"><input class="field" @bind="Entry.Date" @bind:after="Changed" /></FieldRow>
+        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Entry.Description" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <Section Title="Story Context" Class="entity-form-section">
+        <FieldRow Label="Characters"><input class="field" value="@string.Join(", ", Entry.Characters)" @onchange="UpdateCharacters" /></FieldRow>
+        <FieldRow Label="Significance"><textarea class="field" rows="4" @bind="Entry.Significance" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <div class="entity-form-actions">
+        <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+    </div>
+</div>
 
 @if (ConfirmDelete)
 {
@@ -16,6 +24,10 @@
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
     Task Changed() => OnChanged.InvokeAsync();
-    void UpdateCharacters(ChangeEventArgs args) => Entry.Characters = (args.Value?.ToString() ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    async Task UpdateCharacters(ChangeEventArgs args)
+    {
+        Entry.Characters = (args.Value?.ToString() ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        await Changed();
+    }
     async Task Delete() { ConfirmDelete = false; await OnDelete.InvokeAsync(); }
 }

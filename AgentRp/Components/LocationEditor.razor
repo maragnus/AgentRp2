@@ -1,9 +1,17 @@
-<FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
-<FieldRow Label="Summary"><textarea class="field" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Description"><textarea class="field" @bind="Location.Description" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Atmosphere"><textarea class="field" @bind="Location.Atmosphere" @bind:after="Changed"></textarea></FieldRow>
-<FieldRow Label="Features"><textarea class="field" @bind="Location.Features" @bind:after="Changed"></textarea></FieldRow>
-<AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+<div class="entity-form-editor">
+    <Section Title="Identity" Class="entity-form-section">
+        <FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
+        <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <Section Title="Scene Texture" Class="entity-form-section">
+        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Location.Description" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Atmosphere"><textarea class="field" rows="4" @bind="Location.Atmosphere" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Features"><textarea class="field" rows="4" @bind="Location.Features" @bind:after="Changed"></textarea></FieldRow>
+    </Section>
+    <div class="entity-form-actions">
+        <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
+    </div>
+</div>
 
 @if (ConfirmDelete)
 {

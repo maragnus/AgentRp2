@@ -117,28 +117,127 @@ else
 
 @if (EditPlan)
 {
-    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.Author} · {Message.Timestamp}")" MaxWidth="620px" OnClose="@(() => EditPlan = false)">
-        <FieldRow Label="Turn Shape">
-            <select class="select" @bind="PlanShape">
-                @foreach (var shape in TurnShapes)
-                {
-                    <option @key="shape" value="@shape">@shape</option>
-                }
-            </select>
-        </FieldRow>
-        <FieldRow Label="Beat">
-            <textarea class="field" @bind="Beat"></textarea>
-        </FieldRow>
-        <FieldRow Label="Intent">
-            <textarea class="field" @bind="Intent"></textarea>
-        </FieldRow>
-        <FieldRow Label="Guardrails">
-            <textarea class="field" @bind="Guardrails"></textarea>
-        </FieldRow>
-        <div style="display:flex;justify-content:flex-end;gap:8px">
-            <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
-            <AppButton Variant="primary" OnClick="@(_ => EditPlan = false)"><FaIcon Name="check" /> Save</AppButton>
-        </div>
+    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.Author} · {Message.Timestamp}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
+        <ChildContent>
+            <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
+                <ChildContent>
+                    <ModalTab Id="appearance" Title="Appearance" Summary="@($"{Characters.Count} characters")" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
+                    <ModalTab Id="plan" Title="Plan" Summary="@PlanShape" Dirty="@IsPlanDirty()" />
+                    <ModalTab Id="private" Title="Private Intent" Summary="@($"{Characters.Count} characters")" Dirty="@PrivateIntents.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
+                </ChildContent>
+                <RailFooter>
+                    <div class="prompt-rail-note">
+                        <div class="divider"></div>
+                        <p>Saved plan fields are reused when regenerating this turn.</p>
+                    </div>
+                </RailFooter>
+                <MainContent>
+                    <section class="modal-editor-main edit-plan-main">
+                        @if (ActivePlanTab == "appearance")
+                        {
+                            <header class="tuning-toolbar">
+                                <strong>Characters</strong>
+                                <span style="flex:1"></span>
+                                <Badge Tone="blue">@Characters.Count</Badge>
+                            </header>
+
+                            <div class="edit-plan-fields">
+                                @if (Characters.Count == 0)
+                                {
+                                    <Section Title="Characters" Class="edit-plan-section">
+                                        <p class="empty-note">No characters are available for this turn.</p>
+                                    </Section>
+                                }
+                                else
+                                {
+                                    @foreach (var character in Characters)
+                                    {
+                                        <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
+                                            <textarea class="field plan-field" rows="3" placeholder="@($"How does {character.Name} appear in this turn?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                        </Section>
+                                    }
+                                }
+                            </div>
+                        }
+                        else if (ActivePlanTab == "plan")
+                        {
+                            <header class="tuning-toolbar">
+                                <strong>Plan</strong>
+                                <span style="flex:1"></span>
+                                <Badge Tone="amber">@PlanShape</Badge>
+                            </header>
+
+                            <div class="edit-plan-fields">
+                                <Section Title="Turn Length" Hint="Regeneration target" Class="edit-plan-section">
+                                    <div class="turn-shape-chip-grid" role="group" aria-label="Turn Length">
+                                        @foreach (var shape in TurnShapes)
+                                        {
+                                            <button @key="shape" type="button" class="turn-shape-chip @(PlanShape == shape ? "is-selected" : "")" @onclick="@(() => PlanShape = shape)">
+                                                @shape
+                                            </button>
+                                        }
+                                    </div>
+                                </Section>
+
+                                <Section Title="Scene Beat" Class="edit-plan-section">
+                                    <FieldRow Label="Beat">
+                                        <textarea class="field plan-field" rows="3" placeholder="What story beat does this turn serve?" @bind="Beat"></textarea>
+                                    </FieldRow>
+                                    <FieldRow Label="Change Introduced">
+                                        <textarea class="field plan-field" rows="3" placeholder="What shifts as a result of this turn?" @bind="ChangeIntroduced"></textarea>
+                                    </FieldRow>
+                                </Section>
+
+                                <Section Title="Character Aim" Class="edit-plan-section">
+                                    <FieldRow Label="Intent">
+                                        <textarea class="field plan-field" rows="3" placeholder="What does the character intend to do?" @bind="Intent"></textarea>
+                                    </FieldRow>
+                                    <FieldRow Label="Immediate Goal">
+                                        <input class="field plan-field" placeholder="What does the character want right now?" @bind="ImmediateGoal" />
+                                    </FieldRow>
+                                    <FieldRow Label="Why Now">
+                                        <textarea class="field plan-field" rows="3" placeholder="Why is the character acting at this moment?" @bind="WhyNow"></textarea>
+                                    </FieldRow>
+                                    <FieldRow Label="Guardrails">
+                                        <textarea class="field plan-field" rows="3" placeholder="What should the AI avoid or preserve?" @bind="Guardrails"></textarea>
+                                    </FieldRow>
+                                </Section>
+                            </div>
+                        }
+                        else
+                        {
+                            <header class="tuning-toolbar">
+                                <strong>Private Intent</strong>
+                                <span style="flex:1"></span>
+                                <Badge Tone="violet">@Characters.Count</Badge>
+                            </header>
+
+                            <div class="edit-plan-fields">
+                                @if (Characters.Count == 0)
+                                {
+                                    <Section Title="Characters" Class="edit-plan-section">
+                                        <p class="empty-note">No characters are available for this turn.</p>
+                                    </Section>
+                                }
+                                else
+                                {
+                                    @foreach (var character in Characters)
+                                    {
+                                        <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
+                                            <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {character.Name} carrying?")" value="@GetPrivateIntent(character.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(character.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                        </Section>
+                                    }
+                                }
+                            </div>
+                        }
+                        <footer class="prompt-footer">
+                            <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
+                            <AppButton Variant="primary" OnClick="@(_ => EditPlan = false)"><FaIcon Name="check" />Save Plan</AppButton>
+                        </footer>
+                    </section>
+                </MainContent>
+            </ModalTabGroup>
+        </ChildContent>
     </ModalShell>
 }
 
@@ -147,10 +246,16 @@ else
     bool EditPlan;
     bool AuthorOpen;
     bool ShapeOpen;
+    string ActivePlanTab = "appearance";
     string PlanShape = "Brief";
     string Beat = "Arrival and de-escalation attempt.";
     string Intent = "Move the scene forward while preserving character tension.";
+    string ImmediateGoal = "Physical contact with both to claim her place in the room without choosing sides.";
+    string WhyNow = "She has read the room instantly. Waiting would let the tension calcify.";
+    string ChangeIntroduced = "The dynamic shifts from a two-person standoff to a three-way scene.";
     string Guardrails = "Keep the prose compact and grounded in observable action.";
+    readonly Dictionary<string, string> Appearances = [];
+    readonly Dictionary<string, string> PrivateIntents = [];
     readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
 
     [Parameter] public RpMessage Message { get; set; } = new();
@@ -182,6 +287,25 @@ else
         ConfirmDelete = false;
         await OnDeleteBranch.InvokeAsync(Message.Id);
     }
+
+    void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
+
+    bool IsPlanDirty() =>
+        PlanShape != "Brief" ||
+        Beat != "Arrival and de-escalation attempt." ||
+        ChangeIntroduced != "The dynamic shifts from a two-person standoff to a three-way scene." ||
+        Intent != "Move the scene forward while preserving character tension." ||
+        ImmediateGoal != "Physical contact with both to claim her place in the room without choosing sides." ||
+        WhyNow != "She has read the room instantly. Waiting would let the tension calcify." ||
+        Guardrails != "Keep the prose compact and grounded in observable action.";
+
+    string GetAppearance(string characterId) => Appearances.TryGetValue(characterId, out var appearance) ? appearance : "";
+
+    void SetAppearance(string characterId, string appearance) => Appearances[characterId] = appearance;
+
+    string GetPrivateIntent(string characterId) => PrivateIntents.TryGetValue(characterId, out var intent) ? intent : "";
+
+    void SetPrivateIntent(string characterId, string intent) => PrivateIntents[characterId] = intent;
 
     async Task CopyMessage(MouseEventArgs args) => await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Body);
 }

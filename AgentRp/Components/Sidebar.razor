@@ -7,12 +7,12 @@
         <div>
             <IconButton Icon="image" Title="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
             <IconButton Icon="feather" Title="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
-            <IconButton Icon="download" Title="Export" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
         </div>
     </div>
 
-    <div style="padding:0 10px 10px">
-        <AppButton Variant="primary" Size="md" OnClick="@(_ => AddChat())"><FaIcon Name="plus" /> New Chat</AppButton>
+    <div class="sidebar-action-row">
+        <AppButton Variant="primary" Size="md" Class="sidebar-new-chat" OnClick="@(_ => AddChat())">New Chat <FaIcon Name="plus" /></AppButton>
+        <IconButton Icon="download" Title="Import" Class="sidebar-import-button" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
     </div>
 
     <div class="sidebar-scroll">
