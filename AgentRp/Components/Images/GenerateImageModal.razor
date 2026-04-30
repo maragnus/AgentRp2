@@ -21,6 +21,10 @@
             </Section>
 
             <Section Title="Entity Context" Class="generate-block">
+                @if (!string.IsNullOrWhiteSpace(TargetEntityName))
+                {
+                    <div class="model-card generate-target-card"><strong>@TargetEntityName</strong><p>This image will be used for the selected @TargetEntityType.</p></div>
+                }
                 @foreach (var character in Characters)
                 {
                     var selected = SelectedCharacters.Contains(character.Id);
@@ -84,7 +88,7 @@
         <AppButton Variant="primary" Disabled="@(string.IsNullOrWhiteSpace(Prompt) || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@(Generating ? "Generating…" : "Generate")</AppButton>
         @if (!string.IsNullOrWhiteSpace(Rationale))
         {
-            <AppButton Variant="blue" OnClick="@(_ => Save())"><FaIcon Name="download" />Save to Gallery</AppButton>
+            <AppButton Variant="blue" OnClick="Save"><FaIcon Name="download" />@(AutoUseSavedImage ? "Use Generated" : "Save to Gallery")</AppButton>
         }
     </div>
 </ModalShell>
@@ -105,6 +109,10 @@
 
     [Parameter] public List<RpCharacter> Characters { get; set; } = [];
     [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [Parameter] public string? TargetEntityName { get; set; }
+    [Parameter] public string? TargetEntityType { get; set; }
+    [Parameter] public bool AutoUseSavedImage { get; set; }
+    [Parameter] public EventCallback<GalleryImage> OnSaved { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     void Toggle(string id)
@@ -133,8 +141,26 @@
         Generating = false;
     }
 
-    void Save()
+    async Task Save(MouseEventArgs args)
     {
-        Images.Insert(0, new GalleryImage { Id = $"g{Images.Count + 1}", Name = ResultTitle, Entity = "Generated", EntityType = "scene", Date = "today", Hue = Hue });
+        var image = new GalleryImage
+        {
+            Id = $"g{Images.Count + 1}",
+            Name = ResultTitle,
+            Entity = string.IsNullOrWhiteSpace(TargetEntityName) ? "Generated" : TargetEntityName,
+            EntityType = GalleryEntityType,
+            Date = "today",
+            Hue = Hue
+        };
+        Images.Insert(0, image);
+        await OnSaved.InvokeAsync(image);
     }
+
+    string GalleryEntityType => TargetEntityType switch
+    {
+        "characters" => "character",
+        "locations" => "location",
+        "items" => "item",
+        _ => "scene"
+    };
 }

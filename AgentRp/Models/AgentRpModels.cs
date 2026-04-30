@@ -4,6 +4,7 @@ public sealed class RpCharacter
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string ImageId { get; set; } = "";
     public bool InScene { get; set; }
     public string Summary { get; set; } = "";
     public string Personality { get; set; } = "";
@@ -44,6 +45,7 @@ public sealed class RpLocation
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string ImageId { get; set; } = "";
     public bool IsActive { get; set; }
     public string Summary { get; set; } = "";
     public string Description { get; set; } = "";
@@ -55,6 +57,7 @@ public sealed class RpItem
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string ImageId { get; set; } = "";
     public bool InScene { get; set; }
     public string Summary { get; set; } = "";
     public string Description { get; set; } = "";
@@ -120,6 +123,12 @@ public sealed class GalleryImage
     public string EntityType { get; set; } = "";
     public string Date { get; set; } = "";
     public int Hue { get; set; }
+}
+
+public enum ImageGalleryMode
+{
+    View,
+    Select
 }
 
 public sealed class AiProvider

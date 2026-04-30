@@ -32,7 +32,7 @@
                     <span class="entity-list-icon">
                         @if (Type == "characters")
                         {
-                            <Avatar Name="@row.Item.Title" Size="34" />
+                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" Size="34" />
                         }
                         else if (Type == "timeline")
                         {
@@ -40,7 +40,7 @@
                         }
                         else
                         {
-                            <span class="img-placeholder tiny" style="--hue:@(Type == "locations" ? 210 : 200)"></span>
+                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" Size="34" />
                         }
                         @if (row.Item.Active)
                         {
@@ -61,15 +61,28 @@
         <ItemTemplate>
             @if (Type == "characters" && SelectedCharacter is not null)
             {
-                <CharacterEditor Character="SelectedCharacter" ExistingCharacters="Characters" OnChanged="OnChanged" OnDelete="@(() => DeleteSelected())" />
+                <CharacterEditor Character="SelectedCharacter"
+                                 ExistingCharacters="Characters"
+                                 Image="@ImageFor(SelectedCharacter.ImageId)"
+                                 OnImagePickerRequested="SelectSelectedEntityImage"
+                                 OnChanged="OnChanged"
+                                 OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
-                <LocationEditor Location="SelectedLocation" OnChanged="OnChanged" OnDelete="@(() => DeleteSelected())" />
+                <LocationEditor Location="SelectedLocation"
+                                Image="@ImageFor(SelectedLocation.ImageId)"
+                                OnImagePickerRequested="SelectSelectedEntityImage"
+                                OnChanged="OnChanged"
+                                OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "items" && SelectedItem is not null)
             {
-                <ItemEditor Item="SelectedItem" OnChanged="OnChanged" OnDelete="@(() => DeleteSelected())" />
+                <ItemEditor Item="SelectedItem"
+                            Image="@ImageFor(SelectedItem.ImageId)"
+                            OnImagePickerRequested="SelectSelectedEntityImage"
+                            OnChanged="OnChanged"
+                            OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "timeline" && SelectedTimeline is not null)
             {
@@ -95,7 +108,7 @@
     string Type = "characters";
     string? SelectedId;
     bool CharacterWizardOpen;
-    sealed record EntityEntry(string Id, string Title, string Subtitle, bool Active);
+    sealed record EntityEntry(string Id, string Title, string Subtitle, string ImageId, bool Active);
     readonly (string Key, string Label, string Icon)[] EntityTypes =
     [
         ("characters", "Characters", "users"),
@@ -110,6 +123,8 @@
     [Parameter] public List<RpLocation> Locations { get; set; } = [];
     [Parameter] public List<RpItem> Items { get; set; } = [];
     [Parameter] public List<RpTimelineEntry> Timeline { get; set; } = [];
+    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [Parameter] public EventCallback<(string Type, string Id)> OnSelectEntityImage { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
 
@@ -125,10 +140,10 @@
 
     IEnumerable<EntityEntry> Entries => Type switch
     {
-        "characters" => Characters.Select(character => new EntityEntry(character.Id, character.Name, character.Summary, character.InScene)),
-        "locations" => Locations.Select(location => new EntityEntry(location.Id, location.Name, location.Summary, location.IsActive)),
-        "items" => Items.Select(item => new EntityEntry(item.Id, item.Name, item.Summary, item.InScene)),
-        _ => Timeline.Select(entry => new EntityEntry(entry.Id, entry.Title, entry.Date, false))
+        "characters" => Characters.Select(character => new EntityEntry(character.Id, character.Name, character.Summary, character.ImageId, character.InScene)),
+        "locations" => Locations.Select(location => new EntityEntry(location.Id, location.Name, location.Summary, location.ImageId, location.IsActive)),
+        "items" => Items.Select(item => new EntityEntry(item.Id, item.Name, item.Summary, item.ImageId, item.InScene)),
+        _ => Timeline.Select(entry => new EntityEntry(entry.Id, entry.Title, entry.Date, "", false))
     };
 
     protected override void OnInitialized()
@@ -144,6 +159,14 @@
     }
 
     void SetSelected(string? id) => SelectedId = id;
+
+    GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
+
+    Task SelectEntityImage(string type, string id) => OnSelectEntityImage.InvokeAsync((type, id));
+
+    Task SelectSelectedEntityImage(MouseEventArgs args) => SelectedId is null
+        ? Task.CompletedTask
+        : SelectEntityImage(Type, SelectedId);
 
     void AddEntity()
     {

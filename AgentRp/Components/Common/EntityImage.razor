@@ -1,0 +1,33 @@
+<span class="@CssClass" style="@SizeStyle" title="@Title" @onclick="Click">
+    @if (Image is not null)
+    {
+        <span class="entity-image-thumb img-placeholder" style="--hue:@Image.Hue">@Label</span>
+    }
+    else
+    {
+        <Avatar Name="@Name" Size="@Size" />
+    }
+    @if (Editable)
+    {
+        <span class="entity-image-edit-overlay">
+            <FaIcon Name="swap" />
+        </span>
+    }
+</span>
+
+@code {
+    [Parameter] public string Name { get; set; } = "?";
+    [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public int Size { get; set; } = 34;
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    string CssClass => string.Join(" ", new[] { "entity-image", Editable ? "is-editable" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string SizeStyle => $"--entity-image-size:{Size}px;";
+    string Title => Editable ? $"Change image for {Name}" : Name;
+    string Label => Image?.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? Initial;
+    string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
+
+    Task Click(MouseEventArgs args) => Editable ? OnClick.InvokeAsync(args) : Task.CompletedTask;
+}

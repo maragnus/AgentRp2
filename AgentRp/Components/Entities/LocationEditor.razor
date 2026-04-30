@@ -1,4 +1,11 @@
 <div class="entity-form-editor">
+    <div class="entity-form-head">
+        <EntityImage Name="@Location.Name" Image="Image" Size="44" Editable OnClick="OnImagePickerRequested" />
+        <div>
+            <strong>@Location.Name</strong>
+            <div>Location profile</div>
+        </div>
+    </div>
     <Section Title="Identity" Class="entity-form-section">
         <FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
         <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>
@@ -21,6 +28,8 @@
 @code {
     bool ConfirmDelete;
     [Parameter] public RpLocation Location { get; set; } = new();
+    [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnImagePickerRequested { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
     Task Changed() => OnChanged.InvokeAsync();

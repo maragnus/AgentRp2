@@ -1,7 +1,7 @@
 <div class="character-editor">
     <div class="character-editor-head">
         <div style="display:flex;align-items:center;gap:10px">
-            <Avatar Name="@Character.Name" Size="36" />
+            <EntityImage Name="@Character.Name" Image="Image" Size="40" Editable OnClick="OnImagePickerRequested" />
             <div>
                 <strong>@Character.Name</strong>
                 <div style="color:var(--c-text3);font-size:12px">Guided profile</div>
@@ -76,6 +76,8 @@
 
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
+    [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnImagePickerRequested { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
 
