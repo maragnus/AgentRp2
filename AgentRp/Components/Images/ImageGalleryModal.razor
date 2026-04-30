@@ -1,62 +1,66 @@
 <ModalShell Title="@Title" MaxWidth="860px" OnClose="OnClose">
-    <div class="modal-filter-bar">
-        <div style="position:relative;flex:1;max-width:240px">
-            <FaIcon Name="search" />
-            <input class="field search-field" placeholder="Search images…" @bind="Search" @bind:event="oninput" />
+    <ChildContent>
+        <div class="modal-filter-bar">
+            <div style="position:relative;flex:1;max-width:240px">
+                <FaIcon Name="search" />
+                <input class="field search-field" placeholder="Search images…" @bind="Search" @bind:event="oninput" />
+            </div>
+            <div class="segmented">
+                @foreach (var type in Types)
+                {
+                    <AppButton @key="type" Size="sm" Active="@(Filter == type)" OnClick="@(_ => Filter = type)">@type</AppButton>
+                }
+            </div>
         </div>
-        <div class="segmented">
-            @foreach (var type in Types)
-            {
-                <AppButton @key="type" Size="sm" Active="@(Filter == type)" OnClick="@(_ => Filter = type)">@type</AppButton>
-            }
-        </div>
-    </div>
-    <TiledSelectList TItem="GalleryImage"
-                     Items="Filtered"
-                     SelectedIds="SelectedIds"
-                     GetId="@(image => image.Id)"
-                     Title="@(image => image.Name)"
-                     Layout="TiledSelectLayout.Vertical"
-                     MinTileWidth="150px"
-                     Class="is-gallery"
-                     ReadOnly="@(Mode == ImageGalleryMode.View)"
-                     OnToggle="Pick">
-        <LeadingContent>
-            <button type="button" class="tiled-select-card is-readonly tiled-gallery-generate" @onclick="Generate">
-                <span class="tiled-select-media tiled-gallery-media">
-                    <FaIcon Name="sparkle" />
-                    <span>Generate new image</span>
-                </span>
+
+        <TiledSelectList TItem="GalleryImage"
+                         Items="Filtered"
+                         SelectedIds="SelectedIds"
+                         GetId="@(image => image.Id)"
+                         Title="@(image => image.Name)"
+                         Layout="TiledSelectLayout.Vertical"
+                         MinTileWidth="150px"
+                         Class="is-gallery"
+                         ReadOnly="@(Mode == ImageGalleryMode.View)"
+                         OnToggle="Pick">
+            <LeadingContent>
+                <button type="button" class="tiled-select-card is-readonly tiled-gallery-generate" @onclick="Generate">
+                    <span class="tiled-select-media tiled-gallery-media">
+                        <FaIcon Name="sparkle" />
+                        <span>Generate new image</span>
+                    </span>
+                    <span class="tiled-select-caption">
+                        <strong class="tiled-select-label">Generate Image</strong>
+                        <small>New gallery image</small>
+                    </span>
+                </button>
+            </LeadingContent>
+            <ItemTemplate Context="image">
+                <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
                 <span class="tiled-select-caption">
-                    <strong class="tiled-select-label">Generate Image</strong>
-                    <small>New gallery image</small>
+                    <strong class="tiled-select-label">@image.Name</strong>
+                    <small>@image.EntityType · @image.Date</small>
                 </span>
-            </button>
-        </LeadingContent>
-        <ItemTemplate Context="image">
-            <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
-            <span class="tiled-select-caption">
-                <strong class="tiled-select-label">@image.Name</strong>
-                <small>@image.EntityType · @image.Date</small>
-            </span>
-        </ItemTemplate>
-        <ActionTemplate Context="image">
-            <span class="tiled-select-actions">
-                <IconButton Icon="eye" Title="View image" StopPropagation OnClick="@(_ => View(image))" />
-                <IconButton Icon="trash" Variant="danger" Title="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
-            </span>
-        </ActionTemplate>
-    </TiledSelectList>
-    <div class="modal-local-footer">
+            </ItemTemplate>
+            <ActionTemplate Context="image">
+                <span class="tiled-select-actions">
+                    <IconButton Icon="eye" Title="View image" StopPropagation OnClick="@(_ => View(image))" />
+                    <IconButton Icon="trash" Variant="danger" Title="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
+                </span>
+            </ActionTemplate>
+        </TiledSelectList>
+    </ChildContent>
+    <Footer>
         <span>@Filtered.Count images@(Selected is null ? "" : " · 1 selected")</span>
-        <div style="display:flex;gap:8px">
+        <span class="modal-action-spacer"></span>
+        <span class="modal-action-group">
             @if (Mode == ImageGalleryMode.Select && Selected is not null)
             {
                 <AppButton Variant="primary" OnClick="UseSelected">Use Selected</AppButton>
             }
             <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
-        </div>
-    </div>
+        </span>
+    </Footer>
 </ModalShell>
 
 @code {

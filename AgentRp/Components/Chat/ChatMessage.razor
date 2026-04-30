@@ -132,16 +132,36 @@ else
                     </div>
                 </RailFooter>
                 <MainContent>
-                    <section class="modal-editor-main edit-plan-main">
-                        @if (ActivePlanTab == "appearance")
-                        {
-                            <header class="tuning-toolbar">
-                                <strong>Characters</strong>
-                                <span style="flex:1"></span>
-                                <Badge Tone="blue">@Characters.Count</Badge>
-                            </header>
-
-                            <div class="edit-plan-fields">
+                    <ModalStackLayout Class="modal-editor-main edit-plan-main" BodyClass="edit-plan-fields">
+                        <Header>
+                            @if (ActivePlanTab == "appearance")
+                            {
+                                <div class="tuning-toolbar">
+                                    <strong>Characters</strong>
+                                    <span style="flex:1"></span>
+                                    <Badge Tone="blue">@Characters.Count</Badge>
+                                </div>
+                            }
+                            else if (ActivePlanTab == "plan")
+                            {
+                                <div class="tuning-toolbar">
+                                    <strong>Plan</strong>
+                                    <span style="flex:1"></span>
+                                    <Badge Tone="amber">@PlanShape</Badge>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="tuning-toolbar">
+                                    <strong>Private Intent</strong>
+                                    <span style="flex:1"></span>
+                                    <Badge Tone="violet">@Characters.Count</Badge>
+                                </div>
+                            }
+                        </Header>
+                        <ChildContent>
+                            @if (ActivePlanTab == "appearance")
+                            {
                                 @if (Characters.Count == 0)
                                 {
                                     <Section Title="Characters" Class="edit-plan-section">
@@ -157,17 +177,9 @@ else
                                         </Section>
                                     }
                                 }
-                            </div>
-                        }
-                        else if (ActivePlanTab == "plan")
-                        {
-                            <header class="tuning-toolbar">
-                                <strong>Plan</strong>
-                                <span style="flex:1"></span>
-                                <Badge Tone="amber">@PlanShape</Badge>
-                            </header>
-
-                            <div class="edit-plan-fields">
+                            }
+                            else if (ActivePlanTab == "plan")
+                            {
                                 <Section Title="Turn Length" Hint="Regeneration target" Class="edit-plan-section">
                                     <div class="turn-shape-chip-grid" role="group" aria-label="Turn Length">
                                         @foreach (var shape in TurnShapes)
@@ -202,17 +214,9 @@ else
                                         <textarea class="field plan-field" rows="3" placeholder="What should the AI avoid or preserve?" @bind="Guardrails"></textarea>
                                     </FieldRow>
                                 </Section>
-                            </div>
-                        }
-                        else
-                        {
-                            <header class="tuning-toolbar">
-                                <strong>Private Intent</strong>
-                                <span style="flex:1"></span>
-                                <Badge Tone="violet">@Characters.Count</Badge>
-                            </header>
-
-                            <div class="edit-plan-fields">
+                            }
+                            else
+                            {
                                 @if (Characters.Count == 0)
                                 {
                                     <Section Title="Characters" Class="edit-plan-section">
@@ -228,13 +232,13 @@ else
                                         </Section>
                                     }
                                 }
-                            </div>
-                        }
-                        <footer class="prompt-footer">
+                            }
+                        </ChildContent>
+                        <Footer>
                             <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
                             <AppButton Variant="primary" OnClick="@(_ => EditPlan = false)"><FaIcon Name="check" />Save Plan</AppButton>
-                        </footer>
-                    </section>
+                        </Footer>
+                    </ModalStackLayout>
                 </MainContent>
             </ModalTabGroup>
         </ChildContent>

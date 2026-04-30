@@ -1,16 +1,5 @@
-<div class="v2-backdrop" @onclick="Close">
-    <section class="v2-modal" @onclick:stopPropagation="true">
-        <header class="v2-header">
-            <div class="v2-title-line">
-                <span>@(string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name)</span>
-                <span class="v2-version-badge">Guided Profile</span>
-            </div>
-            <div class="v2-header-actions">
-                <IconButton Icon="x" Title="Close" OnClick="Close" />
-            </div>
-        </header>
-
-        <ModalSplitLayout Height="100%" RailWidth="210px" Class="v2-body" RailClass="v2-rail" MainClass="v2-main">
+<ModalShell Title="@WizardTitle" Subtitle="Guided Profile" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="Close">
+    <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="v2-rail">
             <RailHeader>
                 <div class="v2-profile">
                     <Avatar Name="@(string.IsNullOrWhiteSpace(Character.Name) ? "?" : Character.Name)" Size="52" />
@@ -73,12 +62,14 @@
                 </div>
             </RailFooter>
             <MainContent>
-                <div class="v2-main-head">
-                    <h3>@Steps[Step].Label</h3>
-                    <p>@Steps[Step].Sub</p>
-                </div>
-
-                <div class="v2-content">
+                <ModalStackLayout BodyClass="v2-step-content">
+                    <Header>
+                        <div class="v2-main-head">
+                            <h3>@Steps[Step].Label</h3>
+                            <p>@Steps[Step].Sub</p>
+                        </div>
+                    </Header>
+                    <ChildContent>
                     @if (Step == 0)
                     {
                         <div class="v2-step-stack">
@@ -236,14 +227,14 @@
                             </div>
                         }
                     }
-                </div>
+                    </ChildContent>
 
-                <footer class="v2-footer">
+                <Footer>
                     @if (Step > 0)
                     {
                         <AppButton Variant="secondary" Size="sm" OnClick="Back"><FaIcon Name="chevron-left" />Back</AppButton>
                     }
-                    <span class="v2-footer-spacer"></span>
+                    <span class="modal-action-spacer"></span>
                     @if (Step == Steps.Length - 1)
                     {
                         <AppButton Variant="primary" Size="sm" Disabled="@string.IsNullOrWhiteSpace(Character.Name)" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
@@ -256,11 +247,11 @@
                             <AppButton Variant="secondary" Size="sm" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
                         }
                     }
-                </footer>
+                </Footer>
+                </ModalStackLayout>
             </MainContent>
         </ModalSplitLayout>
-    </section>
-</div>
+</ModalShell>
 
 @code {
     int Step;
@@ -270,6 +261,8 @@
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    string WizardTitle => string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name;
 
     static readonly WizardStep[] Steps =
     [

@@ -16,40 +16,41 @@
             </div>
         </RailFooter>
         <MainContent>
-        <section class="modal-editor-main">
-            <header class="prompt-stepbar">
-                <div>
-                    <strong>@CurrentStep.Label</strong>
-                    @if (CurrentStep.HasTurnShapes)
-                    {
-                        <Badge Tone="amber">Turn Shapes</Badge>
-                    }
-                </div>
-                <SelectableButton Class="@($"placeholder-toggle {(ShowPlaceholders ? "is-active" : "")}")" OnClick="@(_ => ShowPlaceholders = !ShowPlaceholders)">
-                    <code>{…}</code>
-                    <span>Placeholders</span>
-                    <FaIcon Name="@(ShowPlaceholders ? "chevron-up" : "chevron-down")" />
-                </SelectableButton>
-            </header>
-
-            @if (ShowPlaceholders)
-            {
-                <div class="placeholder-panel">
-                    <div class="pill-list">
-                        @foreach (var placeholder in Placeholders[Active])
+        <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
+            <Header>
+                <div class="prompt-stepbar">
+                    <div>
+                        <strong>@CurrentStep.Label</strong>
+                        @if (CurrentStep.HasTurnShapes)
                         {
-                            var copied = CopiedToken == placeholder.Token;
-                            <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" Title="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
-                                <code>@placeholder.Token</code>
-                                <FaIcon Name="@(copied ? "check" : "copy")" />
-                            </SelectableButton>
+                            <Badge Tone="amber">Turn Shapes</Badge>
                         }
                     </div>
-                    <div style="font-size:10.5px;color:var(--c-text3);margin-top:7px">Click any placeholder to copy it to your clipboard.</div>
+                    <SelectableButton Class="@($"placeholder-toggle {(ShowPlaceholders ? "is-active" : "")}")" OnClick="@(_ => ShowPlaceholders = !ShowPlaceholders)">
+                        <code>{…}</code>
+                        <span>Placeholders</span>
+                        <FaIcon Name="@(ShowPlaceholders ? "chevron-up" : "chevron-down")" />
+                    </SelectableButton>
                 </div>
-            }
 
-            <div class="prompt-editor-scroll">
+                @if (ShowPlaceholders)
+                {
+                    <div class="placeholder-panel">
+                        <div class="pill-list">
+                            @foreach (var placeholder in Placeholders[Active])
+                            {
+                                var copied = CopiedToken == placeholder.Token;
+                                <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" Title="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
+                                    <code>@placeholder.Token</code>
+                                    <FaIcon Name="@(copied ? "check" : "copy")" />
+                                </SelectableButton>
+                            }
+                        </div>
+                        <div style="font-size:10.5px;color:var(--c-text3);margin-top:7px">Click any placeholder to copy it to your clipboard.</div>
+                    </div>
+                }
+            </Header>
+            <ChildContent>
                 <PromptTextSection Label="System Prompt"
                                    Value="@PromptValues[Active].System"
                                    ValueChanged="@(value => SetSystem(value))"
@@ -80,13 +81,12 @@
                         </div>
                     </Section>
                 }
-            </div>
-
-            <footer class="prompt-footer">
+            </ChildContent>
+            <Footer>
                 <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
                 <AppButton Variant="primary"><FaIcon Name="check" />Save</AppButton>
-            </footer>
-        </section>
+            </Footer>
+        </ModalStackLayout>
         </MainContent>
     </ModalTabGroup>
 </ModalShell>

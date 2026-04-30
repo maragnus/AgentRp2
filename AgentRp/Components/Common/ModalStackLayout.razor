@@ -1,0 +1,28 @@
+<section class="@CssClass">
+    @if (Header is not null)
+    {
+        <header class="@HeaderCssClass">@Header</header>
+    }
+    <div class="@BodyCssClass">
+        @ChildContent
+    </div>
+    @if (Footer is not null)
+    {
+        <footer class="@FooterCssClass">@Footer</footer>
+    }
+</section>
+
+@code {
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? HeaderClass { get; set; }
+    [Parameter] public string? BodyClass { get; set; }
+    [Parameter] public string? FooterClass { get; set; }
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    string CssClass => $"modal-stack {Class}".Trim();
+    string HeaderCssClass => $"modal-stack-header {HeaderClass}".Trim();
+    string BodyCssClass => $"modal-stack-scroll {BodyClass}".Trim();
+    string FooterCssClass => $"modal-stack-footer {FooterClass}".Trim();
+}

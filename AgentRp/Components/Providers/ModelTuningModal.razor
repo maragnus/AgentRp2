@@ -15,41 +15,43 @@
             </div>
         </RailFooter>
         <MainContent>
-        <section class="modal-editor-main">
-            <header class="tuning-toolbar">
-                <strong>@CurrentStep.Label</strong>
-                <span style="flex:1"></span>
-                <AppButton Variant="secondary" Size="xs" OnClick="ImportSettings"><FaIcon Name="download" />Import</AppButton>
-                <AppButton Variant="secondary" Size="xs" OnClick="ExportSettings"><FaIcon Name="upload" />Export</AppButton>
-                <div class="dropdown-wrap">
-                    <AppButton Variant="@(CopyOpen ? "outline" : "secondary")" Size="xs" OnClick="@(_ => CopyOpen = !CopyOpen)">
-                        <FaIcon Name="copy" />Copy To <FaIcon Name="@(CopyOpen ? "chevron-up" : "chevron-down")" />
-                    </AppButton>
-                    @if (CopyOpen)
+        <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
+            <Header>
+                <div class="tuning-toolbar">
+                    <strong>@CurrentStep.Label</strong>
+                    <span style="flex:1"></span>
+                    <AppButton Variant="secondary" Size="xs" OnClick="ImportSettings"><FaIcon Name="download" />Import</AppButton>
+                    <AppButton Variant="secondary" Size="xs" OnClick="ExportSettings"><FaIcon Name="upload" />Export</AppButton>
+                    <div class="dropdown-wrap">
+                        <AppButton Variant="@(CopyOpen ? "outline" : "secondary")" Size="xs" OnClick="@(_ => CopyOpen = !CopyOpen)">
+                            <FaIcon Name="copy" />Copy To <FaIcon Name="@(CopyOpen ? "chevron-up" : "chevron-down")" />
+                        </AppButton>
+                        @if (CopyOpen)
+                        {
+                            <div class="popover copy-popover">
+                                <div class="popover-label">Copy settings to</div>
+                                @foreach (var step in Steps.Where(step => step.Id != Active))
+                                {
+                                    <SelectableButton @key="step.Id" Class="select-row" OnClick="@(_ => CopyTo(step.Id))">@step.Label</SelectableButton>
+                                }
+                                <div class="divider"></div>
+                                <SelectableButton Class="select-row is-accent" OnClick="@(_ => CopyToAll())">All phases</SelectableButton>
+                            </div>
+                        }
+                    </div>
+                    @if (IsDirty())
                     {
-                        <div class="popover copy-popover">
-                            <div class="popover-label">Copy settings to</div>
-                            @foreach (var step in Steps.Where(step => step.Id != Active))
-                            {
-                                <SelectableButton @key="step.Id" Class="select-row" OnClick="@(_ => CopyTo(step.Id))">@step.Label</SelectableButton>
-                            }
-                            <div class="divider"></div>
-                            <SelectableButton Class="select-row is-accent" OnClick="@(_ => CopyToAll())">All phases</SelectableButton>
-                        </div>
+                        <AppButton Size="xs" OnClick="@(_ => Reset())"><FaIcon Name="refresh" />Reset</AppButton>
                     }
                 </div>
-                @if (IsDirty())
+            </Header>
+
+            <ChildContent>
+                @if (!string.IsNullOrWhiteSpace(CopiedToast))
                 {
-                    <AppButton Size="xs" OnClick="@(_ => Reset())"><FaIcon Name="refresh" />Reset</AppButton>
+                    <div class="floating-toast"><FaIcon Name="check" />@CopiedToast</div>
                 }
-            </header>
 
-            @if (!string.IsNullOrWhiteSpace(CopiedToast))
-            {
-                <div class="floating-toast"><FaIcon Name="check" />@CopiedToast</div>
-            }
-
-            <div class="tuning-fields">
                 <Section Title="Sampling" Class="tuning-section">
                     <FieldRow Label="Temperature">
                         <LabelAction><code>@Current.Temperature.ToString("0.00")</code></LabelAction>
@@ -81,13 +83,13 @@
                         <textarea class="field mono" rows="3" @bind="Current.StopSequences" placeholder="One stop sequence per line…"></textarea>
                     </FieldRow>
                 </Section>
-            </div>
+            </ChildContent>
 
-            <footer class="prompt-footer">
+            <Footer>
                 <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
                 <AppButton Variant="primary"><FaIcon Name="check" />Save</AppButton>
-            </footer>
-        </section>
+            </Footer>
+        </ModalStackLayout>
         </MainContent>
     </ModalTabGroup>
 </ModalShell>

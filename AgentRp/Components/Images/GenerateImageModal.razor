@@ -1,100 +1,102 @@
 <ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="RequestClose">
-    <div class="generate-layout">
-        <aside class="generate-settings">
-            <Section Title="Settings" Class="generate-block">
-                <FieldRow Label="Image Model">
-                    <select class="select" @bind="Model">
-                        <option>gpt-image-1.5 (OpenAI)</option>
-                        <option>DALL·E 3 (OpenAI)</option>
-                        <option>FLUX 1.1 Pro (Black Forest)</option>
-                        <option>Stable Diffusion 3.5 (Stability)</option>
-                    </select>
-                </FieldRow>
-                <div style="display:flex;gap:8px">
-                    <FieldRow Label="Size"><select class="select" @bind="Size"><option>Landscape</option><option>Portrait</option><option>Square</option></select></FieldRow>
-                    <FieldRow Label="Quality"><select class="select" @bind="Quality"><option>Auto</option><option>High</option><option>Medium</option></select></FieldRow>
-                    <FieldRow Label="Refs"><select class="select" @bind="Refs"><option>Low</option><option>Medium</option><option>High</option></select></FieldRow>
-                </div>
-                <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
-                    <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
-                </FieldRow>
-            </Section>
+    <ChildContent>
+        <div class="generate-layout">
+            <aside class="generate-settings">
+                <Section Title="Settings" Class="generate-block">
+                    <FieldRow Label="Image Model">
+                        <select class="select" @bind="Model">
+                            <option>gpt-image-1.5 (OpenAI)</option>
+                            <option>DALL·E 3 (OpenAI)</option>
+                            <option>FLUX 1.1 Pro (Black Forest)</option>
+                            <option>Stable Diffusion 3.5 (Stability)</option>
+                        </select>
+                    </FieldRow>
+                    <div style="display:flex;gap:8px">
+                        <FieldRow Label="Size"><select class="select" @bind="Size"><option>Landscape</option><option>Portrait</option><option>Square</option></select></FieldRow>
+                        <FieldRow Label="Quality"><select class="select" @bind="Quality"><option>Auto</option><option>High</option><option>Medium</option></select></FieldRow>
+                        <FieldRow Label="Refs"><select class="select" @bind="Refs"><option>Low</option><option>Medium</option><option>High</option></select></FieldRow>
+                    </div>
+                    <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
+                        <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
+                    </FieldRow>
+                </Section>
 
-            <Section Title="Entity Context" Class="generate-block">
-                @if (!string.IsNullOrWhiteSpace(TargetEntityName))
-                {
-                    <div class="model-card generate-target-card"><strong>@TargetEntityName</strong></div>
-                }
-                <TiledSelectList TItem="RpCharacter"
-                                 Items="Characters"
-                                 SelectedIds="SelectedCharacters"
-                                 GetId="@(character => character.Id)"
-                                 Title="@(character => character.Name)"
-                                 Layout="TiledSelectLayout.Vertical"
-                                 Columns="3"
-                                 OnToggle="Toggle">
-                    <ItemTemplate Context="character">
-                        <span class="tiled-select-media">
-                            <Avatar Name="@character.Name" Size="22" />
-                        </span>
-                        <strong class="tiled-select-label">@character.Name</strong>
-                    </ItemTemplate>
-                </TiledSelectList>
-            </Section>
-
-            <Section Title="Reference Images" Class="generate-block">
-                <TiledSelectList TItem="GalleryImage"
-                                 Items="Images"
-                                 SelectedIds="SelectedRefs"
-                                 GetId="@(image => image.Id)"
-                                 Title="@(image => image.Name)"
-                                 Layout="TiledSelectLayout.Horizontal"
-                                 OnToggle="ToggleRef">
-                    <ItemTemplate Context="image">
-                        <span class="tiled-select-media img-placeholder" style="--hue:@image.Hue">@ShortLabel(image.Name)</span>
-                        <strong class="tiled-select-label">@image.Name</strong>
-                    </ItemTemplate>
-                </TiledSelectList>
-            </Section>
-        </aside>
-
-        <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
-            <div class="generated-frame">
-                @if (Generating)
-                {
-                    <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
-                }
-                else if (SelectedGenerated is not null)
-                {
-                    <div class="img-placeholder" style="height:100%;--hue:@SelectedGeneratedHue">@SelectedGeneratedTitle</div>
-                }
-                else
-                {
-                    <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
-                }
-            </div>
-            <TiledSelectList TItem="GeneratedImageOption"
-                             Items="Generated"
-                             SelectedIds="SelectedGeneratedIds"
-                             GetId="@(option => option.Id)"
-                             Title="@(option => option.Title)"
-                             Layout="TiledSelectLayout.Horizontal"
-                             OnToggle="SelectGenerated">
-                <EmptyContent>Generate to add options</EmptyContent>
-                <ItemTemplate Context="option">
-                    <span class="tiled-select-media img-placeholder" style="--hue:@option.Hue">@ShortLabel(option.Title)</span>
-                    <strong class="tiled-select-label">@option.Title</strong>
-                </ItemTemplate>
-                <BadgeTemplate Context="option">
-                    @if (option.IsSaved)
+                <Section Title="Entity Context" Class="generate-block">
+                    @if (!string.IsNullOrWhiteSpace(TargetEntityName))
                     {
-                        <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
+                        <div class="model-card generate-target-card"><strong>@TargetEntityName</strong></div>
                     }
-                </BadgeTemplate>
-            </TiledSelectList>
-        </Section>
-    </div>
-    <div class="modal-local-footer">
+                    <TiledSelectList TItem="RpCharacter"
+                                     Items="Characters"
+                                     SelectedIds="SelectedCharacters"
+                                     GetId="@(character => character.Id)"
+                                     Title="@(character => character.Name)"
+                                     Layout="TiledSelectLayout.Vertical"
+                                     Columns="3"
+                                     OnToggle="Toggle">
+                        <ItemTemplate Context="character">
+                            <span class="tiled-select-media">
+                                <Avatar Name="@character.Name" Size="22" />
+                            </span>
+                            <strong class="tiled-select-label">@character.Name</strong>
+                        </ItemTemplate>
+                    </TiledSelectList>
+                </Section>
+
+                <Section Title="Reference Images" Class="generate-block">
+                    <TiledSelectList TItem="GalleryImage"
+                                     Items="Images"
+                                     SelectedIds="SelectedRefs"
+                                     GetId="@(image => image.Id)"
+                                     Title="@(image => image.Name)"
+                                     Layout="TiledSelectLayout.Horizontal"
+                                     OnToggle="ToggleRef">
+                        <ItemTemplate Context="image">
+                            <span class="tiled-select-media img-placeholder" style="--hue:@image.Hue">@ShortLabel(image.Name)</span>
+                            <strong class="tiled-select-label">@image.Name</strong>
+                        </ItemTemplate>
+                    </TiledSelectList>
+                </Section>
+            </aside>
+
+            <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
+                <div class="generated-frame">
+                    @if (Generating)
+                    {
+                        <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
+                    }
+                    else if (SelectedGenerated is not null)
+                    {
+                        <div class="img-placeholder" style="height:100%;--hue:@SelectedGeneratedHue">@SelectedGeneratedTitle</div>
+                    }
+                    else
+                    {
+                        <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
+                    }
+                </div>
+                <TiledSelectList TItem="GeneratedImageOption"
+                                 Items="Generated"
+                                 SelectedIds="SelectedGeneratedIds"
+                                 GetId="@(option => option.Id)"
+                                 Title="@(option => option.Title)"
+                                 Layout="TiledSelectLayout.Horizontal"
+                                 OnToggle="SelectGenerated">
+                    <EmptyContent>Generate to add options</EmptyContent>
+                    <ItemTemplate Context="option">
+                        <span class="tiled-select-media img-placeholder" style="--hue:@option.Hue">@ShortLabel(option.Title)</span>
+                        <strong class="tiled-select-label">@option.Title</strong>
+                    </ItemTemplate>
+                    <BadgeTemplate Context="option">
+                        @if (option.IsSaved)
+                        {
+                            <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
+                        }
+                    </BadgeTemplate>
+                </TiledSelectList>
+            </Section>
+        </div>
+    </ChildContent>
+    <Footer>
         <span style="flex:1"></span>
         <AppButton Variant="primary" Disabled="@(!CanGenerate || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@GenerateButtonText</AppButton>
         @if (SelectedGenerated is not null)
@@ -102,7 +104,7 @@
             <AppButton Variant="blue" Disabled="@SelectedGenerated.IsSaved" OnClick="Save"><FaIcon Name="download" />@SaveButtonText</AppButton>
         }
         <AppButton Variant="secondary" OnClick="@(_ => RequestClose())">Done</AppButton>
-    </div>
+    </Footer>
 </ModalShell>
 
 @if (ConfirmDiscard)

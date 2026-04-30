@@ -29,6 +29,8 @@ Core values for this app are consistency, reusable foundations, small focused co
 
 If you choose not to reuse a similar existing implementation, briefly state why.
 
+Reusable layout and behavior CSS must be owned by common components or common utility classes. Feature/domain CSS may style domain visuals and content, but must not reimplement generic modal, footer, scroll, toolbar, split, list, field, button, or section behavior. If a layout pattern appears more than once, extract or extend a shared primitive before adding another feature-specific class.
+
 ## Non-Negotiable Rules
 - ALWAYS answer user questions without making code changes if the message contains a question.
 - ALWAYS ask before removing or degrading user-facing behavior. NEVER assume feature removal is acceptable.
@@ -64,6 +66,7 @@ If you choose not to reuse a similar existing implementation, briefly state why.
 - Blazor UI must be componentized around real design, behavior, and ownership boundaries during both Claude/React translation and future feature development. Do not translate React into one large page-level `.razor` file, and do not continue growing existing `.razor` files with unrelated layout, repeated markup, modal bodies, list rows, form sections, and interaction logic.
 - During translation, preserve the Claude Design's component intent by mapping React components to focused Razor components where practical. After translation, continue the same standard for new work: new UI should be placed in an existing focused component when it belongs there, or in a new focused component when it represents a distinct UI concept or behavior.
 - Create reusable design components for repeated UI patterns: buttons, icon buttons, avatars, badges, panels, section headers, tabs, accordions, modal shells, field rows, list rows, empty states, and status indicators. Prefer these shared components over duplicating markup and CSS classes.
+- Feature CSS should only describe feature visuals. Shared layout mechanics belong in common design components or common utility classes, even during React-to-Blazor translation.
 - Do not over-componentize tiny static fragments that are used once and have no state, no parameters, no meaningful name, and no reuse value. A component should earn its existence by representing a named UI concept, isolating state or behavior, reducing meaningful duplication, or making a parent component easier to read.
 - Do not translate Claude/React inline SVG icons or inline image markup directly into Razor unless there is a specific technical reason the asset must remain inline. Use FontAwesome Pro 7 Classic Regular icons for UI actions, navigation, controls, status indicators, and other standard iconography. Preserve the Claude Design's intent, size, spacing, and visual weight as closely as possible while replacing inline SVG paths with FontAwesome classes.
 - Inline SVG is allowed only for genuinely custom visuals that FontAwesome cannot represent well, data-driven drawings, generated diagrams, canvas/SVG interactions, or cases where per-path styling or animation is essential. If inline SVG is used, briefly document why FontAwesome or an external asset was not a good fit.
