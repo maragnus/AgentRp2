@@ -30,7 +30,7 @@ Core values for this app are consistency, reusable foundations, small focused co
 If you choose not to reuse a similar existing implementation, briefly state why.
 
 ## Non-Negotiable Rules
-- ALWAYS answer user questions before making code changes.
+- ALWAYS answer user questions without making code changes if the message contains a question.
 - ALWAYS ask before removing or degrading user-facing behavior. NEVER assume feature removal is acceptable.
 - ALWAYS ask when requirements are ambiguous or you are uncertain.
 - ALWAYS treat assumptions as dangerous, especially for behavior, configuration, model/runtime capabilities, and product defaults. If a decision could reasonably belong in configuration or materially change behavior, ask or make it explicitly configurable instead of hard-coding the assumption.

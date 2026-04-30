@@ -11,46 +11,42 @@
             }
         </div>
     </div>
-    <div class="gallery-grid">
-        <button type="button" class="image-card image-generate-card" @onclick="Generate">
-            <div class="img-placeholder">
-                <FaIcon Name="sparkle" />
-                <span>Generate new image</span>
-            </div>
-            <div class="image-caption">
-                <div>
-                    <div class="image-caption-title">Generate Image</div>
-                    <div class="image-caption-meta">New gallery image</div>
-                </div>
-            </div>
-        </button>
-        @foreach (var image in Filtered)
-        {
-            var selected = Mode == ImageGalleryMode.Select && Selected?.Id == image.Id;
-            <div @key="image.Id" class="image-card @(Mode == ImageGalleryMode.Select ? "is-selectable" : "") @(selected ? "is-active" : "")" @onclick="@(() => Pick(image))">
-                <div class="img-placeholder" style="--hue:@image.Hue">
-                    @image.Name
-                    @if (selected)
-                    {
-                        <span class="image-selected"><FaIcon Name="check" /></span>
-                    }
-                </div>
-                <div class="image-caption">
-                    <div>
-                        <div class="image-caption-title">@image.Name</div>
-                        <div class="image-caption-meta">@image.EntityType · @image.Date</div>
-                    </div>
-                    <div class="image-caption-actions">
-                        <IconButton Icon="eye" Title="View image" StopPropagation OnClick="@(_ => View(image))" />
-                        @if (Mode == ImageGalleryMode.View)
-                        {
-                            <IconButton Icon="trash" Variant="danger" Title="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
-                        }
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
+    <TiledSelectList TItem="GalleryImage"
+                     Items="Filtered"
+                     SelectedIds="SelectedIds"
+                     GetId="@(image => image.Id)"
+                     Title="@(image => image.Name)"
+                     Layout="TiledSelectLayout.Vertical"
+                     MinTileWidth="150px"
+                     Class="is-gallery"
+                     ReadOnly="@(Mode == ImageGalleryMode.View)"
+                     OnToggle="Pick">
+        <LeadingContent>
+            <button type="button" class="tiled-select-card is-readonly tiled-gallery-generate" @onclick="Generate">
+                <span class="tiled-select-media tiled-gallery-media">
+                    <FaIcon Name="sparkle" />
+                    <span>Generate new image</span>
+                </span>
+                <span class="tiled-select-caption">
+                    <strong class="tiled-select-label">Generate Image</strong>
+                    <small>New gallery image</small>
+                </span>
+            </button>
+        </LeadingContent>
+        <ItemTemplate Context="image">
+            <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
+            <span class="tiled-select-caption">
+                <strong class="tiled-select-label">@image.Name</strong>
+                <small>@image.EntityType · @image.Date</small>
+            </span>
+        </ItemTemplate>
+        <ActionTemplate Context="image">
+            <span class="tiled-select-actions">
+                <IconButton Icon="eye" Title="View image" StopPropagation OnClick="@(_ => View(image))" />
+                <IconButton Icon="trash" Variant="danger" Title="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
+            </span>
+        </ActionTemplate>
+    </TiledSelectList>
     <div class="modal-local-footer">
         <span>@Filtered.Count images@(Selected is null ? "" : " · 1 selected")</span>
         <div style="display:flex;gap:8px">
@@ -77,6 +73,7 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     string Title => Mode == ImageGalleryMode.Select ? "Select Image" : "Image Gallery";
+    ISet<string> SelectedIds => Selected is null ? new HashSet<string>() : new HashSet<string> { Selected.Id };
 
     List<GalleryImage> Filtered => Images
         .Where(image => Filter == "all" || image.EntityType == Filter)
@@ -91,10 +88,10 @@
             Selected = null;
     }
 
-    void Pick(GalleryImage image)
+    void Pick(string id)
     {
         if (Mode == ImageGalleryMode.Select)
-            Selected = image;
+            Selected = Images.FirstOrDefault(image => image.Id == id);
     }
 
     Task Generate(MouseEventArgs args) => OnGenerate.InvokeAsync();

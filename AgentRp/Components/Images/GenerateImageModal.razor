@@ -1,4 +1,4 @@
-<ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="OnClose">
+<ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="RequestClose">
     <div class="generate-layout">
         <aside class="generate-settings">
             <Section Title="Settings" Class="generate-block">
@@ -16,37 +16,45 @@
                     <FieldRow Label="Refs"><select class="select" @bind="Refs"><option>Low</option><option>Medium</option><option>High</option></select></FieldRow>
                 </div>
                 <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
-                    <textarea class="field" rows="4" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
+                    <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
                 </FieldRow>
             </Section>
 
             <Section Title="Entity Context" Class="generate-block">
                 @if (!string.IsNullOrWhiteSpace(TargetEntityName))
                 {
-                    <div class="model-card generate-target-card"><strong>@TargetEntityName</strong><p>This image will be used for the selected @TargetEntityType.</p></div>
+                    <div class="model-card generate-target-card"><strong>@TargetEntityName</strong></div>
                 }
-                @foreach (var character in Characters)
-                {
-                    var selected = SelectedCharacters.Contains(character.Id);
-                    <SelectableButton @key="character.Id" Class="@($"entity-check {(selected ? "is-active" : "")}")" OnClick="@(_ => Toggle(character.Id))">
-                        <span class="check-box">@if (selected) { <FaIcon Name="check" /> }</span>
-                        <Avatar Name="@character.Name" Size="22" />
-                        <span><strong>@character.Name</strong><small>Character</small></span>
-                    </SelectableButton>
-                }
+                <TiledSelectList TItem="RpCharacter"
+                                 Items="Characters"
+                                 SelectedIds="SelectedCharacters"
+                                 GetId="@(character => character.Id)"
+                                 Title="@(character => character.Name)"
+                                 Layout="TiledSelectLayout.Vertical"
+                                 Columns="3"
+                                 OnToggle="Toggle">
+                    <ItemTemplate Context="character">
+                        <span class="tiled-select-media">
+                            <Avatar Name="@character.Name" Size="22" />
+                        </span>
+                        <strong class="tiled-select-label">@character.Name</strong>
+                    </ItemTemplate>
+                </TiledSelectList>
             </Section>
 
             <Section Title="Reference Images" Class="generate-block">
-                <div class="reference-strip">
-                    @foreach (var image in Images)
-                    {
-                        var selected = SelectedRefs.Contains(image.Id);
-                        <SelectableButton @key="image.Id" Class="@($"ref-thumb {(selected ? "is-active" : "")}")" OnClick="@(_ => ToggleRef(image.Id))">
-                            <span class="img-placeholder" style="--hue:@image.Hue">@image.Name.Split(' ')[0]</span>
-                            <small>@image.Name.Split(' ')[0]</small>
-                        </SelectableButton>
-                    }
-                </div>
+                <TiledSelectList TItem="GalleryImage"
+                                 Items="Images"
+                                 SelectedIds="SelectedRefs"
+                                 GetId="@(image => image.Id)"
+                                 Title="@(image => image.Name)"
+                                 Layout="TiledSelectLayout.Horizontal"
+                                 OnToggle="ToggleRef">
+                    <ItemTemplate Context="image">
+                        <span class="tiled-select-media img-placeholder" style="--hue:@image.Hue">@ShortLabel(image.Name)</span>
+                        <strong class="tiled-select-label">@image.Name</strong>
+                    </ItemTemplate>
+                </TiledSelectList>
             </Section>
         </aside>
 
@@ -56,56 +64,70 @@
                 {
                     <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
                 }
-                else if (!string.IsNullOrWhiteSpace(Rationale))
+                else if (SelectedGenerated is not null)
                 {
-                    <div class="img-placeholder" style="height:100%;--hue:@Hue">Generated scene</div>
+                    <div class="img-placeholder" style="height:100%;--hue:@SelectedGeneratedHue">@SelectedGeneratedTitle</div>
                 }
                 else
                 {
-                    <div class="empty-preview"><FaIcon Name="image" /><span>Your image will appear here</span></div>
+                    <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
                 }
             </div>
-            @if (!string.IsNullOrWhiteSpace(Rationale))
-            {
-                <div class="model-card" style="margin:0"><strong style="color:var(--c-text2)">Rationale</strong><p>@Rationale</p></div>
-            }
-            @if (History.Count > 1)
-            {
-                <div class="reference-strip">
-                    @foreach (var hue in History)
+            <TiledSelectList TItem="GeneratedImageOption"
+                             Items="Generated"
+                             SelectedIds="SelectedGeneratedIds"
+                             GetId="@(option => option.Id)"
+                             Title="@(option => option.Title)"
+                             Layout="TiledSelectLayout.Horizontal"
+                             OnToggle="SelectGenerated">
+                <EmptyContent>Generate to add options</EmptyContent>
+                <ItemTemplate Context="option">
+                    <span class="tiled-select-media img-placeholder" style="--hue:@option.Hue">@ShortLabel(option.Title)</span>
+                    <strong class="tiled-select-label">@option.Title</strong>
+                </ItemTemplate>
+                <BadgeTemplate Context="option">
+                    @if (option.IsSaved)
                     {
-                        <span @key="hue" class="img-placeholder history-thumb" style="--hue:@hue"></span>
+                        <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
                     }
-                </div>
-            }
+                </BadgeTemplate>
+            </TiledSelectList>
         </Section>
     </div>
     <div class="modal-local-footer">
-        <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
-        <AppButton Variant="outline" Disabled="@(string.IsNullOrWhiteSpace(Rationale))"><FaIcon Name="star" />Save Default</AppButton>
         <span style="flex:1"></span>
-        <AppButton Variant="secondary" Disabled="@(string.IsNullOrWhiteSpace(Prompt) || Generating)" OnClick="Generate"><FaIcon Name="refresh" />Generate More</AppButton>
-        <AppButton Variant="primary" Disabled="@(string.IsNullOrWhiteSpace(Prompt) || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@(Generating ? "Generating…" : "Generate")</AppButton>
-        @if (!string.IsNullOrWhiteSpace(Rationale))
+        <AppButton Variant="primary" Disabled="@(!CanGenerate || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@GenerateButtonText</AppButton>
+        @if (SelectedGenerated is not null)
         {
-            <AppButton Variant="blue" OnClick="Save"><FaIcon Name="download" />@(AutoUseSavedImage ? "Use Generated" : "Save to Gallery")</AppButton>
+            <AppButton Variant="blue" Disabled="@SelectedGenerated.IsSaved" OnClick="Save"><FaIcon Name="download" />@SaveButtonText</AppButton>
         }
+        <AppButton Variant="secondary" OnClick="@(_ => RequestClose())">Done</AppButton>
     </div>
 </ModalShell>
 
+@if (ConfirmDiscard)
+{
+    <ConfirmDialog Title="Discard unsaved images?"
+                   Body="Any generated images that have not been saved to the gallery will be discarded."
+                   Icon="x"
+                   ConfirmText="Discard"
+                   ConfirmVariant="rose"
+                   OnCancel="@(() => ConfirmDiscard = false)"
+                   OnConfirm="CloseWithoutSaving" />
+}
+
 @code {
     bool Generating;
-    int Hue = 210;
+    bool ConfirmDiscard;
     string Prompt = "";
     string Model = "gpt-image-1.5 (OpenAI)";
     string Size = "Landscape";
     string Quality = "Auto";
     string Refs = "Low";
-    string ResultTitle = "No image yet";
-    string Rationale = "";
+    string? SelectedGeneratedId;
     HashSet<string> SelectedCharacters = ["c3"];
     HashSet<string> SelectedRefs = ["g1", "g2"];
-    List<int> History = [];
+    List<GeneratedImageOption> Generated = [];
 
     [Parameter] public List<RpCharacter> Characters { get; set; } = [];
     [Parameter] public List<GalleryImage> Images { get; set; } = [];
@@ -114,6 +136,17 @@
     [Parameter] public bool AutoUseSavedImage { get; set; }
     [Parameter] public EventCallback<GalleryImage> OnSaved { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+
+    GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
+    ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
+    int SelectedGeneratedHue => SelectedGenerated?.Hue ?? 200;
+    string SelectedGeneratedTitle => SelectedGenerated?.Title ?? "Generated scene";
+    bool HasPrompt => !string.IsNullOrWhiteSpace(Prompt);
+    bool HasEntityContext => SelectedCharacters.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName);
+    bool CanGenerate => HasPrompt || HasEntityContext;
+    bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
+    string GenerateButtonText => Generating ? "Generating…" : Generated.Count > 0 ? "Generate More" : "Generate";
+    string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
 
     void Toggle(string id)
     {
@@ -127,33 +160,87 @@
             SelectedRefs.Remove(id);
     }
 
+    static string ShortLabel(string value) => value.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? value;
+
     async Task Generate()
     {
-        if (string.IsNullOrWhiteSpace(Prompt))
+        if (!CanGenerate)
             return;
 
         Generating = true;
         await Task.Delay(1800);
-        Hue = 200;
-        ResultTitle = Prompt.Length > 28 ? Prompt[..28] : Prompt;
-        Rationale = "The prompt incorporates selected entity context while focusing on the user's scene description.";
-        History.Insert(0, Hue + History.Count * 20);
+        var title = HasPrompt
+            ? Prompt.Length > 28 ? Prompt[..28] : Prompt
+            : EntityContextTitle();
+        var option = new GeneratedImageOption
+        {
+            Id = $"generated-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Generated.Count + 1}",
+            Title = title,
+            Hue = 200 + Generated.Count * 20
+        };
+        Generated.Insert(0, option);
+        SelectedGeneratedId = option.Id;
         Generating = false;
     }
 
+    string EntityContextTitle()
+    {
+        if (!string.IsNullOrWhiteSpace(TargetEntityName))
+            return TargetEntityName;
+
+        return Characters.FirstOrDefault(character => SelectedCharacters.Contains(character.Id))?.Name ?? "Entity context";
+    }
+
+    void SelectGenerated(string id) => SelectedGeneratedId = id;
+
     async Task Save(MouseEventArgs args)
     {
+        var selected = SelectedGenerated;
+        if (selected is null || selected.IsSaved)
+            return;
+
         var image = new GalleryImage
         {
-            Id = $"g{Images.Count + 1}",
-            Name = ResultTitle,
+            Id = NextGalleryImageId(),
+            Name = selected.Title,
             Entity = string.IsNullOrWhiteSpace(TargetEntityName) ? "Generated" : TargetEntityName,
             EntityType = GalleryEntityType,
             Date = "today",
-            Hue = Hue
+            Hue = selected.Hue
         };
         Images.Insert(0, image);
+        selected.SavedImageId = image.Id;
         await OnSaved.InvokeAsync(image);
+    }
+
+    async Task RequestClose()
+    {
+        if (HasUnsavedGeneratedImages)
+        {
+            ConfirmDiscard = true;
+            await Task.CompletedTask;
+            return;
+        }
+
+        await OnClose.InvokeAsync();
+    }
+
+    async Task CloseWithoutSaving()
+    {
+        ConfirmDiscard = false;
+        await OnClose.InvokeAsync();
+    }
+
+    string NextGalleryImageId()
+    {
+        var index = Images
+            .Select(image => image.Id)
+            .Where(id => id.Length > 1 && id[0] == 'g' && int.TryParse(id[1..], out _))
+            .Select(id => int.Parse(id[1..]))
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        return $"g{index}";
     }
 
     string GalleryEntityType => TargetEntityType switch
@@ -163,4 +250,13 @@
         "items" => "item",
         _ => "scene"
     };
+
+    public sealed class GeneratedImageOption
+    {
+        public string Id { get; init; } = "";
+        public string Title { get; init; } = "";
+        public int Hue { get; init; }
+        public string? SavedImageId { get; set; }
+        public bool IsSaved => !string.IsNullOrWhiteSpace(SavedImageId);
+    }
 }

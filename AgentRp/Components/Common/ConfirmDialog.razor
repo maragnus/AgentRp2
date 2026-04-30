@@ -1,13 +1,13 @@
 <div class="modal-backdrop confirm-backdrop" @onclick="Cancel">
     <section class="confirm-dialog" @onclick:stopPropagation="true">
         <div class="confirm-head">
-            <span class="danger-mark"><FaIcon Name="trash" /></span>
+            <span class="danger-mark @IconClass"><FaIcon Name="@Icon" /></span>
             <strong>@Title</strong>
         </div>
         <p>@Body</p>
         <div class="confirm-actions">
             <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
-            <AppButton Variant="rose" OnClick="@Confirm"><FaIcon Name="trash" /> Delete</AppButton>
+            <AppButton Variant="@ConfirmVariant" OnClick="@Confirm"><FaIcon Name="@Icon" /> @ConfirmText</AppButton>
         </div>
     </section>
 </div>
@@ -15,8 +15,13 @@
 @code {
     [Parameter] public string Title { get; set; } = "Delete item?";
     [Parameter] public string Body { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "trash";
+    [Parameter] public string ConfirmText { get; set; } = "Delete";
+    [Parameter] public string ConfirmVariant { get; set; } = "rose";
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public EventCallback OnConfirm { get; set; }
+
+    string IconClass => Icon == "trash" ? "" : "is-neutral";
 
     Task Cancel(MouseEventArgs args) => OnCancel.InvokeAsync();
     Task Confirm(MouseEventArgs args) => OnConfirm.InvokeAsync();

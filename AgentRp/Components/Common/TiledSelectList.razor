@@ -1,0 +1,101 @@
+@typeparam TItem
+
+<div class="@CssClass" style="@Style">
+    @if (LeadingContent is not null)
+    {
+        @LeadingContent
+    }
+    @if (Items.Count == 0)
+    {
+        @if (EmptyContent is not null)
+        {
+            <div class="tiled-select-empty">@EmptyContent</div>
+        }
+    }
+    else
+    {
+        @foreach (var item in Items)
+        {
+            var id = GetId(item);
+            var selected = SelectedIds.Contains(id);
+            if (ReadOnly)
+            {
+                <div @key="id" class="@CardClass(selected)" title="@Title?.Invoke(item)">
+                    @ItemTemplate(item)
+                    @if (BadgeTemplate is not null)
+                    {
+                        @BadgeTemplate(item)
+                    }
+                    @if (ActionTemplate is not null)
+                    {
+                        @ActionTemplate(item)
+                    }
+                </div>
+            }
+            else
+            {
+                <SelectableButton @key="id"
+                                  Class="@CardClass(selected)"
+                                  Title="@Title?.Invoke(item)"
+                                  OnClick="@(_ => OnToggle.InvokeAsync(id))">
+                    @ItemTemplate(item)
+                    @if (BadgeTemplate is not null)
+                    {
+                        @BadgeTemplate(item)
+                    }
+                    @if (selected)
+                    {
+                        <span class="tiled-select-check"><FaIcon Name="check" /></span>
+                    }
+                </SelectableButton>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<TItem> Items { get; set; } = [];
+    [Parameter] public ISet<string> SelectedIds { get; set; } = new HashSet<string>();
+    [Parameter] public Func<TItem, string> GetId { get; set; } = item => item?.ToString() ?? "";
+    [Parameter] public Func<TItem, string>? Title { get; set; }
+    [Parameter] public TiledSelectLayout Layout { get; set; } = TiledSelectLayout.Vertical;
+    [Parameter] public int Columns { get; set; } = 3;
+    [Parameter] public string? MinTileWidth { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public RenderFragment<TItem> ItemTemplate { get; set; } = _ => builder => { };
+    [Parameter] public RenderFragment<TItem>? BadgeTemplate { get; set; }
+    [Parameter] public RenderFragment<TItem>? ActionTemplate { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "tiled-select-list",
+        $"is-{Layout.ToString().ToLowerInvariant()}",
+        !string.IsNullOrWhiteSpace(MinTileWidth) ? "has-min-tile-width" : null,
+        ReadOnly ? "is-readonly" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    string Style
+    {
+        get
+        {
+            if (Layout != TiledSelectLayout.Vertical)
+                return "";
+
+            return !string.IsNullOrWhiteSpace(MinTileWidth)
+                ? $"--tiled-select-min-width:{MinTileWidth};"
+                : $"--tiled-select-columns:{Columns};";
+        }
+    }
+
+    string CardClass(bool selected) => string.Join(" ", new[]
+    {
+        "tiled-select-card",
+        selected ? "is-active" : null,
+        ReadOnly ? "is-readonly" : null
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+}
