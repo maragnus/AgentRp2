@@ -241,6 +241,10 @@
     background: var(--section-color);
 }
 
+.sidebar .section-bar {
+    display: none;
+}
+
 .section-title-text,
 .v2-section-title {
     color: var(--c-text3);
