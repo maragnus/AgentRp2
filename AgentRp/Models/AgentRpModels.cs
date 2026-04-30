@@ -12,7 +12,6 @@ public sealed class RpCharacter
     public string Backstory { get; set; } = "";
     public string Voice { get; set; } = "";
     public string Notes { get; set; } = "";
-    public string Version { get; set; } = "v1";
     public List<string> SceneRoles { get; set; } = [];
     public List<string> Traits { get; set; } = [];
     public List<string> Drives { get; set; } = [];
@@ -28,7 +27,7 @@ public sealed class RpCharacter
     public string StressPattern { get; set; } = "";
     public List<string> SoftSpots { get; set; } = [];
     public List<string> AvoidPatterns { get; set; } = [];
-    public List<RpRelationship> V2Relationships { get; set; } = [];
+    public List<RpRelationship> ProfileRelationships { get; set; } = [];
 }
 
 public sealed class RpRelationship

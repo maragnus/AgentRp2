@@ -4,33 +4,65 @@
             <Avatar Name="@Character.Name" Size="36" />
             <div>
                 <strong>@Character.Name</strong>
-                <div style="color:var(--c-text3);font-size:12px">@(Character.Version == "v2" ? "Guided V2 profile" : "Classic profile")</div>
+                <div style="color:var(--c-text3);font-size:12px">Guided profile</div>
             </div>
         </div>
         <div style="display:flex;gap:8px">
-            <AppButton Variant="secondary" OnClick="@(_ => WizardOpen = true)"><FaIcon Name="sliders" /> Edit in Wizard</AppButton>
+            <AppButton Variant="secondary" OnClick="@(_ => WizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
             <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
         </div>
     </div>
 
-    <FieldRow Label="Name"><input class="field" @bind="Character.Name" @bind:after="Changed" /></FieldRow>
-    <FieldRow Label="Summary"><textarea class="field" @bind="Character.Summary" @bind:after="Changed"></textarea></FieldRow>
-    <FieldRow Label="Personality"><textarea class="field" @bind="Character.Personality" @bind:after="Changed"></textarea></FieldRow>
-    <FieldRow Label="Appearance"><textarea class="field" @bind="Character.Appearance" @bind:after="Changed"></textarea></FieldRow>
-    <FieldRow Label="Relationships"><textarea class="field" @bind="Character.Relationships" @bind:after="Changed"></textarea></FieldRow>
-    <FieldRow Label="Backstory"><textarea class="field" @bind="Character.Backstory" @bind:after="Changed"></textarea></FieldRow>
-    <FieldRow Label="Voice"><textarea class="field" @bind="Character.Voice" @bind:after="Changed"></textarea></FieldRow>
+    <section class="character-summary-card">
+        <div class="character-summary-top">
+            <div>
+                <span class="summary-kicker">Summary</span>
+                <p>@SummaryText</p>
+            </div>
+        </div>
 
-    <div class="profile-blocks">
-        <Section Title="Traits" Class="profile-block"><div class="pill-list">@foreach (var trait in Character.Traits) { <Badge @key="trait" Tone="violet">@trait</Badge> }</div></Section>
-        <Section Title="Drives" Class="profile-block"><div class="pill-list">@foreach (var drive in Character.Drives) { <Badge @key="drive" Tone="amber">@drive</Badge> }</div></Section>
-        <Section Title="Limits" Class="profile-block"><div class="pill-list">@foreach (var limit in Character.Limits) { <Badge @key="limit" Tone="emerald">@limit</Badge> }</div></Section>
-    </div>
+        <div class="character-summary-grid">
+            <Section Title="Scene Roles" Class="profile-block">
+                <div class="pill-list">@BadgeList(Character.SceneRoles, "blue")</div>
+            </Section>
+            <Section Title="Traits" Class="profile-block">
+                <div class="pill-list">@BadgeList(Character.Traits, "violet")</div>
+            </Section>
+            <Section Title="Soft Spots" Class="profile-block">
+                <div class="pill-list">@BadgeList(Character.SoftSpots, "emerald")</div>
+            </Section>
+            <Section Title="Inner Engine" Class="profile-block profile-block-wide">
+                <dl class="summary-definition-list">
+                    @foreach (var row in CoreRows)
+                    {
+                        <div @key="row.Label">
+                            <dt>@row.Label</dt>
+                            <dd>@DisplayLabel(row.Value)</dd>
+                        </div>
+                    }
+                </dl>
+            </Section>
+            <Section Title="Voice & Behavior" Class="profile-block profile-block-wide">
+                <dl class="summary-definition-list">
+                    @foreach (var row in VoiceRows)
+                    {
+                        <div @key="row.Label">
+                            <dt>@row.Label</dt>
+                            <dd>@DisplayLabel(row.Value)</dd>
+                        </div>
+                    }
+                </dl>
+            </Section>
+            <Section Title="Avoid Patterns" Class="profile-block profile-block-wide">
+                <div class="pill-list">@BadgeList(Character.AvoidPatterns, "amber")</div>
+            </Section>
+        </div>
+    </section>
 </div>
 
 @if (WizardOpen)
 {
-    <V2WizardModal Character="Character" ExistingCharacters="ExistingCharacters" OnClose="@(() => WizardOpen = false)" OnChanged="Changed" />
+    <CharacterWizardModal Character="Character" ExistingCharacters="ExistingCharacters" OnClose="@(() => WizardOpen = false)" OnChanged="Changed" />
 }
 
 @if (ConfirmDelete)
@@ -47,11 +79,65 @@
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
 
+    string SummaryText => string.IsNullOrWhiteSpace(Character.Summary)
+        ? "No summary yet. Open the editor to define the character concept."
+        : Character.Summary;
+
+    (string Label, string Value)[] CoreRows =>
+    [
+        ("Drive", Character.CoreDrive),
+        ("Fear", Character.CoreFear),
+        ("Mask", Character.SurfaceMask),
+        ("Truth", Character.HiddenTruth)
+    ];
+
+    (string Label, string Value)[] VoiceRows =>
+    [
+        ("Sentence", Character.SentenceStyle),
+        ("Honesty", Character.HonestyStyle),
+        ("Leakage", Character.EmotionalLeakage),
+        ("Action", Character.ActionFingerprint),
+        ("Stress", Character.StressPattern)
+    ];
+
     Task Changed() => OnChanged.InvokeAsync();
 
     async Task Delete()
     {
         ConfirmDelete = false;
         await OnDelete.InvokeAsync();
+    }
+
+    RenderFragment BadgeList(IReadOnlyCollection<string> values, string tone) => builder =>
+    {
+        if (values.Count == 0)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "summary-empty");
+            builder.AddContent(2, "Not set");
+            builder.CloseElement();
+            return;
+        }
+
+        var sequence = 3;
+        foreach (var value in values)
+        {
+            builder.OpenComponent<Badge>(sequence++);
+            builder.AddAttribute(sequence++, "Tone", tone);
+            builder.AddAttribute(sequence++, "ChildContent", (RenderFragment)(child =>
+            {
+                child.AddContent(0, DisplayLabel(value));
+            }));
+            builder.CloseComponent();
+        }
+    };
+
+    static string DisplayLabel(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "Not set";
+
+        var spaced = value.Replace('-', ' ');
+        return System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(spaced);
     }
 }

@@ -2797,9 +2797,42 @@ textarea.field { resize: vertical; min-height: 84px; }
     margin-bottom: 14px;
 }
 
-.profile-blocks {
+.character-summary-card {
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    background: var(--c-surface);
+    padding: 14px;
+}
+
+.character-summary-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.character-summary-top p {
+    margin: 4px 0 0;
+    color: var(--c-text);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+
+.summary-kicker {
+    display: block;
+    color: var(--c-text3);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.character-summary-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
 }
 
@@ -2809,6 +2842,40 @@ textarea.field { resize: vertical; min-height: 84px; }
     background: var(--c-surface2);
     padding: 10px;
     min-height: 84px;
+}
+
+.profile-block-wide {
+    grid-column: span 3;
+}
+
+.summary-definition-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+    margin: 0;
+}
+
+.summary-definition-list div {
+    min-width: 0;
+}
+
+.summary-definition-list dt {
+    color: var(--c-text3);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.summary-definition-list dd {
+    margin: 3px 0 0;
+    color: var(--c-text);
+    font-size: 13px;
+}
+
+.summary-empty {
+    color: var(--c-text3);
+    font-size: 12px;
 }
 
 .wizard-layout {
@@ -3477,6 +3544,19 @@ textarea.field { resize: vertical; min-height: 84px; }
     .sidebar {
         width: 218px;
         flex-basis: 218px;
+    }
+
+    .character-summary-top {
+        flex-direction: column;
+    }
+
+    .character-summary-grid,
+    .summary-definition-list {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-block-wide {
+        grid-column: span 1;
     }
 
     .message-body {

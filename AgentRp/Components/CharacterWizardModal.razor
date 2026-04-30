@@ -3,10 +3,9 @@
         <header class="v2-header">
             <div class="v2-title-line">
                 <span>@(string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name)</span>
-                <span class="v2-version-badge">Guided · V2</span>
+                <span class="v2-version-badge">Guided Profile</span>
             </div>
             <div class="v2-header-actions">
-                <AppButton Variant="secondary" Size="sm" OnClick="SaveDraft">Save Draft</AppButton>
                 <IconButton Icon="x" Title="Close" OnClick="Close" />
             </div>
         </header>
@@ -48,7 +47,7 @@
                                    Locked="@(!accessible)"
                                    Disabled="@(!accessible)"
                                    Class="v2-step"
-                                   OnClick="@(_ => Step = index)">
+                                   OnClick="@(_ => GoToStep(index))">
                         <IndexContent>
                             @if (done && Step != index)
                             {
@@ -84,10 +83,10 @@
                     {
                         <div class="v2-step-stack">
                             <Section Title="Name">
-                                <input class="v2-name-input" placeholder="Character name..." @bind="Character.Name" />
+                                <input class="v2-name-input" placeholder="Character name..." @bind="Character.Name" @bind:event="oninput" />
                             </Section>
                             <Section Title="Summary" Hint="— one sentence, optional">
-                                <textarea class="v2-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary"></textarea>
+                                <textarea class="v2-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
                             </Section>
                             <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="2">
                                 <div class="v2-chip-list">
@@ -130,28 +129,28 @@
                     {
                         <p class="v2-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
                         <div class="v2-step-stack is-roomy">
-                            <V2OptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Character.CoreDrive" OnSelect="@(id => SetSingle(nameof(Character.CoreDrive), id))" />
-                            <V2OptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Character.CoreFear" OnSelect="@(id => SetSingle(nameof(Character.CoreFear), id))" />
-                            <V2OptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Character.SurfaceMask" OnSelect="@(id => SetSingle(nameof(Character.SurfaceMask), id))" />
-                            <V2OptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Character.HiddenTruth" OnSelect="@(id => SetSingle(nameof(Character.HiddenTruth), id))" />
+                            <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Character.CoreDrive" OnSelect="@(id => SetSingle(nameof(Character.CoreDrive), id))" />
+                            <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Character.CoreFear" OnSelect="@(id => SetSingle(nameof(Character.CoreFear), id))" />
+                            <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Character.SurfaceMask" OnSelect="@(id => SetSingle(nameof(Character.SurfaceMask), id))" />
+                            <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Character.HiddenTruth" OnSelect="@(id => SetSingle(nameof(Character.HiddenTruth), id))" />
                         </div>
                     }
                     else if (Step == 3)
                     {
                         <p class="v2-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
                         <div class="v2-step-stack is-roomy">
-                            <V2OptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Character.SentenceStyle" OnSelect="@(id => SetSingle(nameof(Character.SentenceStyle), id))" />
-                            <V2OptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Character.HonestyStyle" OnSelect="@(id => SetSingle(nameof(Character.HonestyStyle), id))" />
-                            <V2OptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Character.EmotionalLeakage" OnSelect="@(id => SetSingle(nameof(Character.EmotionalLeakage), id))" />
-                            <V2OptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Character.ActionFingerprint" OnSelect="@(id => SetSingle(nameof(Character.ActionFingerprint), id))" />
-                            <V2OptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Character.StressPattern" OnSelect="@(id => SetSingle(nameof(Character.StressPattern), id))" />
+                            <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Character.SentenceStyle" OnSelect="@(id => SetSingle(nameof(Character.SentenceStyle), id))" />
+                            <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Character.HonestyStyle" OnSelect="@(id => SetSingle(nameof(Character.HonestyStyle), id))" />
+                            <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Character.EmotionalLeakage" OnSelect="@(id => SetSingle(nameof(Character.EmotionalLeakage), id))" />
+                            <CharacterOptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Character.ActionFingerprint" OnSelect="@(id => SetSingle(nameof(Character.ActionFingerprint), id))" />
+                            <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Character.StressPattern" OnSelect="@(id => SetSingle(nameof(Character.StressPattern), id))" />
                         </div>
                     }
                     else if (Step == 4)
                     {
                         <div class="v2-step-stack is-roomy">
-                            <V2OptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="3" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, 3))" />
-                            <V2OptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="5" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, 5))" />
+                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="3" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, 3))" />
+                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="5" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, 5))" />
                         </div>
                     }
                     else
@@ -222,13 +221,13 @@
                                                     </div>
                                                 </Section>
                                                 <Section Title="@($"How {SelfName} sees {other.Name}")">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.NoteAtoB"></textarea>
+                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.NoteAtoB" @bind:event="oninput"></textarea>
                                                 </Section>
                                                 <Section Title="@($"How {other.Name} sees {SelfName}")">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.NoteBtoA"></textarea>
+                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.NoteBtoA" @bind:event="oninput"></textarea>
                                                 </Section>
                                                 <Section Title="External Perception">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.NoteExternal"></textarea>
+                                                    <textarea class="v2-rel-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.NoteExternal" @bind:event="oninput"></textarea>
                                                 </Section>
                                             </div>
                                         }
@@ -242,16 +241,20 @@
                 <footer class="v2-footer">
                     @if (Step > 0)
                     {
-                        <AppButton Variant="secondary" Size="sm" OnClick="@(_ => Step--)"><FaIcon Name="chevron-left" />Back</AppButton>
+                        <AppButton Variant="secondary" Size="sm" OnClick="Back"><FaIcon Name="chevron-left" />Back</AppButton>
                     }
                     <span class="v2-footer-spacer"></span>
                     @if (Step == Steps.Length - 1)
                     {
-                        <AppButton Variant="primary" Size="sm" Disabled="@string.IsNullOrWhiteSpace(Character.Name)" OnClick="Finish"><FaIcon Name="check" />Finish &amp; Save</AppButton>
+                        <AppButton Variant="primary" Size="sm" Disabled="@string.IsNullOrWhiteSpace(Character.Name)" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
                     }
                     else
                     {
-                        <AppButton Variant="primary" Size="sm" Disabled="@(!CanNext)" OnClick="@(_ => Step++)">Next<FaIcon Name="chevron-right" /></AppButton>
+                        <AppButton Variant="primary" Size="sm" Disabled="@(!CanNext)" OnClick="Next">Next<FaIcon Name="chevron-right" /></AppButton>
+                        @if (IsComplete)
+                        {
+                            <AppButton Variant="secondary" Size="sm" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
+                        }
                     }
                 </footer>
             </MainContent>
@@ -278,7 +281,7 @@
         new("relationships", "Relationships", "Who they know"),
     ];
 
-    static readonly V2Option[] SceneRoles =
+    static readonly CharacterOption[] SceneRoles =
     [
         new("instigator", "Instigator", "Starts motion."),
         new("anchor", "Anchor", "Stabilizes others."),
@@ -306,19 +309,19 @@
         new("Vulnerability", "violet", [new("masked-insecure", "Masked Insecure", "Hides self-doubt behind style."), new("approval-seeking", "Approval-Seeking", "Wants validation and reassurance."), new("shame-defensive", "Shame-Defensive", "Turns embarrassment into defense."), new("soft-centered", "Soft-Centered", "Has an emotional weak point."), new("wounded-romantic", "Wounded Romantic", "Wants connection but expects pain."), new("martyr", "Martyr", "Makes suffering part of usefulness.")]),
     ];
 
-    static readonly V2Option[] CoreDrives = [new("prove-worth", "Prove Worth", "Needs to feel valuable."), new("stay-safe", "Stay Safe", "Avoids danger and exposure."), new("protect-their-people", "Protect Their People", "Keeps chosen people safe."), new("maintain-control", "Maintain Control", "Prevents chaos and helplessness."), new("be-wanted", "Be Wanted", "Needs to feel chosen."), new("be-free", "Be Free", "Resists confinement and ownership."), new("find-truth", "Find Truth", "Needs to know what is real."), new("avoid-shame", "Avoid Shame", "Hides flaws or failure."), new("earn-belonging", "Earn Belonging", "Tries to become worth keeping."), new("win-respect", "Win Respect", "Wants dignity and competence recognized."), new("keep-peace", "Keep Peace", "Preserves stability."), new("experience-life", "Experience Life Fully", "Chases intensity and meaning."), new("redeem-themselves", "Redeem Themselves", "Seeks to make up for guilt."), new("preserve-independence", "Preserve Independence", "Avoids needing others.")];
-    static readonly V2Option[] CoreFears = [new("being-abandoned", "Being Abandoned", "Fears being left behind."), new("being-useless", "Being Useless", "Fears having no value."), new("being-controlled", "Being Controlled", "Fears losing autonomy."), new("being-exposed", "Being Exposed", "Fears being truly seen."), new("being-rejected", "Being Rejected", "Fears not being accepted."), new("being-betrayed", "Being Betrayed", "Fears trust becoming dangerous."), new("hurting-others", "Hurting Others", "Fears causing harm."), new("failing-again", "Failing Again", "Fears repeating old mistakes."), new("being-ordinary", "Being Ordinary", "Fears being forgettable."), new("losing-control", "Losing Control", "Fears unpredictability."), new("being-unlovable", "Being Unlovable", "Fears being too much or not enough."), new("depending-on-someone", "Depending on Someone", "Fears needing others.")];
-    static readonly V2Option[] SurfaceMasks = [new("smug-untouchable", "Smug and Untouchable", "Acts above it all."), new("polite-composed", "Polite and Composed", "Uses manners as armor."), new("charming-effortless", "Charming and Effortless", "Performs ease and likability."), new("cold-detached", "Cold and Detached", "Keeps emotion distant."), new("helpful-capable", "Helpful and Capable", "Stays useful to feel safe."), new("reckless-fearless", "Reckless and Fearless", "Performs boldness."), new("sweet-harmless", "Sweet and Harmless", "Appears gentle and agreeable."), new("funny-unbothered", "Funny and Unbothered", "Hides behind humor."), new("professional-efficient", "Professional and Efficient", "Hides emotion behind competence."), new("mysterious-withholding", "Mysterious and Withholding", "Reveals little.")];
-    static readonly V2Option[] HiddenTruths = [new("needs-reassurance", "Needs Reassurance", "Wants proof they matter."), new("feels-too-much", "Feels Too Much", "Emotion runs deeper than shown."), new("wants-to-be-chosen", "Wants to Be Chosen", "Wants to be preferred, not tolerated."), new("afraid-of-being-known", "Afraid of Being Known", "Understanding feels risky."), new("feels-responsible", "Feels Responsible", "Carries too much blame."), new("craves-freedom", "Craves Freedom", "Hates being trapped."), new("longs-for-rest", "Longs for Rest", "Wants permission to stop."), new("wants-to-trust", "Wants to Trust", "Hopes someone proves safe."), new("fears-their-own-anger", "Fears Their Own Anger", "Avoids what rage might reveal."), new("still-hopes", "Still Hopes", "Cynicism is not the whole truth.")];
+    static readonly CharacterOption[] CoreDrives = [new("prove-worth", "Prove Worth", "Needs to feel valuable."), new("stay-safe", "Stay Safe", "Avoids danger and exposure."), new("protect-their-people", "Protect Their People", "Keeps chosen people safe."), new("maintain-control", "Maintain Control", "Prevents chaos and helplessness."), new("be-wanted", "Be Wanted", "Needs to feel chosen."), new("be-free", "Be Free", "Resists confinement and ownership."), new("find-truth", "Find Truth", "Needs to know what is real."), new("avoid-shame", "Avoid Shame", "Hides flaws or failure."), new("earn-belonging", "Earn Belonging", "Tries to become worth keeping."), new("win-respect", "Win Respect", "Wants dignity and competence recognized."), new("keep-peace", "Keep Peace", "Preserves stability."), new("experience-life", "Experience Life Fully", "Chases intensity and meaning."), new("redeem-themselves", "Redeem Themselves", "Seeks to make up for guilt."), new("preserve-independence", "Preserve Independence", "Avoids needing others.")];
+    static readonly CharacterOption[] CoreFears = [new("being-abandoned", "Being Abandoned", "Fears being left behind."), new("being-useless", "Being Useless", "Fears having no value."), new("being-controlled", "Being Controlled", "Fears losing autonomy."), new("being-exposed", "Being Exposed", "Fears being truly seen."), new("being-rejected", "Being Rejected", "Fears not being accepted."), new("being-betrayed", "Being Betrayed", "Fears trust becoming dangerous."), new("hurting-others", "Hurting Others", "Fears causing harm."), new("failing-again", "Failing Again", "Fears repeating old mistakes."), new("being-ordinary", "Being Ordinary", "Fears being forgettable."), new("losing-control", "Losing Control", "Fears unpredictability."), new("being-unlovable", "Being Unlovable", "Fears being too much or not enough."), new("depending-on-someone", "Depending on Someone", "Fears needing others.")];
+    static readonly CharacterOption[] SurfaceMasks = [new("smug-untouchable", "Smug and Untouchable", "Acts above it all."), new("polite-composed", "Polite and Composed", "Uses manners as armor."), new("charming-effortless", "Charming and Effortless", "Performs ease and likability."), new("cold-detached", "Cold and Detached", "Keeps emotion distant."), new("helpful-capable", "Helpful and Capable", "Stays useful to feel safe."), new("reckless-fearless", "Reckless and Fearless", "Performs boldness."), new("sweet-harmless", "Sweet and Harmless", "Appears gentle and agreeable."), new("funny-unbothered", "Funny and Unbothered", "Hides behind humor."), new("professional-efficient", "Professional and Efficient", "Hides emotion behind competence."), new("mysterious-withholding", "Mysterious and Withholding", "Reveals little.")];
+    static readonly CharacterOption[] HiddenTruths = [new("needs-reassurance", "Needs Reassurance", "Wants proof they matter."), new("feels-too-much", "Feels Too Much", "Emotion runs deeper than shown."), new("wants-to-be-chosen", "Wants to Be Chosen", "Wants to be preferred, not tolerated."), new("afraid-of-being-known", "Afraid of Being Known", "Understanding feels risky."), new("feels-responsible", "Feels Responsible", "Carries too much blame."), new("craves-freedom", "Craves Freedom", "Hates being trapped."), new("longs-for-rest", "Longs for Rest", "Wants permission to stop."), new("wants-to-trust", "Wants to Trust", "Hopes someone proves safe."), new("fears-their-own-anger", "Fears Their Own Anger", "Avoids what rage might reveal."), new("still-hopes", "Still Hopes", "Cynicism is not the whole truth.")];
 
-    static readonly V2Option[] SentenceStyles = [new("terse", "Terse", "Short and efficient."), new("rambling", "Rambling", "Thinks aloud."), new("precise", "Precise", "Careful and exact."), new("blunt", "Blunt", "Direct, sometimes too direct."), new("elegant", "Elegant", "Polished and rhythmic."), new("casual", "Casual", "Relaxed and everyday."), new("formal", "Formal", "Structured and mannered."), new("fragmented", "Fragmented", "Broken under pressure.")];
-    static readonly V2Option[] HonestyStyles = [new("direct", "Direct", "Says what they mean."), new("evasive", "Evasive", "Dodges direct answers."), new("layered", "Layered", "Speaks with subtext."), new("performative", "Performative", "Shapes answers for effect."), new("accidentally-honest", "Accidentally Honest", "Truth slips out.")];
-    static readonly V2Option[] EmotionalLeakages = [new("gets-quieter", "Gets Quieter", "Emotion makes them smaller."), new("gets-sharper", "Gets Sharper", "Emotion makes them more cutting."), new("gets-warmer", "Gets Warmer", "Emotion makes them softer."), new("gets-funnier", "Gets Funnier", "Emotion increases humor."), new("gets-formal", "Gets Formal", "Emotion sends them into manners."), new("gets-physical", "Gets Physical", "Emotion shows through movement.")];
-    static readonly V2Option[] ActionFingerprints = [new("lounger", "Lounger", "Claims space casually."), new("tidy-avoider", "Tidy Avoider", "Fidgets through tasks."), new("still-watcher", "Still Watcher", "Goes quiet and observant."), new("pacer", "Pacer", "Moves to think."), new("touch-connector", "Touch Connector", "Communicates through contact."), new("space-keeper", "Space Keeper", "Maintains distance."), new("protective-mover", "Protective Mover", "Shields others with positioning."), new("performer", "Performer", "Uses expressive movement."), new("minimalist", "Minimalist", "Makes small movements matter."), new("restless-spark", "Restless Spark", "Constant small motion.")];
-    static readonly V2Option[] StressPatterns = [new("sharper-under-pressure", "Sharper Under Pressure", "Gets more pointed as stress rises."), new("quieter-under-pressure", "Quieter Under Pressure", "Withdraws as stress rises."), new("louder-under-pressure", "Louder Under Pressure", "Gets more expressive as stress rises."), new("colder-under-pressure", "Colder Under Pressure", "Freezes emotion into control."), new("funnier-under-pressure", "Funnier Under Pressure", "Jokes harder as stress rises."), new("helpful-under-pressure", "Helpful Under Pressure", "Converts feelings into tasks."), new("controlling-under-pressure", "Controlling Under Pressure", "Manages harder as stress rises."), new("reckless-under-pressure", "Reckless Under Pressure", "Acts before thinking."), new("appeasing-under-pressure", "Appeasing Under Pressure", "Smooths and self-erases."), new("protective-under-pressure", "Protective Under Pressure", "Threat makes them decisive.")];
+    static readonly CharacterOption[] SentenceStyles = [new("terse", "Terse", "Short and efficient."), new("rambling", "Rambling", "Thinks aloud."), new("precise", "Precise", "Careful and exact."), new("blunt", "Blunt", "Direct, sometimes too direct."), new("elegant", "Elegant", "Polished and rhythmic."), new("casual", "Casual", "Relaxed and everyday."), new("formal", "Formal", "Structured and mannered."), new("fragmented", "Fragmented", "Broken under pressure.")];
+    static readonly CharacterOption[] HonestyStyles = [new("direct", "Direct", "Says what they mean."), new("evasive", "Evasive", "Dodges direct answers."), new("layered", "Layered", "Speaks with subtext."), new("performative", "Performative", "Shapes answers for effect."), new("accidentally-honest", "Accidentally Honest", "Truth slips out.")];
+    static readonly CharacterOption[] EmotionalLeakages = [new("gets-quieter", "Gets Quieter", "Emotion makes them smaller."), new("gets-sharper", "Gets Sharper", "Emotion makes them more cutting."), new("gets-warmer", "Gets Warmer", "Emotion makes them softer."), new("gets-funnier", "Gets Funnier", "Emotion increases humor."), new("gets-formal", "Gets Formal", "Emotion sends them into manners."), new("gets-physical", "Gets Physical", "Emotion shows through movement.")];
+    static readonly CharacterOption[] ActionFingerprints = [new("lounger", "Lounger", "Claims space casually."), new("tidy-avoider", "Tidy Avoider", "Fidgets through tasks."), new("still-watcher", "Still Watcher", "Goes quiet and observant."), new("pacer", "Pacer", "Moves to think."), new("touch-connector", "Touch Connector", "Communicates through contact."), new("space-keeper", "Space Keeper", "Maintains distance."), new("protective-mover", "Protective Mover", "Shields others with positioning."), new("performer", "Performer", "Uses expressive movement."), new("minimalist", "Minimalist", "Makes small movements matter."), new("restless-spark", "Restless Spark", "Constant small motion.")];
+    static readonly CharacterOption[] StressPatterns = [new("sharper-under-pressure", "Sharper Under Pressure", "Gets more pointed as stress rises."), new("quieter-under-pressure", "Quieter Under Pressure", "Withdraws as stress rises."), new("louder-under-pressure", "Louder Under Pressure", "Gets more expressive as stress rises."), new("colder-under-pressure", "Colder Under Pressure", "Freezes emotion into control."), new("funnier-under-pressure", "Funnier Under Pressure", "Jokes harder as stress rises."), new("helpful-under-pressure", "Helpful Under Pressure", "Converts feelings into tasks."), new("controlling-under-pressure", "Controlling Under Pressure", "Manages harder as stress rises."), new("reckless-under-pressure", "Reckless Under Pressure", "Acts before thinking."), new("appeasing-under-pressure", "Appeasing Under Pressure", "Smooths and self-erases."), new("protective-under-pressure", "Protective Under Pressure", "Threat makes them decisive.")];
 
-    static readonly V2Option[] SoftSpots = [new("quiet-inclusion", "Quiet Inclusion", "Being included without pressure."), new("practical-care", "Practical Care", "Help without drama."), new("remembered-details", "Remembered Details", "Someone remembered."), new("unasked-loyalty", "Unasked Loyalty", "Someone stays without being begged."), new("gentle-honesty", "Gentle Honesty", "Truth without cruelty."), new("being-trusted", "Being Trusted", "Someone relies on them."), new("being-seen-clearly", "Being Seen Clearly", "Understood without pressure."), new("shared-silence", "Shared Silence", "Comfort without words."), new("competence-recognized", "Competence Recognized", "Skill is genuinely respected."), new("protected-vulnerability", "Protected Vulnerability", "Weakness is guarded, not used.")];
-    static readonly V2Option[] AvoidPatterns = [new("no-random-cruelty", "No Random Cruelty", "Do not make this character cruel without cause."), new("no-instant-vulnerable", "No Instant Vulnerability", "Do not make this character suddenly confess before the scene earns it."), new("no-passive-in-danger", "No Passive in Danger", "Do not make this character freeze in serious danger unless established."), new("no-solve-every-conflict", "No Solving Every Conflict", "Do not make this character immediately repair every emotional conflict."), new("no-escalate-every-jab", "No Escalating Every Jab", "Do not turn casual teasing into a serious fight unless a boundary is crossed."), new("no-treat-teasing-injury", "No Treating Teasing as Injury", "Do not make this character wounded by light teasing unless it hits a known vulnerability."), new("no-reveal-secrets-early", "No Early Secret Reveals", "Do not reveal private truths before the narrative hook allows it."), new("no-generic-flirty", "No Generic Flirting", "Do not turn every warm or teasing moment into direct flirting."), new("no-ignore-core-kindness", "No Ignoring Core Kindness", "Do not make this character violate their basic loyalty or care for a cheap reaction."), new("no-overexplain-feelings", "No Overexplaining Feelings", "Do not have this character narrate emotions plainly if they avoid direct vulnerability."), new("no-act-on-unknown-info", "No Psychic Knowledge", "Do not make this character respond to private information they have not learned."), new("no-flatten-into-one-trait", "No Flattening", "Do not reduce this character to only one behavior, joke, emotion, or gimmick.")];
+    static readonly CharacterOption[] SoftSpots = [new("quiet-inclusion", "Quiet Inclusion", "Being included without pressure."), new("practical-care", "Practical Care", "Help without drama."), new("remembered-details", "Remembered Details", "Someone remembered."), new("unasked-loyalty", "Unasked Loyalty", "Someone stays without being begged."), new("gentle-honesty", "Gentle Honesty", "Truth without cruelty."), new("being-trusted", "Being Trusted", "Someone relies on them."), new("being-seen-clearly", "Being Seen Clearly", "Understood without pressure."), new("shared-silence", "Shared Silence", "Comfort without words."), new("competence-recognized", "Competence Recognized", "Skill is genuinely respected."), new("protected-vulnerability", "Protected Vulnerability", "Weakness is guarded, not used.")];
+    static readonly CharacterOption[] AvoidPatterns = [new("no-random-cruelty", "No Random Cruelty", "Do not make this character cruel without cause."), new("no-instant-vulnerable", "No Instant Vulnerability", "Do not make this character suddenly confess before the scene earns it."), new("no-passive-in-danger", "No Passive in Danger", "Do not make this character freeze in serious danger unless established."), new("no-solve-every-conflict", "No Solving Every Conflict", "Do not make this character immediately repair every emotional conflict."), new("no-escalate-every-jab", "No Escalating Every Jab", "Do not turn casual teasing into a serious fight unless a boundary is crossed."), new("no-treat-teasing-injury", "No Treating Teasing as Injury", "Do not make this character wounded by light teasing unless it hits a known vulnerability."), new("no-reveal-secrets-early", "No Early Secret Reveals", "Do not reveal private truths before the narrative hook allows it."), new("no-generic-flirty", "No Generic Flirting", "Do not turn every warm or teasing moment into direct flirting."), new("no-ignore-core-kindness", "No Ignoring Core Kindness", "Do not make this character violate their basic loyalty or care for a cheap reaction."), new("no-overexplain-feelings", "No Overexplaining Feelings", "Do not have this character narrate emotions plainly if they avoid direct vulnerability."), new("no-act-on-unknown-info", "No Psychic Knowledge", "Do not make this character respond to private information they have not learned."), new("no-flatten-into-one-trait", "No Flattening", "Do not reduce this character to only one behavior, joke, emotion, or gimmick.")];
 
     static readonly string[] BondTypes = ["Close Friend", "Romantic Interest", "Rival", "Mentor", "Mentee", "Ally", "Complicated", "Estranged", "Family", "Colleague", "Acquaintance"];
     static readonly string[] Dynamics = ["Power struggle", "Protective", "Competitive", "Dependent", "Avoidant", "Charged", "Playful rivalry", "Unspoken tension", "Loyal", "Complicated history"];
@@ -326,6 +329,7 @@
     int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
     int ProgressPercent => (int)Math.Round(DoneCount / (double)Steps.Length * 100);
     bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Character.Name);
+    bool IsComplete => DoneCount == Steps.Length;
     string SelfName => string.IsNullOrWhiteSpace(Character.Name) ? "this character" : Character.Name;
 
     bool StepDone(int step) => step switch
@@ -402,19 +406,19 @@
         }
     }
 
-    RpRelationship? GetRelationship(string characterId) => Character.V2Relationships.FirstOrDefault(r => r.CharacterId == characterId);
+    RpRelationship? GetRelationship(string characterId) => Character.ProfileRelationships.FirstOrDefault(r => r.CharacterId == characterId);
 
     void ToggleRelationship(string characterId)
     {
         var rel = GetRelationship(characterId);
         if (rel is not null)
         {
-            Character.V2Relationships.Remove(rel);
+            Character.ProfileRelationships.Remove(rel);
             ExpandedRelationships.Remove(characterId);
             return;
         }
 
-        Character.V2Relationships.Add(new() { CharacterId = characterId });
+        Character.ProfileRelationships.Add(new() { CharacterId = characterId });
         ExpandedRelationships.Add(characterId);
     }
 
@@ -430,23 +434,42 @@
             ExpandedRelationships.Add(characterId);
     }
 
-    async Task SaveDraft()
+    async Task GoToStep(int step)
     {
-        Character.Version = "v2";
+        Step = step;
         await OnChanged.InvokeAsync();
     }
 
-    async Task Finish()
+    async Task Back()
     {
-        Character.Version = "v2";
+        if (Step > 0)
+            Step--;
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Next()
+    {
+        if (Step < Steps.Length - 1)
+            Step++;
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Done()
+    {
         await OnChanged.InvokeAsync();
         await OnClose.InvokeAsync();
     }
 
-    Task Close() => OnClose.InvokeAsync();
+    async Task Close()
+    {
+        await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
 
-    static V2Option? Find(IEnumerable<V2Option> items, string id) => items.FirstOrDefault(item => item.Id == id);
+    static CharacterOption? Find(IEnumerable<CharacterOption> items, string id) => items.FirstOrDefault(item => item.Id == id);
 
     public sealed record WizardStep(string Id, string Label, string Sub);
-    public sealed record TraitGroup(string Name, string Color, V2Option[] Items);
+    public sealed record TraitGroup(string Name, string Color, CharacterOption[] Items);
 }

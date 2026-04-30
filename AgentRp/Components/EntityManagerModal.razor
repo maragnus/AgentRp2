@@ -86,15 +86,15 @@
     </EntityListEditor>
 </ModalShell>
 
-@if (CharacterPickerOpen)
+@if (CharacterWizardOpen && SelectedCharacter is not null)
 {
-    <NewCharPickerModal OnPickV1="CreateV1Character" OnPickV2="CreateV2Character" OnClose="@(() => CharacterPickerOpen = false)" />
+    <CharacterWizardModal Character="SelectedCharacter" ExistingCharacters="Characters" OnClose="@(() => CharacterWizardOpen = false)" OnChanged="OnChanged" />
 }
 
 @code {
     string Type = "characters";
     string? SelectedId;
-    bool CharacterPickerOpen;
+    bool CharacterWizardOpen;
     sealed record EntityEntry(string Id, string Title, string Subtitle, bool Active);
     readonly (string Key, string Label, string Icon)[] EntityTypes =
     [
@@ -149,7 +149,7 @@
     {
         if (Type == "characters")
         {
-            CharacterPickerOpen = true;
+            _ = CreateCharacter();
             return;
         }
         if (Type == "locations")
@@ -174,21 +174,12 @@
         _ = OnChanged.InvokeAsync();
     }
 
-    async Task CreateV1Character()
+    async Task CreateCharacter()
     {
-        CharacterPickerOpen = false;
-        var character = new RpCharacter { Id = $"c{Characters.Count + 1}", Version = "v1", Name = "New Character" };
+        var character = new RpCharacter { Id = $"c{Characters.Count + 1}", Name = "New Character" };
         Characters.Insert(0, character);
         SelectedId = character.Id;
-        await OnChanged.InvokeAsync();
-    }
-
-    async Task CreateV2Character()
-    {
-        CharacterPickerOpen = false;
-        var character = new RpCharacter { Id = $"c{Characters.Count + 1}", Version = "v2", Name = "New Character", Traits = [], Drives = [], Limits = [] };
-        Characters.Insert(0, character);
-        SelectedId = character.Id;
+        CharacterWizardOpen = true;
         await OnChanged.InvokeAsync();
     }
 
