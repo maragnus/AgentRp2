@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <ModalShell Title="@Title" MaxWidth="860px" OnClose="OnClose">
     <ChildContent>
         <div class="modal-filter-bar">
@@ -71,11 +73,12 @@
 
     [Parameter] public ImageGalleryMode Mode { get; set; } = ImageGalleryMode.View;
     [Parameter] public string? SelectedImageId { get; set; }
-    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnGenerate { get; set; }
     [Parameter] public EventCallback<GalleryImage> OnUseSelected { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    List<GalleryImage> Images => Session.Chat.Images.Items;
     string Title => Mode == ImageGalleryMode.Select ? "Select Image" : "Image Gallery";
     ISet<string> SelectedIds => Selected is null ? new HashSet<string>() : new HashSet<string> { Selected.Id };
 
@@ -83,6 +86,13 @@
         .Where(image => Filter == "all" || image.EntityType == Filter)
         .Where(image => string.IsNullOrWhiteSpace(Search) || image.Name.Contains(Search, StringComparison.OrdinalIgnoreCase) || image.Entity.Contains(Search, StringComparison.OrdinalIgnoreCase))
         .ToList();
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.Images.Changed += OnImagesChanged;
+    }
+
+    Task OnImagesChanged() => InvokeAsync(StateHasChanged);
 
     protected override void OnParametersSet()
     {
@@ -104,9 +114,14 @@
     {
     }
 
-    void Delete(GalleryImage image) => Images.Remove(image);
+    Task Delete(GalleryImage image) => Session.Chat.Images.DeleteAsync(image.Id);
 
     Task UseSelected(MouseEventArgs args) => Selected is null
         ? Task.CompletedTask
         : OnUseSelected.InvokeAsync(Selected);
+
+    public void Dispose()
+    {
+        Session.Chat.Images.Changed -= OnImagesChanged;
+    }
 }

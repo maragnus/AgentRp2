@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@implements IDisposable
 
 <ModalShell Title="Model Tuning" MaxWidth="780px" BodyClass="is-flush" OnClose="OnClose">
     <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SetActive" Height="540px" RailWidth="156px">
@@ -87,7 +88,7 @@
 
             <Footer>
                 <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                <AppButton Variant="primary"><FaIcon Name="check" />Save</AppButton>
+                <AppButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</AppButton>
             </Footer>
         </ModalStackLayout>
         </MainContent>
@@ -96,17 +97,6 @@
 
 @code {
     sealed record StepDef(string Id, string Label);
-    sealed class Tuning
-    {
-        public double Temperature { get; set; }
-        public string TopP { get; set; } = "";
-        public string MaxTokens { get; set; } = "";
-        public string Seed { get; set; } = "";
-        public string FrequencyPenalty { get; set; } = "";
-        public string PresencePenalty { get; set; } = "";
-        public string StopSequences { get; set; } = "";
-    }
-
     string Active = "appearance";
     bool CopyOpen;
     string? CopiedToast;
@@ -119,16 +109,18 @@
         new("prose", "Prose")
     ];
 
-    Dictionary<string, Tuning> Values = new();
-    Dictionary<string, Tuning> Defaults = new();
+    Dictionary<string, ModelTuningStepState> Defaults = new();
 
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
 
     StepDef CurrentStep => Steps.First(step => step.Id == Active);
-    Tuning Current => Values[Active];
+    Dictionary<string, ModelTuningStepState> Values => Session.Chat.ModelTuning.State.Values;
+    ModelTuningStepState Current => Values[Active];
 
     protected override void OnInitialized()
     {
+        Session.Chat.ModelTuning.Changed += OnStoreChanged;
         Defaults = new()
         {
             ["appearance"] = new() { Temperature = .4 },
@@ -136,10 +128,11 @@
             ["planning"] = new() { Temperature = .4 },
             ["prose"] = new() { Temperature = .7 }
         };
-        Values = Defaults.ToDictionary(pair => pair.Key, pair => Clone(pair.Value));
     }
 
-    static Tuning Clone(Tuning value) => new()
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    static ModelTuningStepState Clone(ModelTuningStepState value) => new()
     {
         Temperature = value.Temperature,
         TopP = value.TopP,
@@ -166,13 +159,18 @@
                current.StopSequences != def.StopSequences;
     }
 
-    void Reset() => Values[Active] = Clone(Defaults[Active]);
+    async Task Reset()
+    {
+        Values[Active] = Clone(Defaults[Active]);
+        await Session.Chat.ModelTuning.MarkChangedAsync();
+    }
 
     void CopyTo(string targetId)
     {
         Values[targetId] = Clone(Current);
         CopiedToast = $"Copied to {Steps.First(step => step.Id == targetId).Label}";
         CopyOpen = false;
+        _ = Session.Chat.ModelTuning.MarkChangedAsync();
     }
 
     void CopyToAll()
@@ -182,6 +180,7 @@
 
         CopiedToast = "Copied to all phases";
         CopyOpen = false;
+        _ = Session.Chat.ModelTuning.MarkChangedAsync();
     }
 
     async Task ExportSettings()
@@ -198,13 +197,23 @@
 
         try
         {
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<Tuning>(imported);
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<ModelTuningStepState>(imported);
             if (parsed is not null)
+            {
                 Values[Active] = parsed;
+                await Session.Chat.ModelTuning.MarkChangedAsync();
+            }
         }
         catch
         {
             CopiedToast = "Import failed";
         }
+    }
+
+    Task Save(MouseEventArgs args) => Session.Chat.ModelTuning.MarkChangedAsync();
+
+    public void Dispose()
+    {
+        Session.Chat.ModelTuning.Changed -= OnStoreChanged;
     }
 }

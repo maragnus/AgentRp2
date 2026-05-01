@@ -1,12 +1,31 @@
 <div class="provider-model">
-    <SelectableButton Class="@DotClass" Title="@(Model.Enabled ? "Disable" : "Enable")" OnClick="@(_ => Model.Enabled = !Model.Enabled)"></SelectableButton>
+    <SelectableButton Class="@DotClass" Title="@(Model.Enabled ? "Disable" : "Enable")" OnClick="@(_ => ToggleEnabled())"></SelectableButton>
     <code>@Model.Id</code>
-    <CapabilityPill Tone="text" Active="@(Model.Enabled && Model.Text)" Disabled="@(!Model.Enabled)" OnClick="@(_ => Model.Text = !Model.Text)">Text</CapabilityPill>
-    <CapabilityPill Tone="image" Active="@(Model.Enabled && Model.Image)" Disabled="@(!Model.Enabled)" OnClick="@(_ => Model.Image = !Model.Image)">Image</CapabilityPill>
+    <CapabilityPill Tone="text" Active="@(Model.Enabled && Model.Text)" Disabled="@(!Model.Enabled)" OnClick="@(_ => ToggleText())">Text</CapabilityPill>
+    <CapabilityPill Tone="image" Active="@(Model.Enabled && Model.Image)" Disabled="@(!Model.Enabled)" OnClick="@(_ => ToggleImage())">Image</CapabilityPill>
 </div>
 
 @code {
     [Parameter] public AiProviderModel Model { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
 
     string DotClass => $"model-dot {(Model.Enabled ? "is-on" : "")}";
+
+    async Task ToggleEnabled()
+    {
+        Model.Enabled = !Model.Enabled;
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task ToggleText()
+    {
+        Model.Text = !Model.Text;
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task ToggleImage()
+    {
+        Model.Image = !Model.Image;
+        await OnChanged.InvokeAsync();
+    }
 }

@@ -2,107 +2,72 @@
 
 <PageTitle>AgentRp</PageTitle>
 
-<div class="app-shell">
-    <Sidebar Characters="Characters"
-             Locations="Locations"
-             Chats="Chats"
-             ActiveChat="ActiveChat"
-             SpeakingAs="SpeakingAs"
-             OnChatSelected="SelectChat"
-             OnSpeakAs="SetSpeakingAs"
-             OnToggleScene="ToggleScene"
-             OnSwitchLocation="SwitchLocation"
-             OnOpenModal="OpenModal"
-             OnOpenEntities="OpenEntities" />
+@if (Session.IsInitialized)
+{
+    <div class="app-shell">
+        <Sidebar OnOpenModal="OpenModal" OnOpenEntities="OpenEntities" />
 
-    <ChatArea Chat="ActiveChat"
-              Messages="Messages"
-              Characters="Characters"
-              SpeakingAs="SpeakingAs"
-              OnSpeakAs="SetSpeakingAs"
-              OnPost="PostMessage"
-              OnDeleteMessage="DeleteMessage"
-              OnDeleteBranch="DeleteBranch" />
+        <ChatArea />
 
-    @switch (Modal)
-    {
-        case "entities":
-            <EntityManagerModal InitialType="@EntityType"
-                                InitialId="@EntityId"
-                                Characters="Characters"
-                                Locations="Locations"
-                                Items="Items"
-                                Timeline="Timeline"
-                                Images="Images"
-                                OnSelectEntityImage="OpenEntityImagePicker"
-                                OnClose="CloseModal"
-                                OnChanged="Refresh" />
-            break;
-        case "gallery":
-            <ImageGalleryModal Mode="ImageGalleryMode.View" Images="Images" OnGenerate="OpenGalleryGenerator" OnClose="CloseModal" />
-            break;
-        case "imageSelect":
-            <ImageGalleryModal Mode="ImageGalleryMode.Select"
-                               Images="Images"
-                               SelectedImageId="@SelectedEntityImageId"
-                               OnGenerate="OpenSelectionGenerator"
-                               OnUseSelected="UseSelectedEntityImage"
-                               OnClose="ReturnToEntities" />
-            break;
-        case "generate":
-            <GenerateImageModal Characters="Characters"
-                                Images="Images"
-                                TargetEntityName="@PendingEntityName"
-                                TargetEntityType="@PendingEntityType"
-                                AutoUseSavedImage="@(PendingEntityId is not null)"
-                                OnSaved="UseGeneratedEntityImage"
-                                OnClose="CloseGenerator" />
-            break;
-        case "aiProviders":
-            <AIProvidersModal Providers="Providers" OnClose="CloseModal" />
-            break;
-        case "promptLibrary":
-            <PromptLibraryModal OnClose="CloseModal" />
-            break;
-        case "modelTuning":
-            <ModelTuningModal OnClose="CloseModal" />
-            break;
-        case "export":
-            <ExportModal Characters="Characters" Locations="Locations" Items="Items" Timeline="Timeline" Chats="Chats" ActiveChat="ActiveChat" OnClose="CloseModal" />
-            break;
-    }
-</div>
+        @switch (Modal)
+        {
+            case "entities":
+                <EntityManagerModal InitialType="@EntityType"
+                                    InitialId="@EntityId"
+                                    OnSelectEntityImage="OpenEntityImagePicker"
+                                    OnClose="CloseModal" />
+                break;
+            case "gallery":
+                <ImageGalleryModal Mode="ImageGalleryMode.View" OnGenerate="OpenGalleryGenerator" OnClose="CloseModal" />
+                break;
+            case "imageSelect":
+                <ImageGalleryModal Mode="ImageGalleryMode.Select"
+                                   SelectedImageId="@SelectedEntityImageId"
+                                   OnGenerate="OpenSelectionGenerator"
+                                   OnUseSelected="UseSelectedEntityImage"
+                                   OnClose="ReturnToEntities" />
+                break;
+            case "generate":
+                <GenerateImageModal TargetEntityName="@PendingEntityName"
+                                    TargetEntityType="@PendingEntityType"
+                                    AutoUseSavedImage="@(PendingEntityId is not null)"
+                                    OnSaved="UseGeneratedEntityImage"
+                                    OnClose="CloseGenerator" />
+                break;
+            case "aiProviders":
+                <AIProvidersModal OnClose="CloseModal" />
+                break;
+            case "promptLibrary":
+                <PromptLibraryModal OnClose="CloseModal" />
+                break;
+            case "modelTuning":
+                <ModelTuningModal OnClose="CloseModal" />
+                break;
+            case "export":
+                <ExportModal Characters="Session.Chat.Characters.Items"
+                             Locations="Session.Chat.Locations.Items"
+                             Items="Session.Chat.Items.Items"
+                             Timeline="Session.Chat.Timeline.Items"
+                             Chats="Session.Chats.Items.ToList()"
+                             ActiveChat="@(Session.Chats.Active ?? new())"
+                             OnClose="CloseModal" />
+                break;
+        }
+    </div>
+}
 
 @code {
-    List<RpCharacter> Characters = SeedData.Characters();
-    List<RpLocation> Locations = SeedData.Locations();
-    List<RpItem> Items = SeedData.Items();
-    List<RpTimelineEntry> Timeline = SeedData.Timeline();
-    List<RpChat> Chats = SeedData.Chats();
-    List<RpMessage> Messages = SeedData.Messages();
-    List<GalleryImage> Images = SeedData.GalleryImages();
-    List<AiProvider> Providers = SeedData.Providers();
-    RpChat ActiveChat = SeedData.Chats()[0];
-    RpCharacter? SpeakingAs;
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+
     string? Modal;
     string EntityType = "characters";
     string? EntityId;
     string? PendingEntityType;
     string? PendingEntityId;
 
-    void SelectChat(RpChat chat) => ActiveChat = chat;
-    void SetSpeakingAs(RpCharacter? character) => SpeakingAs = character;
-
-    void ToggleScene(string id)
+    protected override async Task OnInitializedAsync()
     {
-        var character = Characters.First(c => c.Id == id);
-        character.InScene = !character.InScene;
-    }
-
-    void SwitchLocation(string id)
-    {
-        foreach (var location in Locations)
-            location.IsActive = location.Id == id;
+        await Session.InitializeAsync();
     }
 
     void OpenModal(string name)
@@ -125,21 +90,20 @@
         Modal = null;
         ClearPendingEntityImage();
     }
-    void Refresh() => StateHasChanged();
 
     string? SelectedEntityImageId => PendingEntityType switch
     {
-        "characters" => Characters.FirstOrDefault(character => character.Id == PendingEntityId)?.ImageId,
-        "locations" => Locations.FirstOrDefault(location => location.Id == PendingEntityId)?.ImageId,
-        "items" => Items.FirstOrDefault(item => item.Id == PendingEntityId)?.ImageId,
+        "characters" => Session.Chat.Characters.Items.FirstOrDefault(character => character.Id == PendingEntityId)?.ImageId,
+        "locations" => Session.Chat.Locations.Items.FirstOrDefault(location => location.Id == PendingEntityId)?.ImageId,
+        "items" => Session.Chat.Items.Items.FirstOrDefault(item => item.Id == PendingEntityId)?.ImageId,
         _ => null
     };
 
     string? PendingEntityName => PendingEntityType switch
     {
-        "characters" => Characters.FirstOrDefault(character => character.Id == PendingEntityId)?.Name,
-        "locations" => Locations.FirstOrDefault(location => location.Id == PendingEntityId)?.Name,
-        "items" => Items.FirstOrDefault(item => item.Id == PendingEntityId)?.Name,
+        "characters" => Session.Chat.Characters.Items.FirstOrDefault(character => character.Id == PendingEntityId)?.Name,
+        "locations" => Session.Chat.Locations.Items.FirstOrDefault(location => location.Id == PendingEntityId)?.Name,
+        "items" => Session.Chat.Items.Items.FirstOrDefault(item => item.Id == PendingEntityId)?.Name,
         _ => null
     };
 
@@ -170,60 +134,30 @@
 
     async Task UseSelectedEntityImage(GalleryImage image)
     {
-        ApplyPendingEntityImage(image.Id);
+        await ApplyPendingEntityImage(image.Id);
         Modal = "entities";
-        await Task.CompletedTask;
     }
 
     async Task UseGeneratedEntityImage(GalleryImage image)
     {
         if (PendingEntityId is not null)
         {
-            ApplyPendingEntityImage(image.Id);
+            await ApplyPendingEntityImage(image.Id);
             Modal = "entities";
         }
-
-        await Task.CompletedTask;
     }
 
-    void ApplyPendingEntityImage(string imageId)
+    Task ApplyPendingEntityImage(string imageId) => PendingEntityType switch
     {
-        if (PendingEntityType == "characters")
-            Characters.First(character => character.Id == PendingEntityId).ImageId = imageId;
-        else if (PendingEntityType == "locations")
-            Locations.First(location => location.Id == PendingEntityId).ImageId = imageId;
-        else if (PendingEntityType == "items")
-            Items.First(item => item.Id == PendingEntityId).ImageId = imageId;
-    }
+        "characters" => Session.Chat.Characters.SetImageAsync(PendingEntityId!, imageId),
+        "locations" => Session.Chat.Locations.SetImageAsync(PendingEntityId!, imageId),
+        "items" => Session.Chat.Items.SetImageAsync(PendingEntityId!, imageId),
+        _ => Task.CompletedTask
+    };
 
     void ClearPendingEntityImage()
     {
         PendingEntityType = null;
         PendingEntityId = null;
-    }
-
-    void PostMessage((string Text, RpCharacter? Speaker, string Mode) post)
-    {
-        if (string.IsNullOrWhiteSpace(post.Text))
-            return;
-
-        Messages.Add(new RpMessage
-        {
-            Id = $"msg-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
-            Type = "narrative",
-            Author = post.Speaker?.Name ?? "Narrator",
-            Mode = post.Mode == "guided" ? "Guided AI" : post.Mode == "automatic" ? "Automatic AI" : "Manual",
-            Timestamp = "just now",
-            Body = post.Text
-        });
-    }
-
-    void DeleteMessage(string id) => Messages.RemoveAll(message => message.Id == id);
-
-    void DeleteBranch(string id)
-    {
-        var index = Messages.FindIndex(message => message.Id == id);
-        if (index >= 0)
-            Messages.RemoveRange(index, Messages.Count - index);
     }
 }

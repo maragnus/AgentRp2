@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <main class="chat claude-chat">
     <header class="claude-chat-head">
         <div>
@@ -45,8 +47,8 @@
                              ShowAppearance="ShowAppearance"
                              ShowProcess="ShowProcess"
                              SubsequentCount="subsequentCount"
-                             OnDeleteMessage="OnDeleteMessage"
-                             OnDeleteBranch="OnDeleteBranch" />
+                             OnDeleteMessage="DeleteMessage"
+                             OnDeleteBranch="DeleteBranch" />
             }
         </div>
         <div class="claude-footer">
@@ -55,13 +57,13 @@
                 <div class="claude-composer-actions">
                     <div class="dropdown-wrap">
                         <AppButton Variant="secondary" Size="xs" OnClick="@(_ => SpeakerOpen = !SpeakerOpen)">
-                            @if (SpeakingAs is null)
+                            @if (Session.SpeakingAs is null)
                             {
                                 <span class="mini-narrator"><FaIcon Name="book-open" /></span>
                             }
                             else
                             {
-                                <Avatar Name="@SpeakingAs.Name" Size="14" />
+                                <Avatar Name="@Session.SpeakingAs.Name" Size="14" />
                             }
                             <span>@SpeakerName</span>
                             <FaIcon Name="chevron-down" />
@@ -142,25 +144,33 @@
     RpCharacter? RespondAs;
     readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
 
-    [Parameter] public RpChat Chat { get; set; } = new();
-    [Parameter] public List<RpMessage> Messages { get; set; } = [];
-    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
-    [Parameter] public RpCharacter? SpeakingAs { get; set; }
-    [Parameter] public EventCallback<RpCharacter?> OnSpeakAs { get; set; }
-    [Parameter] public EventCallback<(string Text, RpCharacter? Speaker, string Mode)> OnPost { get; set; }
-    [Parameter] public EventCallback<string> OnDeleteMessage { get; set; }
-    [Parameter] public EventCallback<string> OnDeleteBranch { get; set; }
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+
+    RpChat Chat => Session.Chats.Active ?? new() { Title = "Loading", Location = "" };
+    List<RpMessage> Messages => Session.Chat.Transcript.Items;
+    List<RpCharacter> Characters => Session.Chat.Characters.Items;
 
     bool IsGuided => Draft.Trim().Length > 0;
-    string SpeakerName => SpeakingAs?.Name ?? "Narrator";
+    string SpeakerName => Session.SpeakingAs?.Name ?? "Narrator";
     string ModeLabel => IsGuided ? "Guided" : "Auto";
     string ModeIcon => IsGuided ? "layers" : "zap";
     string ModeTitle => IsGuided ? "Post guided message (⌘↵)" : "Auto-continue scene (⌘↵)";
 
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        Session.Chats.Changed += OnSessionChanged;
+        Session.Chat.Transcript.Changed += OnSessionChanged;
+        Session.Chat.Characters.Changed += OnSessionChanged;
+        Session.Chat.Locations.Changed += OnSessionChanged;
+    }
+
+    Task OnSessionChanged() => InvokeAsync(StateHasChanged);
+
     async Task PickSpeaker(RpCharacter? character)
     {
         SpeakerOpen = false;
-        await OnSpeakAs.InvokeAsync(character);
+        await Session.SetSpeakingAsAsync(character);
     }
 
     void PickRespondAs(RpCharacter? character)
@@ -185,6 +195,19 @@
     {
         var text = Draft.Trim();
         Draft = "";
-        await OnPost.InvokeAsync((text, SpeakingAs, IsGuided ? "guided" : "automatic"));
+        await Session.Chat.Transcript.PostAsync(text, Session.SpeakingAs, IsGuided ? "guided" : "automatic");
+    }
+
+    Task DeleteMessage(string id) => Session.Chat.Transcript.DeleteMessageAsync(id);
+
+    Task DeleteBranch(string id) => Session.Chat.Transcript.DeleteBranchAsync(id);
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Session.Chats.Changed -= OnSessionChanged;
+        Session.Chat.Transcript.Changed -= OnSessionChanged;
+        Session.Chat.Characters.Changed -= OnSessionChanged;
+        Session.Chat.Locations.Changed -= OnSessionChanged;
     }
 }

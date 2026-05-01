@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="AgentRp.Tests/AgentRp.Tests.csproj" />
   <Project Path="AgentRp/AgentRp.csproj" />
 </Solution>

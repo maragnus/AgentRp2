@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <ModalShell Title="Story Entities" MaxWidth="960px" BodyClass="is-flush" OnClose="OnClose">
     <div class="entity-tabs">
         @foreach (var type in EntityTypes)
@@ -65,7 +67,7 @@
                                  ExistingCharacters="Characters"
                                  Image="@ImageFor(SelectedCharacter.ImageId)"
                                  OnImagePickerRequested="SelectSelectedEntityImage"
-                                 OnChanged="OnChanged"
+                                 OnChanged="Changed"
                                  OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "locations" && SelectedLocation is not null)
@@ -73,7 +75,7 @@
                 <LocationEditor Location="SelectedLocation"
                                 Image="@ImageFor(SelectedLocation.ImageId)"
                                 OnImagePickerRequested="SelectSelectedEntityImage"
-                                OnChanged="OnChanged"
+                                OnChanged="Changed"
                                 OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "items" && SelectedItem is not null)
@@ -81,12 +83,12 @@
                 <ItemEditor Item="SelectedItem"
                             Image="@ImageFor(SelectedItem.ImageId)"
                             OnImagePickerRequested="SelectSelectedEntityImage"
-                            OnChanged="OnChanged"
+                            OnChanged="Changed"
                             OnDelete="@(() => DeleteSelected())" />
             }
             else if (Type == "timeline" && SelectedTimeline is not null)
             {
-                <TimelineEditor Entry="SelectedTimeline" OnChanged="OnChanged" OnDelete="@(() => DeleteSelected())" />
+                <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" OnDelete="@(() => DeleteSelected())" />
             }
             else
             {
@@ -101,7 +103,7 @@
 
 @if (CharacterWizardOpen && SelectedCharacter is not null)
 {
-    <CharacterWizardModal Character="SelectedCharacter" ExistingCharacters="Characters" OnClose="@(() => CharacterWizardOpen = false)" OnChanged="OnChanged" />
+    <CharacterWizardModal Character="SelectedCharacter" ExistingCharacters="Characters" OnClose="@(() => CharacterWizardOpen = false)" OnChanged="Changed" />
 }
 
 @code {
@@ -119,17 +121,17 @@
 
     [Parameter] public string InitialType { get; set; } = "characters";
     [Parameter] public string? InitialId { get; set; }
-    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
-    [Parameter] public List<RpLocation> Locations { get; set; } = [];
-    [Parameter] public List<RpItem> Items { get; set; } = [];
-    [Parameter] public List<RpTimelineEntry> Timeline { get; set; } = [];
-    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<(string Type, string Id)> OnSelectEntityImage { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback OnChanged { get; set; }
 
     string ActiveTypeLabel => EntityTypes.First(type => type.Key == Type).Label;
     string ActiveIcon => EntityTypes.First(type => type.Key == Type).Icon;
+    List<RpCharacter> Characters => Session.Chat.Characters.Items;
+    List<RpLocation> Locations => Session.Chat.Locations.Items;
+    List<RpItem> Items => Session.Chat.Items.Items;
+    List<RpTimelineEntry> Timeline => Session.Chat.Timeline.Items;
+    List<GalleryImage> Images => Session.Chat.Images.Items;
     RpCharacter? SelectedCharacter => Characters.FirstOrDefault(character => character.Id == SelectedId);
     RpLocation? SelectedLocation => Locations.FirstOrDefault(location => location.Id == SelectedId);
     RpItem? SelectedItem => Items.FirstOrDefault(item => item.Id == SelectedId);
@@ -148,9 +150,17 @@
 
     protected override void OnInitialized()
     {
+        Session.Chat.Characters.Changed += OnStoreChanged;
+        Session.Chat.Locations.Changed += OnStoreChanged;
+        Session.Chat.Items.Changed += OnStoreChanged;
+        Session.Chat.Timeline.Changed += OnStoreChanged;
+        Session.Chat.Images.Changed += OnStoreChanged;
+
         Type = InitialType;
         SelectedId = InitialId ?? Entries.FirstOrDefault()?.Id;
     }
+
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
     void SelectType(string type)
     {
@@ -168,57 +178,45 @@
         ? Task.CompletedTask
         : SelectEntityImage(Type, SelectedId);
 
-    void AddEntity()
+    async Task AddEntity()
     {
         if (Type == "characters")
         {
-            _ = CreateCharacter();
+            await CreateCharacter();
             return;
         }
         if (Type == "locations")
         {
-            var location = new RpLocation { Id = $"l{Locations.Count + 1}", Name = "New Location", Summary = "New location summary." };
-            Locations.Add(location);
+            var location = await Session.Chat.Locations.AddAsync();
             SelectedId = location.Id;
         }
         else if (Type == "items")
         {
-            var item = new RpItem { Id = $"i{Items.Count + 1}", Name = "New Item", Summary = "New item summary." };
-            Items.Add(item);
+            var item = await Session.Chat.Items.AddAsync();
             SelectedId = item.Id;
         }
         else
         {
-            var entry = new RpTimelineEntry { Id = $"t{Timeline.Count + 1}", Title = "New Event", Date = "today" };
-            Timeline.Add(entry);
+            var entry = await Session.Chat.Timeline.AddAsync();
             SelectedId = entry.Id;
         }
-
-        _ = OnChanged.InvokeAsync();
     }
 
     async Task CreateCharacter()
     {
-        var character = new RpCharacter { Id = $"c{Characters.Count + 1}", Name = "New Character" };
-        Characters.Insert(0, character);
+        var character = await Session.Chat.Characters.AddAsync();
         SelectedId = character.Id;
         CharacterWizardOpen = true;
-        await OnChanged.InvokeAsync();
     }
 
     async Task ToggleActive(string id)
     {
         if (Type == "characters")
-            Characters.First(character => character.Id == id).InScene = !Characters.First(character => character.Id == id).InScene;
+            await Session.Chat.Characters.ToggleInSceneAsync(id);
         else if (Type == "locations")
-        {
-            foreach (var location in Locations)
-                location.IsActive = location.Id == id;
-        }
+            await Session.Chat.Locations.SetActiveAsync(id);
         else if (Type == "items")
-            Items.First(item => item.Id == id).InScene = !Items.First(item => item.Id == id).InScene;
-
-        await OnChanged.InvokeAsync();
+            await Session.Chat.Items.ToggleInSceneAsync(id);
     }
 
     int CountFor(string type) => type switch
@@ -235,15 +233,31 @@
             return;
 
         if (Type == "characters")
-            Characters.RemoveAll(character => character.Id == SelectedId);
+            await Session.Chat.Characters.DeleteAsync(SelectedId);
         else if (Type == "locations")
-            Locations.RemoveAll(location => location.Id == SelectedId);
+            await Session.Chat.Locations.DeleteAsync(SelectedId);
         else if (Type == "items")
-            Items.RemoveAll(item => item.Id == SelectedId);
+            await Session.Chat.Items.DeleteAsync(SelectedId);
         else
-            Timeline.RemoveAll(entry => entry.Id == SelectedId);
+            await Session.Chat.Timeline.DeleteAsync(SelectedId);
 
         SelectedId = Entries.FirstOrDefault()?.Id;
-        await OnChanged.InvokeAsync();
+    }
+
+    Task Changed() => Type switch
+    {
+        "characters" => Session.Chat.Characters.MarkChangedAsync(),
+        "locations" => Session.Chat.Locations.MarkChangedAsync(),
+        "items" => Session.Chat.Items.MarkChangedAsync(),
+        _ => Session.Chat.Timeline.MarkChangedAsync()
+    };
+
+    public void Dispose()
+    {
+        Session.Chat.Characters.Changed -= OnStoreChanged;
+        Session.Chat.Locations.Changed -= OnStoreChanged;
+        Session.Chat.Items.Changed -= OnStoreChanged;
+        Session.Chat.Timeline.Changed -= OnStoreChanged;
+        Session.Chat.Images.Changed -= OnStoreChanged;
     }
 }

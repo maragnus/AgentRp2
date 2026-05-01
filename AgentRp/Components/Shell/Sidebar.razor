@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <aside class="sidebar">
     <div class="sidebar-head">
         <div class="brand">
@@ -26,7 +28,7 @@
         <div style="padding:2px 14px 6px">
             <div style="display:flex;align-items:center;gap:6px">
                 <span style="width:6px;height:6px;border-radius:50%;background:var(--c-emerald)"></span>
-                <span style="font-size:12px;font-weight:500;color:var(--c-text)">grok-4-1-fast-non-reasoning</span>
+                    <span style="font-size:12px;font-weight:500;color:var(--c-text)">@ActiveModelName</span>
             </div>
             <div style="font-size:11px;color:var(--c-text3);margin-top:2px;padding-left:12px">Grok / xAI</div>
             @if (ModelOpen)
@@ -74,14 +76,14 @@
             <IconButton Icon="edit" Title="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
             </RightContent>
         </Section>
-        <div class="row @(SpeakingAs is null ? "is-active" : "")" @onclick="() => OnSpeakAs.InvokeAsync(null)">
+        <div class="row @(Session.SpeakingAs is null ? "is-active" : "")" @onclick="() => SetSpeakingAs(null)">
             <span class="brand-mark" style="width:24px;height:24px;background:var(--c-surface4);color:var(--c-text3)"><FaIcon Name="book-open" /></span>
             <span class="row-title" style="font-style:italic">Narrator</span>
             <FaIcon Name="message-sq" />
         </div>
         @foreach (var character in Characters)
         {
-            <div @key="character.Id" class="row @(SpeakingAs?.Id == character.Id ? "is-active" : "")">
+            <div @key="character.Id" class="row @(Session.SpeakingAs?.Id == character.Id ? "is-active" : "")">
                 <span class="avatar-wrap">
                     <Avatar Name="@character.Name" Size="24" />
                     @if (character.InScene)
@@ -90,8 +92,8 @@
                     }
                 </span>
                 <span class="row-title">@character.Name</span>
-                <IconButton Icon="message-sq" Title="Speak as" OnClick="@(_ => OnSpeakAs.InvokeAsync(character))" />
-                <IconButton Icon="eye" Title="Toggle in scene" Active="@character.InScene" OnClick="@(_ => OnToggleScene.InvokeAsync(character.Id))" />
+                <IconButton Icon="message-sq" Title="Speak as" OnClick="@(_ => SetSpeakingAs(character))" />
+                <IconButton Icon="eye" Title="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
                 <IconButton Icon="edit" Title="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
             </div>
         }
@@ -115,7 +117,7 @@
         </Section>
         @foreach (var chat in Chats)
         {
-            <div @key="chat.Id" class="row @(ActiveChat.Id == chat.Id ? "is-active" : "")" @onclick="() => OnChatSelected.InvokeAsync(chat)">
+            <div @key="chat.Id" class="row @(ActiveChat?.Id == chat.Id ? "is-active" : "")" @onclick="() => Session.Chats.SelectAsync(chat.Id)">
                 <div style="min-width:0;flex:1">
                     <div style="display:flex;align-items:center;gap:5px">
                         @if (chat.Starred)
@@ -146,30 +148,49 @@
     bool ModelOpen;
     bool LocationOpen;
 
-    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
-    [Parameter] public List<RpLocation> Locations { get; set; } = [];
-    [Parameter] public List<RpChat> Chats { get; set; } = [];
-    [Parameter] public RpChat ActiveChat { get; set; } = new();
-    [Parameter] public RpCharacter? SpeakingAs { get; set; }
-    [Parameter] public EventCallback<RpChat> OnChatSelected { get; set; }
-    [Parameter] public EventCallback<RpCharacter?> OnSpeakAs { get; set; }
-    [Parameter] public EventCallback<string> OnToggleScene { get; set; }
-    [Parameter] public EventCallback<string> OnSwitchLocation { get; set; }
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<string> OnOpenModal { get; set; }
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
 
-    RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.First();
+    List<RpCharacter> Characters => Session.Chat.Characters.Items;
+    List<RpLocation> Locations => Session.Chat.Locations.Items;
+    IReadOnlyList<RpChat> Chats => Session.Chats.Items;
+    RpChat? ActiveChat => Session.Chats.Active;
+    string ActiveModelName => Session.Providers.Items.SelectMany(provider => provider.Models).FirstOrDefault(model => model.Enabled && model.Text)?.Id ?? "No model selected";
+    RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.FirstOrDefault() ?? new() { Name = "No location" };
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        Session.Chats.Changed += OnSessionChanged;
+        Session.Providers.Changed += OnSessionChanged;
+        Session.Chat.Characters.Changed += OnSessionChanged;
+        Session.Chat.Locations.Changed += OnSessionChanged;
+        Session.Chat.Items.Changed += OnSessionChanged;
+    }
+
+    Task OnSessionChanged() => InvokeAsync(StateHasChanged);
 
     async Task SwitchLocation(string id)
     {
         LocationOpen = false;
-        await OnSwitchLocation.InvokeAsync(id);
+        await Session.Chat.Locations.SetActiveAsync(id);
     }
 
-    void AddChat()
+    Task SetSpeakingAs(RpCharacter? character) => Session.SetSpeakingAsAsync(character);
+
+    async Task AddChat()
     {
-        var chat = new RpChat { Id = $"ch{Chats.Count + 1}", Title = "Untitled Scene", Updated = "today", Location = ActiveLocation.Name };
-        Chats.Insert(0, chat);
-        _ = OnChatSelected.InvokeAsync(chat);
+        await Session.Chats.AddAsync(ActiveLocation.Name);
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Session.Chats.Changed -= OnSessionChanged;
+        Session.Providers.Changed -= OnSessionChanged;
+        Session.Chat.Characters.Changed -= OnSessionChanged;
+        Session.Chat.Locations.Changed -= OnSessionChanged;
+        Session.Chat.Items.Changed -= OnSessionChanged;
     }
 }

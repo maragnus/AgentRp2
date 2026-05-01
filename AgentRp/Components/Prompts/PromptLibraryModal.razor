@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@implements IDisposable
 
 <ModalShell Title="Prompt Library" MaxWidth="860px" BodyClass="is-flush" OnClose="OnClose">
     <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="156px">
@@ -84,7 +85,7 @@
             </ChildContent>
             <Footer>
                 <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                <AppButton Variant="primary"><FaIcon Name="check" />Save</AppButton>
+                <AppButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</AppButton>
             </Footer>
         </ModalStackLayout>
         </MainContent>
@@ -94,17 +95,6 @@
 @code {
     sealed record PromptStep(string Id, string Label, bool HasTurnShapes);
     sealed record Placeholder(string Token, string Description);
-    sealed class PromptPair
-    {
-        public string System { get; set; } = "";
-        public string User { get; set; } = "";
-    }
-    sealed class ShapePrompt
-    {
-        public string Id { get; set; } = "";
-        public string Label { get; set; } = "";
-        public string Value { get; set; } = "";
-    }
 
     string Active = "appearance";
     bool ShowPlaceholders;
@@ -118,18 +108,20 @@
         new("prose", "Prose", true)
     ];
 
-    Dictionary<string, PromptPair> PromptValues = new();
-    Dictionary<string, PromptPair> DefaultPrompts = new();
-    Dictionary<string, List<ShapePrompt>> TurnShapes = new();
-    Dictionary<string, List<ShapePrompt>> DefaultTurnShapes = new();
+    Dictionary<string, PromptPairState> DefaultPrompts = new();
+    Dictionary<string, List<ShapePromptState>> DefaultTurnShapes = new();
     Dictionary<string, Placeholder[]> Placeholders = new();
 
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
 
     PromptStep CurrentStep => Steps.First(step => step.Id == Active);
+    Dictionary<string, PromptPairState> PromptValues => Session.Chat.PromptLibrary.State.Prompts;
+    Dictionary<string, List<ShapePromptState>> TurnShapes => Session.Chat.PromptLibrary.State.TurnShapes;
 
     protected override void OnInitialized()
     {
+        Session.Chat.PromptLibrary.Changed += OnStoreChanged;
         DefaultPrompts = new()
         {
             ["appearance"] = new() { System = "You are a precise scene-state tracker for a collaborative fiction tool.", User = "Update observable positions, posture, expression, clothing, and proximity from {last_turn}." },
@@ -137,17 +129,12 @@
             ["planning"] = new() { System = "Produce a structured dramatic plan before prose.", User = "Character: {responder}\nTurn shape: {turn_shape}\nContext: {context}" },
             ["prose"] = new() { System = "Write polished contemporary roleplay prose.", User = "Write the next turn using {plan} and current appearance state." }
         };
-
-        PromptValues = DefaultPrompts.ToDictionary(pair => pair.Key, pair => new PromptPair { System = pair.Value.System, User = pair.Value.User });
-
         DefaultTurnShapes = new()
         {
             ["selection"] = Shapes("Compact", "Brief", "Extended"),
             ["planning"] = Shapes("Compact", "Brief", "Extended", "Monologue"),
             ["prose"] = Shapes("Compact", "Brief", "Extended", "Monologue", "Silent")
         };
-        TurnShapes = DefaultTurnShapes.ToDictionary(pair => pair.Key, pair => pair.Value.Select(Clone).ToList());
-
         Placeholders = Steps.ToDictionary(
             step => step.Id,
             step => new[]
@@ -160,8 +147,9 @@
             });
     }
 
-    static List<ShapePrompt> Shapes(params string[] labels) => labels.Select(label => new ShapePrompt { Id = label.ToLowerInvariant().Replace(" ", "-"), Label = label, Value = $"Use {label.ToLowerInvariant()} pacing and scope." }).ToList();
-    static ShapePrompt Clone(ShapePrompt shape) => new() { Id = shape.Id, Label = shape.Label, Value = shape.Value };
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    static List<ShapePromptState> Shapes(params string[] labels) => labels.Select(label => new ShapePromptState { Id = label.ToLowerInvariant().Replace(" ", "-"), Label = label, Value = $"Use {label.ToLowerInvariant()} pacing and scope." }).ToList();
 
     void SwitchStep(string? id)
     {
@@ -179,23 +167,50 @@
         return promptDirty || shapeDirty;
     }
 
-    void SetSystem(string value) => PromptValues[Active].System = value;
-    void SetUser(string value) => PromptValues[Active].User = value;
+    async Task SetSystem(string value)
+    {
+        PromptValues[Active].System = value;
+        await Session.Chat.PromptLibrary.MarkChangedAsync();
+    }
 
-    void ResetPrompt(string field)
+    async Task SetUser(string value)
+    {
+        PromptValues[Active].User = value;
+        await Session.Chat.PromptLibrary.MarkChangedAsync();
+    }
+
+    async Task ResetPrompt(string field)
     {
         if (field == "system")
             PromptValues[Active].System = DefaultPrompts[Active].System;
         else
             PromptValues[Active].User = DefaultPrompts[Active].User;
+
+        await Session.Chat.PromptLibrary.MarkChangedAsync();
     }
 
-    void UpdateTurnShape(string id, string value) => TurnShapes[Active].First(shape => shape.Id == id).Value = value;
-    void ResetTurnShape(string id) => TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
+    async Task UpdateTurnShape(string id, string value)
+    {
+        TurnShapes[Active].First(shape => shape.Id == id).Value = value;
+        await Session.Chat.PromptLibrary.MarkChangedAsync();
+    }
+
+    async Task ResetTurnShape(string id)
+    {
+        TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
+        await Session.Chat.PromptLibrary.MarkChangedAsync();
+    }
 
     async Task CopyToken(string token)
     {
         CopiedToken = token;
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", token);
+    }
+
+    Task Save(MouseEventArgs args) => Session.Chat.PromptLibrary.MarkChangedAsync();
+
+    public void Dispose()
+    {
+        Session.Chat.PromptLibrary.Changed -= OnStoreChanged;
     }
 }

@@ -1,10 +1,16 @@
 using AgentRp.Components;
+using AgentRp.Session;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddSingleton<IRoleplayPersistence, SeedRoleplayPersistence>();
+builder.Services.AddSingleton<ILiveRoleplayStore, LiveRoleplayStore>();
+builder.Services.AddScoped<RoleplaySession>();
+builder.Services.AddCascadingValue<RoleplaySession>(provider =>
+    provider.GetRequiredService<RoleplaySession>());
 
 var app = builder.Build();
 

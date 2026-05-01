@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="RequestClose">
     <ChildContent>
         <div class="generate-layout">
@@ -131,14 +133,15 @@
     HashSet<string> SelectedRefs = ["g1", "g2"];
     List<GeneratedImageOption> Generated = [];
 
-    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
-    [Parameter] public List<GalleryImage> Images { get; set; } = [];
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public string? TargetEntityName { get; set; }
     [Parameter] public string? TargetEntityType { get; set; }
     [Parameter] public bool AutoUseSavedImage { get; set; }
     [Parameter] public EventCallback<GalleryImage> OnSaved { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    List<RpCharacter> Characters => Session.Chat.Characters.Items;
+    List<GalleryImage> Images => Session.Chat.Images.Items;
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
     int SelectedGeneratedHue => SelectedGenerated?.Hue ?? 200;
@@ -149,6 +152,14 @@
     bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
     string GenerateButtonText => Generating ? "Generating…" : Generated.Count > 0 ? "Generate More" : "Generate";
     string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.Characters.Changed += OnStoreChanged;
+        Session.Chat.Images.Changed += OnStoreChanged;
+    }
+
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
     void Toggle(string id)
     {
@@ -210,7 +221,7 @@
             Date = "today",
             Hue = selected.Hue
         };
-        Images.Insert(0, image);
+        await Session.Chat.Images.AddAsync(image);
         selected.SavedImageId = image.Id;
         await OnSaved.InvokeAsync(image);
     }
@@ -260,5 +271,11 @@
         public int Hue { get; init; }
         public string? SavedImageId { get; set; }
         public bool IsSaved => !string.IsNullOrWhiteSpace(SavedImageId);
+    }
+
+    public void Dispose()
+    {
+        Session.Chat.Characters.Changed -= OnStoreChanged;
+        Session.Chat.Images.Changed -= OnStoreChanged;
     }
 }
