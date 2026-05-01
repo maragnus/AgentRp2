@@ -29,7 +29,7 @@
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public string? Icon { get; set; }
     [Parameter] public string MaxWidth { get; set; } = "960px";
-    [Parameter] public string? Height { get; set; }
+    [Parameter] public string? Height { get; set; } = "max(680px, 60vh)";
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? BodyClass { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }

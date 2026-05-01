@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject IImageGenerationService ImageGenerationService
 
 <ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="RequestClose">
     <ChildContent>
@@ -6,13 +7,21 @@
             <aside class="generate-settings">
                 <Section Title="Settings" Class="generate-block">
                     <FieldRow Label="Image Model">
-                        <select class="select" @bind="Model">
-                            <option>gpt-image-1.5 (OpenAI)</option>
-                            <option>DALL·E 3 (OpenAI)</option>
-                            <option>FLUX 1.1 Pro (Black Forest)</option>
-                            <option>Stable Diffusion 3.5 (Stability)</option>
+                        <select class="select" @bind="ModelKey">
+                            @foreach (var model in ImageModels)
+                            {
+                                <option value="@model.Key">@model.Label</option>
+                            }
                         </select>
                     </FieldRow>
+                    @if (ImageModels.Count == 0)
+                    {
+                        <div class="modal-error">Enable an image-capable model in AI Providers before generating images.</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                    {
+                        <div class="modal-error">@ErrorMessage</div>
+                    }
                     <div style="display:flex;gap:8px">
                         <FieldRow Label="Size"><select class="select" @bind="Size"><option>Landscape</option><option>Portrait</option><option>Square</option></select></FieldRow>
                         <FieldRow Label="Quality"><select class="select" @bind="Quality"><option>Auto</option><option>High</option><option>Medium</option></select></FieldRow>
@@ -54,7 +63,14 @@
                                      Layout="TiledSelectLayout.Horizontal"
                                      OnToggle="ToggleRef">
                         <ItemTemplate Context="image">
-                            <span class="tiled-select-media img-placeholder" style="--hue:@image.Hue">@ShortLabel(image.Name)</span>
+                            @if (!string.IsNullOrWhiteSpace(image.Url))
+                            {
+                                <img class="tiled-select-media image-asset" src="@image.Url" alt="@image.Name" />
+                            }
+                            else
+                            {
+                                <span class="tiled-select-media img-placeholder" style="--hue:@image.Hue">@ShortLabel(image.Name)</span>
+                            }
                             <strong class="tiled-select-label">@image.Name</strong>
                         </ItemTemplate>
                     </TiledSelectList>
@@ -69,7 +85,7 @@
                     }
                     else if (SelectedGenerated is not null)
                     {
-                        <div class="img-placeholder" style="height:100%;--hue:@SelectedGeneratedHue">@SelectedGeneratedTitle</div>
+                        <img class="generated-image-preview" src="@SelectedGenerated.Image.Url" alt="@SelectedGenerated.Image.Name" />
                     }
                     else
                     {
@@ -80,13 +96,13 @@
                                  Items="Generated"
                                  SelectedIds="SelectedGeneratedIds"
                                  GetId="@(option => option.Id)"
-                                 Title="@(option => option.Title)"
+                                 Title="@(option => option.Image.Name)"
                                  Layout="TiledSelectLayout.Horizontal"
                                  OnToggle="SelectGenerated">
                     <EmptyContent>Generate to add options</EmptyContent>
                     <ItemTemplate Context="option">
-                        <span class="tiled-select-media img-placeholder" style="--hue:@option.Hue">@ShortLabel(option.Title)</span>
-                        <strong class="tiled-select-label">@option.Title</strong>
+                        <img class="tiled-select-media image-asset" src="@option.Image.Url" alt="@option.Image.Name" />
+                        <strong class="tiled-select-label">@option.Image.Name</strong>
                     </ItemTemplate>
                     <BadgeTemplate Context="option">
                         @if (option.IsSaved)
@@ -124,13 +140,14 @@
     bool Generating;
     bool ConfirmDiscard;
     string Prompt = "";
-    string Model = "gpt-image-1.5 (OpenAI)";
+    string ModelKey = "";
     string Size = "Landscape";
     string Quality = "Auto";
     string Refs = "Low";
+    string ErrorMessage = "";
     string? SelectedGeneratedId;
-    HashSet<string> SelectedCharacters = ["c3"];
-    HashSet<string> SelectedRefs = ["g1", "g2"];
+    HashSet<string> SelectedCharacters = [];
+    HashSet<string> SelectedRefs = [];
     List<GeneratedImageOption> Generated = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -142,13 +159,12 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<GalleryImage> Images => Session.Chat.Images.Items;
+    IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items);
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
-    int SelectedGeneratedHue => SelectedGenerated?.Hue ?? 200;
-    string SelectedGeneratedTitle => SelectedGenerated?.Title ?? "Generated scene";
     bool HasPrompt => !string.IsNullOrWhiteSpace(Prompt);
     bool HasEntityContext => SelectedCharacters.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName);
-    bool CanGenerate => HasPrompt || HasEntityContext;
+    bool CanGenerate => !string.IsNullOrWhiteSpace(ModelKey) && (HasPrompt || HasEntityContext);
     bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
     string GenerateButtonText => Generating ? "Generating…" : Generated.Count > 0 ? "Generate More" : "Generate";
     string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
@@ -157,6 +173,14 @@
     {
         Session.Chat.Characters.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
+        Session.Providers.Changed += OnStoreChanged;
+        ModelKey = ImageModels.FirstOrDefault()?.Key ?? "";
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(ModelKey) || ImageModels.All(model => model.Key != ModelKey))
+            ModelKey = ImageModels.FirstOrDefault()?.Key ?? "";
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
@@ -181,27 +205,41 @@
             return;
 
         Generating = true;
-        await Task.Delay(1800);
-        var title = HasPrompt
-            ? Prompt.Length > 28 ? Prompt[..28] : Prompt
-            : EntityContextTitle();
-        var option = new GeneratedImageOption
+        ErrorMessage = "";
+        try
         {
-            Id = $"generated-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Generated.Count + 1}",
-            Title = title,
-            Hue = 200 + Generated.Count * 20
-        };
-        Generated.Insert(0, option);
-        SelectedGeneratedId = option.Id;
-        Generating = false;
-    }
-
-    string EntityContextTitle()
-    {
-        if (!string.IsNullOrWhiteSpace(TargetEntityName))
-            return TargetEntityName;
-
-        return Characters.FirstOrDefault(character => SelectedCharacters.Contains(character.Id))?.Name ?? "Entity context";
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no chat is open.");
+            var result = await ImageGenerationService.GenerateAsync(
+                document,
+                Session.Providers.Items,
+                new GenerateImageRequest(
+                    ModelKey,
+                    Prompt,
+                    Size,
+                    Quality,
+                    Refs,
+                    SelectedCharacters.ToList(),
+                    SelectedRefs.ToList(),
+                    TargetEntityName,
+                    TargetEntityType));
+            var option = new GeneratedImageOption
+            {
+                Id = result.Image.Id,
+                Image = result.Image,
+                ProviderName = result.ProviderName,
+                ModelId = result.ModelId
+            };
+            Generated.Insert(0, option);
+            SelectedGeneratedId = option.Id;
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Generating an image failed.", exception);
+        }
+        finally
+        {
+            Generating = false;
+        }
     }
 
     void SelectGenerated(string id) => SelectedGeneratedId = id;
@@ -212,15 +250,7 @@
         if (selected is null || selected.IsSaved)
             return;
 
-        var image = new GalleryImage
-        {
-            Id = NextGalleryImageId(),
-            Name = selected.Title,
-            Entity = string.IsNullOrWhiteSpace(TargetEntityName) ? "Generated" : TargetEntityName,
-            EntityType = GalleryEntityType,
-            Date = "today",
-            Hue = selected.Hue
-        };
+        var image = selected.Image;
         await Session.Chat.Images.AddAsync(image);
         selected.SavedImageId = image.Id;
         await OnSaved.InvokeAsync(image);
@@ -244,31 +274,12 @@
         await OnClose.InvokeAsync();
     }
 
-    string NextGalleryImageId()
-    {
-        var index = Images
-            .Select(image => image.Id)
-            .Where(id => id.Length > 1 && id[0] == 'g' && int.TryParse(id[1..], out _))
-            .Select(id => int.Parse(id[1..]))
-            .DefaultIfEmpty(0)
-            .Max() + 1;
-
-        return $"g{index}";
-    }
-
-    string GalleryEntityType => TargetEntityType switch
-    {
-        "characters" => "character",
-        "locations" => "location",
-        "items" => "item",
-        _ => "scene"
-    };
-
     public sealed class GeneratedImageOption
     {
         public string Id { get; init; } = "";
-        public string Title { get; init; } = "";
-        public int Hue { get; init; }
+        public GalleryImage Image { get; init; } = new();
+        public string ProviderName { get; init; } = "";
+        public string ModelId { get; init; } = "";
         public string? SavedImageId { get; set; }
         public bool IsSaved => !string.IsNullOrWhiteSpace(SavedImageId);
     }
@@ -277,5 +288,6 @@
     {
         Session.Chat.Characters.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.Providers.Changed -= OnStoreChanged;
     }
 }

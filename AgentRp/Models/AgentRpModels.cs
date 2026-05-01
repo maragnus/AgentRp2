@@ -123,6 +123,7 @@ public sealed class GalleryImage
     public string EntityType { get; set; } = "";
     public string Date { get; set; } = "";
     public int Hue { get; set; }
+    public string Url { get; set; } = "";
 }
 
 public enum ImageGalleryMode

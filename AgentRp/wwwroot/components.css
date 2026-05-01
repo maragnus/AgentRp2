@@ -992,6 +992,7 @@
 
 .modal {
     width: 100%;
+    min-height: 60vh;
     max-height: calc(100vh - 40px);
     display: flex;
     flex-direction: column;
@@ -1327,6 +1328,17 @@ textarea.generate-prompt {
     height: var(--entity-image-size);
 }
 
+.entity-image-asset,
+.image-asset {
+    display: block;
+    object-fit: cover;
+}
+
+.entity-image-asset {
+    width: var(--entity-image-size);
+    height: var(--entity-image-size);
+}
+
 .pill-list {
     display: flex;
     flex-wrap: wrap;
@@ -1579,6 +1591,7 @@ textarea.generate-prompt {
     height: 150px;
     border-radius: 0;
     font-size: 12px;
+    width: 100%;
 }
 
 .tiled-gallery-generate .tiled-gallery-media {
@@ -1663,6 +1676,24 @@ textarea.generate-prompt {
     gap: 8px;
     color: var(--c-text3);
     font-size: 12px;
+}
+
+.generated-image-preview {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+    background: var(--c-surface2);
+}
+
+.modal-error {
+    padding: 9px 10px;
+    border: 1px solid color-mix(in oklch, var(--c-rose) 45%, var(--c-border));
+    background: color-mix(in oklch, var(--c-rose) 12%, transparent);
+    color: var(--c-text1);
+    font-size: 12px;
+    line-height: 1.35;
+    border-radius: 8px;
 }
 
 .export-layout,
@@ -1928,8 +1959,7 @@ textarea.generate-prompt {
     padding: 16px 20px;
 }
 
-.provider-detail-panel,
-.onboard-panel {
+.provider-detail-panel {
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -1946,15 +1976,13 @@ textarea.generate-prompt {
 }
 
 .provider-title-lockup,
-.provider-enabled-wrap,
-.provider-config-title {
+.provider-enabled-wrap {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.provider-title-lockup > span,
-.provider-config-title > span {
+.provider-title-lockup > span {
     display: flex;
     flex-direction: column;
 }
@@ -2054,90 +2082,6 @@ textarea.generate-prompt {
     text-transform: none;
 }
 
-.models-head,
-.models-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.models-toolbar {
-    padding: 10px 0 6px;
-    margin-bottom: 2px;
-    border-bottom: 1px solid var(--c-border);
-    color: var(--c-text3);
-    font-size: 11px;
-}
-
-.models-toolbar > span:last-child,
-.models-head > span {
-    display: flex;
-    gap: 8px;
-}
-
-.onboard-head {
-    flex: 0 0 auto;
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--c-border);
-}
-
-.onboard-kicker {
-    margin-bottom: 5px;
-    color: var(--c-amber);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: .09em;
-    text-transform: uppercase;
-}
-
-.provider-config-title .onboard-kicker {
-    margin-bottom: 0;
-}
-
-.provider-config-title strong {
-    color: var(--c-text);
-    font-size: 15px;
-    font-weight: 700;
-}
-
-.onboard-head h3 {
-    margin: 0;
-    color: var(--c-text);
-    font-size: 17px;
-    font-weight: 700;
-}
-
-.onboard-head p {
-    margin: 3px 0 0;
-    color: var(--c-text3);
-    font-size: 12px;
-}
-
-.onboard-provider-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-content: start;
-    gap: 8px;
-    padding: 14px 20px;
-}
-
-.onboard-provider-grid .provider-pick {
-    padding: 14px;
-    border: 1.5px solid var(--c-border);
-    border-radius: 10px;
-    background: var(--c-surface2);
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    transition: background .15s, border-color .15s;
-}
-
-.onboard-provider-grid .provider-pick:hover {
-    border-color: var(--c-amber);
-    background: color-mix(in oklch, var(--c-amber) 8%, transparent);
-}
-
 .provider-pick span {
     display: flex;
     flex-direction: column;
@@ -2148,17 +2092,6 @@ textarea.generate-prompt {
     color: var(--c-text3);
     font-size: 11px;
     line-height: 1.45;
-}
-
-.onboard-form {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px 20px;
-}
-
-.onboard-models {
-    padding: 0 20px;
 }
 
 .step-pips {
@@ -2239,6 +2172,7 @@ textarea.generate-prompt {
     flex: 1;
     min-height: 0;
     height: var(--modal-split-height);
+    overflow: hidden;
 }
 
 .modal-split-rail {
@@ -2283,7 +2217,11 @@ textarea.generate-prompt {
 .modal-split-main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .modal-editor-main {

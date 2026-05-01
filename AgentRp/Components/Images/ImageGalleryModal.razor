@@ -38,7 +38,14 @@
                 </button>
             </LeadingContent>
             <ItemTemplate Context="image">
-                <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
+                @if (!string.IsNullOrWhiteSpace(image.Url))
+                {
+                    <img class="tiled-select-media tiled-gallery-media image-asset" src="@image.Url" alt="@image.Name" />
+                }
+                else
+                {
+                    <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
+                }
                 <span class="tiled-select-caption">
                     <strong class="tiled-select-label">@image.Name</strong>
                     <small>@image.EntityType · @image.Date</small>

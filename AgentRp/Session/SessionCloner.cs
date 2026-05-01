@@ -96,7 +96,8 @@ static class SessionCloner
         Entity = value.Entity,
         EntityType = value.EntityType,
         Date = value.Date,
-        Hue = value.Hue
+        Hue = value.Hue,
+        Url = value.Url
     };
 
     public static AiProvider Clone(AiProvider value) => new()

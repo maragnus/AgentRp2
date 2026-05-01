@@ -35,6 +35,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - ALWAYS answer user questions without making code changes if the message contains a question.
 - ALWAYS ask before removing or degrading user-facing behavior. NEVER assume feature removal is acceptable.
 - ALWAYS ask when requirements are ambiguous or you are uncertain.
+- NEVER make code changes from low-confidence analysis. If confidence is low, report what was found, identify the uncertainty, and ask before editing unless the user explicitly asked for that exact change.
 - ALWAYS treat assumptions as dangerous, especially for behavior, configuration, model/runtime capabilities, and product defaults. If a decision could reasonably belong in configuration or materially change behavior, ask or make it explicitly configurable instead of hard-coding the assumption.
 - NEVER make speculative fixes for bugs. If the root cause is not proven, investigate, add targeted diagnostics when useful, and ask before changing behavior.
 - ALWAYS fix root causes. NEVER patch symptoms.

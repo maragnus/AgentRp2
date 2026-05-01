@@ -121,13 +121,11 @@ public static class SeedData
             ApiKeyRequired = true,
             SampleModels =
             [
-                new() { Id = "gpt-4o", Text = true, Image = true },
-                new() { Id = "gpt-4o-mini", Text = true, Image = true },
-                new() { Id = "o3", Text = true },
-                new() { Id = "o4-mini", Text = true },
-                new() { Id = "gpt-4-turbo", Text = true, Image = true },
-                new() { Id = "gpt-3.5-turbo", Text = true },
-                new() { Id = "dall-e-3", Image = true }
+                new() { Id = "gpt-image-1.5", Image = true },
+                new() { Id = "gpt-image-1", Image = true },
+                new() { Id = "gpt-image-1-mini", Image = true },
+                new() { Id = "gpt-5.5", Text = true },
+                new() { Id = "gpt-5.5-mini", Text = true }
             ]
         },
         new()
@@ -142,10 +140,10 @@ public static class SeedData
             [
                 new() { Id = "grok-4-1-fast-non-reasoning", Text = true },
                 new() { Id = "grok-4-0709", Text = true },
-                new() { Id = "grok-4.20-0309", Text = true, Image = true },
+                new() { Id = "grok-imagine-image", Image = true },
+                new() { Id = "grok-4.20-0309", Text = true },
                 new() { Id = "grok-4.20-0309-non-reasoning", Text = true },
-                new() { Id = "grok-4.20-0309-reasoning", Text = true },
-                new() { Id = "grok-vision-beta", Text = true, Image = true }
+                new() { Id = "grok-4.20-0309-reasoning", Text = true }
             ]
         },
         new()
@@ -158,10 +156,10 @@ public static class SeedData
             ApiKeyRequired = true,
             SampleModels =
             [
-                new() { Id = "claude-opus-4-5", Text = true, Image = true },
-                new() { Id = "claude-sonnet-4-5", Text = true, Image = true },
-                new() { Id = "claude-haiku-4-5", Text = true, Image = true },
-                new() { Id = "claude-3-5-sonnet-20241022", Text = true, Image = true },
+                new() { Id = "claude-opus-4-5", Text = true },
+                new() { Id = "claude-sonnet-4-5", Text = true },
+                new() { Id = "claude-haiku-4-5", Text = true },
+                new() { Id = "claude-3-5-sonnet-20241022", Text = true },
                 new() { Id = "claude-3-haiku-20240307", Text = true }
             ]
         },

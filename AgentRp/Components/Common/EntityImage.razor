@@ -1,7 +1,14 @@
 <span class="@CssClass" style="@SizeStyle" title="@Title" @onclick="Click">
     @if (Image is not null)
     {
-        <span class="entity-image-thumb img-placeholder" style="--hue:@Image.Hue">@Label</span>
+        @if (!string.IsNullOrWhiteSpace(Image.Url))
+        {
+            <img class="entity-image-thumb entity-image-asset" src="@Image.Url" alt="@Image.Name" />
+        }
+        else
+        {
+            <span class="entity-image-thumb img-placeholder" style="--hue:@Image.Hue">@Label</span>
+        }
     }
     else
     {

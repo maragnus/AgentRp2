@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="AgentRp.AppHost/AgentRp.AppHost.csproj" />
+  <Project Path="AgentRp.ServiceDefaults/AgentRp.ServiceDefaults.csproj" />
   <Project Path="AgentRp.Tests/AgentRp.Tests.csproj" />
   <Project Path="AgentRp/AgentRp.csproj" />
 </Solution>

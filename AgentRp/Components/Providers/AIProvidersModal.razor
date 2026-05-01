@@ -1,7 +1,8 @@
 @implements IDisposable
+@inject IAiProviderConnectionService ProviderConnectionService
 
 <ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
-    <ModalSplitLayout Height="560px" RailWidth="230px">
+    <ModalSplitLayout RailWidth="230px">
         <RailHeader>
             <span>Providers</span>
             <IconButton Icon="plus" Title="Add provider" Class="providers-add-button" OnClick="@(_ => StartAdd())" />
@@ -33,25 +34,23 @@
         <MainContent>
             @if (OnboardStep == 1)
             {
-                <ModalStackLayout BodyClass="onboard-provider-grid">
+                <ModalStackLayout BodyClass="modal-form-stack">
                     <Header>
-                        <div class="onboard-head">
-                            <div class="onboard-kicker">New Provider</div>
-                            <h3>Connect a provider</h3>
-                            <p>Choose the platform you want to use for AI generation.</p>
-                        </div>
+                        <SectionHeader Title="Connect a provider" Hint="Choose the platform you want to use for AI generation." />
                     </Header>
                     <ChildContent>
-                        @foreach (var meta in ProviderTypes)
-                        {
-                            <SelectableButton @key="meta.Id" Class="provider-pick" OnClick="@(_ => PickProviderType(meta.Id))">
-                                <ProviderBadge Type="@meta.Id" Size="32" />
-                                <span>
-                                    <strong>@meta.Name</strong>
-                                    <small>@meta.Description</small>
-                                </span>
-                            </SelectableButton>
-                        }
+                        <div class="provider-pick-grid">
+                            @foreach (var meta in ProviderTypes)
+                            {
+                                <SelectableButton @key="meta.Id" Class="provider-pick" OnClick="@(_ => PickProviderType(meta.Id))">
+                                    <ProviderBadge Type="@meta.Id" Size="32" />
+                                    <span>
+                                        <strong>@meta.Name</strong>
+                                        <small>@meta.Description</small>
+                                    </span>
+                                </SelectableButton>
+                            }
+                        </div>
                     </ChildContent>
                     <Footer>
                         <StepPips Current="0" />
@@ -62,20 +61,17 @@
             }
             else if (OnboardStep == 2 && OnboardMeta is not null)
             {
-                <ModalStackLayout BodyClass="onboard-form">
+                <ModalStackLayout BodyClass="modal-form-stack">
                     <Header>
-                        <div class="onboard-head">
-                            <div class="provider-config-title">
-                                <ProviderBadge Type="@OnboardMeta.Id" Size="28" />
-                                <span>
-                                    <span class="onboard-kicker">Configure</span>
-                                    <strong>@OnboardMeta.Name</strong>
-                                </span>
-                            </div>
-                            <p>Enter your credentials to connect this provider.</p>
-                        </div>
+                        <SectionHeader Title="@($"Configure {OnboardMeta.Name}")" Hint="Enter your credentials to connect this provider.">
+                            <RightContent><ProviderBadge Type="@OnboardMeta.Id" Size="28" /></RightContent>
+                        </SectionHeader>
                     </Header>
                     <ChildContent>
+                        @if (!string.IsNullOrWhiteSpace(ProviderError))
+                        {
+                            <div class="modal-error">@ProviderError</div>
+                        }
                         @if (OnboardMeta.NeedsEndpoint)
                         {
                             <AppField Label="Endpoint URL" Hint="@EndpointHint">
@@ -108,18 +104,16 @@
             }
             else if (OnboardStep == 3 && OnboardMeta is not null)
             {
-                <ModalStackLayout BodyClass="onboard-models">
+                <ModalStackLayout BodyClass="modal-form-stack">
                     <Header>
-                        <div class="onboard-head">
-                            <h3>@(OnboardModels.Count == 0 ? "No models discovered" : "Choose your models")</h3>
-                            <p>@(OnboardModels.Count == 0 ? "You can configure models manually later." : $"{OnboardModels.Count} models found — enable the ones you want.")</p>
-                            @if (OnboardModels.Count > 0)
-                            {
-                                <div class="provider-success"><FaIcon Name="check" />Connection successful · @OnboardMeta.Name</div>
-                            }
-                        </div>
+                        <SectionHeader Title="@(OnboardModels.Count == 0 ? "No models discovered" : "Choose your models")"
+                                       Hint="@(OnboardModels.Count == 0 ? "You can configure models manually later." : $"{OnboardModels.Count} models found. Enable the ones you want.")" />
                     </Header>
                     <ChildContent>
+                        @if (!string.IsNullOrWhiteSpace(ProviderError))
+                        {
+                            <div class="modal-error">@ProviderError</div>
+                        }
                         @if (OnboardModels.Count == 0)
                         {
                             <div class="providers-empty-state">
@@ -130,13 +124,12 @@
                         }
                         else
                         {
-                            <div class="models-toolbar">
-                                <span>@OnboardModels.Count(model => model.Enabled) of @OnboardModels.Count enabled</span>
-                                <span>
+                            <SectionHeader Title="Models" Count="@OnboardModels.Count(model => model.Enabled)" MaxCount="@OnboardModels.Count">
+                                <RightContent>
                                     <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(true))">Enable all</AppButton>
                                     <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(false))">Disable all</AppButton>
-                                </span>
-                            </div>
+                                </RightContent>
+                            </SectionHeader>
                             @foreach (var model in OnboardModels)
                             {
                                 <ProviderModelRow @key="model.Id" Model="model" />
@@ -186,6 +179,10 @@
                         </div>
                     </Header>
                     <ChildContent>
+                        @if (!string.IsNullOrWhiteSpace(ProviderError))
+                        {
+                            <div class="modal-error">@ProviderError</div>
+                        }
                         <Section Title="Connection" Class="provider-section">
                             <AppField Label="Display Name">
                                 <input class="field" value="@Selected.Name" @oninput="args => Selected.Name = args.Value?.ToString() ?? string.Empty" />
@@ -254,6 +251,7 @@
     string OnboardEndpoint = "";
     bool? TestOk;
     bool ConfirmDelete;
+    string ProviderError = "";
     List<AiProviderModel> OnboardModels = [];
     readonly IReadOnlyList<AiProviderMeta> ProviderTypes = SeedData.ProviderMetadata();
 
@@ -293,6 +291,7 @@
         SelectedId = id;
         OnboardStep = 0;
         TestOk = null;
+        ProviderError = "";
     }
 
     void StartAdd()
@@ -303,6 +302,7 @@
         OnboardApiKey = "";
         OnboardEndpoint = "";
         OnboardModels = [];
+        ProviderError = "";
     }
 
     void CancelOnboarding()
@@ -317,6 +317,7 @@
         OnboardApiKey = "";
         OnboardEndpoint = "";
         OnboardStep = 2;
+        ProviderError = "";
     }
 
     void BackToPick()
@@ -327,9 +328,19 @@
 
     async Task FetchModels()
     {
-        await Task.Delay(1300);
-        OnboardModels = OnboardMeta?.SampleModels.Select(CloneDisabled).ToList() ?? [];
-        OnboardStep = 3;
+        if (OnboardMeta is null)
+            return;
+
+        ProviderError = "";
+        try
+        {
+            OnboardModels = (await ProviderConnectionService.DiscoverModelsAsync(BuildOnboardProvider())).Select(CloneDisabled).ToList();
+            OnboardStep = 3;
+        }
+        catch (Exception exception)
+        {
+            ProviderError = UserFacingErrorMessageBuilder.Build($"Fetching models from {OnboardMeta.Name} failed.", exception);
+        }
     }
 
     async Task FinishOnboarding()
@@ -363,13 +374,38 @@
     async Task TestProvider()
     {
         TestOk = null;
-        await Task.Delay(1400);
-        TestOk = true;
+        ProviderError = "";
+        if (Selected is null)
+            return;
+
+        try
+        {
+            await ProviderConnectionService.TestProviderAsync(Selected);
+            TestOk = true;
+        }
+        catch (Exception exception)
+        {
+            TestOk = false;
+            ProviderError = UserFacingErrorMessageBuilder.Build($"Testing {Selected.Name} failed.", exception);
+        }
     }
 
     async Task RefreshModels()
     {
-        await Task.Delay(1200);
+        if (Selected is null)
+            return;
+
+        ProviderError = "";
+        try
+        {
+            var discovered = await ProviderConnectionService.DiscoverModelsAsync(Selected);
+            MergeModels(Selected, discovered);
+            await Session.Providers.MarkChangedAsync();
+        }
+        catch (Exception exception)
+        {
+            ProviderError = UserFacingErrorMessageBuilder.Build($"Refreshing models for {Selected.Name} failed.", exception);
+        }
     }
 
     async Task DeleteProvider()
@@ -391,6 +427,34 @@
     Task SaveSelectedClick(MouseEventArgs args) => Session.Providers.MarkChangedAsync();
 
     Task SaveSelected() => Session.Providers.MarkChangedAsync();
+
+    AiProvider BuildOnboardProvider() => new()
+    {
+        Id = "draft",
+        Type = OnboardMeta?.Id ?? "",
+        Name = OnboardMeta?.Name ?? "Provider",
+        Enabled = true,
+        ApiKey = OnboardApiKey,
+        Endpoint = OnboardMeta?.NeedsEndpoint == true ? OnboardEndpoint : "",
+        Models = []
+    };
+
+    static void MergeModels(AiProvider provider, IReadOnlyList<AiProviderModel> discovered)
+    {
+        var existing = provider.Models.ToDictionary(model => model.Id, StringComparer.Ordinal);
+        foreach (var model in discovered)
+        {
+            if (existing.TryGetValue(model.Id, out var current))
+            {
+                current.Text = model.Text;
+                current.Image = model.Image;
+            }
+            else
+            {
+                provider.Models.Add(CloneDisabled(model));
+            }
+        }
+    }
 
     static AiProviderModel Clone(AiProviderModel model) => new() { Id = model.Id, Enabled = model.Enabled, Text = model.Text, Image = model.Image };
     static AiProviderModel CloneDisabled(AiProviderModel model) => new() { Id = model.Id, Text = model.Text, Image = model.Image };
