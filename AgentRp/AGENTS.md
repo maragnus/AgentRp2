@@ -1,3 +1,10 @@
+# AgentRp2
+
+We are building `AgentRp1` as `AgentRp2` with a focus on new design and architectural patterns. Check `AgentRp1` for implementation details and behavior, but know we want to improve everything as it goes into `AgentRp2`
+
+- `W:\AgentRp2\AgentRp` is the new version, preparing for production release with a new design and internal architecture.
+- `W:\AgentRp1\AgentRp` is a fully functional prototype, but lacks recent design and architectural decisions. It should be used as guidance on how the features should work and be implemented. But it's critical that we used the updated designs and architectural patterns as they have evolved in AgentRp2.
+
 ## Design Stage
 
 This system is still being designed and has not been deployed. You are explicitly allowed to make breaking, sweeping, and structural changes at any layer of the codebase. Do not preserve a weak design just because it already exists.
@@ -49,6 +56,13 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - NEVER manually edit project/package references. MUST use `dotnet add ...` and `dotnet sln add ...`.
 - NEVER use `UriKind.Absolute` or `Uri.TryCreate(..., UriKind.Absolute, ...)` to validate an absolute URL. ONLY use `StartsWith("https://")` or `StartsWith("http://")` with case-insensitive comparison.
 - Breaking changes are acceptable. Prefer the correct design over migrations, compatibility shims, or shoehorned extensions.
+
+## AI Integration Rules
+- Never manually construct or send HTTP requests directly to model generation endpoints. Text, image, tool, and agent model calls must go through the official OpenAI package or Microsoft.Extensions.AI abstractions.
+- OpenAI text generation must use the Responses API. Do not use Chat Completions for OpenAI generation, and do not add new code that posts to `chat/completions`.
+- OpenAI-compatible providers must still be isolated behind the approved AI abstraction layer. Do not hand-build OpenAI-shaped request bodies with `messages`, `response_format`, or provider-specific path strings in application services.
+- Structured model outputs must use typed responses from the approved package/abstraction instead of parsing raw response text or raw JSON documents.
+- If the approved packages do not yet expose a provider capability, stop and redesign or ask before adding a temporary direct HTTP integration.
 
 ## Coding Standards
 - Use C# 12 primary constructors.

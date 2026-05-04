@@ -1,7 +1,9 @@
 using AgentRp.Components.Chat;
 using AgentRp.Models;
+using AgentRp.Services;
 using AgentRp.Session;
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentRp.Tests;
 
@@ -72,7 +74,7 @@ public sealed class SessionTests
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
-        await sessionA.Chat.Transcript.PostAsync("Shared live transcript message.", null, "manual");
+        await sessionA.Chat.Transcript.PostManualAsync("Shared live transcript message.", null);
 
         Assert.Contains(sessionB.Chat.Transcript.Items, message => message.Body == "Shared live transcript message.");
     }
@@ -108,7 +110,7 @@ public sealed class SessionTests
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
-        await sessionA.Chat.Transcript.PostAsync("Memory should win.", null, "manual");
+        await sessionA.Chat.Transcript.PostManualAsync("Memory should win.", null);
         await sessionB.Chats.SelectAsync("ch2");
         await sessionB.Chats.SelectAsync("ch1");
 
@@ -160,6 +162,7 @@ public sealed class SessionTests
     public async Task ChatAreaRerendersFromCrossSessionTranscriptNotification()
     {
         using var context = new BunitContext();
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
         await using var liveStore = NewLiveStore();
         var sessionA = new RoleplaySession(liveStore);
         var sessionB = new RoleplaySession(liveStore);
@@ -167,7 +170,7 @@ public sealed class SessionTests
         await sessionB.InitializeAsync();
         var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(sessionB));
 
-        await sessionA.Chat.Transcript.PostAsync("Rendered from another session.", null, "manual");
+        await sessionA.Chat.Transcript.PostManualAsync("Rendered from another session.", null);
 
         component.WaitForAssertion(() => Assert.Contains("Rendered from another session.", component.Markup, StringComparison.Ordinal));
     }

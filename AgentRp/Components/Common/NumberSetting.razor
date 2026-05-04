@@ -1,11 +1,12 @@
 <div>
     <div class="number-setting-label">@Label</div>
-    <input class="field mono" type="number" placeholder="model default" value="@Value" @onchange="HandleChange" />
+    <input class="field mono" type="number" placeholder="model default" value="@Value" disabled="@Disabled" @onchange="HandleChange" />
 </div>
 
 @code {
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string Value { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
     Task HandleChange(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");

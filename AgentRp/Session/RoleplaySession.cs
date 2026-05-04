@@ -1,8 +1,9 @@
 using AgentRp.Models;
+using AgentRp.Services;
 
 namespace AgentRp.Session;
 
-public sealed class RoleplaySession(ILiveRoleplayStore liveStore) : IAsyncDisposable
+public sealed class RoleplaySession(ILiveRoleplayStore liveStore, ITextGenerationService? textGenerationService = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
     bool _initialized;
@@ -27,7 +28,7 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore) : IAsyncDispos
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
         Providers = new(_sessionId, liveStore);
-        Chat = new(ActiveChat, Registry);
+        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance);
         liveStore.Changed += OnLiveStoreChanged;
 
         await Chats.LoadAsync();
@@ -140,14 +141,14 @@ public sealed class ChatRegistry(Guid sessionId, ILiveRoleplayStore liveStore, A
 
 public sealed class ChatWorkspace
 {
-    public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry)
+    public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers, ITextGenerationService textGenerationService)
     {
         Characters = new(activeChat, registry);
         Locations = new(activeChat, registry);
         Items = new(activeChat, registry);
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry);
-        Transcript = new(activeChat, registry);
+        Transcript = new(activeChat, registry, providers, textGenerationService);
         PromptLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);
 

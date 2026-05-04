@@ -701,6 +701,135 @@
     font-size: 11px;
 }
 
+.app-markdown {
+    min-width: 0;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+
+.app-markdown > :first-child {
+    margin-top: 0;
+}
+
+.app-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.app-markdown p,
+.app-markdown ul,
+.app-markdown ol,
+.app-markdown blockquote,
+.app-markdown pre,
+.app-markdown table,
+.app-markdown hr {
+    margin: 0 0 0.9rem;
+}
+
+.app-markdown h1,
+.app-markdown h2,
+.app-markdown h3,
+.app-markdown h4,
+.app-markdown h5,
+.app-markdown h6 {
+    margin: 1.1rem 0 0.6rem;
+    color: inherit;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.app-markdown h1 { font-size: 1.25em; }
+.app-markdown h2 { font-size: 1.15em; }
+.app-markdown h3 { font-size: 1.08em; }
+.app-markdown h4 { font-size: 1em; }
+.app-markdown h5 { font-size: 0.96em; }
+.app-markdown h6 { font-size: 0.92em; }
+
+.app-markdown ul,
+.app-markdown ol {
+    padding-left: 1.25rem;
+}
+
+.app-markdown li + li {
+    margin-top: 0.35rem;
+}
+
+.app-markdown a {
+    color: var(--c-blue);
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.16em;
+}
+
+.app-markdown blockquote {
+    padding: 0.1rem 0 0.1rem 0.9rem;
+    border-left: 2px solid var(--c-borderMid);
+    color: var(--c-text2);
+}
+
+.app-markdown code,
+.app-markdown pre {
+    font-style: normal;
+    font-family: "DM Mono", Consolas, monospace;
+}
+
+.app-markdown code {
+    padding: 0.08rem 0.35rem;
+    border: 1px solid var(--c-border);
+    border-radius: 6px;
+    background: var(--c-surface3);
+    font-size: 0.92em;
+}
+
+.app-markdown pre {
+    overflow-x: auto;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    background: var(--c-surface);
+    color: var(--c-text2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+}
+
+.app-markdown pre code {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font-size: inherit;
+}
+
+.app-markdown hr {
+    height: 1px;
+    border: 0;
+    background: var(--c-border);
+}
+
+.app-markdown table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+}
+
+.app-markdown th,
+.app-markdown td {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--c-border);
+    text-align: left;
+    vertical-align: top;
+}
+
+.app-markdown th {
+    background: var(--c-surface2);
+    font-weight: 700;
+}
+
+.app-markdown img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+}
+
 .narrative-body {
     margin: 0;
     font-family: "Playfair Display", Georgia, serif;
@@ -709,6 +838,24 @@
     line-height: 1.75;
     letter-spacing: .01em;
     text-wrap: pretty;
+}
+
+.narrative-body h1,
+.narrative-body h2,
+.narrative-body h3,
+.narrative-body h4,
+.narrative-body h5,
+.narrative-body h6 {
+    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-style: normal;
+    letter-spacing: 0;
+}
+
+.narrative-body blockquote,
+.narrative-body code,
+.narrative-body pre,
+.narrative-body table {
+    font-style: normal;
 }
 
 .narrative-body.is-narrator {
@@ -2877,6 +3024,43 @@ textarea.generate-prompt {
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.tuning-capability-card {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--c-border);
+    background: var(--c-surface2);
+}
+
+.tuning-capability-card p {
+    margin: 0;
+    color: var(--c-text3);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.tuning-capability-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tuning-inline-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.tuning-inline-note {
+    margin-top: 8px;
+    color: var(--c-text3);
+    font-size: 11.5px;
+    line-height: 1.5;
 }
 
 .slider-head,

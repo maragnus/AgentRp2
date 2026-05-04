@@ -12,7 +12,7 @@
         <RailFooter>
             <div class="prompt-rail-note">
                 <div class="divider"></div>
-                <p>Lower temperature is steadier. Leave fields blank to use model defaults.</p>
+                <p>Leave controls blank to use model defaults. Some tuning knobs are model-specific.</p>
             </div>
         </RailFooter>
         <MainContent>
@@ -53,35 +53,82 @@
                     <div class="floating-toast"><FaIcon Name="check" />@CopiedToast</div>
                 }
 
+                <div class="tuning-capability-card">
+                    @if (ActiveTextModel is null)
+                    {
+                        <strong>No active text model selected</strong>
+                        <p>These settings stay attached to the chat. Capability filtering kicks in as soon as a text model is enabled.</p>
+                    }
+                    else
+                    {
+                        <div class="tuning-capability-meta">
+                            <strong>@ActiveTextModel.Model.Id</strong>
+                            <span class="field-status-pill">@ActiveTextModel.Provider.Name</span>
+                            @if (ActiveCapabilities.SupportsReasoningEffort)
+                            {
+                                <span class="field-status-pill">Reasoning-aware</span>
+                            }
+                            @if (ActiveCapabilities.SupportsVerbosity)
+                            {
+                                <span class="field-status-pill">Verbosity-aware</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(ActiveCapabilities.Guidance))
+                        {
+                            <p>@ActiveCapabilities.Guidance</p>
+                        }
+                    }
+                </div>
+
                 <Section Title="Sampling" Class="tuning-section">
                     <FieldRow Label="Temperature">
-                        <LabelAction><code>@Current.Temperature.ToString("0.00")</code></LabelAction>
+                        <LabelAction>
+                            @if (Current.Temperature is double temperature)
+                            {
+                                <code>@temperature.ToString("0.00")</code>
+                            }
+                            else
+                            {
+                                <span class="field-status-pill">Model default</span>
+                            }
+                        </LabelAction>
                         <ChildContent>
-                            <div class="tuning-slider" style="--pct:@(Current.Temperature / 2 * 100)%">
-                                <span></span>
-                                <input type="range" min="0" max="2" step="0.01" @bind="Current.Temperature" @bind:event="oninput" />
-                                <i></i>
+                            <div class="tuning-inline-actions">
+                                <AppButton Variant="ghost" Size="xs" Active="@(!Current.Temperature.HasValue)" OnClick="@(_ => ClearTemperature())">Model default</AppButton>
+                                <AppButton Variant="ghost" Size="xs" Active="@Current.Temperature.HasValue" Disabled="@(!CanCustomizeTemperature)" OnClick="@(_ => EnableTemperature())">Custom</AppButton>
                             </div>
-                            <div class="slider-scale"><span>0 · steadier</span><span>2 · wilder</span></div>
+                            @if (Current.Temperature.HasValue && CanCustomizeTemperature)
+                            {
+                                <div class="tuning-slider" style="--pct:@TemperaturePercent">
+                                    <span></span>
+                                    <input type="range" min="0" max="2" step="0.01" @bind:get="TemperatureSliderValue" @bind:set="SetTemperature" @bind:event="oninput" />
+                                    <i></i>
+                                </div>
+                                <div class="slider-scale"><span>0 · steadier</span><span>2 · wilder</span></div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(TemperatureSupportNote))
+                            {
+                                <div class="tuning-inline-note">@TemperatureSupportNote</div>
+                            }
                         </ChildContent>
                     </FieldRow>
                     <div class="tuning-grid">
-                        <NumberSetting Label="Top P" Value="@Current.TopP" ValueChanged="value => Current.TopP = value" />
-                        <NumberSetting Label="Seed" Value="@Current.Seed" ValueChanged="value => Current.Seed = value" />
+                        <NumberSetting Label="Top P" Value="@Current.TopP" Disabled="@(ActiveCapabilities.TopP != TuningSupport.Supported)" ValueChanged="value => Current.TopP = value" />
+                        <NumberSetting Label="Seed" Value="@Current.Seed" Disabled="@(ActiveCapabilities.Seed != TuningSupport.Supported)" ValueChanged="value => Current.Seed = value" />
                     </div>
                 </Section>
 
                 <Section Title="Limits & Penalties" Class="tuning-section">
                     <div class="tuning-grid">
-                        <NumberSetting Label="Max Output Tokens" Value="@Current.MaxTokens" ValueChanged="value => Current.MaxTokens = value" />
-                        <NumberSetting Label="Frequency Penalty" Value="@Current.FrequencyPenalty" ValueChanged="value => Current.FrequencyPenalty = value" />
-                        <NumberSetting Label="Presence Penalty" Value="@Current.PresencePenalty" ValueChanged="value => Current.PresencePenalty = value" />
+                        <NumberSetting Label="Max Output Tokens" Value="@Current.MaxTokens" Disabled="@(ActiveCapabilities.MaxTokens != TuningSupport.Supported)" ValueChanged="value => Current.MaxTokens = value" />
+                        <NumberSetting Label="Frequency Penalty" Value="@Current.FrequencyPenalty" Disabled="@(ActiveCapabilities.FrequencyPenalty != TuningSupport.Supported)" ValueChanged="value => Current.FrequencyPenalty = value" />
+                        <NumberSetting Label="Presence Penalty" Value="@Current.PresencePenalty" Disabled="@(ActiveCapabilities.PresencePenalty != TuningSupport.Supported)" ValueChanged="value => Current.PresencePenalty = value" />
                     </div>
                 </Section>
 
                 <Section Title="Stop Conditions" Class="tuning-section">
                     <FieldRow Label="Stop Sequences" Hint="Enter one stop sequence per line.">
-                        <textarea class="field mono" rows="3" @bind="Current.StopSequences" placeholder="One stop sequence per line…"></textarea>
+                        <textarea class="field mono" rows="3" @bind="Current.StopSequences" disabled="@(ActiveCapabilities.StopSequences != TuningSupport.Supported)" placeholder="One stop sequence per line…"></textarea>
                     </FieldRow>
                 </Section>
             </ChildContent>
@@ -103,6 +150,7 @@
 
     readonly StepDef[] Steps =
     [
+        new("snapshot", "Snapshot"),
         new("appearance", "Appearance"),
         new("selection", "Selection"),
         new("planning", "Planning"),
@@ -117,17 +165,25 @@
     StepDef CurrentStep => Steps.First(step => step.Id == Active);
     Dictionary<string, ModelTuningStepState> Values => Session.Chat.ModelTuning.State.Values;
     ModelTuningStepState Current => Values[Active];
+    ActiveTextModel? ActiveTextModel => TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
+    ModelTuningCapabilities ActiveCapabilities => ActiveTextModel is null ? new() : TextModelTuningCatalog.Resolve(ActiveTextModel.Provider, ActiveTextModel.Model);
+    bool CanCustomizeTemperature => ActiveCapabilities.Temperature == TuningSupport.Supported;
+    double TemperatureSliderValue => Current.Temperature ?? 1d;
+    string TemperaturePercent => $"{TemperatureSliderValue / 2d * 100d:0.##}%";
+    string? TemperatureSupportNote => ActiveCapabilities.Temperature switch
+    {
+        TuningSupport.Supported when Current.Temperature is null => "Temperature stays off until you switch to a custom value.",
+        TuningSupport.DefaultOnly when Current.Temperature.HasValue => "This model only accepts its default temperature. Any saved custom value will be ignored until you clear it.",
+        TuningSupport.DefaultOnly => "This model only accepts its default temperature.",
+        TuningSupport.Unsupported when Current.Temperature.HasValue => "This model does not support temperature. Any saved value will be ignored until you clear it.",
+        TuningSupport.Unsupported => "This model does not support temperature.",
+        _ => null
+    };
 
     protected override void OnInitialized()
     {
         Session.Chat.ModelTuning.Changed += OnStoreChanged;
-        Defaults = new()
-        {
-            ["appearance"] = new() { Temperature = .4 },
-            ["selection"] = new() { Temperature = .2 },
-            ["planning"] = new() { Temperature = .4 },
-            ["prose"] = new() { Temperature = .7 }
-        };
+        Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
@@ -158,6 +214,18 @@
                current.PresencePenalty != def.PresencePenalty ||
                current.StopSequences != def.StopSequences;
     }
+
+    void EnableTemperature()
+    {
+        if (!CanCustomizeTemperature)
+            return;
+
+        Current.Temperature ??= 1d;
+    }
+
+    void ClearTemperature() => Current.Temperature = null;
+
+    void SetTemperature(double value) => Current.Temperature = value;
 
     async Task Reset()
     {

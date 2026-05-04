@@ -16,6 +16,11 @@ public abstract class StoreBase : IDisposable
         LastBackgroundError = exception;
     }
 
+    protected void ClearBackgroundError()
+    {
+        LastBackgroundError = null;
+    }
+
     public void Dispose()
     {
         DisposeCore();
@@ -52,7 +57,7 @@ public abstract class ActiveChatStoreBase : StoreBase
 
     async Task OnActiveChatChanged(ActiveChatChange change)
     {
-        if (change.Area is not null && change.Area != Area)
+        if (!ShouldHandleArea(change.Area))
             return;
 
         Detach(Document);
@@ -60,6 +65,9 @@ public abstract class ActiveChatStoreBase : StoreBase
         Attach(Document);
         await NotifyChangedAsync();
     }
+
+    protected virtual bool ShouldHandleArea(RoleplayStoreArea? changedArea) =>
+        changedArea is null || changedArea == Area;
 
     protected async Task SaveActiveDocumentAsync()
     {

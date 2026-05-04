@@ -88,10 +88,10 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             Items = Deserialize(row.ItemsJson, new List<RpItem>()),
             Timeline = Deserialize(row.TimelineJson, new List<RpTimelineEntry>()),
             Images = Deserialize(row.ImagesJson, new List<GalleryImage>()),
-            Messages = Deserialize(row.MessagesJson, new List<RpMessage>()),
+            Transcript = Deserialize(row.MessagesJson, new RpTranscriptState()),
             PromptLibrary = Deserialize(row.PromptLibraryJson, PromptLibraryState.CreateDefault()),
             ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault())
-        };
+        }.ApplyProjection();
     }
 
     public async Task SaveChatsAsync(IReadOnlyList<RpChat> chats, CancellationToken cancellationToken = default)
@@ -189,7 +189,8 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.ItemsJson = Serialize(document.Items);
         row.TimelineJson = Serialize(document.Timeline);
         row.ImagesJson = Serialize(document.Images);
-        row.MessagesJson = Serialize(document.Messages);
+        TranscriptProjector.Apply(document, now);
+        row.MessagesJson = Serialize(document.Transcript);
         row.PromptLibraryJson = Serialize(document.PromptLibrary);
         row.ModelTuningJson = Serialize(document.ModelTuning);
         row.UpdatedUtc = now;
@@ -233,5 +234,14 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         {
             return fallback;
         }
+    }
+}
+
+static class SqlRoleplayPersistenceExtensions
+{
+    public static RpChatDocument ApplyProjection(this RpChatDocument document)
+    {
+        TranscriptProjector.Apply(document);
+        return document;
     }
 }

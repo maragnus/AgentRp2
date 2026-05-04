@@ -1,98 +1,116 @@
-@if (Message.Type == "process")
-{
-    @if (ShowProcess)
+@using AgentRp.Services
+
+<article class="narrative-message">
+    @if (ShowProcess && Message.Trace is not null)
     {
-        <ProcessTrace Message="Message" />
+        <ProcessTrace Trace="Message.Trace" />
     }
-}
-else if (Message.Type == "appearance")
-{
-    @if (ShowAppearance)
-    {
-        <div class="appearance-row">
-            <FaIcon Name="eye" />
-            <span style="flex:1">@Message.Summary</span>
-            <Badge Tone="blue">@Message.CharacterCount chars</Badge>
-        </div>
-    }
-}
-else
-{
-    <article class="narrative-message">
-        <div class="narrative-card">
-            <div class="narrative-head">
-                <div class="message-author">
-                    @if (IsNarrator)
-                    {
-                        <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
-                    }
-                    else
-                    {
-                        <Avatar Name="@Message.Author" Size="26" />
-                    }
-                    <span>@Message.Author</span>
-                </div>
-                <span style="margin-left:auto">@Message.Timestamp</span>
-                <span class="mode-badge @ModeClass">@Message.Mode</span>
-            </div>
-            <p class="narrative-body @ProseClass">@Message.Body</p>
-            <div class="narrative-actions">
-                @if (!string.IsNullOrWhiteSpace(Message.Branch))
+
+    <div class="narrative-card">
+        <div class="narrative-head">
+            <div class="message-author">
+                @if (IsNarrator)
                 {
-                    <div class="branch-nav">
-                        <IconButton Icon="chevron-left" Title="Previous branch" />
-                        <code>@Message.Branch</code>
-                        <IconButton Icon="chevron-right" Title="Next branch" />
-                    </div>
+                    <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
                 }
                 else
                 {
-                    <div></div>
+                    <Avatar Name="@Message.AuthorName" Size="26" />
                 }
-                <div class="action-cluster">
-                    <div class="dropdown-wrap">
-                        <IconButton Icon="users" Title="Change author" Active="@AuthorOpen" OnClick="@(_ => AuthorOpen = !AuthorOpen)" />
-                        @if (AuthorOpen)
-                        {
-                            <div class="popover message-popover">
-                                <div class="popover-label">Change Author</div>
-                                <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" OnClick="@(_ => AuthorOpen = false)"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
-                                @foreach (var character in Characters)
-                                {
-                                    var current = Message.Author == character.Name;
-                                    <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" OnClick="@(_ => AuthorOpen = false)"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
-                                }
-                            </div>
-                        }
-                    </div>
-                    <IconButton Icon="edit" Title="Edit message" />
-                    <span class="v-divider"></span>
-                    <div class="regen-group">
-                        <IconButton Icon="refresh" Title="Regenerate from saved plan" />
-                        <span></span>
-                        <AppButton Variant="ghost" Size="icon" Title="Change turn shape & regenerate" OnClick="@(_ => ShapeOpen = !ShapeOpen)"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
-                        <span></span>
-                        <IconButton Icon="sliders" Title="Edit saved plan" OnClick="@(_ => EditPlan = true)" />
-                        @if (ShapeOpen)
-                        {
-                            <div class="popover message-popover shape-popover">
-                                <div class="popover-label">Turn Shape</div>
-                                @foreach (var shape in TurnShapes)
-                                {
-                                    <SelectableButton @key="shape" Class="select-row" OnClick="@(_ => ShapeOpen = false)"><span>@shape</span></SelectableButton>
-                                }
-                            </div>
-                        }
-                    </div>
-                    <span class="v-divider"></span>
-                    <IconButton Icon="flag" Title="Create snapshot here" />
-                    <IconButton Icon="copy" Title="Copy message" OnClick="@CopyMessage" />
-                    <IconButton Icon="trash" Title="Delete message" OnClick="@(_ => ConfirmDelete = true)" />
+                <span>@Message.AuthorName</span>
+            </div>
+            <span style="margin-left:auto">@RelativeDateFormatter.FormatDate(Message.CreatedUtc)</span>
+            <span class="mode-badge @ModeClass">@ModeLabel</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Message.Body))
+        {
+            <MarkdownContent Markdown="@Message.Body" Class="@($"narrative-body {ProseClass}")" />
+        }
+
+        @if (ShowAppearance && Message.AppearanceByCharacterId.Count > 0)
+        {
+            <div class="appearance-row">
+                <FaIcon Name="eye" />
+                <span style="flex:1">@AppearanceSummary</span>
+                <Badge Tone="blue">@Message.AppearanceByCharacterId.Count chars</Badge>
+            </div>
+        }
+
+        @if (Snapshot is not null)
+        {
+            <div class="appearance-row">
+                <FaIcon Name="flag" />
+                <span style="flex:1">@Snapshot.Summary</span>
+                <Badge Tone="amber">Snapshot</Badge>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(FailureMessage))
+        {
+            <div class="appearance-row" style="border-color:var(--c-rose);color:var(--c-rose)">
+                <FaIcon Name="warning" />
+                <span style="flex:1">@FailureMessage</span>
+            </div>
+        }
+
+        <div class="narrative-actions">
+            @if (SiblingCount > 1)
+            {
+                <div class="branch-nav">
+                    <IconButton Icon="chevron-left" Title="Previous branch" Disabled="@(!CanSelectPreviousSibling)" OnClick="@(_ => SelectPreviousSibling())" />
+                    <code>@BranchLabel</code>
+                    <IconButton Icon="chevron-right" Title="Next branch" Disabled="@(!CanSelectNextSibling)" OnClick="@(_ => SelectNextSibling())" />
                 </div>
+            }
+            else
+            {
+                <div></div>
+            }
+
+            <div class="action-cluster">
+                <div class="dropdown-wrap">
+                    <IconButton Icon="users" Title="Change author" Active="@AuthorOpen" OnClick="@(_ => AuthorOpen = !AuthorOpen)" />
+                    @if (AuthorOpen)
+                    {
+                        <div class="popover message-popover">
+                            <div class="popover-label">Change Author</div>
+                            <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
+                            @foreach (var character in Characters)
+                            {
+                                var current = Message.AuthorCharacterId == character.Id;
+                                <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
+                            }
+                        </div>
+                    }
+                </div>
+                <IconButton Icon="edit" Title="Edit message" OnClick="@(_ => OpenEditBody())" />
+                <span class="v-divider"></span>
+                <div class="regen-group">
+                    <IconButton Icon="refresh" Title="Regenerate from saved plan" OnClick="@(_ => Regenerate())" />
+                    <span></span>
+                    <AppButton Variant="ghost" Size="icon" Title="Change turn shape & regenerate" OnClick="@(_ => ShapeOpen = !ShapeOpen)"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
+                    <span></span>
+                    <IconButton Icon="sliders" Title="Edit saved plan" OnClick="@(_ => OpenPlanEditor())" />
+                    @if (ShapeOpen)
+                    {
+                        <div class="popover message-popover shape-popover">
+                            <div class="popover-label">Turn Shape</div>
+                            @foreach (var shape in TurnShapes)
+                            {
+                                <SelectableButton @key="shape" Class="@($"select-row {(SelectedTurnShape == shape ? "is-active" : "")}")" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (SelectedTurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
+                            }
+                        </div>
+                    }
+                </div>
+                <span class="v-divider"></span>
+                <IconButton Icon="flag" Title="Create snapshot here" OnClick="@(_ => CreateSnapshot())" />
+                <IconButton Icon="copy" Title="Copy message" OnClick="@CopyMessage" />
+                <IconButton Icon="trash" Title="Delete message" OnClick="@(_ => ConfirmDelete = true)" />
             </div>
         </div>
-    </article>
-}
+    </div>
+</article>
 
 @if (ConfirmDelete)
 {
@@ -117,7 +135,7 @@ else
 
 @if (EditPlan)
 {
-    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.Author} · {Message.Timestamp}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
+    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.AuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
         <ChildContent>
             <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
                 <ChildContent>
@@ -162,20 +180,11 @@ else
                         <ChildContent>
                             @if (ActivePlanTab == "appearance")
                             {
-                                @if (Characters.Count == 0)
+                                @foreach (var character in Characters)
                                 {
-                                    <Section Title="Characters" Class="edit-plan-section">
-                                        <p class="empty-note">No characters are available for this turn.</p>
+                                    <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
+                                        <textarea class="field plan-field" rows="3" placeholder="@($"How does {character.Name} appear in this turn?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
                                     </Section>
-                                }
-                                else
-                                {
-                                    @foreach (var character in Characters)
-                                    {
-                                        <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                            <textarea class="field plan-field" rows="3" placeholder="@($"How does {character.Name} appear in this turn?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
-                                        </Section>
-                                    }
                                 }
                             }
                             else if (ActivePlanTab == "plan")
@@ -217,26 +226,17 @@ else
                             }
                             else
                             {
-                                @if (Characters.Count == 0)
+                                @foreach (var character in Characters)
                                 {
-                                    <Section Title="Characters" Class="edit-plan-section">
-                                        <p class="empty-note">No characters are available for this turn.</p>
+                                    <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
+                                        <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {character.Name} carrying?")" value="@GetPrivateIntent(character.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(character.Id, args.Value?.ToString() ?? ""))"></textarea>
                                     </Section>
-                                }
-                                else
-                                {
-                                    @foreach (var character in Characters)
-                                    {
-                                        <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                            <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {character.Name} carrying?")" value="@GetPrivateIntent(character.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(character.Id, args.Value?.ToString() ?? ""))"></textarea>
-                                        </Section>
-                                    }
                                 }
                             }
                         </ChildContent>
                         <Footer>
                             <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
-                            <AppButton Variant="primary" OnClick="@(_ => EditPlan = false)"><FaIcon Name="check" />Save Plan</AppButton>
+                            <AppButton Variant="primary" OnClick="@(_ => SavePlan())"><FaIcon Name="check" />Save Plan</AppButton>
                         </Footer>
                     </ModalStackLayout>
                 </MainContent>
@@ -245,71 +245,187 @@ else
     </ModalShell>
 }
 
+@if (EditBody)
+{
+    <ModalShell Title="Edit Message" Subtitle="@($"{Message.AuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
+        <Section Title="Body">
+            <textarea class="field plan-field" rows="8" @bind="BodyDraft"></textarea>
+        </Section>
+        <div class="modal-actions">
+            <AppButton Variant="secondary" OnClick="@(_ => EditBody = false)">Cancel</AppButton>
+            <AppButton Variant="primary" OnClick="@(_ => SaveBody())"><FaIcon Name="check" />Save Edit</AppButton>
+        </div>
+    </ModalShell>
+}
+
 @code {
     bool ConfirmDelete;
     bool EditPlan;
+    bool EditBody;
     bool AuthorOpen;
     bool ShapeOpen;
     string ActivePlanTab = "appearance";
+    string SelectedTurnShape = "";
+    string BodyDraft = "";
     string PlanShape = "Brief";
-    string Beat = "Arrival and de-escalation attempt.";
-    string Intent = "Move the scene forward while preserving character tension.";
-    string ImmediateGoal = "Physical contact with both to claim her place in the room without choosing sides.";
-    string WhyNow = "She has read the room instantly. Waiting would let the tension calcify.";
-    string ChangeIntroduced = "The dynamic shifts from a two-person standoff to a three-way scene.";
-    string Guardrails = "Keep the prose compact and grounded in observable action.";
-    readonly Dictionary<string, string> Appearances = [];
-    readonly Dictionary<string, string> PrivateIntents = [];
+    string Beat = "";
+    string Intent = "";
+    string ImmediateGoal = "";
+    string WhyNow = "";
+    string ChangeIntroduced = "";
+    string Guardrails = "";
+    Dictionary<string, string> Appearances = [];
+    Dictionary<string, string> PrivateIntents = [];
     readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
 
-    [Parameter] public RpMessage Message { get; set; } = new();
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptTurn Message { get; set; } = new();
     [Parameter] public List<RpCharacter> Characters { get; set; } = [];
     [Parameter] public bool ShowAppearance { get; set; }
     [Parameter] public bool ShowProcess { get; set; }
     [Parameter] public int SubsequentCount { get; set; }
-    [Parameter] public EventCallback<string> OnDeleteMessage { get; set; }
-    [Parameter] public EventCallback<string> OnDeleteBranch { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;
 
-    bool IsNarrator => Message.Author == "Narrator";
+    bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
     string ProseClass => IsNarrator ? "is-narrator" : "is-character";
     string ModeClass => Message.Mode switch
     {
-        "Guided AI" => "is-guided",
-        "Automatic AI" => "is-auto",
+        "guided" => "is-guided",
+        "automatic" => "is-auto",
+        "regenerated" => "is-guided",
+        "edited" => "is-manual",
         _ => "is-manual"
     };
+
+    string ModeLabel => Message.Mode switch
+    {
+        "guided" => "Guided AI",
+        "automatic" => "Automatic AI",
+        "regenerated" => "Regenerated",
+        "edited" => "Edited",
+        _ => "Manual"
+    };
+
+    RpTranscriptSnapshot? Snapshot => Session.Chat.Transcript.SnapshotFor(Message.Id);
+    IReadOnlyList<RpTranscriptTurn> Siblings => Session.Chat.Transcript.SiblingsFor(Message.Id);
+    int SiblingIndex => Math.Max(0, Siblings.ToList().FindIndex(turn => turn.Id == Message.Id));
+    int SiblingCount => Siblings.Count;
+    bool CanSelectPreviousSibling => SiblingIndex > 0;
+    bool CanSelectNextSibling => SiblingIndex >= 0 && SiblingIndex < SiblingCount - 1;
+    string BranchLabel => $"{SiblingIndex + 1}/{SiblingCount}";
+    string AppearanceSummary => string.Join("; ", Characters
+        .Where(character => Message.AppearanceByCharacterId.ContainsKey(character.Id))
+        .Select(character => $"{character.Name} {Message.AppearanceByCharacterId[character.Id]}"));
+    string FailureMessage => Message.Trace?.Status == "failed" && Message.Trace?.Data.TryGetPropertyValue("error", out var errorNode) == true
+        ? errorNode?.GetValue<string>() ?? ""
+        : "";
+
+    protected override void OnParametersSet()
+    {
+        SelectedTurnShape = string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape;
+    }
 
     async Task DeleteSingle()
     {
         ConfirmDelete = false;
-        await OnDeleteMessage.InvokeAsync(Message.Id);
+        await Session.Chat.Transcript.DeleteTurnAsync(Message.Id);
     }
 
     async Task DeleteBranch()
     {
         ConfirmDelete = false;
-        await OnDeleteBranch.InvokeAsync(Message.Id);
+        await Session.Chat.Transcript.DeleteBranchAsync(Message.Id);
+    }
+
+    async Task SelectPreviousSibling()
+    {
+        if (CanSelectPreviousSibling)
+            await Session.Chat.Transcript.SelectSiblingAsync(Siblings[SiblingIndex - 1].Id);
+    }
+
+    async Task SelectNextSibling()
+    {
+        if (CanSelectNextSibling)
+            await Session.Chat.Transcript.SelectSiblingAsync(Siblings[SiblingIndex + 1].Id);
     }
 
     void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
 
     bool IsPlanDirty() =>
-        PlanShape != "Brief" ||
-        Beat != "Arrival and de-escalation attempt." ||
-        ChangeIntroduced != "The dynamic shifts from a two-person standoff to a three-way scene." ||
-        Intent != "Move the scene forward while preserving character tension." ||
-        ImmediateGoal != "Physical contact with both to claim her place in the room without choosing sides." ||
-        WhyNow != "She has read the room instantly. Waiting would let the tension calcify." ||
-        Guardrails != "Keep the prose compact and grounded in observable action.";
+        PlanShape != (string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape) ||
+        Beat != Message.Plan.Beat ||
+        ChangeIntroduced != Message.Plan.ChangeIntroduced ||
+        Intent != Message.Plan.Intent ||
+        ImmediateGoal != Message.Plan.ImmediateGoal ||
+        WhyNow != Message.Plan.WhyNow ||
+        Guardrails != Message.Plan.Guardrails;
 
     string GetAppearance(string characterId) => Appearances.TryGetValue(characterId, out var appearance) ? appearance : "";
-
     void SetAppearance(string characterId, string appearance) => Appearances[characterId] = appearance;
-
     string GetPrivateIntent(string characterId) => PrivateIntents.TryGetValue(characterId, out var intent) ? intent : "";
-
     void SetPrivateIntent(string characterId, string intent) => PrivateIntents[characterId] = intent;
 
     async Task CopyMessage(MouseEventArgs args) => await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Body);
+
+    async Task CreateSnapshot() => await Session.Chat.Transcript.CreateSnapshotAsync(Message.Id);
+
+    void PickShape(string shape)
+    {
+        SelectedTurnShape = shape;
+        ShapeOpen = false;
+    }
+
+    async Task Regenerate()
+    {
+        var actor = Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId);
+        await Session.Chat.Transcript.RegenerateAsync(Message.Id, Message.Guidance, actor, SelectedTurnShape);
+    }
+
+    void OpenPlanEditor()
+    {
+        PlanShape = string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape;
+        Beat = Message.Plan.Beat;
+        Intent = Message.Plan.Intent;
+        ImmediateGoal = Message.Plan.ImmediateGoal;
+        WhyNow = Message.Plan.WhyNow;
+        ChangeIntroduced = Message.Plan.ChangeIntroduced;
+        Guardrails = Message.Plan.Guardrails;
+        Appearances = Message.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        PrivateIntents = Message.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        EditPlan = true;
+    }
+
+    void OpenEditBody()
+    {
+        BodyDraft = Message.Body;
+        EditBody = true;
+    }
+
+    async Task SaveBody()
+    {
+        EditBody = false;
+        await Session.Chat.Transcript.EditTurnAsync(Message.Id, BodyDraft, Message.Plan, Message.AppearanceByCharacterId, Message.PrivateIntentByCharacterId);
+    }
+
+    async Task SavePlan()
+    {
+        var plan = new RpTurnPlan
+        {
+            TurnShape = PlanShape,
+            Beat = Beat,
+            Intent = Intent,
+            ImmediateGoal = ImmediateGoal,
+            WhyNow = WhyNow,
+            ChangeIntroduced = ChangeIntroduced,
+            Guardrails = Guardrails
+        };
+        await Session.Chat.Transcript.SavePlanAsync(Message.Id, plan, Appearances, PrivateIntents);
+        EditPlan = false;
+    }
+
+    async Task RecastTurn(RpCharacter? character)
+    {
+        AuthorOpen = false;
+        await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
+    }
 }

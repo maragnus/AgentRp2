@@ -1,3 +1,5 @@
+using AgentRp.Session;
+
 namespace AgentRp.Models;
 
 public static class SeedData
@@ -47,21 +49,147 @@ public static class SeedData
         new() { Id = "ch4", Title = "The Drive", Updated = "Apr 19", Messages = 3, Location = "Tesla Model S Plaid" }
     ];
 
-    public static List<RpMessage> Messages()
+    public static RpTranscriptState Transcript()
     {
-        var p1 = ProcessStepsOne();
-        var p2 = ProcessStepsTwo();
-        return
-        [
-            new() { Id = "p1", Type = "process", Summary = "Guided AI · Narrator · Appearance -> Responder -> Planning -> Writing", Status = "completed", Duration = "4.0s", Timestamp = "yesterday", Steps = p1 },
-            new() { Id = "n1", Type = "narrative", Author = "Narrator", Mode = "Guided AI", Timestamp = "yesterday", Body = "Bella knocks once and lets herself into the apartment's open living space, her gaze sweeping the charged silence at the table where Jake sits rigidly in sweats and hoodie, arms crossed in obstinate simmer, while Gemma lounges opposite in a loose crop top and miniskirt hiked daringly high, her deadpan expression a mask of defiant nonchalance; the roommates' mismatched energies hang thick, postures locked in pre-arrival friction, as Bella's warm eyes linger a beat too long on Gemma's revealing hem, a subtle thrill flickering beneath her composed smile.", Branch = "5/5" },
-            new() { Id = "a1", Type = "appearance", Summary = "Bella has entered the living space and stands at the table; Jake sits rigidly with arms crossed; Gemma lounges opposite.", CharacterCount = 3, Timestamp = "yesterday" },
-            new() { Id = "p2", Type = "process", Summary = "Automatic AI · Bella · Appearance -> Responder -> Planning -> Writing", Status = "completed", Duration = "4.0s", Timestamp = "yesterday", Steps = p1 },
-            new() { Id = "n2", Type = "narrative", Author = "Bella", Mode = "Automatic AI", Timestamp = "yesterday", Body = "Bella crosses to the table, rests a gentle hand on Jake's shoulder then Gemma's bare midriff. \"Hey, you two... missed you both.\" *smiles warmly*" },
-            new() { Id = "a2", Type = "appearance", Summary = "Bella stands at the table with hands resting on Jake's shoulder and Gemma's bare midriff; Jake and Gemma are seated opposite each other.", CharacterCount = 3, Timestamp = "yesterday" },
-            new() { Id = "p3", Type = "process", Summary = "Automatic AI · Gemma · Appearance -> Responder -> Planning -> Writing", Status = "completed", Duration = "3.3s", Timestamp = "yesterday", Steps = p2 },
-            new() { Id = "n3", Type = "narrative", Author = "Gemma", Mode = "Automatic AI", Timestamp = "yesterday", Body = "Gemma tips her chin up toward Bella without turning, a slow half-smile pulling at the corner of her mouth. \"Missed you too, Bell.\" *her gaze slides briefly to Jake* \"Glad someone did.\"" }
-        ];
+        var started = DateTime.UtcNow.Date.AddDays(-1).AddHours(18);
+        var rootScene = new RpSceneFrame
+        {
+            LocationId = "l1",
+            LocationName = "Devonshire Apartment 822",
+            InSceneCharacterIds = ["c1", "c2", "c3"]
+        };
+
+        var turn1 = new RpTranscriptTurn
+        {
+            Id = "turn-1",
+            CreatedUtc = started,
+            UpdatedUtc = started,
+            Mode = "guided",
+            AuthorName = "Narrator",
+            ActorName = "Narrator",
+            Body = "Bella knocks once and lets herself into the apartment's open living space, her gaze sweeping the charged silence at the table where Jake sits rigidly in sweats and hoodie, arms crossed in obstinate simmer, while Gemma lounges opposite in a loose crop top and miniskirt hiked daringly high, her deadpan expression a mask of defiant nonchalance; the roommates' mismatched energies hang thick, postures locked in pre-arrival friction, as Bella's warm eyes linger a beat too long on Gemma's revealing hem, a subtle thrill flickering beneath her composed smile.",
+            Plan = new()
+            {
+                TurnShape = "Brief",
+                Beat = "Arrival and de-escalation attempt.",
+                Intent = "Set the opening tension and invite the next beat through Bella's entrance.",
+                ImmediateGoal = "Bring Bella into the room as the new dramatic variable.",
+                WhyNow = "Her arrival interrupts a fragile two-person standoff.",
+                ChangeIntroduced = "The scene becomes a three-way emotional triangle.",
+                Guardrails = "Keep the setup grounded in visible action."
+            },
+            AppearanceByCharacterId = new()
+            {
+                ["c1"] = "Standing just inside the apartment entrance. Coat still on. Gaze moving across the room toward the table. Expression: composed with a slight cautious smile.",
+                ["c2"] = "Seated at the dining table. Posture rigid, arms crossed. Wearing a loose crop top and miniskirt hiked high. Expression: deadpan, gaze flat.",
+                ["c3"] = "Seated at the dining table. Posture rigid, arms crossed. Wearing grey sweats. Expression: tense and guarded."
+            },
+            PrivateIntentByCharacterId = new() { ["c1"] = "Take in the tension before choosing how to intervene." },
+            Trace = GuidedNarratorTrace(started),
+            Scene = SessionCloner.Clone(rootScene)
+        };
+
+        var turn2Time = started.AddMinutes(3);
+        var scene2 = SessionCloner.Clone(rootScene);
+        var turn2 = new RpTranscriptTurn
+        {
+            Id = "turn-2",
+            ParentTurnId = "turn-1",
+            CreatedUtc = turn2Time,
+            UpdatedUtc = turn2Time,
+            Mode = "automatic",
+            AuthorCharacterId = "c1",
+            AuthorName = "Bella",
+            ActorCharacterId = "c1",
+            ActorName = "Bella",
+            Body = "Bella crosses to the table, rests a gentle hand on Jake's shoulder then Gemma's bare midriff. \"Hey, you two... missed you both.\" *smiles warmly*",
+            Guidance = "",
+            Plan = new()
+            {
+                TurnShape = "Brief",
+                Beat = "Arrival and de-escalation attempt.",
+                Intent = "Acknowledge both people without choosing sides.",
+                ImmediateGoal = "Claim her place in the room with gentle physical contact.",
+                WhyNow = "Waiting would let the tension calcify.",
+                ChangeIntroduced = "Bella becomes the active bridge between Jake and Gemma.",
+                Guardrails = "Keep the touch warm and unforced."
+            },
+            AppearanceByCharacterId = new()
+            {
+                ["c1"] = "Standing at the dining table between Jake and Gemma, one hand on Jake's shoulder and one on Gemma's bare midriff.",
+                ["c2"] = "Still seated at the table, gaze angled up toward Bella.",
+                ["c3"] = "Still seated, tense, attention pulled to Bella's touch."
+            },
+            PrivateIntentByCharacterId = new() { ["c1"] = "Ground both of them without naming the conflict outright." },
+            SnapshotId = "snap-1",
+            Trace = BellaTrace(turn2Time),
+            Scene = scene2
+        };
+
+        var turn3Time = turn2Time.AddMinutes(2);
+        var turn3 = new RpTranscriptTurn
+        {
+            Id = "turn-3",
+            ParentTurnId = "turn-2",
+            CreatedUtc = turn3Time,
+            UpdatedUtc = turn3Time,
+            Mode = "automatic",
+            AuthorCharacterId = "c2",
+            AuthorName = "Gemma",
+            ActorCharacterId = "c2",
+            ActorName = "Gemma",
+            Body = "Gemma tips her chin up toward Bella without turning, a slow half-smile pulling at the corner of her mouth. \"Missed you too, Bell.\" *her gaze slides briefly to Jake* \"Glad someone did.\"",
+            Plan = new()
+            {
+                TurnShape = "Brief",
+                Beat = "Deflection through warmth.",
+                Intent = "Accept Bella's warmth without looking exposed.",
+                ImmediateGoal = "Return the affection and land a plausible barb at Jake.",
+                WhyNow = "Bella has created a tiny opening, and Gemma wants to exploit it before it closes.",
+                ChangeIntroduced = "Gemma redirects the tension toward Jake without rejecting Bella.",
+                Guardrails = "Keep the barb plausible and emotionally revealing."
+            },
+            AppearanceByCharacterId = new()
+            {
+                ["c1"] = "Still standing between them, attention fixed on Gemma's reply.",
+                ["c2"] = "Chin tipped up toward Bella, half-smile visible, gaze briefly sliding to Jake.",
+                ["c3"] = "Seated and quiet, his focus caught between Bella's touch and Gemma's barb."
+            },
+            PrivateIntentByCharacterId = new() { ["c2"] = "Take Bella's affection while reminding Jake she noticed his silence." },
+            Trace = GemmaTrace(turn3Time),
+            Scene = SessionCloner.Clone(scene2)
+        };
+
+        var snapshot = new RpTranscriptSnapshot
+        {
+            Id = "snap-1",
+            TurnId = "turn-2",
+            CreatedUtc = turn2Time,
+            Summary = "Bella has entered the apartment, crossed to the table, and physically bridged Jake and Gemma without taking sides, shifting the scene from a standoff to a tense triangle.",
+            EarlierPrivateIntentContinuity = "Bella wants to ground both of them without forcing the conflict into the open.",
+            CharacterAppearances = new()
+            {
+                ["c1"] = turn2.AppearanceByCharacterId["c1"],
+                ["c2"] = turn2.AppearanceByCharacterId["c2"],
+                ["c3"] = turn2.AppearanceByCharacterId["c3"]
+            },
+            Scene = SessionCloner.Clone(scene2),
+            Trace = SnapshotTrace(turn2Time.AddSeconds(2))
+        };
+
+        return new()
+        {
+            RootScene = rootScene,
+            Turns = [turn1, turn2, turn3],
+            Snapshots = [snapshot],
+            ActiveLeafTurnId = "turn-3",
+            BranchSelections = new()
+            {
+                [TranscriptGraph.RootBranchKey] = "turn-1",
+                ["turn-1"] = "turn-2",
+                ["turn-2"] = "turn-3"
+            }
+        };
     }
 
     public static List<AiProvider> Providers() =>
@@ -199,19 +327,319 @@ public static class SeedData
         new("Limits", "emerald", ["No Random Cruelty", "No Instant Vulnerability", "No Psychic Knowledge", "No Solving Every Conflict"])
     ];
 
-    static List<RpProcessStep> ProcessStepsOne() =>
-    [
-        new() { Id = "appearance", Label = "Appearance", Icon = "eye", TokensIn = 1840, TokensOut = 312, TotalTokens = 2152, Duration = "1.1s", SystemPrompt = "You are a precise scene-state tracker for a collaborative fiction tool. Your job is to maintain an accurate, present-tense description of every character's physical position, posture, expression, clothing, and proximity to others. Be specific and concrete. Do not interpret subtext — only record observable facts.", UserPrompt = "Current scene: Devonshire Apartment 822.\nCharacters present: Bella, Jake, Gemma.\n\nPrevious appearance state:\n(none — scene start)\n\nNarrator wrote:\n\"Bella knocks once and lets herself into the apartment's open living space, her gaze sweeping the charged silence at the table where Jake sits rigidly in sweats and hoodie, arms crossed in obstinate simmer, while Gemma lounges opposite in a loose crop top and miniskirt hiked daringly high…\"\n\nUpdate the appearance state for all characters.", Output = "BELLA: Standing just inside the apartment entrance. Coat still on. Gaze moving across the room toward the table. Expression: composed with a slight cautious smile.\n\nJAKE: Seated at the dining table. Posture rigid, arms crossed. Wearing grey sweatshirt and sweatpants. Expression: tense, guarded, looking toward the door.\n\nGEMMA: Seated across the table from Jake. Posture relaxed, almost exaggeratedly so. Wearing a loose crop top and a miniskirt hiked high. Expression: deadpan, chin level, gaze flat." },
-        new() { Id = "responder", Label = "Responder", Icon = "users", TokensIn = 2210, TokensOut = 88, TotalTokens = 2298, Duration = "0.7s", SystemPrompt = "You determine which character should respond next in a collaborative fiction scene. Consider dramatic momentum, who has been addressed, who has unspoken motivation, and whose silence would be most conspicuous. Output only the character name and a one-sentence reason.", UserPrompt = "Scene: Devonshire Apartment 822.\nPresent: Bella, Jake, Gemma.\nLast turn: Narrator (Guided AI)\nTurn shape requested: Brief\n\nWho should respond next?", Output = "Responder: Bella\nReason: She has just entered the scene and her gaze has already registered the tension — she is the active arrival and the natural next voice." },
-        new() { Id = "planning", Label = "Planning", Icon = "sliders", TokensIn = 3104, TokensOut = 441, TotalTokens = 3545, Duration = "1.4s", SystemPrompt = "You are a dramaturgical planner for a collaborative fiction session. Given the scene state, character profiles, and recent turns, produce a structured plan for the next character's response. Include: narrative beat, intent, immediate goal, why now, and what change this turn introduces. Do not write the prose itself.", UserPrompt = "Character: Bella (warm, steady, emotionally intelligent surgeon)\nScene: Devonshire Apt 822 — she has just entered to find Jake and Gemma in visible tension.\nTurn shape: Brief\nPrior turns: Narrator set the scene.\n\nProduce a turn plan.", Output = "BEAT: Arrival and de-escalation attempt.\nINTENT: Bella wants to acknowledge both people simultaneously and signal that her presence is neutral, warm, and grounding — not an intrusion or a judgment.\nIMMEDIATE GOAL: Physical contact with both to claim her place in the room without choosing sides.\nWHY NOW: She has read the room instantly. Waiting would let the tension calcify.\nCHANGE INTRODUCED: The triangle is now complete. The dynamic shifts from a two-person standoff to a three-way scene with Bella as a new variable.\nGUARDRAILS: Do not have Bella ask what's wrong. Do not have her look at Jake first. The touch should feel natural, not pointed." },
-        new() { Id = "writing", Label = "Writing", Icon = "edit", TokensIn = 4820, TokensOut = 67, TotalTokens = 4887, Duration = "0.8s", SystemPrompt = "You are a skilled prose writer for a collaborative fiction tool, writing in the style of contemporary literary fiction. Write in third-person limited from the perspective of the active character. Be economical — a Brief turn is 1–3 sentences of action and dialogue. Use italics for action beats (*like this*). Stay tightly in character voice.", UserPrompt = "Character: Bella\nTurn shape: Brief\nPlan: Cross to the table, touch both Jake and Gemma, speak a warm greeting that claims no sides.\nAppearance state: Bella standing at entrance; Jake rigid at table; Gemma lounging opposite.\n\nWrite the turn.", Output = "Bella crosses to the table, rests a gentle hand on Jake's shoulder then Gemma's bare midriff. \"Hey, you two... missed you both.\" *smiles warmly*" }
-    ];
+    static RpTurnTrace GuidedNarratorTrace(DateTime startedUtc) => new()
+    {
+        Summary = "Completed · Narrator · Appearance -> Selection -> Planning -> Prose",
+        Status = "completed",
+        StartedUtc = startedUtc,
+        CompletedUtc = startedUtc.AddSeconds(4),
+        ProviderId = "ap1",
+        ProviderName = "Grok / xAI",
+        ModelId = "grok-4-0709",
+        InputTokens = 12974,
+        OutputTokens = 908,
+        TotalTokens = 13882,
+        DurationSeconds = 4,
+        Steps =
+        [
+            new()
+            {
+                Id = "appearance",
+                Label = "Appearance",
+                Status = "completed",
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc.AddSeconds(1.1),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 1840,
+                OutputTokens = 312,
+                TotalTokens = 2152,
+                DurationSeconds = 1.1,
+                SystemPrompt = "You update character scene state. Return JSON only.",
+                UserPrompt = "Characters:\nBella\nJake\nGemma\n\nTranscript:\nNarrator: Bella knocks once and lets herself into the apartment...",
+                RawOutput = "{\"characters\":{\"Bella\":\"Standing just inside the apartment entrance...\"}}",
+                StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing just inside the apartment entrance...\"}}"
+            },
+            new()
+            {
+                Id = "selection",
+                Label = "Selection",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(1.1),
+                CompletedUtc = startedUtc.AddSeconds(1.8),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 2210,
+                OutputTokens = 88,
+                TotalTokens = 2298,
+                DurationSeconds = 0.7,
+                SystemPrompt = "Choose the next responder. Return JSON only.",
+                UserPrompt = "Scene transcript and characters...",
+                RawOutput = "{\"characterName\":\"Bella\",\"reason\":\"She is the active arrival.\"}",
+                StructuredOutputJson = "{\"characterName\":\"Bella\",\"reason\":\"She is the active arrival.\"}"
+            },
+            new()
+            {
+                Id = "planning",
+                Label = "Planning",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(1.8),
+                CompletedUtc = startedUtc.AddSeconds(3.2),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 3104,
+                OutputTokens = 441,
+                TotalTokens = 3545,
+                DurationSeconds = 1.4,
+                SystemPrompt = "Produce a structured dramatic plan before prose. Return JSON only.",
+                UserPrompt = "Actor: Bella...",
+                RawOutput = "{\"beat\":\"Arrival and de-escalation attempt.\",\"intent\":\"Acknowledge both people without choosing sides.\"}",
+                StructuredOutputJson = "{\"beat\":\"Arrival and de-escalation attempt.\",\"intent\":\"Acknowledge both people without choosing sides.\"}"
+            },
+            new()
+            {
+                Id = "prose",
+                Label = "Prose",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(3.2),
+                CompletedUtc = startedUtc.AddSeconds(4),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 5820,
+                OutputTokens = 67,
+                TotalTokens = 5887,
+                DurationSeconds = 0.8,
+                SystemPrompt = "Write polished contemporary roleplay prose.",
+                UserPrompt = "Narrator opening beat...",
+                RawOutput = "Bella knocks once and lets herself into the apartment's open living space..."
+            }
+        ]
+    };
 
-    static List<RpProcessStep> ProcessStepsTwo() =>
-    [
-        new() { Id = "appearance", Label = "Appearance", Icon = "eye", TokensIn = 2104, TokensOut = 298, TotalTokens = 2402, Duration = "0.9s", SystemPrompt = "Maintain character positions.", UserPrompt = "Bella wrote a greeting and touched both characters. Update appearance.", Output = "BELLA: Standing at the dining table between Jake and Gemma.\n\nJAKE: Still tense, eyes on Bella.\n\nGEMMA: Gaze shifted to Bella." },
-        new() { Id = "responder", Label = "Responder", Icon = "users", TokensIn = 2380, TokensOut = 74, TotalTokens = 2454, Duration = "0.5s", SystemPrompt = "Determine responder.", UserPrompt = "Who responds next?", Output = "Responder: Gemma\nReason: Bella's greeting hangs in the air and Gemma's response carries the most dramatic weight." },
-        new() { Id = "planning", Label = "Planning", Icon = "sliders", TokensIn = 3340, TokensOut = 388, TotalTokens = 3728, Duration = "1.2s", SystemPrompt = "Plan Gemma's response.", UserPrompt = "Character: Gemma. Turn shape: Brief.", Output = "BEAT: Deflection through warmth.\nINTENT: Accept Bella's affection without appearing vulnerable.\nGUARDRAILS: Keep the barb plausible." },
-        new() { Id = "writing", Label = "Writing", Icon = "edit", TokensIn = 4210, TokensOut = 59, TotalTokens = 4269, Duration = "0.6s", SystemPrompt = "Write Gemma's turn.", UserPrompt = "Return Bella's greeting warmly, land a quiet dig at Jake.", Output = "Gemma tips her chin up toward Bella without turning. \"Missed you too, Bell.\" *her gaze slides briefly to Jake* \"Glad someone did.\"" }
-    ];
+    static RpTurnTrace BellaTrace(DateTime startedUtc) => new()
+    {
+        Summary = "Completed · Bella · Appearance -> Selection -> Planning -> Prose",
+        Status = "completed",
+        StartedUtc = startedUtc,
+        CompletedUtc = startedUtc.AddSeconds(4),
+        ProviderId = "ap1",
+        ProviderName = "Grok / xAI",
+        ModelId = "grok-4-0709",
+        InputTokens = 12874,
+        OutputTokens = 829,
+        TotalTokens = 13703,
+        DurationSeconds = 4,
+        Steps =
+        [
+            new()
+            {
+                Id = "appearance",
+                Label = "Appearance",
+                Status = "completed",
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc.AddSeconds(0.9),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 2104,
+                OutputTokens = 298,
+                TotalTokens = 2402,
+                DurationSeconds = 0.9,
+                SystemPrompt = "You update character scene state. Return JSON only.",
+                UserPrompt = "Bella wrote a greeting and touched both characters. Update appearance.",
+                RawOutput = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}",
+                StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}"
+            },
+            new()
+            {
+                Id = "selection",
+                Label = "Selection",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(0.9),
+                CompletedUtc = startedUtc.AddSeconds(1.4),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 2380,
+                OutputTokens = 74,
+                TotalTokens = 2454,
+                DurationSeconds = 0.5,
+                SystemPrompt = "Choose the next responder. Return JSON only.",
+                UserPrompt = "Scene transcript and characters...",
+                RawOutput = "{\"characterName\":\"Gemma\",\"reason\":\"Bella's greeting hangs in the air and Gemma's response carries the most dramatic weight.\"}",
+                StructuredOutputJson = "{\"characterName\":\"Gemma\",\"reason\":\"Bella's greeting hangs in the air and Gemma's response carries the most dramatic weight.\"}"
+            },
+            new()
+            {
+                Id = "planning",
+                Label = "Planning",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(1.4),
+                CompletedUtc = startedUtc.AddSeconds(2.6),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 3340,
+                OutputTokens = 388,
+                TotalTokens = 3728,
+                DurationSeconds = 1.2,
+                SystemPrompt = "Produce a structured dramatic plan before prose. Return JSON only.",
+                UserPrompt = "Actor: Bella...",
+                RawOutput = "{\"beat\":\"Arrival and de-escalation attempt.\",\"intent\":\"Acknowledge both people without choosing sides.\"}",
+                StructuredOutputJson = "{\"beat\":\"Arrival and de-escalation attempt.\",\"intent\":\"Acknowledge both people without choosing sides.\"}"
+            },
+            new()
+            {
+                Id = "prose",
+                Label = "Prose",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(2.6),
+                CompletedUtc = startedUtc.AddSeconds(4),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 5050,
+                OutputTokens = 69,
+                TotalTokens = 5119,
+                DurationSeconds = 1.4,
+                SystemPrompt = "Write polished contemporary roleplay prose.",
+                UserPrompt = "Character: Bella...",
+                RawOutput = "Bella crosses to the table, rests a gentle hand on Jake's shoulder then Gemma's bare midriff..."
+            }
+        ]
+    };
+
+    static RpTurnTrace GemmaTrace(DateTime startedUtc) => new()
+    {
+        Summary = "Completed · Gemma · Appearance -> Selection -> Planning -> Prose",
+        Status = "completed",
+        StartedUtc = startedUtc,
+        CompletedUtc = startedUtc.AddSeconds(3.3),
+        ProviderId = "ap1",
+        ProviderName = "Grok / xAI",
+        ModelId = "grok-4-0709",
+        InputTokens = 11930,
+        OutputTokens = 774,
+        TotalTokens = 12704,
+        DurationSeconds = 3.3,
+        Steps =
+        [
+            new()
+            {
+                Id = "appearance",
+                Label = "Appearance",
+                Status = "completed",
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc.AddSeconds(0.9),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 2104,
+                OutputTokens = 298,
+                TotalTokens = 2402,
+                DurationSeconds = 0.9,
+                SystemPrompt = "Maintain character positions.",
+                UserPrompt = "Bella wrote a greeting and touched both characters. Update appearance.",
+                RawOutput = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}",
+                StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}"
+            },
+            new()
+            {
+                Id = "selection",
+                Label = "Selection",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(0.9),
+                CompletedUtc = startedUtc.AddSeconds(1.4),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 2380,
+                OutputTokens = 74,
+                TotalTokens = 2454,
+                DurationSeconds = 0.5,
+                SystemPrompt = "Determine responder.",
+                UserPrompt = "Who responds next?",
+                RawOutput = "{\"characterName\":\"Gemma\",\"reason\":\"Bella's greeting hangs in the air and Gemma's response carries the most dramatic weight.\"}",
+                StructuredOutputJson = "{\"characterName\":\"Gemma\",\"reason\":\"Bella's greeting hangs in the air and Gemma's response carries the most dramatic weight.\"}"
+            },
+            new()
+            {
+                Id = "planning",
+                Label = "Planning",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(1.4),
+                CompletedUtc = startedUtc.AddSeconds(2.6),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 3340,
+                OutputTokens = 388,
+                TotalTokens = 3728,
+                DurationSeconds = 1.2,
+                SystemPrompt = "Plan Gemma's response.",
+                UserPrompt = "Character: Gemma. Turn shape: Brief.",
+                RawOutput = "{\"beat\":\"Deflection through warmth.\",\"intent\":\"Accept Bella's affection without appearing vulnerable.\"}",
+                StructuredOutputJson = "{\"beat\":\"Deflection through warmth.\",\"intent\":\"Accept Bella's affection without appearing vulnerable.\"}"
+            },
+            new()
+            {
+                Id = "prose",
+                Label = "Prose",
+                Status = "completed",
+                StartedUtc = startedUtc.AddSeconds(2.6),
+                CompletedUtc = startedUtc.AddSeconds(3.3),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 4106,
+                OutputTokens = 58,
+                TotalTokens = 4164,
+                DurationSeconds = 0.7,
+                SystemPrompt = "Write Gemma's turn.",
+                UserPrompt = "Return Bella's greeting warmly, land a quiet dig at Jake.",
+                RawOutput = "Gemma tips her chin up toward Bella without turning..."
+            }
+        ]
+    };
+
+    static RpTurnTrace SnapshotTrace(DateTime startedUtc) => new()
+    {
+        Summary = "Completed · Snapshot",
+        Status = "completed",
+        StartedUtc = startedUtc,
+        CompletedUtc = startedUtc.AddSeconds(0.8),
+        ProviderId = "ap1",
+        ProviderName = "Grok / xAI",
+        ModelId = "grok-4-0709",
+        InputTokens = 1420,
+        OutputTokens = 94,
+        TotalTokens = 1514,
+        DurationSeconds = 0.8,
+        Steps =
+        [
+            new()
+            {
+                Id = "snapshot",
+                Label = "Snapshot",
+                Status = "completed",
+                StartedUtc = startedUtc,
+                CompletedUtc = startedUtc.AddSeconds(0.8),
+                ProviderId = "ap1",
+                ProviderName = "Grok / xAI",
+                ModelId = "grok-4-0709",
+                InputTokens = 1420,
+                OutputTokens = 94,
+                TotalTokens = 1514,
+                DurationSeconds = 0.8,
+                SystemPrompt = "You summarize the state of an interactive roleplay scene for future continuation. Return concise JSON only.",
+                UserPrompt = "Transcript and appearance state after Bella enters the room.",
+                RawOutput = "{\"summary\":\"Bella has entered the apartment and physically bridged Jake and Gemma without taking sides.\"}",
+                StructuredOutputJson = "{\"summary\":\"Bella has entered the apartment and physically bridged Jake and Gemma without taking sides.\"}"
+            }
+        ]
+    };
 }

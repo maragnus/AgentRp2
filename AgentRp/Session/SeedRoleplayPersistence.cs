@@ -24,7 +24,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
     public Task<RpChatDocument> LoadChatDocumentAsync(string chatId, CancellationToken cancellationToken = default)
     {
         lock (_gate)
-            return Task.FromResult(SessionCloner.Clone(GetOrCreateDocument(chatId)));
+            return Task.FromResult(SessionCloner.Clone(GetOrCreateDocument(chatId)).ApplyProjection());
     }
 
     public Task SaveChatsAsync(IReadOnlyList<RpChat> chats, CancellationToken cancellationToken = default)
@@ -51,9 +51,10 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             var chat = _chats.FirstOrDefault(chat => chat.Id == document.Chat.Id);
             if (chat is not null)
             {
+                TranscriptProjector.Apply(document);
                 chat.Title = document.Chat.Title;
                 chat.Location = document.Chat.Location;
-                chat.Messages = document.Messages.Count(message => message.Type != "process" && message.Type != "appearance");
+                chat.Messages = document.Chat.Messages;
                 chat.Updated = document.Chat.Updated;
                 chat.Starred = document.Chat.Starred;
             }
@@ -76,8 +77,9 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             Items = SeedData.Items().Select(SessionCloner.Clone).ToList(),
             Timeline = SeedData.Timeline().Select(SessionCloner.Clone).ToList(),
             Images = SeedData.GalleryImages().Select(SessionCloner.Clone).ToList(),
-            Messages = SeedData.Messages().Select(SessionCloner.Clone).ToList()
+            Transcript = SessionCloner.Clone(SeedData.Transcript())
         };
+        TranscriptProjector.Apply(document);
         _documents[chatId] = document;
         return document;
     }

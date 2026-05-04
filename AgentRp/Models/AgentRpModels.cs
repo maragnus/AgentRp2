@@ -85,36 +85,6 @@ public sealed class RpChat
     public string Location { get; set; } = "";
 }
 
-public sealed class RpProcessStep
-{
-    public string Id { get; set; } = "";
-    public string Label { get; set; } = "";
-    public string Icon { get; set; } = "";
-    public int TokensIn { get; set; }
-    public int TokensOut { get; set; }
-    public int TotalTokens { get; set; }
-    public string Duration { get; set; } = "";
-    public string SystemPrompt { get; set; } = "";
-    public string UserPrompt { get; set; } = "";
-    public string Output { get; set; } = "";
-}
-
-public sealed class RpMessage
-{
-    public string Id { get; set; } = "";
-    public string Type { get; set; } = "";
-    public string Summary { get; set; } = "";
-    public string Status { get; set; } = "";
-    public string Duration { get; set; } = "";
-    public string Timestamp { get; set; } = "";
-    public string Author { get; set; } = "";
-    public string Mode { get; set; } = "";
-    public string Body { get; set; } = "";
-    public string Branch { get; set; } = "";
-    public int CharacterCount { get; set; }
-    public List<RpProcessStep> Steps { get; set; } = [];
-}
-
 public sealed class GalleryImage
 {
     public string Id { get; set; } = "";

@@ -37,6 +37,13 @@
 
     <section class="claude-chat-scroll">
         <div style="flex:1">
+            @if (Session.Chat.Transcript.LastBackgroundError is not null)
+            {
+                <div class="appearance-row" style="margin:0 16px 12px;border-color:var(--c-rose);color:var(--c-rose)">
+                    <FaIcon Name="warning" />
+                    <span style="flex:1">@Session.Chat.Transcript.LastBackgroundError.Message</span>
+                </div>
+            }
             @for (var i = 0; i < Messages.Count; i++)
             {
                 var message = Messages[i];
@@ -46,14 +53,12 @@
                              Characters="Characters"
                              ShowAppearance="ShowAppearance"
                              ShowProcess="ShowProcess"
-                             SubsequentCount="subsequentCount"
-                             OnDeleteMessage="DeleteMessage"
-                             OnDeleteBranch="DeleteBranch" />
+                             SubsequentCount="subsequentCount" />
             }
         </div>
         <div class="claude-footer">
             <div class="claude-composer">
-                <textarea @bind="Draft" @onkeydown="HandleKeyDown" placeholder="Write a message, or let AI continue the scene…"></textarea>
+                <textarea @bind="Draft" @onkeydown="HandleKeyDown" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
                 <div class="claude-composer-actions">
                     <div class="dropdown-wrap">
                         <AppButton Variant="secondary" Size="xs" OnClick="@(_ => SpeakerOpen = !SpeakerOpen)">
@@ -90,7 +95,7 @@
                         {
                             <div class="popover composer-popover bottom-right">
                                 <div class="popover-label">Respond As</div>
-                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
                                 @foreach (var character in Characters)
                                 {
                                     <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
@@ -102,7 +107,7 @@
                     <span class="v-divider"></span>
 
                     <div class="send-combo">
-                        <SelectableButton Class="send-mode" Title="@ModeTitle" OnClick="@(_ => PostCombo())">
+                        <SelectableButton Class="send-mode" Title="@ModeTitle" OnClick="@(_ => GenerateTurn())">
                             <FaIcon Name="@ModeIcon" /> @ModeLabel
                         </SelectableButton>
                         <SelectableButton Class="send-shape" Title="Select Turn Shape" OnClick="@(_ => ShapeOpen = !ShapeOpen)">
@@ -122,10 +127,13 @@
 
                     <span class="v-divider"></span>
 
-                    <AppButton Variant="@(Draft.Trim().Length > 0 ? "primary" : "ghost")" Size="xs" Disabled="@(Draft.Trim().Length == 0)" Title="Send (⌘↵)" OnClick="@PostCombo">
-                        <FaIcon Name="send" /> Post
+                    <AppButton Variant="secondary" Size="xs" Disabled="@(Draft.Trim().Length == 0)" Title="Post the text directly as a manual turn" OnClick="@PostManual">
+                        <FaIcon Name="book-open" /> Manual
                     </AppButton>
-                    <span class="shortcut">⌘↵</span>
+                    <AppButton Variant="primary" Size="xs" Title="Generate next turn (Ctrl+Enter)" OnClick="@GenerateTurn">
+                        <FaIcon Name="sparkle" /> Generate
+                    </AppButton>
+                    <span class="shortcut">Ctrl+↵</span>
                 </div>
             </div>
         </div>
@@ -147,14 +155,14 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
     RpChat Chat => Session.Chats.Active ?? new() { Title = "Loading", Location = "" };
-    List<RpMessage> Messages => Session.Chat.Transcript.Items;
+    List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
 
     bool IsGuided => Draft.Trim().Length > 0;
     string SpeakerName => Session.SpeakingAs?.Name ?? "Narrator";
     string ModeLabel => IsGuided ? "Guided" : "Auto";
     string ModeIcon => IsGuided ? "layers" : "zap";
-    string ModeTitle => IsGuided ? "Post guided message (⌘↵)" : "Auto-continue scene (⌘↵)";
+    string ModeTitle => IsGuided ? "Generate guided turn (Ctrl+Enter)" : "Auto-continue scene (Ctrl+Enter)";
 
     protected override void OnInitialized()
     {
@@ -187,20 +195,26 @@
 
     async Task HandleKeyDown(KeyboardEventArgs args)
     {
-        if (args.Key == "Enter" && (args.MetaKey || args.CtrlKey))
-            await PostCombo();
+        if (args.Key == "Enter" && args.CtrlKey)
+            await GenerateTurn();
     }
 
-    async Task PostCombo()
+    async Task GenerateTurn()
     {
         var text = Draft.Trim();
         Draft = "";
-        await Session.Chat.Transcript.PostAsync(text, Session.SpeakingAs, IsGuided ? "guided" : "automatic");
+        await Session.Chat.Transcript.GenerateAsync(text, RespondAs, IsGuided ? "guided" : "automatic", TurnShape);
     }
 
-    Task DeleteMessage(string id) => Session.Chat.Transcript.DeleteMessageAsync(id);
+    async Task PostManual()
+    {
+        var text = Draft.Trim();
+        if (text.Length == 0)
+            return;
 
-    Task DeleteBranch(string id) => Session.Chat.Transcript.DeleteBranchAsync(id);
+        Draft = "";
+        await Session.Chat.Transcript.PostManualAsync(text, Session.SpeakingAs);
+    }
 
     public void Dispose()
     {

@@ -1,4 +1,5 @@
 using AgentRp.Models;
+using AgentRp.Services;
 
 namespace AgentRp.Session;
 
@@ -174,7 +175,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
         lock (_gate)
         {
-            chat = new() { Id = NextChatId(), Title = "Untitled Scene", Updated = "today", Location = location };
+            chat = new() { Id = NextChatId(), Title = "Untitled Scene", Updated = RelativeDateFormatter.FormatDate(DateTime.UtcNow), Location = location };
             _chats!.Insert(0, chat);
             _chatListVersion++;
             version = _chatListVersion;
@@ -186,8 +187,16 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 Items = template?.Items.Select(SessionCloner.Clone).ToList() ?? [],
                 Timeline = template?.Timeline.Select(SessionCloner.Clone).ToList() ?? [],
                 Images = template?.Images.Select(SessionCloner.Clone).ToList() ?? [],
-                Messages = []
+                Transcript = new()
             };
+            document.Transcript.RootScene.LocationName = location;
+            document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault(item => item.Name == location)?.Id
+                ?? document.Locations.FirstOrDefault(locationItem => locationItem.IsActive)?.Id
+                ?? document.Locations.FirstOrDefault()?.Id
+                ?? "";
+            document.Transcript.RootScene.InSceneCharacterIds = document.Characters.Where(character => character.InScene).Select(character => character.Id).ToList();
+            document.Transcript.RootScene.InSceneItemIds = document.Items.Where(item => item.InScene).Select(item => item.Id).ToList();
+            TranscriptProjector.Apply(document);
             _loadedChats[chat.Id] = new()
             {
                 Document = SessionCloner.Clone(document),
@@ -234,6 +243,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             }
 
             ApplyArea(loaded.Document, document, area);
+            TranscriptProjector.Apply(loaded.Document);
             loaded.Version++;
             loaded.LastAccess = DateTimeOffset.UtcNow;
             version = loaded.Version;
@@ -295,8 +305,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 target.Images = source.Images.Select(SessionCloner.Clone).ToList();
                 break;
             case RoleplayStoreArea.Transcript:
-                target.Messages = source.Messages.Select(SessionCloner.Clone).ToList();
-                target.Chat.Messages = source.Chat.Messages;
+                target.Transcript = SessionCloner.Clone(source.Transcript);
                 break;
             case RoleplayStoreArea.PromptLibrary:
                 target.PromptLibrary = SessionCloner.Clone(source.PromptLibrary);

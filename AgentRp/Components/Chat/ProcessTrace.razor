@@ -1,25 +1,31 @@
+@using AgentRp.Services
+
 <div class="process-row">
     <div class="process-summary" @onclick="() => Open = !Open">
         <FaIcon Name="zap" />
-        <span style="flex:1">@Message.Summary</span>
-        @if (Message.Status == "completed")
+        <span style="flex:1">@Trace.Summary</span>
+        @if (Trace.Status == "completed")
         {
-            <span style="color:var(--c-emerald)">Completed · @Message.Duration</span>
+            <span style="color:var(--c-emerald)">Completed · @RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)</span>
+        }
+        else if (Trace.Status == "failed")
+        {
+            <span style="color:var(--c-rose)">Failed · @RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)</span>
         }
         <FaIcon Name="@(Open ? "chevron-up" : "chevron-down")" />
     </div>
     @if (Open)
     {
         <div class="process-steps">
-            @foreach (var step in Message.Steps)
+            @foreach (var step in Trace.Steps)
             {
                 <div @key="step.Id" class="process-step">
                     <div class="process-step-head" @onclick="() => Toggle(step.Id)">
-                        <FaIcon Name="@step.Icon" />
+                        <FaIcon Name="@IconFor(step.Id)" />
                         <strong style="font-size:12px;flex:1">@step.Label</strong>
-                        <code>@step.TokensIn.ToString("N0") in</code>
-                        <code>@step.TokensOut.ToString("N0") out</code>
-                        <code>@step.Duration</code>
+                        <code>@step.InputTokens.ToString("N0") in</code>
+                        <code>@step.OutputTokens.ToString("N0") out</code>
+                        <code>@RelativeDateFormatter.FormatDuration(step.DurationSeconds)</code>
                         <FaIcon Name="@(OpenSteps.Contains(step.Id) ? "chevron-up" : "chevron-down")" />
                     </div>
                     @if (OpenSteps.Contains(step.Id))
@@ -27,7 +33,15 @@
                         <div class="process-detail">
                             <div class="prompt-block"><label>System Prompt</label><pre>@step.SystemPrompt</pre></div>
                             <div class="prompt-block"><label>User Prompt</label><pre>@step.UserPrompt</pre></div>
-                            <div class="prompt-block"><label>Output</label><pre>@step.Output</pre></div>
+                            @if (!string.IsNullOrWhiteSpace(step.StructuredOutputJson))
+                            {
+                                <div class="prompt-block"><label>Structured Output</label><pre>@step.StructuredOutputJson</pre></div>
+                            }
+                            <div class="prompt-block"><label>Output</label><pre>@step.RawOutput</pre></div>
+                            @if (!string.IsNullOrWhiteSpace(step.Error))
+                            {
+                                <div class="prompt-block"><label>Error</label><pre>@step.Error</pre></div>
+                            }
                         </div>
                     }
                 </div>
@@ -40,11 +54,21 @@
     bool Open;
     HashSet<string> OpenSteps = [];
 
-    [Parameter] public RpMessage Message { get; set; } = new();
+    [Parameter] public RpTurnTrace Trace { get; set; } = new();
 
     void Toggle(string id)
     {
         if (!OpenSteps.Add(id))
             OpenSteps.Remove(id);
     }
+
+    static string IconFor(string id) => id switch
+    {
+        "appearance" => "eye",
+        "selection" => "users",
+        "planning" => "sliders",
+        "prose" => "edit",
+        "snapshot" => "flag",
+        _ => "zap"
+    };
 }

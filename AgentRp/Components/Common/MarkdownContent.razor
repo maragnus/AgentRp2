@@ -1,0 +1,15 @@
+@inject IMarkdownRenderer MarkdownRenderer
+
+<div class="@CssClass">@((MarkupString)MarkdownRenderer.Render(Markdown))</div>
+
+@code {
+    [Parameter]
+    public string Markdown { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    string CssClass => string.IsNullOrWhiteSpace(Class)
+        ? "app-markdown"
+        : $"app-markdown {Class}";
+}

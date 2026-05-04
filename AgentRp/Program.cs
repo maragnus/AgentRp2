@@ -20,8 +20,11 @@ builder.Services.AddDbContextFactory<RpDbContext>((serviceProvider, options) =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
+builder.Services.AddScoped<TranscriptPromptContextBuilder>();
+builder.Services.AddScoped<ITextGenerationService, TextGenerationService>();
 builder.Services.AddSingleton<IRoleplayPersistence, SqlRoleplayPersistence>();
 builder.Services.AddSingleton<ILiveRoleplayStore, LiveRoleplayStore>();
 builder.Services.AddScoped<RoleplaySession>();

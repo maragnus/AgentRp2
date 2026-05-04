@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using AgentRp.Models;
 
 namespace AgentRp.Session;
@@ -119,36 +120,6 @@ static class SessionCloner
         Image = value.Image
     };
 
-    public static RpMessage Clone(RpMessage value) => new()
-    {
-        Id = value.Id,
-        Type = value.Type,
-        Summary = value.Summary,
-        Status = value.Status,
-        Duration = value.Duration,
-        Timestamp = value.Timestamp,
-        Author = value.Author,
-        Mode = value.Mode,
-        Body = value.Body,
-        Branch = value.Branch,
-        CharacterCount = value.CharacterCount,
-        Steps = value.Steps.Select(Clone).ToList()
-    };
-
-    static RpProcessStep Clone(RpProcessStep value) => new()
-    {
-        Id = value.Id,
-        Label = value.Label,
-        Icon = value.Icon,
-        TokensIn = value.TokensIn,
-        TokensOut = value.TokensOut,
-        TotalTokens = value.TotalTokens,
-        Duration = value.Duration,
-        SystemPrompt = value.SystemPrompt,
-        UserPrompt = value.UserPrompt,
-        Output = value.Output
-    };
-
     public static RpChatDocument Clone(RpChatDocument value) => new()
     {
         Chat = Clone(value.Chat),
@@ -157,9 +128,115 @@ static class SessionCloner
         Items = value.Items.Select(Clone).ToList(),
         Timeline = value.Timeline.Select(Clone).ToList(),
         Images = value.Images.Select(Clone).ToList(),
-        Messages = value.Messages.Select(Clone).ToList(),
+        Transcript = Clone(value.Transcript),
         PromptLibrary = Clone(value.PromptLibrary),
         ModelTuning = Clone(value.ModelTuning)
+    };
+
+    public static RpTranscriptState Clone(RpTranscriptState value) => new()
+    {
+        SchemaVersion = value.SchemaVersion,
+        RootScene = Clone(value.RootScene),
+        Turns = value.Turns.Select(Clone).ToList(),
+        Snapshots = value.Snapshots.Select(Clone).ToList(),
+        ActiveLeafTurnId = value.ActiveLeafTurnId,
+        BranchSelections = value.BranchSelections.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        Data = Clone(value.Data)
+    };
+
+    static RpTranscriptTurn Clone(RpTranscriptTurn value) => new()
+    {
+        Id = value.Id,
+        ParentTurnId = value.ParentTurnId,
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
+        Mode = value.Mode,
+        AuthorCharacterId = value.AuthorCharacterId,
+        AuthorName = value.AuthorName,
+        ActorCharacterId = value.ActorCharacterId,
+        ActorName = value.ActorName,
+        Guidance = value.Guidance,
+        Body = value.Body,
+        Plan = Clone(value.Plan),
+        AppearanceByCharacterId = value.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        SnapshotId = value.SnapshotId,
+        Scene = Clone(value.Scene),
+        Trace = value.Trace is null ? null : Clone(value.Trace),
+        Data = Clone(value.Data)
+    };
+
+    static RpTranscriptSnapshot Clone(RpTranscriptSnapshot value) => new()
+    {
+        Id = value.Id,
+        TurnId = value.TurnId,
+        CreatedUtc = value.CreatedUtc,
+        Summary = value.Summary,
+        EarlierPrivateIntentContinuity = value.EarlierPrivateIntentContinuity,
+        CharacterAppearances = value.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        Scene = Clone(value.Scene),
+        Trace = value.Trace is null ? null : Clone(value.Trace),
+        Data = Clone(value.Data)
+    };
+
+    public static RpSceneFrame Clone(RpSceneFrame value) => new()
+    {
+        LocationId = value.LocationId,
+        LocationName = value.LocationName,
+        InSceneCharacterIds = [.. value.InSceneCharacterIds],
+        InSceneItemIds = [.. value.InSceneItemIds],
+        Data = Clone(value.Data)
+    };
+
+    public static RpTurnPlan Clone(RpTurnPlan value) => new()
+    {
+        TurnShape = value.TurnShape,
+        Beat = value.Beat,
+        Intent = value.Intent,
+        ImmediateGoal = value.ImmediateGoal,
+        WhyNow = value.WhyNow,
+        ChangeIntroduced = value.ChangeIntroduced,
+        Guardrails = value.Guardrails,
+        Data = Clone(value.Data)
+    };
+
+    public static RpTurnTrace Clone(RpTurnTrace value) => new()
+    {
+        Summary = value.Summary,
+        Status = value.Status,
+        StartedUtc = value.StartedUtc,
+        CompletedUtc = value.CompletedUtc,
+        ProviderId = value.ProviderId,
+        ProviderName = value.ProviderName,
+        ModelId = value.ModelId,
+        InputTokens = value.InputTokens,
+        OutputTokens = value.OutputTokens,
+        TotalTokens = value.TotalTokens,
+        DurationSeconds = value.DurationSeconds,
+        Steps = value.Steps.Select(Clone).ToList(),
+        Data = Clone(value.Data)
+    };
+
+    static RpTurnTraceStep Clone(RpTurnTraceStep value) => new()
+    {
+        Id = value.Id,
+        Label = value.Label,
+        Status = value.Status,
+        StartedUtc = value.StartedUtc,
+        CompletedUtc = value.CompletedUtc,
+        ProviderId = value.ProviderId,
+        ProviderName = value.ProviderName,
+        ModelId = value.ModelId,
+        InputTokens = value.InputTokens,
+        OutputTokens = value.OutputTokens,
+        TotalTokens = value.TotalTokens,
+        DurationSeconds = value.DurationSeconds,
+        SystemPrompt = value.SystemPrompt,
+        UserPrompt = value.UserPrompt,
+        RawOutput = value.RawOutput,
+        StructuredOutputJson = value.StructuredOutputJson,
+        Error = value.Error,
+        Data = Clone(value.Data)
     };
 
     public static PromptLibraryState Clone(PromptLibraryState value) => new()
@@ -190,4 +267,6 @@ static class SessionCloner
         PresencePenalty = value.PresencePenalty,
         StopSequences = value.StopSequences
     };
+
+    static JsonObject Clone(JsonObject value) => (JsonObject?)value.DeepClone() ?? new();
 }
