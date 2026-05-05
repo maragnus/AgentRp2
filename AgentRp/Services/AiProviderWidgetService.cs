@@ -2,8 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 using AgentRp.Models;
+using AgentRp.Serialization;
 
 namespace AgentRp.Services;
 
@@ -41,7 +41,6 @@ public sealed class AiProviderWidgetService(IHttpClientFactory httpClientFactory
 {
     static readonly Uri HuggingFaceWhoAmIUri = new("https://huggingface.co/api/whoami-v2");
     static readonly Uri HuggingFaceManagementBaseUri = new("https://api.endpoints.huggingface.cloud/v2/");
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     readonly ConcurrentDictionary<string, Task<IReadOnlyList<string>>> _namespaceCache = new(StringComparer.Ordinal);
 
     public async Task<IReadOnlyList<AiProviderMetric>> RefreshMetricsAsync(AiProvider provider, CancellationToken cancellationToken = default)
@@ -369,7 +368,7 @@ public sealed class AiProviderWidgetService(IHttpClientFactory httpClientFactory
     static async Task<T> ReadJsonResponseAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
-            return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken)
+            return await response.Content.ReadFromJsonAsync<T>(AppJsonSerializerOptions.Web, cancellationToken)
                 ?? throw new InvalidOperationException("Reading the Hugging Face endpoint management response failed because the service returned an empty response body.");
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);

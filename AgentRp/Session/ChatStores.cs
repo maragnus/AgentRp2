@@ -362,6 +362,10 @@ public sealed class TranscriptStore(
     public RpTranscriptState State => Document?.Transcript ?? new();
     public List<RpTranscriptTurn> Items => Document is null ? [] : TranscriptGraph.GetActivePath(Document.Transcript);
     public RpTranscriptTurn? ActiveLeaf => Document is null ? null : TranscriptGraph.FindTurn(Document.Transcript, Document.Transcript.ActiveLeafTurnId);
+    public bool IsBusy { get; private set; }
+    public string BusyMessage { get; private set; } = "";
+
+    readonly object _operationLock = new();
 
     public RpTranscriptSnapshot? SnapshotFor(string turnId) =>
         Document is null ? null : TranscriptGraph.FindSnapshotByTurn(Document.Transcript, turnId);
@@ -369,7 +373,7 @@ public sealed class TranscriptStore(
     public IReadOnlyList<RpTranscriptTurn> SiblingsFor(string turnId) =>
         Document is null ? [] : TranscriptGraph.GetSiblings(Document.Transcript, turnId);
 
-    public async Task PostManualAsync(string text, RpCharacter? speaker)
+    public async Task PostManualAsync(string text, RpCharacter? speaker) => await RunExclusiveAsync("Posting...", async () =>
     {
         if (Document is null || string.IsNullOrWhiteSpace(text))
             return;
@@ -393,9 +397,9 @@ public sealed class TranscriptStore(
         };
         CommitTurn(turn, now);
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task GenerateAsync(string guidance, RpCharacter? requestedActor, string mode, string turnShape)
+    public async Task GenerateAsync(string guidance, RpCharacter? requestedActor, string mode, string turnShape) => await RunExclusiveAsync("Generating...", async () =>
     {
         if (Document is null)
             return;
@@ -406,9 +410,9 @@ public sealed class TranscriptStore(
             requestedActor,
             turnShape,
             mode);
-    }
+    });
 
-    public async Task RegenerateAsync(string turnId, string guidance, RpCharacter? requestedActor, string turnShape)
+    public async Task RegenerateAsync(string turnId, string guidance, RpCharacter? requestedActor, string turnShape) => await RunExclusiveAsync("Regenerating...", async () =>
     {
         if (Document is null)
             return;
@@ -424,14 +428,14 @@ public sealed class TranscriptStore(
             requestedActor: actor,
             turnShape: string.IsNullOrWhiteSpace(turnShape) ? original.Plan.TurnShape : turnShape,
             mode: "regenerated");
-    }
+    });
 
     public async Task EditTurnAsync(
         string turnId,
         string body,
         RpTurnPlan? plan = null,
         IReadOnlyDictionary<string, string>? appearances = null,
-        IReadOnlyDictionary<string, string>? privateIntents = null)
+        IReadOnlyDictionary<string, string>? privateIntents = null) => await RunExclusiveAsync("Saving edit...", async () =>
     {
         if (Document is null || string.IsNullOrWhiteSpace(body))
             return;
@@ -462,9 +466,9 @@ public sealed class TranscriptStore(
         };
         CommitTurn(turn, now);
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task RecastTurnAsync(string turnId, RpCharacter? author)
+    public async Task RecastTurnAsync(string turnId, RpCharacter? author) => await RunExclusiveAsync("Changing author...", async () =>
     {
         if (Document is null)
             return;
@@ -495,13 +499,13 @@ public sealed class TranscriptStore(
         };
         CommitTurn(turn, now);
         await SaveTranscriptAsync();
-    }
+    });
 
     public async Task SavePlanAsync(
         string turnId,
         RpTurnPlan plan,
         IReadOnlyDictionary<string, string> appearances,
-        IReadOnlyDictionary<string, string> privateIntents)
+        IReadOnlyDictionary<string, string> privateIntents) => await RunExclusiveAsync("Saving plan...", async () =>
     {
         if (Document is null)
             return;
@@ -516,9 +520,9 @@ public sealed class TranscriptStore(
         turn.PrivateIntentByCharacterId = CloneMap(privateIntents);
         turn.UpdatedUtc = DateTime.UtcNow;
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task CreateSnapshotAsync(string turnId)
+    public async Task CreateSnapshotAsync(string turnId) => await RunExclusiveAsync("Creating snapshot...", async () =>
     {
         if (Document is null)
             return;
@@ -560,9 +564,9 @@ public sealed class TranscriptStore(
             CaptureBackgroundError(exception);
             await NotifyChangedAsync();
         }
-    }
+    });
 
-    public async Task SelectSiblingAsync(string turnId)
+    public async Task SelectSiblingAsync(string turnId) => await RunExclusiveAsync("Switching branch...", async () =>
     {
         if (Document is null)
             return;
@@ -574,9 +578,9 @@ public sealed class TranscriptStore(
         TranscriptGraph.SelectLeaf(Document.Transcript, ResolveLeafFrom(turnId));
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task DeleteTurnAsync(string id)
+    public async Task DeleteTurnAsync(string id) => await RunExclusiveAsync("Deleting...", async () =>
     {
         if (Document is null)
             return;
@@ -598,9 +602,9 @@ public sealed class TranscriptStore(
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task DeleteBranchAsync(string id)
+    public async Task DeleteBranchAsync(string id) => await RunExclusiveAsync("Deleting branch...", async () =>
     {
         if (Document is null)
             return;
@@ -619,9 +623,9 @@ public sealed class TranscriptStore(
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
-    }
+    });
 
-    public async Task ApplySceneStateAsync(RpSceneFrame scene)
+    public async Task ApplySceneStateAsync(RpSceneFrame scene) => await RunExclusiveAsync("Updating scene...", async () =>
     {
         if (Document is null)
             return;
@@ -634,6 +638,34 @@ public sealed class TranscriptStore(
         target.InSceneItemIds = [.. scene.InSceneItemIds];
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
+    });
+
+    async Task RunExclusiveAsync(string busyMessage, Func<Task> action)
+    {
+        lock (_operationLock)
+        {
+            if (IsBusy)
+                return;
+
+            IsBusy = true;
+            BusyMessage = busyMessage;
+        }
+
+        await NotifyChangedAsync();
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            lock (_operationLock)
+            {
+                IsBusy = false;
+                BusyMessage = "";
+            }
+
+            await NotifyChangedAsync();
+        }
     }
 
     async Task GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, string turnShape, string mode)

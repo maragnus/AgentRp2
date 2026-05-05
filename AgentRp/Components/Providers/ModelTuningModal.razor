@@ -256,7 +256,7 @@
 
     async Task ExportSettings()
     {
-        var content = System.Text.Json.JsonSerializer.Serialize(Current, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var content = System.Text.Json.JsonSerializer.Serialize(Current, AppJsonSerializerOptions.IndentedWeb);
         await JS.InvokeVoidAsync("agentRp.downloadText", $"model-tuning-{Active}.json", content, "application/json;charset=utf-8");
     }
 
@@ -268,7 +268,7 @@
 
         try
         {
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<ModelTuningStepState>(imported);
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<ModelTuningStepState>(imported, AppJsonSerializerOptions.Web);
             if (parsed is not null)
             {
                 Values[Active] = parsed;

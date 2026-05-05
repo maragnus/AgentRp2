@@ -1,14 +1,13 @@
 using System.Text.Json;
 using AgentRp.Data;
 using AgentRp.Models;
+using AgentRp.Serialization;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Session;
 
 public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbContextFactory) : IRoleplayPersistence
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task<List<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
@@ -264,7 +263,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.UpdatedUtc = now;
     }
 
-    static string Serialize<T>(T value) => JsonSerializer.Serialize(value, JsonOptions);
+    static string Serialize<T>(T value) => JsonSerializer.Serialize(value, AppJsonSerializerOptions.Web);
 
     static T Deserialize<T>(string? json, T fallback)
     {
@@ -273,7 +272,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
         try
         {
-            return JsonSerializer.Deserialize<T>(json, JsonOptions) ?? fallback;
+            return JsonSerializer.Deserialize<T>(json, AppJsonSerializerOptions.Web) ?? fallback;
         }
         catch (JsonException)
         {

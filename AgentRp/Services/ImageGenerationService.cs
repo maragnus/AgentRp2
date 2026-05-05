@@ -28,7 +28,7 @@ public interface IImageGenerationService
 
 public sealed class ImageGenerationService(
     IDbContextFactory<RpDbContext> dbContextFactory,
-    IResponseGenerationClient generationClient,
+    IModelGenerationClient generationClient,
     IModelCapabilityCatalog capabilityCatalog) : IImageGenerationService
 {
     const int MaxImageBytes = 10 * 1024 * 1024;
@@ -127,7 +127,7 @@ public sealed class ImageGenerationService(
         var capabilities = capabilityCatalog.Resolve(provider, model);
         byte[]? lastBytes = null;
         var contentType = "image/png";
-        await foreach (var update in generationClient.GetStreamingImageAsync(new(
+        await foreach (var update in generationClient.GenerateStreamingImageAsync(new(
             provider,
             model,
             capabilities,

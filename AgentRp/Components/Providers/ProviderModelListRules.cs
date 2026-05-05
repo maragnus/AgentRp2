@@ -18,7 +18,7 @@ internal static class ProviderModelListRules
 
     public static bool IsReady(AiProviderModel model) => !NeedsSetup(model);
 
-    public static bool NeedsSetup(AiProviderModel model) => model.Capabilities.Source == "fallback" || !HasAnyRole(model);
+    public static bool NeedsSetup(AiProviderModel model) => !HasAnyRole(model);
 
     public static bool HasAnyRole(AiProviderModel model) => AiProviderModelSelectionRules.HasAnyRole(model);
 

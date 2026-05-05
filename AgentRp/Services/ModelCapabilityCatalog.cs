@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentRp.Models;
+using AgentRp.Serialization;
 using Microsoft.AspNetCore.Hosting;
 
 namespace AgentRp.Services;
@@ -19,7 +20,6 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
 {
     const string DefaultCatalogFileName = "model-capabilities.default.json";
     const string UserCatalogFileName = "model-capabilities.user.json";
-    static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
     readonly object gate = new();
     readonly IWebHostEnvironment environment;
     Dictionary<ModelCapabilityKey, CapabilityRecord> live = [];
@@ -40,13 +40,6 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
             "AgentRp2",
             UserCatalogFileName);
         LoadCatalogs();
-    }
-
-    static JsonSerializerOptions CreateJsonOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
-        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter<TuningSupport>());
-        return options;
     }
 
     public string UserCatalogPath { get; }
@@ -164,7 +157,6 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
 
     void LoadCatalogs()
     {
-        EnsureUserCatalog();
         var defaultPath = Path.Combine(environment.WebRootPath ?? environment.ContentRootPath, DefaultCatalogFileName);
         lock (gate)
         {
@@ -174,34 +166,6 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         }
     }
 
-    void EnsureUserCatalog()
-    {
-        var directory = Path.GetDirectoryName(UserCatalogPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
-
-        if (File.Exists(UserCatalogPath))
-            return;
-
-        var seed = new CapabilityFile
-        {
-            Models =
-            [
-                new()
-                {
-                    Provider = "compatible",
-                    Id = "your-model-id",
-                    TextInput = true,
-                    TextOutput = true,
-                    Streaming = true,
-                    StructuredOutput = true,
-                    Guidance = "Example override. Replace this entry or add your provider/model capabilities here."
-                }
-            ]
-        };
-        File.WriteAllText(UserCatalogPath, JsonSerializer.Serialize(seed, JsonOptions));
-    }
-
     static Dictionary<ModelCapabilityKey, CapabilityRecord> LoadCatalog(string path)
     {
         if (!File.Exists(path))
@@ -209,7 +173,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
 
         try
         {
-            var file = JsonSerializer.Deserialize<CapabilityFile>(File.ReadAllText(path), JsonOptions);
+            var file = JsonSerializer.Deserialize<CapabilityFile>(File.ReadAllText(path), AppJsonSerializerOptions.IndentedWeb);
             var records = new Dictionary<ModelCapabilityKey, CapabilityRecord>();
             foreach (var model in file?.Models ?? [])
             {
@@ -229,6 +193,10 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
 
     void WriteUserCatalog()
     {
+        var directory = Path.GetDirectoryName(UserCatalogPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
+
         var file = new CapabilityFile
         {
             Models = user.Values
@@ -236,7 +204,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
                 .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
                 .ToList()
         };
-        File.WriteAllText(UserCatalogPath, JsonSerializer.Serialize(file, JsonOptions));
+        File.WriteAllText(UserCatalogPath, JsonSerializer.Serialize(file, AppJsonSerializerOptions.IndentedWeb));
     }
 
     void RebuildAliases()
@@ -289,8 +257,8 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         ImageInput = record.ImageInput ?? false,
         TextOutput = record.TextOutput ?? true,
         ImageOutput = record.ImageOutput ?? false,
-        Streaming = record.Streaming ?? false,
-        StructuredOutput = record.StructuredOutput ?? false,
+        Streaming = record.Streaming ?? true,
+        StructuredOutput = record.StructuredOutput ?? true,
         Tools = record.Tools ?? false,
         ImageGenerationModel = record.ImageGenerationModel ?? "",
         Temperature = record.Temperature ?? TuningSupport.Unsupported,

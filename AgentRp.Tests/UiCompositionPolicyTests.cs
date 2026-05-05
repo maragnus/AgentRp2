@@ -8,6 +8,7 @@ using AgentRp.Session;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
+using System.Runtime.CompilerServices;
 
 namespace AgentRp.Tests;
 
@@ -164,9 +165,16 @@ public sealed class UiCompositionPolicyTests
     static LiveRoleplayStore NewLiveStore() =>
         new(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
 
-    static string FindRepoRoot()
+    static string FindRepoRoot([CallerFilePath] string sourcePath = "")
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        var directory = new DirectoryInfo(Path.GetDirectoryName(sourcePath) ?? Directory.GetCurrentDirectory());
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AgentRp.slnx")))
+            directory = directory.Parent;
+
+        if (directory is not null)
+            return directory.FullName;
+
+        directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AgentRp.slnx")))
             directory = directory.Parent;
 

@@ -80,8 +80,9 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - When requirements are unclear, stop and ask. ALWAYS ask when requirements are ambiguous.
 - When working with Markdown, use link syntax with meaningful titles instead of inline code when referencing other files.
 - Always use generic `GetResponseAsync<T>(...)` for any agent call that expects JSON or a typed DTO.
-- Never call non-generic `GetResponseAsync(...)` and then parse `response.Text` into DTOs or JSON documents.
+- It is forbidden to parse model output as JSON. All model to JSON must use `GetResponseAsync<T>(...)` provided by `Microsoft.Extensions.AI` and must not customize any serialization details in the method call. `JsonSerializerOptions` is forbidden on `GetResponseAsync`.
 - Non-generic `GetResponseAsync(...)` and streaming APIs are allowed only for intentional prose output, never for structured outputs.
+- `JsonSerializerOptions` must always be based on `JsonSerializerDefaults.Web` and include `JsonStringEnumConverter`, exceptions must be explicitely stated in a comment with reasoning. `JsonSerializerOptions` must always be preconstructed and `static` unless a one-off, non-standard customization is needed.
 
 ## React To Blazor Translation
 - Translate Claude/React inline styles into maintainable global CSS. Use `app.css` for resets, layout, typography, and app shell structure; `components.css` for reusable UI component classes; and `light.css` / `dark.css` for theme variables and theme-only overrides. Preserve the Claude Design visually, but do not preserve its inline-style implementation unless a value is truly dynamic and cannot reasonably be expressed with classes or CSS custom properties. Avoid component-scoped `.razor.css` by default.

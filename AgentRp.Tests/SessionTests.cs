@@ -3,7 +3,9 @@ using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json.Nodes;
 
 namespace AgentRp.Tests;
 
@@ -164,6 +166,7 @@ public sealed class SessionTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         await using var liveStore = NewLiveStore();
         var sessionA = new RoleplaySession(liveStore);
         var sessionB = new RoleplaySession(liveStore);
@@ -176,6 +179,128 @@ public sealed class SessionTests
         component.WaitForAssertion(() => Assert.Contains("Rendered from another session.", component.Markup, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task ChatAreaLocksFooterWhileTranscriptOperationRuns()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(liveStore, generation);
+        await session.InitializeAsync();
+        var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(session));
+
+        var operation = session.Chat.Transcript.GenerateAsync("", null, "automatic", "Brief");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        component.WaitForAssertion(() =>
+        {
+            Assert.NotNull(component.Find(".claude-composer.is-locked"));
+            Assert.NotNull(component.Find("textarea[disabled]"));
+            Assert.Contains("Generating...", component.Markup, StringComparison.Ordinal);
+            Assert.True(component.FindAll(".claude-composer-actions button[disabled]").Count > 0);
+        });
+
+        await component.Find("textarea").KeyDownAsync(new KeyboardEventArgs { Key = "Enter", CtrlKey = true });
+        Assert.Equal(1, generation.GenerateCalls);
+
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task TranscriptStoreIgnoresOverlappingOperationsUntilCurrentOperationCompletes()
+    {
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(liveStore, generation);
+        await session.InitializeAsync();
+
+        var operation = session.Chat.Transcript.GenerateAsync("", null, "automatic", "Brief");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(session.Chat.Transcript.IsBusy);
+        Assert.Equal("Generating...", session.Chat.Transcript.BusyMessage);
+
+        await session.Chat.Transcript.PostManualAsync("This should not be posted while busy.", null);
+
+        Assert.DoesNotContain(session.Chat.Transcript.Items, message => message.Body == "This should not be posted while busy.");
+        Assert.Equal(1, generation.GenerateCalls);
+
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(session.Chat.Transcript.IsBusy);
+        Assert.Equal("", session.Chat.Transcript.BusyMessage);
+        Assert.Contains(session.Chat.Transcript.Items, message => message.Body == BlockingTextGenerationService.GeneratedBody);
+    }
+
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+
+    sealed class BlockingTextGenerationService : ITextGenerationService
+    {
+        public const string GeneratedBody = "Generated while lock is held.";
+        int _generateCalls;
+
+        public int GenerateCalls => _generateCalls;
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _generateCalls);
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+
+            return new(
+                "",
+                "Narrator",
+                new() { TurnShape = request.RequestedTurnShape },
+                [],
+                [],
+                CloneScene(document.Transcript.RootScene),
+                GeneratedBody,
+                new()
+                {
+                    Status = "completed",
+                    StartedUtc = DateTime.UtcNow,
+                    CompletedUtc = DateTime.UtcNow
+                });
+        }
+
+        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        static RpSceneFrame CloneScene(RpSceneFrame scene) => new()
+        {
+            LocationId = scene.LocationId,
+            LocationName = scene.LocationName,
+            InSceneCharacterIds = [.. scene.InSceneCharacterIds],
+            InSceneItemIds = [.. scene.InSceneItemIds]
+        };
+    }
+
+    sealed class TestModelCapabilityCatalog : IModelCapabilityCatalog
+    {
+        public string UserCatalogPath => "";
+
+        public ModelGenerationCapabilities Resolve(AiProvider provider, AiProviderModel model) => model.Capabilities;
+
+        public ModelGenerationCapabilities Resolve(string providerType, string modelId) => ModelGenerationCapabilities.Fallback;
+
+        public void ApplyResolvedCapabilities(AiProvider provider)
+        {
+        }
+
+        public void SaveUserCapabilities(string providerType, string modelId, ModelGenerationCapabilities capabilities)
+        {
+        }
+
+        public void UpdateLiveGrokCapabilities(JsonNode languageModelsJson)
+        {
+        }
+    }
 }

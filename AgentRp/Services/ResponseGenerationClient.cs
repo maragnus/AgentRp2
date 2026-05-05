@@ -2,15 +2,14 @@
 
 using System.ClientModel;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using AgentRp.Models;
 using AgentRp.Session;
-using OpenAI;
+using Microsoft.Extensions.AI;
 using OpenAI.Responses;
 
 namespace AgentRp.Services;
 
-public sealed record ResponseGenerationRequest(
+public sealed record ModelGenerationRequest(
     AiProvider Provider,
     AiProviderModel Model,
     ModelGenerationCapabilities Capabilities,
@@ -32,84 +31,86 @@ public sealed record ResponseImageGenerationRequest(
     IReadOnlyList<ResponseImageInput> ReferenceImages,
     string OperationName);
 
-public sealed record ResponseCompletion(string Text, int InputTokens, int OutputTokens, string ResponseId);
+public record ModelTextCompletion(string Text, int InputTokens, int OutputTokens, string ResponseId);
 
-public sealed record ResponseCompletion<T>(T Value, string Text, int InputTokens, int OutputTokens, string ResponseId);
-
-public sealed record ResponseStreamingUpdate(string TextDelta, int InputTokens, int OutputTokens, string ResponseId, bool Completed);
+public sealed record ModelStructuredCompletion<T>(T Value, string Text, int InputTokens, int OutputTokens, string ResponseId)
+    : ModelTextCompletion(Text, InputTokens, OutputTokens, ResponseId);
 
 public sealed record ResponseImageStreamingUpdate(byte[]? ImageBytes, string ContentType, string? RevisedPrompt, int InputTokens, int OutputTokens, string ResponseId, bool Completed);
 
-public interface IResponseGenerationClient
+public interface IModelGenerationClient
 {
-    Task<ResponseCompletion<T>> GetResponseAsync<T>(ResponseGenerationRequest request, CancellationToken cancellationToken = default);
-    Task<ResponseCompletion> GetResponseAsync(ResponseGenerationRequest request, CancellationToken cancellationToken = default);
-    IAsyncEnumerable<ResponseStreamingUpdate> GetStreamingResponseAsync(ResponseGenerationRequest request, CancellationToken cancellationToken = default);
-    IAsyncEnumerable<ResponseImageStreamingUpdate> GetStreamingImageAsync(ResponseImageGenerationRequest request, CancellationToken cancellationToken = default);
+    Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default);
+    Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
+    Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, CancellationToken cancellationToken = default);
 }
 
-public sealed class OpenAiResponsesGenerationClient : IResponseGenerationClient
+public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactory) : IModelGenerationClient
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
-    public async Task<ResponseCompletion<T>> GetResponseAsync<T>(ResponseGenerationRequest request, CancellationToken cancellationToken = default)
+    public async Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default)
     {
         if (!request.Capabilities.CanGenerateStructuredText)
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not have structured Responses output enabled.");
 
-        var response = await CreateClient(request.Provider, request.Model).CreateResponseAsync(BuildTextOptions(request, true), cancellationToken);
-        var completion = ToCompletion(response.Value, request.Provider.Name);
-        var value = DeserializeStructured<T>(completion.Text, request.Provider.Name);
-        return new(value, completion.Text, completion.InputTokens, completion.OutputTokens, completion.ResponseId);
-    }
-
-    public async Task<ResponseCompletion> GetResponseAsync(ResponseGenerationRequest request, CancellationToken cancellationToken = default)
-    {
-        if (!request.Capabilities.CanGenerateText)
-            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not support text input and output through Responses.");
-
-        var response = await CreateClient(request.Provider, request.Model).CreateResponseAsync(BuildTextOptions(request, false), cancellationToken);
-        return ToCompletion(response.Value, request.Provider.Name);
-    }
-
-    public async IAsyncEnumerable<ResponseStreamingUpdate> GetStreamingResponseAsync(
-        ResponseGenerationRequest request,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (!request.Capabilities.CanGenerateStreamingText)
-            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not have Responses streaming enabled.");
-
-        await foreach (var update in CreateClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildTextOptions(request, false), cancellationToken))
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (update is StreamingResponseOutputTextDeltaUpdate delta && !string.IsNullOrEmpty(delta.Delta))
-            {
-                yield return new(delta.Delta, 0, 0, "", false);
-            }
-            else if (update is StreamingResponseCompletedUpdate completed)
-            {
-                var usage = completed.Response.Usage;
-                yield return new("", usage?.InputTokenCount ?? 0, usage?.OutputTokenCount ?? 0, completed.Response.Id, true);
-            }
-            else if (update is StreamingResponseFailedUpdate failed)
-            {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}");
-            }
-            else if (update is StreamingResponseErrorUpdate error)
-            {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a Responses stream error: {error.Message}");
-            }
+            var response = await clientFactory.GetChatClient(request.Provider, request.Model).GetResponseAsync<T>(
+                BuildMessages(request),
+                BuildChatOptions(request),
+                cancellationToken: cancellationToken);
+            var usage = response.Usage;
+            return new(
+                response.Result,
+                response.Text,
+                ToInt(usage?.InputTokenCount),
+                ToInt(usage?.OutputTokenCount),
+                response.ResponseId ?? "");
+        }
+        catch (Exception exception) when (exception is not InvalidOperationException)
+        {
+            throw new InvalidOperationException($"{request.OperationName} failed while requesting typed structured output from {request.Provider.Name} with '{request.Model.Id}': {exception.Message}", exception);
         }
     }
 
-    public async IAsyncEnumerable<ResponseImageStreamingUpdate> GetStreamingImageAsync(
+    public async Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!request.Capabilities.CanGenerateText)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not support text input and output.");
+
+        var response = await clientFactory.GetChatClient(request.Provider, request.Model).GetResponseAsync(
+            BuildMessages(request),
+            BuildChatOptions(request),
+            cancellationToken);
+        return ToCompletion(response);
+    }
+
+    public async Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!request.Capabilities.CanGenerateStreamingText)
+            return await GenerateTextAsync(request, cancellationToken);
+
+        var updates = new List<ChatResponseUpdate>();
+        await foreach (var update in clientFactory.GetChatClient(request.Provider, request.Model).GetStreamingResponseAsync(
+            BuildMessages(request),
+            BuildChatOptions(request),
+            cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            updates.Add(update);
+        }
+
+        return ToCompletion(await EnumerateUpdates(updates, cancellationToken).ToChatResponseAsync(cancellationToken));
+    }
+
+    public async IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(
         ResponseImageGenerationRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (!request.Capabilities.CanGenerateImage)
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not have Responses image output enabled.");
 
-        await foreach (var update in CreateClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken))
+        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (update is StreamingResponseImageGenerationCallPartialImageUpdate partial && partial.PartialImageBytes is not null)
@@ -140,23 +141,22 @@ public sealed class OpenAiResponsesGenerationClient : IResponseGenerationClient
         }
     }
 
-    static CreateResponseOptions BuildTextOptions(ResponseGenerationRequest request, bool structured)
+    static IReadOnlyList<ChatMessage> BuildMessages(ModelGenerationRequest request) =>
+    [
+        new(ChatRole.System, request.SystemPrompt),
+        new(ChatRole.User, request.UserPrompt)
+    ];
+
+    static ChatOptions BuildChatOptions(ModelGenerationRequest request)
     {
-        var options = new CreateResponseOptions
+        var tuning = TextModelTuningCatalog.Filter(request.Tuning, request.Capabilities);
+        return new()
         {
-            Model = request.Model.Id,
-            Instructions = request.SystemPrompt,
-            StoredOutputEnabled = false,
-            TextOptions = new ResponseTextOptions
-            {
-                TextFormat = structured
-                    ? ResponseTextFormat.CreateJsonObjectFormat()
-                    : ResponseTextFormat.CreateTextFormat()
-            }
+            ModelId = request.Model.Id,
+            Temperature = tuning.Temperature,
+            TopP = tuning.TopP,
+            MaxOutputTokens = tuning.MaxOutputTokenCount
         };
-        options.InputItems.Add(ResponseItem.CreateUserMessageItem(request.UserPrompt));
-        ApplyTuning(options, TextModelTuningCatalog.Filter(request.Tuning, request.Capabilities));
-        return options;
     }
 
     static CreateResponseOptions BuildImageOptions(ResponseImageGenerationRequest request)
@@ -198,44 +198,29 @@ public sealed class OpenAiResponsesGenerationClient : IResponseGenerationClient
         return options;
     }
 
-    static void ApplyTuning(CreateResponseOptions options, ResponseTuningOptions tuning)
+    static ModelTextCompletion ToCompletion(ChatResponse response)
     {
-        options.Temperature = tuning.Temperature;
-        options.TopP = tuning.TopP;
-        options.MaxOutputTokenCount = tuning.MaxOutputTokenCount;
-    }
-
-    static ResponsesClient CreateClient(AiProvider provider, AiProviderModel model)
-    {
-        var endpoint = NormalizeEndpoint(provider, model);
-        return new OpenAIClient(
-            new ApiKeyCredential(provider.ApiKey),
-            new OpenAIClientOptions { Endpoint = new Uri(endpoint) })
-            .GetResponsesClient();
-    }
-
-    static ResponseCompletion ToCompletion(ResponseResult response, string providerName)
-    {
-        var text = response.GetOutputText();
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException($"{providerName} did not return any Responses text output.");
-
         var usage = response.Usage;
-        return new(text, usage?.InputTokenCount ?? 0, usage?.OutputTokenCount ?? 0, response.Id);
+        return new(
+            response.Text,
+            ToInt(usage?.InputTokenCount),
+            ToInt(usage?.OutputTokenCount),
+            response.ResponseId ?? "");
     }
 
-    static T DeserializeStructured<T>(string content, string providerName)
+    static async IAsyncEnumerable<ChatResponseUpdate> EnumerateUpdates(
+        IReadOnlyList<ChatResponseUpdate> updates,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        try
+        foreach (var update in updates)
         {
-            return JsonSerializer.Deserialize<T>(content, JsonOptions)
-                ?? throw new InvalidOperationException($"{providerName} returned an empty structured Responses output.");
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidOperationException($"{providerName} returned structured Responses output that could not be read as the requested DTO.", exception);
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return update;
+            await Task.Yield();
         }
     }
+
+    static int ToInt(long? value) => value is null or > int.MaxValue ? 0 : (int)value.Value;
 
     static ImageGenerationToolQuality QualityFor(string value) => value.ToLowerInvariant() switch
     {
@@ -268,27 +253,4 @@ public sealed class OpenAiResponsesGenerationClient : IResponseGenerationClient
             _ => "image/png"
         };
 
-    static string NormalizeEndpoint(AiProvider provider, AiProviderModel model)
-    {
-        var endpoint = provider.Type == "huggingface" && !string.IsNullOrWhiteSpace(model.Endpoint)
-            ? model.Endpoint.Trim()
-            : string.IsNullOrWhiteSpace(provider.Endpoint) ? DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint was empty. Responses/Open Responses providers must use a /v1-compatible base URL.");
-
-        if (!endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint must start with http:// or https://.");
-
-        if (provider.Type == "huggingface")
-            return AgentEndpointUrlNormalizer.NormalizeResponsesEndpoint(endpoint);
-
-        return endpoint.EndsWith('/') ? endpoint : $"{endpoint}/";
-    }
-
-    static string DefaultEndpoint(string providerType) => providerType switch
-    {
-        "openai" => "https://api.openai.com/v1/",
-        "grok" => "https://api.x.ai/v1/",
-        _ => ""
-    };
 }

@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentRp.Models;
+using AgentRp.Serialization;
 
 namespace AgentRp.Services;
 
@@ -17,8 +17,6 @@ public sealed class AiProviderConnectionService(
     IHttpClientFactory httpClientFactory,
     IModelCapabilityCatalog capabilityCatalog) : IAiProviderConnectionService
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task TestProviderAsync(AiProvider provider, CancellationToken cancellationToken = default)
     {
         var discovered = await DiscoverModelsAsync(provider, cancellationToken);
@@ -74,7 +72,7 @@ public sealed class AiProviderConnectionService(
         using var response = await client.GetAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "language-models"), cancellationToken);
         if (response.IsSuccessStatusCode)
         {
-            var json = await response.Content.ReadFromJsonAsync<JsonNode>(JsonOptions, cancellationToken) ?? new JsonObject();
+            var json = await response.Content.ReadFromJsonAsync<JsonNode>(AppJsonSerializerOptions.Web, cancellationToken) ?? new JsonObject();
             capabilityCatalog.UpdateLiveGrokCapabilities(json);
             var languageModels = json["models"]?.AsArray().SelectMany(BuildGrokModels).ToList();
             if (languageModels is { Count: > 0 })
@@ -263,7 +261,7 @@ public sealed class AiProviderConnectionService(
     static async Task<JsonNode> ReadJsonAsync(HttpResponseMessage response, string operation, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
-            return await response.Content.ReadFromJsonAsync<JsonNode>(JsonOptions, cancellationToken) ?? new JsonObject();
+            return await response.Content.ReadFromJsonAsync<JsonNode>(AppJsonSerializerOptions.Web, cancellationToken) ?? new JsonObject();
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var message = UserFacingErrorMessageBuilder.BuildExternalHttpFailure(operation, response.StatusCode, responseBody);

@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject IModelCapabilityCatalog CapabilityCatalog
 
 <main class="chat claude-chat">
     <header class="claude-chat-head">
@@ -49,16 +50,17 @@
                              Characters="Characters"
                              ShowAppearance="ShowAppearance"
                              ShowProcess="ShowProcess"
+                             TranscriptBusy="TranscriptBusy"
                              SubsequentCount="subsequentCount" />
             }
         </div>
         <div class="claude-footer">
-            <div class="claude-composer">
-                <textarea @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
+            <div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
+                <textarea @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@TranscriptBusy" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
                 <div class="claude-composer-actions">
                     <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
                         <Trigger Context="speaker">
-                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" OnClick="@(_ => speaker.Toggle())">
+                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => speaker.Toggle())">
                                 @if (Session.SpeakingAs is null)
                                 {
                                     <span class="mini-narrator"><FaIcon Name="book-open" /></span>
@@ -72,10 +74,10 @@
                             </AppButton>
                         </Trigger>
                         <Content>
-                            <SelectableButton Class="select-row" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
+                            <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
                             @foreach (var character in Characters)
                             {
-                                <SelectableButton @key="character.Id" Class="select-row" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
+                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
                             }
                         </Content>
                     </AnchoredPopover>
@@ -84,16 +86,19 @@
 
                     <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
                         <Trigger Context="respond">
-                            <AppButton Size="xs" Class="composer-action-button" Active="@respond.IsOpen" OnClick="@(_ => respond.Toggle())">
+                            <AppButton Size="xs" Class="composer-action-button" Active="@respond.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => respond.Toggle())">
                                 <FaIcon Name="user" /> Respond As <FaIcon Name="chevron-down" />
                             </AppButton>
                         </Trigger>
                         <Content>
                             <div class="popover-label">Respond As</div>
-                            <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                            @if (CanAutoSelectResponder)
+                            {
+                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                            }
                             @foreach (var character in Characters)
                             {
-                                <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
+                                <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
                             }
                         </Content>
                     </AnchoredPopover>
@@ -101,12 +106,12 @@
                     <span class="v-divider"></span>
 
                     <div class="send-combo">
-                        <SelectableButton Class="send-mode" Title="@ModeTitle" OnClick="@(_ => GenerateTurn())">
+                        <SelectableButton Class="send-mode" Title="@ModeTitle" Disabled="@(!CanGenerate)" OnClick="@(_ => GenerateTurn())">
                             <FaIcon Name="@ModeIcon" /> @ModeLabel
                         </SelectableButton>
                         <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
                             <Trigger Context="shape">
-                                <SelectableButton Class="send-shape" Title="Select Turn Shape" Active="@shape.IsOpen" OnClick="@(_ => shape.Toggle())">
+                                <SelectableButton Class="send-shape" Title="Select Turn Shape" Active="@shape.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => shape.Toggle())">
                                     <FaIcon Name="chevron-down" />
                                 </SelectableButton>
                             </Trigger>
@@ -114,7 +119,7 @@
                                 <div class="popover-label">Turn Shape</div>
                                 @foreach (var shape in TurnShapes)
                                 {
-                                    <SelectableButton @key="shape" Class="@($"select-row {(TurnShape == shape ? "is-active" : "")}")" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (TurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
+                                    <SelectableButton @key="shape" Class="@($"select-row {(TurnShape == shape ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (TurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
                                 }
                             </Content>
                         </AnchoredPopover>
@@ -122,12 +127,16 @@
 
                     <span class="v-divider"></span>
 
-                    <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Disabled="@(Draft.Trim().Length == 0)" Title="Post the text directly as a manual turn" OnClick="@PostManual">
+                    <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Disabled="@(TranscriptBusy || Draft.Trim().Length == 0)" Title="Post the text directly as a manual turn" OnClick="@PostManual">
                         <FaIcon Name="book-open" /> Manual
                     </AppButton>
-                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Title="Generate next turn (Ctrl+Enter)" OnClick="@GenerateTurn">
+                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" Title="@GenerateTitle" OnClick="@GenerateTurn">
                         <FaIcon Name="sparkle" /> Generate
                     </AppButton>
+                    @if (TranscriptBusy)
+                    {
+                        <span class="composer-busy-status"><span class="spinner" aria-hidden="true"></span>@TranscriptBusyMessage</span>
+                    }
                     <span class="shortcut">Ctrl+↵</span>
                 </div>
             </div>
@@ -153,7 +162,14 @@
     string SpeakerName => Session.SpeakingAs?.Name ?? "Narrator";
     string ModeLabel => IsGuided ? "Guided" : "Auto";
     string ModeIcon => IsGuided ? "layers" : "zap";
-    string ModeTitle => IsGuided ? "Generate guided turn (Ctrl+Enter)" : "Auto-continue scene (Ctrl+Enter)";
+    string ModeTitle => CanGenerate ? IsGuided ? "Generate guided turn (Ctrl+Enter)" : "Auto-continue scene (Ctrl+Enter)" : GenerateTitle;
+    string GenerateTitle => TranscriptBusy ? TranscriptBusyMessage : RequiresRespondAs ? "Choose Respond As to generate with this model" : "Generate next turn (Ctrl+Enter)";
+    bool CanAutoSelectResponder => ActiveTextModel?.Capabilities.CanGenerateStructuredText != false;
+    bool RequiresRespondAs => !CanAutoSelectResponder && RespondAs is null;
+    bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
+    string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
+    bool CanGenerate => !TranscriptBusy && !RequiresRespondAs;
+    ActiveTextModel? ActiveTextModel => ResolveActiveTextModel();
 
     protected override void OnInitialized()
     {
@@ -183,12 +199,15 @@
 
     async Task HandleKeyDown(KeyboardEventArgs args)
     {
-        if (args.Key == "Enter" && args.CtrlKey)
+        if (!TranscriptBusy && args.Key == "Enter" && args.CtrlKey)
             await GenerateTurn();
     }
 
     async Task GenerateTurn()
     {
+        if (!CanGenerate)
+            return;
+
         var text = Draft.Trim();
         Draft = "";
         await Session.Chat.Transcript.GenerateAsync(text, RespondAs, IsGuided ? "guided" : "automatic", TurnShape);
@@ -196,6 +215,9 @@
 
     async Task PostManual()
     {
+        if (TranscriptBusy)
+            return;
+
         var text = Draft.Trim();
         if (text.Length == 0)
             return;
@@ -211,5 +233,13 @@
         Session.Chat.Transcript.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;
         Session.Chat.Locations.Changed -= OnSessionChanged;
+    }
+
+    ActiveTextModel? ResolveActiveTextModel()
+    {
+        foreach (var provider in Session.Providers.Items)
+            CapabilityCatalog.ApplyResolvedCapabilities(provider);
+
+        return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
     }
 }

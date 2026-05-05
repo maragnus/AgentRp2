@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentRp.Models;
+using AgentRp.Serialization;
 using AgentRp.Session;
 
 namespace AgentRp.Services;
@@ -43,20 +44,18 @@ public sealed class TranscriptGenerationException(string message, RpTurnTrace tr
 }
 
 public sealed class TextGenerationService(
-    IResponseGenerationClient generationClient,
+    IModelGenerationClient generationClient,
     IModelCapabilityCatalog capabilityCatalog,
     TranscriptPromptContextBuilder promptContextBuilder) : ITextGenerationService
 {
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
-
     public async Task<GeneratedTurnResult> GenerateTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         GenerateTurnRequest request,
         CancellationToken cancellationToken = default)
     {
-            ApplyCapabilities(providers);
-            var selection = ResolveTextModel(providers);
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -73,6 +72,9 @@ public sealed class TextGenerationService(
                 request.Guidance,
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId));
+            if (!selection.Capabilities.CanGenerateStructuredText)
+                return await GenerateDumbProseTurnAsync(document, selection, request, context, trace, cancellationToken);
+
             var appearance = await RunAppearanceStepAsync(document, selection, context, trace, cancellationToken);
             var selectedActor = await RunSelectionStepAsync(document, selection, context, request, trace, cancellationToken);
             var plan = await RunPlanningStepAsync(document, selection, context, selectedActor, trace, cancellationToken);
@@ -129,6 +131,9 @@ public sealed class TextGenerationService(
         };
         try
         {
+            if (!selection.Capabilities.CanGenerateStructuredText)
+                throw new InvalidOperationException("Creating a snapshot failed because the active model has structured output disabled.");
+
             var context = promptContextBuilder.BuildSnapshotContext(document, request.TurnId);
             var tuning = ResolveTuning(document.ModelTuning, "snapshot");
             var tokens = promptContextBuilder.BuildTokens(context);
@@ -146,7 +151,7 @@ public sealed class TextGenerationService(
                 systemPrompt,
                 userPrompt,
                 completion,
-                JsonSerializer.Serialize(result, JsonOptions),
+                JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
                 ""));
             FinalizeTrace(trace, "completed");
             var activePath = TranscriptGraph.GetActivePath(document.Transcript);
@@ -168,6 +173,43 @@ public sealed class TextGenerationService(
             trace.Data["error"] = exception.Message;
             throw new TranscriptGenerationException(exception.Message, trace);
         }
+    }
+
+    async Task<GeneratedTurnResult> GenerateDumbProseTurnAsync(
+        RpChatDocument document,
+        ActiveTextModel selection,
+        GenerateTurnRequest request,
+        TurnPromptContext context,
+        RpTurnTrace trace,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.RequestedActorCharacterId))
+            throw new InvalidOperationException("Generating transcript prose failed because Respond As is required when the active model has structured output disabled.");
+
+        var actor = (request.RequestedActorCharacterId, request.RequestedActorName);
+        var plan = CreateDumbProsePlan(context, request);
+        var prose = await RunProseStepAsync(document, selection, context, actor, plan, trace, cancellationToken);
+        FinalizeTrace(trace, "completed");
+
+        var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
+        return new(
+            request.RequestedActorCharacterId,
+            request.RequestedActorName,
+            new RpTurnPlan
+            {
+                TurnShape = context.RequestedTurnShape,
+                Beat = plan.Beat,
+                Intent = plan.Intent,
+                ImmediateGoal = plan.ImmediateGoal,
+                WhyNow = plan.WhyNow,
+                ChangeIntroduced = plan.ChangeIntroduced,
+                Guardrails = plan.Guardrails
+            },
+            [],
+            [],
+            scene,
+            prose,
+            trace);
     }
 
     async Task<Dictionary<string, string>> RunAppearanceStepAsync(
@@ -193,11 +235,15 @@ public sealed class TextGenerationService(
             systemPrompt,
             userPrompt,
             completion,
-            JsonSerializer.Serialize(result, JsonOptions),
+            JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
             ""));
         return result.Characters
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
-            .ToDictionary(pair => ResolveCharacterId(document.Characters, pair.Key), pair => pair.Value, StringComparer.Ordinal);
+            ?.Where(character => !string.IsNullOrWhiteSpace(character.CharacterName))
+            .Select(character => ResolveAppearanceCharacter(document.Characters, character))
+            .Where(pair => pair is not null && !string.IsNullOrWhiteSpace(pair.Value.Appearance))
+            .GroupBy(pair => pair!.Value.CharacterId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last()!.Value.Appearance, StringComparer.Ordinal)
+        ?? new(StringComparer.Ordinal);
     }
 
     async Task<(string Id, string Name)> RunSelectionStepAsync(
@@ -220,8 +266,8 @@ public sealed class TextGenerationService(
                 now,
                 "User override",
                 request.RequestedActorName,
-                new("User override", 0, 0),
-                JsonSerializer.Serialize(explicitSelection, JsonOptions),
+                new ModelTextCompletion("User override", 0, 0, ""),
+                JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
                 ""));
             return (request.RequestedActorCharacterId, request.RequestedActorName);
         }
@@ -242,7 +288,7 @@ public sealed class TextGenerationService(
             systemPrompt,
             userPrompt,
             completion,
-            JsonSerializer.Serialize(result, JsonOptions),
+            JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
             ""));
         var actorId = ResolveCharacterId(document.Characters, result.CharacterName);
         var actorName = document.Characters.FirstOrDefault(character => character.Id == actorId)?.Name ?? result.CharacterName;
@@ -273,7 +319,7 @@ public sealed class TextGenerationService(
             systemPrompt,
             userPrompt,
             completion,
-            JsonSerializer.Serialize(result, JsonOptions),
+            JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
             ""));
         return result;
     }
@@ -308,6 +354,22 @@ public sealed class TextGenerationService(
         return completion.Text.Trim();
     }
 
+    static PlanningResponse CreateDumbProsePlan(TurnPromptContext context, GenerateTurnRequest request)
+    {
+        var guidance = string.IsNullOrWhiteSpace(request.Guidance)
+            ? "Continue the scene in character."
+            : request.Guidance.Trim();
+        return new()
+        {
+            Beat = guidance,
+            Intent = "Write the next prose turn.",
+            ImmediateGoal = "Continue the active exchange.",
+            WhyNow = "The user requested the next turn.",
+            ChangeIntroduced = "Continue the scene without structured planning.",
+            Guardrails = $"Turn shape: {context.RequestedTurnShape}. Stay grounded in the visible scene."
+        };
+    }
+
     static string RenderPrompt(PromptLibraryState library, string stepId, string field, IReadOnlyDictionary<string, string> tokens)
     {
         var defaults = PromptLibraryState.CreateDefault();
@@ -327,7 +389,7 @@ public sealed class TextGenerationService(
         return defaults.Values.TryGetValue(stepId, out var defaultTuning) ? defaultTuning : new();
     }
 
-    async Task<StructuredTextCompletion<T>> SendStructuredAsync<T>(
+    async Task<ModelStructuredCompletion<T>> SendStructuredAsync<T>(
         ActiveTextModel selection,
         ModelTuningStepState tuning,
         string systemPrompt,
@@ -335,7 +397,7 @@ public sealed class TextGenerationService(
         string operationName,
         CancellationToken cancellationToken)
     {
-        var completion = await generationClient.GetResponseAsync<T>(new(
+        return await generationClient.GenerateStructuredAsync<T>(new(
             selection.Provider,
             selection.Model,
             selection.Capabilities,
@@ -343,10 +405,9 @@ public sealed class TextGenerationService(
             systemPrompt,
             userPrompt,
             operationName), cancellationToken);
-        return new(completion.Value, completion.Text, completion.InputTokens, completion.OutputTokens);
     }
 
-    async Task<TextCompletion> SendStreamingTextAsync(
+    async Task<ModelTextCompletion> SendStreamingTextAsync(
         ActiveTextModel selection,
         ModelTuningStepState tuning,
         string systemPrompt,
@@ -354,28 +415,14 @@ public sealed class TextGenerationService(
         string operationName,
         CancellationToken cancellationToken)
     {
-        var text = new System.Text.StringBuilder();
-        var inputTokens = 0;
-        var outputTokens = 0;
-        await foreach (var update in generationClient.GetStreamingResponseAsync(new(
+        return await generationClient.GenerateStreamingTextAsync(new(
             selection.Provider,
             selection.Model,
             selection.Capabilities,
             tuning,
             systemPrompt,
             userPrompt,
-            operationName), cancellationToken))
-        {
-            if (!string.IsNullOrEmpty(update.TextDelta))
-                text.Append(update.TextDelta);
-            if (update.Completed)
-            {
-                inputTokens = update.InputTokens;
-                outputTokens = update.OutputTokens;
-            }
-        }
-
-        return new(text.ToString(), inputTokens, outputTokens);
+            operationName), cancellationToken);
     }
 
     static RpTurnTraceStep CreateStepTrace(
@@ -386,7 +433,7 @@ public sealed class TextGenerationService(
         DateTime completedUtc,
         string systemPrompt,
         string userPrompt,
-        TextCompletion completion,
+        ModelTextCompletion completion,
         string structuredOutputJson,
         string error) => new()
     {
@@ -440,6 +487,20 @@ public sealed class TextGenerationService(
         return match?.Id ?? "";
     }
 
+    static (string CharacterId, string Appearance)? ResolveAppearanceCharacter(
+        IEnumerable<RpCharacter> characters,
+        AppearanceCharacterResponse response)
+    {
+        var characterId = ResolveCharacterId(characters, response.CharacterName);
+        if (string.IsNullOrWhiteSpace(characterId))
+            return null;
+
+        var currentAppearance = response.HasCurrentSceneState
+            ? response.CurrentAppearance?.Trim() ?? ""
+            : "";
+        return (characterId, currentAppearance);
+    }
+
     static Dictionary<string, string> BuildSnapshotAppearances(IEnumerable<RpTranscriptTurn> turns)
     {
         var appearances = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -452,12 +513,14 @@ public sealed class TextGenerationService(
         return appearances;
     }
 
-    record TextCompletion(string Text, int InputTokens, int OutputTokens);
-    sealed record StructuredTextCompletion<T>(T Value, string Text, int InputTokens, int OutputTokens) : TextCompletion(Text, InputTokens, OutputTokens);
-    sealed class AppearanceResponse
-    {
-        public Dictionary<string, string> Characters { get; set; } = [];
-    }
+    public sealed record AppearanceResponse(
+        string? Summary,
+        IReadOnlyList<AppearanceCharacterResponse>? Characters);
+
+    public sealed record AppearanceCharacterResponse(
+        string CharacterName,
+        bool HasCurrentSceneState,
+        string? CurrentAppearance);
 
     sealed class SelectionResponse
     {

@@ -80,7 +80,8 @@ public sealed class ModelCapabilityCatalogTests
         Assert.True(fromDefault.StructuredOutput);
         Assert.Equal("fallback", fallback.Source);
         Assert.True(fallback.CanGenerateText);
-        Assert.False(fallback.StructuredOutput);
+        Assert.True(fallback.StructuredOutput);
+        Assert.True(fallback.Streaming);
         Assert.False(fallback.ImageOutput);
     }
 
@@ -156,6 +157,30 @@ public sealed class ModelCapabilityCatalogTests
         Assert.True(capabilities.Streaming);
         Assert.Equal(TuningSupport.Supported, capabilities.Temperature);
         Assert.Equal(TuningSupport.DefaultOnly, capabilities.TopP);
+    }
+
+    [Fact]
+    public void ExplicitUserDisableOverridesRoleplayReadyDefaults()
+    {
+        var root = CreateTempRoot();
+        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
+        File.WriteAllText(Path.Combine(root, "wwwroot", "model-capabilities.default.json"), """{ "models": [] }""");
+        var userPath = Path.Combine(root, "model-capabilities.user.json");
+        var catalog = new ModelCapabilityCatalog(new FakeWebHostEnvironment(root), userPath);
+
+        catalog.SaveUserCapabilities("compatible", "prose-only-model", new ModelGenerationCapabilities
+        {
+            TextInput = true,
+            TextOutput = true,
+            StructuredOutput = false,
+            Streaming = false
+        });
+
+        var capabilities = catalog.Resolve("compatible", "prose-only-model");
+
+        Assert.True(capabilities.CanGenerateText);
+        Assert.False(capabilities.StructuredOutput);
+        Assert.False(capabilities.Streaming);
     }
 
     static string CreateTempRoot()

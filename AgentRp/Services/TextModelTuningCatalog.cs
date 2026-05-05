@@ -47,8 +47,10 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
     {
         TextInput = true,
         TextOutput = true,
+        Streaming = true,
+        StructuredOutput = true,
         Source = "fallback",
-        Guidance = "No capability record was found. Text is allowed, but tuning, structured output, streaming, tools, and image generation stay disabled until capabilities are provided."
+        Guidance = "No capability record was found. AgentRp assumes roleplay-ready text, streaming, and structured output support unless the user disables them."
     };
 }
 

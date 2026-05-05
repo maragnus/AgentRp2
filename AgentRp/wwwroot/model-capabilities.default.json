@@ -99,7 +99,10 @@
       "id": "gpt-image-1.5",
       "textInput": true,
       "imageInput": true,
+      "textOutput": false,
       "imageOutput": false,
+      "streaming": false,
+      "structuredOutput": false,
       "tools": true,
       "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
     },
@@ -108,7 +111,10 @@
       "id": "gpt-image-1",
       "textInput": true,
       "imageInput": true,
+      "textOutput": false,
       "imageOutput": false,
+      "streaming": false,
+      "structuredOutput": false,
       "tools": true,
       "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
     },
@@ -117,7 +123,10 @@
       "id": "gpt-image-1-mini",
       "textInput": true,
       "imageInput": true,
+      "textOutput": false,
       "imageOutput": false,
+      "streaming": false,
+      "structuredOutput": false,
       "tools": true,
       "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
     },

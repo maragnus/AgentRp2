@@ -21,7 +21,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
-builder.Services.AddSingleton<IResponseGenerationClient, OpenAiResponsesGenerationClient>();
+builder.Services.AddSingleton<IModelClientFactory, ModelClientFactory>();
+builder.Services.AddSingleton<IModelGenerationClient, OpenAiModelGenerationClient>();
 builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionService>();
 builder.Services.AddScoped<IAiProviderWidgetService, AiProviderWidgetService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
