@@ -1,0 +1,23 @@
+@inject OverlayService Overlays
+@implements IDisposable
+
+<div class="overlay-root">
+    @foreach (var entry in Overlays.Entries)
+    {
+        <OverlaySurface @key="entry.Id" Entry="entry" />
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Overlays.Changed += OnOverlaysChanged;
+    }
+
+    void OnOverlaysChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Overlays.Changed -= OnOverlaysChanged;
+    }
+}

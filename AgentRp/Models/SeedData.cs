@@ -200,24 +200,12 @@ public static class SeedData
             ApiKey = "xai-••••••••••••••••••••••••••••••••",
             Models =
             [
-                new() { Id = "grok-4-1-fast-non-reasoning", Enabled = true, Text = true },
-                new() { Id = "grok-4-0709", Enabled = true, Text = true },
-                new() { Id = "grok-4.20-0309", Enabled = true, Text = true, Image = true },
-                new() { Id = "grok-4.20-0309-non-reasoning", Text = true },
-                new() { Id = "grok-4.20-0309-reasoning", Text = true },
+                new() { Id = "grok-4-1-fast-non-reasoning", DisplayName = "grok-4-1-fast-non-reasoning", CreatedUnix = 1773014400, Enabled = true, Text = true, ActiveText = true },
+                new() { Id = "grok-4-0709", CreatedUnix = 1752019200, Enabled = true, Text = true },
+                new() { Id = "grok-4.20-0309", CreatedUnix = 1776384000, Enabled = true, Text = true, Image = true },
+                new() { Id = "grok-4.20-0309-non-reasoning", CreatedUnix = 1776384000, Text = true },
+                new() { Id = "grok-4.20-0309-reasoning", CreatedUnix = 1776384000, Text = true },
                 new() { Id = "grok-vision-beta", Text = true, Image = true }
-            ]
-        },
-        new()
-        {
-            Id = "ap2", Type = "huggingface", Name = "Hugging Face Endpoints", Enabled = true,
-            ApiKey = "hf_••••••••••••••••••••••••••••••••",
-            Endpoint = "https://api-inference.huggingface.co",
-            Models =
-            [
-                new() { Id = "meta-llama/Meta-Llama-3.1-8B-Instruct", Enabled = true, Text = true },
-                new() { Id = "mistralai/Mixtral-8x7B-Instruct-v0.1", Text = true },
-                new() { Id = "stabilityai/stable-diffusion-xl-base-1.0", Image = true }
             ]
         },
         new()
@@ -243,7 +231,7 @@ public static class SeedData
         {
             Id = "openai",
             Name = "OpenAI",
-            Description = "GPT-4o, o3, and the full OpenAI model suite.",
+            Description = "OpenAI Responses API models for text and image generation.",
             KeyLabel = "OpenAI API Key",
             KeyLink = "https://platform.openai.com/api-keys",
             ApiKeyRequired = true,
@@ -260,7 +248,7 @@ public static class SeedData
         {
             Id = "grok",
             Name = "Grok / xAI",
-            Description = "xAI Grok models including vision and reasoning variants.",
+            Description = "xAI Open Responses-compatible Grok models.",
             KeyLabel = "xAI API Key",
             KeyLink = "https://console.x.ai",
             ApiKeyRequired = true,
@@ -278,10 +266,12 @@ public static class SeedData
         {
             Id = "claude",
             Name = "Claude / Anthropic",
-            Description = "Claude Opus, Sonnet, and Haiku model families.",
+            Description = "Claude through a Responses/Open Responses-compatible /v1 endpoint.",
             KeyLabel = "Anthropic API Key",
             KeyLink = "https://console.anthropic.com/settings/keys",
+            NeedsEndpoint = true,
             ApiKeyRequired = true,
+            EndpointRequired = true,
             SampleModels =
             [
                 new() { Id = "claude-opus-4-5", Text = true },
@@ -295,23 +285,17 @@ public static class SeedData
         {
             Id = "huggingface",
             Name = "Hugging Face",
-            Description = "Managed HF Inference Endpoints for open-weight models.",
-            KeyLabel = "HF Access Token",
+            Description = "Managed Hugging Face endpoints exposed through a Responses/Open Responses-compatible /v1 endpoint.",
+            KeyLabel = "Hugging Face API Key",
             KeyLink = "https://huggingface.co/settings/tokens",
-            NeedsEndpoint = true,
-            ApiKeyRequired = true,
-            SampleModels =
-            [
-                new() { Id = "meta-llama/Meta-Llama-3.1-8B-Instruct", Text = true },
-                new() { Id = "mistralai/Mixtral-8x7B-Instruct-v0.1", Text = true },
-                new() { Id = "stabilityai/stable-diffusion-xl-base-1.0", Image = true }
-            ]
+            NeedsEndpoint = false,
+            ApiKeyRequired = true
         },
         new()
         {
             Id = "compatible",
             Name = "OpenAI-compatible",
-            Description = "LM Studio, Ollama, or any OpenAI-compatible gateway.",
+            Description = "Any Responses/Open Responses-compatible gateway.",
             KeyLabel = "API Key",
             NeedsEndpoint = true,
             EndpointRequired = true

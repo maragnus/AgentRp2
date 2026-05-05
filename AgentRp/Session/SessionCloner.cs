@@ -108,16 +108,39 @@ static class SessionCloner
         Type = value.Type,
         Enabled = value.Enabled,
         ApiKey = value.ApiKey,
+        ManagementApiKey = value.ManagementApiKey,
         Endpoint = value.Endpoint,
-        Models = value.Models.Select(Clone).ToList()
+        AccountId = value.AccountId,
+        ProjectId = value.ProjectId,
+        TeamId = value.TeamId,
+        LastMetricsRefreshUtc = value.LastMetricsRefreshUtc,
+        LastMetricsError = value.LastMetricsError,
+        Models = value.Models.Select(Clone).ToList(),
+        Metrics = value.Metrics.Select(Clone).ToList()
     };
 
     public static AiProviderModel Clone(AiProviderModel value) => new()
     {
         Id = value.Id,
+        DisplayName = value.DisplayName,
+        Endpoint = value.Endpoint,
+        Repository = value.Repository,
+        CreatedUnix = value.CreatedUnix,
         Enabled = value.Enabled,
         Text = value.Text,
-        Image = value.Image
+        Image = value.Image,
+        ActiveText = value.ActiveText,
+        Capabilities = value.Capabilities
+    };
+
+    public static AiProviderMetric Clone(AiProviderMetric value) => new()
+    {
+        Id = value.Id,
+        Kind = value.Kind,
+        Label = value.Label,
+        Value = value.Value,
+        Detail = value.Detail,
+        RefreshedUtc = value.RefreshedUtc
     };
 
     public static RpChatDocument Clone(RpChatDocument value) => new()

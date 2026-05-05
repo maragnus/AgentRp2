@@ -1,0 +1,18 @@
+<div class="@CssClass">
+    <FaIcon Name="search" />
+    <input class="field search-field"
+           placeholder="@Placeholder"
+           value="@Value"
+           @oninput="HandleInput" />
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search...";
+    [Parameter] public string? Class { get; set; }
+
+    string CssClass => $"search-field-wrap {Class}".Trim();
+
+    Task HandleInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+}

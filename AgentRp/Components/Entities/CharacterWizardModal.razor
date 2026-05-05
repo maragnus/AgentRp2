@@ -1,20 +1,20 @@
 <ModalShell Title="@WizardTitle" Subtitle="Guided Profile" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="Close">
-    <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="v2-rail">
+    <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="character-wizard-rail">
             <RailHeader>
-                <div class="v2-profile">
+                <div class="character-wizard-profile">
                     <Avatar Name="@(string.IsNullOrWhiteSpace(Character.Name) ? "?" : Character.Name)" Size="52" />
-                    <span class="v2-profile-name @(string.IsNullOrWhiteSpace(Character.Name) ? "is-empty" : "")">
+                    <span class="character-wizard-profile-name @(string.IsNullOrWhiteSpace(Character.Name) ? "is-empty" : "")">
                         @(string.IsNullOrWhiteSpace(Character.Name) ? "Unnamed" : Character.Name)
                     </span>
                     @if (Character.SceneRoles.Count > 0)
                     {
-                        <div class="v2-role-list">
+                        <div class="character-wizard-role-list">
                             @foreach (var roleId in Character.SceneRoles)
                             {
                                 var role = Find(SceneRoles, roleId);
                                 if (role is not null)
                                 {
-                                    <span @key="role.Id" class="v2-mini-role">@role.Label</span>
+                                    <span @key="role.Id" class="character-wizard-mini-role">@role.Label</span>
                                 }
                         }
                     </div>
@@ -35,7 +35,7 @@
                                    Done="@done"
                                    Locked="@(!accessible)"
                                    Disabled="@(!accessible)"
-                                   Class="v2-step"
+                                   Class="character-wizard-step"
                                    OnClick="@(_ => GoToStep(index))">
                         <IndexContent>
                             @if (done && Step != index)
@@ -51,20 +51,18 @@
                 }
             </RailContent>
             <RailFooter>
-                <div class="v2-progress">
+                <div class="character-wizard-progress">
                     <div>
                         <span>Completeness</span>
                         <span>@DoneCount/@Steps.Length</span>
                     </div>
-                    <div class="v2-progress-track">
-                        <div class="v2-progress-fill" style="width:@ProgressPercent%"></div>
-                    </div>
+                    <ProgressBar Value="@DoneCount" Max="@Steps.Length" Class="character-wizard-progress-track" />
                 </div>
             </RailFooter>
             <MainContent>
-                <ModalStackLayout BodyClass="v2-step-content">
+                <ModalStackLayout BodyClass="character-wizard-step-content">
                     <Header>
-                        <div class="v2-main-head">
+                        <div class="character-wizard-main-head">
                             <h3>@Steps[Step].Label</h3>
                             <p>@Steps[Step].Sub</p>
                         </div>
@@ -72,19 +70,19 @@
                     <ChildContent>
                     @if (Step == 0)
                     {
-                        <div class="v2-step-stack">
+                        <div class="character-wizard-step-stack">
                             <Section Title="Name">
-                                <input class="v2-name-input" placeholder="Character name..." @bind="Character.Name" @bind:event="oninput" />
+                                <input class="character-wizard-name-input" placeholder="Character name..." @bind="Character.Name" @bind:event="oninput" />
                             </Section>
                             <Section Title="Summary" Hint="— one sentence, optional">
-                                <textarea class="v2-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
+                                <textarea class="character-wizard-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
                             </Section>
                             <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="2">
-                                <div class="v2-chip-list">
+                                <div class="character-wizard-chip-list">
                                     @foreach (var role in SceneRoles)
                                     {
                                         var selected = Character.SceneRoles.Contains(role.Id);
-                                        <SelectableButton @key="role.Id" Title="@role.Hover" Class="@($"v2-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= 2)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, 2))">
+                                        <SelectableButton @key="role.Id" Title="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= 2)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, 2))">
                                             @role.Label
                                         </SelectableButton>
                                     }
@@ -94,20 +92,20 @@
                     }
                     else if (Step == 1)
                     {
-                        <div class="v2-personality-intro">
+                        <div class="character-wizard-personality-intro">
                             <p>Pick 3 to 6 total. Hover any trait for a description.</p>
-                            <span class="v2-count-pill @(Character.Traits.Count >= 3 ? "is-ready" : "")">@Character.Traits.Count / 6</span>
+                            <span class="character-wizard-count-pill @(Character.Traits.Count >= 3 ? "is-ready" : "")">@Character.Traits.Count / 6</span>
                         </div>
-                        <div class="v2-trait-section-list">
+                        <div class="character-wizard-trait-section-list">
                             @foreach (var group in TraitCategories)
                             {
                                 var selectedCount = group.Items.Count(item => Character.Traits.Contains(item.Id));
-                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="v2-trait-group">
-                                    <div class="v2-chip-list">
+                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="character-wizard-trait-group">
+                                    <div class="character-wizard-chip-list">
                                         @foreach (var trait in group.Items)
                                         {
                                             var selected = Character.Traits.Contains(trait.Id);
-                                            <SelectableButton @key="trait.Id" Title="@trait.Hover" Class="@($"v2-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= 6)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, 6))">
+                                            <SelectableButton @key="trait.Id" Title="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= 6)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, 6))">
                                                 @trait.Label
                                             </SelectableButton>
                                         }
@@ -118,8 +116,8 @@
                     }
                     else if (Step == 2)
                     {
-                        <p class="v2-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
-                        <div class="v2-step-stack is-roomy">
+                        <p class="character-wizard-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
+                        <div class="character-wizard-step-stack is-roomy">
                             <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Character.CoreDrive" OnSelect="@(id => SetSingle(nameof(Character.CoreDrive), id))" />
                             <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Character.CoreFear" OnSelect="@(id => SetSingle(nameof(Character.CoreFear), id))" />
                             <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Character.SurfaceMask" OnSelect="@(id => SetSingle(nameof(Character.SurfaceMask), id))" />
@@ -128,8 +126,8 @@
                     }
                     else if (Step == 3)
                     {
-                        <p class="v2-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
-                        <div class="v2-step-stack is-roomy">
+                        <p class="character-wizard-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
+                        <div class="character-wizard-step-stack is-roomy">
                             <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Character.SentenceStyle" OnSelect="@(id => SetSingle(nameof(Character.SentenceStyle), id))" />
                             <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Character.HonestyStyle" OnSelect="@(id => SetSingle(nameof(Character.HonestyStyle), id))" />
                             <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Character.EmotionalLeakage" OnSelect="@(id => SetSingle(nameof(Character.EmotionalLeakage), id))" />
@@ -139,7 +137,7 @@
                     }
                     else if (Step == 4)
                     {
-                        <div class="v2-step-stack is-roomy">
+                        <div class="character-wizard-step-stack is-roomy">
                             <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="3" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, 3))" />
                             <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="5" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, 5))" />
                         </div>
@@ -149,30 +147,30 @@
                         var others = ExistingCharacters.Where(c => c.Id != Character.Id).ToList();
                         @if (others.Count == 0)
                         {
-                            <div class="v2-empty">
+                            <div class="character-wizard-empty">
                                 <FaIcon Name="users" />
                                 <span>No other characters yet.<br />Relationships can be added later from the character editor.</span>
                             </div>
                         }
                         else
                         {
-                            <div class="v2-relationships">
-                                <p class="v2-help">Toggle the characters this character knows, then define the dynamic from each direction.</p>
+                            <div class="character-wizard-relationships">
+                                <p class="character-wizard-help">Toggle the characters this character knows, then define the dynamic from each direction.</p>
                                 @foreach (var other in others)
                                 {
                                     var rel = GetRelationship(other.Id);
                                     var known = rel is not null;
                                     var expanded = ExpandedRelationships.Contains(other.Id);
-                                    <article @key="other.Id" class="v2-rel @(known ? "is-known" : "")">
-                                        <SelectableButton Class="v2-rel-head" OnClick="@(_ => ToggleRelationshipRow(other.Id))">
-                                            <span class="v2-rel-check @(known ? "is-selected" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleRelationship(other.Id)">
+                                    <article @key="other.Id" class="character-relationship @(known ? "is-known" : "")">
+                                        <SelectableButton Class="character-relationship-head" OnClick="@(_ => ToggleRelationshipRow(other.Id))">
+                                            <span class="character-relationship-check @(known ? "is-selected" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleRelationship(other.Id)">
                                                 @if (known)
                                                 {
                                                     <FaIcon Name="check" />
                                                 }
                                             </span>
                                             <Avatar Name="@other.Name" Size="30" />
-                                            <span class="v2-rel-copy">
+                                            <span class="character-relationship-copy">
                                                 <strong>@other.Name</strong>
                                                 @if (!string.IsNullOrWhiteSpace(other.Summary))
                                                 {
@@ -181,7 +179,7 @@
                                             </span>
                                             @if (known)
                                             {
-                                                <span class="v2-rel-meta">
+                                                <span class="character-relationship-meta">
                                                     @foreach (var bond in rel!.Bonds.Take(1))
                                                     {
                                                         <span @key="bond">@bond</span>
@@ -192,33 +190,33 @@
                                         </SelectableButton>
                                         @if (known && expanded)
                                         {
-                                            <div class="v2-rel-detail">
+                                            <div class="character-relationship-detail">
                                                 <Section Title="Bond Type">
-                                                    <div class="v2-chip-list">
+                                                    <div class="character-wizard-chip-list">
                                                         @foreach (var bond in BondTypes)
                                                         {
                                                             var selected = rel!.Bonds.Contains(bond);
-                                                            <SelectableButton @key="bond" Class="@($"v2-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Bonds, bond))">@bond</SelectableButton>
+                                                            <SelectableButton @key="bond" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Bonds, bond))">@bond</SelectableButton>
                                                         }
                                                     </div>
                                                 </Section>
                                                 <Section Title="Shared Dynamic">
-                                                    <div class="v2-chip-list">
+                                                    <div class="character-wizard-chip-list">
                                                         @foreach (var dynamic in Dynamics)
                                                         {
                                                             var selected = rel!.Dynamics.Contains(dynamic);
-                                                            <SelectableButton @key="dynamic" Class="@($"v2-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Dynamics, dynamic))">@dynamic</SelectableButton>
+                                                            <SelectableButton @key="dynamic" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Dynamics, dynamic))">@dynamic</SelectableButton>
                                                         }
                                                     </div>
                                                 </Section>
                                                 <Section Title="@($"How {SelfName} sees {other.Name}")">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.NoteAtoB" @bind:event="oninput"></textarea>
+                                                    <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.NoteAtoB" @bind:event="oninput"></textarea>
                                                 </Section>
                                                 <Section Title="@($"How {other.Name} sees {SelfName}")">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.NoteBtoA" @bind:event="oninput"></textarea>
+                                                    <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.NoteBtoA" @bind:event="oninput"></textarea>
                                                 </Section>
                                                 <Section Title="External Perception">
-                                                    <textarea class="v2-rel-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.NoteExternal" @bind:event="oninput"></textarea>
+                                                    <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.NoteExternal" @bind:event="oninput"></textarea>
                                                 </Section>
                                             </div>
                                         }
@@ -320,7 +318,6 @@
     static readonly string[] Dynamics = ["Power struggle", "Protective", "Competitive", "Dependent", "Avoidant", "Charged", "Playful rivalry", "Unspoken tension", "Loyal", "Complicated history"];
 
     int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
-    int ProgressPercent => (int)Math.Round(DoneCount / (double)Steps.Length * 100);
     bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Character.Name);
     bool IsComplete => DoneCount == Steps.Length;
     string SelfName => string.IsNullOrWhiteSpace(Character.Name) ? "this character" : Character.Name;

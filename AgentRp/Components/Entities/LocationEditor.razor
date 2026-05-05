@@ -1,11 +1,5 @@
 <div class="entity-form-editor">
-    <div class="entity-form-head">
-        <EntityImage Name="@Location.Name" Image="Image" Size="44" Editable OnClick="OnImagePickerRequested" />
-        <div>
-            <strong>@Location.Name</strong>
-            <div>Location profile</div>
-        </div>
-    </div>
+    <EntityHeader Name="@Location.Name" Subtitle="Location profile" Image="Image" Editable OnImagePickerRequested="OnImagePickerRequested" />
     <Section Title="Identity" Class="entity-form-section">
         <FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
         <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>

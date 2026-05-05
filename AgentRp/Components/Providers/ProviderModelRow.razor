@@ -1,31 +1,113 @@
-<div class="provider-model">
-    <SelectableButton Class="@DotClass" Title="@(Model.Enabled ? "Disable" : "Enable")" OnClick="@(_ => ToggleEnabled())"></SelectableButton>
-    <code>@Model.Id</code>
-    <CapabilityPill Tone="text" Active="@(Model.Enabled && Model.Text)" Disabled="@(!Model.Enabled)" OnClick="@(_ => ToggleText())">Text</CapabilityPill>
-    <CapabilityPill Tone="image" Active="@(Model.Enabled && Model.Image)" Disabled="@(!Model.Enabled)" OnClick="@(_ => ToggleImage())">Image</CapabilityPill>
-</div>
+<SelectableRow Class="provider-model"
+               Selected="@AnyEnabled"
+               Disabled="@(!AnyEnabled)"
+               Limited="@(!HasAnyRole)"
+               SelectionTitle="@RowTitle"
+               OnToggle="@(_ => ToggleModel())">
+    <ChildContent>
+        <span class="provider-model-title">
+            <strong title="@Model.Id">@DisplayName</strong>
+            @if (ShowModelId)
+            {
+                <small title="@Model.Id">@Model.Id</small>
+            }
+        </span>
+    </ChildContent>
+    <Actions>
+        @if (Model.ActiveText)
+        {
+            <span class="cap cap-passive">Active</span>
+        }
+        @if (CanChat)
+        {
+            <CapabilityPill Tone="text"
+                            Active="@ChatActive"
+                            Title="@ChatTitle"
+                            OnClick="@(_ => ToggleChat())">Chat</CapabilityPill>
+        }
+        else
+        {
+            <span class="cap cap-disabled" title="@ChatTitle">Chat</span>
+        }
+        @if (CanImage)
+        {
+            <CapabilityPill Tone="image"
+                            Active="@ImageActive"
+                            Title="@ImageTitle"
+                            OnClick="@(_ => ToggleImage())">Image Gen</CapabilityPill>
+        }
+        else
+        {
+            <span class="cap cap-disabled" title="@ImageTitle">Image Gen</span>
+        }
+        @if (Model.Capabilities.ImageInput)
+        {
+            <span class="cap cap-passive cap-vision" title="@VisionTitle">Vision</span>
+        }
+        @if (NeedsSetup)
+        {
+            <AppButton Bare Class="cap cap-warning model-setup-button" Title="@NeedsSetupTitle" OnClick="@(_ => OnSetup.InvokeAsync(Model))">
+                Set up
+            </AppButton>
+        }
+    </Actions>
+</SelectableRow>
 
 @code {
     [Parameter] public AiProviderModel Model { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<AiProviderModel> OnSetup { get; set; }
 
-    string DotClass => $"model-dot {(Model.Enabled ? "is-on" : "")}";
+    bool CanChat => AiProviderModelSelectionRules.HasChatRole(Model);
+    bool CanImage => AiProviderModelSelectionRules.HasImageRole(Model);
+    bool HasAnyRole => AiProviderModelSelectionRules.HasAnyRole(Model);
+    bool ChatActive => AiProviderModelSelectionRules.IsSelectedForChat(Model);
+    bool ImageActive => AiProviderModelSelectionRules.IsSelectedForImage(Model);
+    bool AnyEnabled => AiProviderModelSelectionRules.IsSelectedForAnyRole(Model);
+    bool NeedsSetup => Model.Capabilities.Source == "fallback" || !HasAnyRole;
+    string DisplayName => string.IsNullOrWhiteSpace(Model.DisplayName) ? Model.Id : Model.DisplayName;
+    bool ShowModelId => !string.Equals(DisplayName.Trim(), Model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
+    string RowTitle => AnyEnabled ? $"Clear selected roles for {Model.Id}" : $"Choose Chat or Image Gen for {Model.Id}";
+    string ChatTitle => CanChat
+        ? $"Enable this model for chat. Structured output: {Known(Model.Capabilities.StructuredOutput)}. Streaming: {Known(Model.Capabilities.Streaming)}. Source: {Model.Capabilities.Source}."
+        : $"Chat is not available for this model. Source: {Model.Capabilities.Source}.";
+    string ImageTitle => CanImage
+        ? $"Enable this model for image generation through Responses image output. Source: {Model.Capabilities.Source}."
+        : $"Image generation is not available for this model. Source: {Model.Capabilities.Source}.";
+    string VisionTitle => $"This model can accept image input. Source: {Model.Capabilities.Source}.";
+    string NeedsSetupTitle => HasAnyRole
+        ? "Capability data came from the safe fallback. Add or update model-capabilities.user.json for precise support."
+        : "No supported app role is known for this model. Add model capabilities in model-capabilities.user.json to enable it.";
 
-    async Task ToggleEnabled()
+    async Task ToggleModel()
     {
-        Model.Enabled = !Model.Enabled;
+        if (!AnyEnabled)
+            return;
+
+        AiProviderModelSelectionRules.ClearSelectedRoles(Model);
+
         await OnChanged.InvokeAsync();
     }
 
-    async Task ToggleText()
+    async Task ToggleChat()
     {
-        Model.Text = !Model.Text;
+        if (!CanChat)
+            return;
+
+        AiProviderModelSelectionRules.SetChatSelected(Model, !ChatActive);
+
         await OnChanged.InvokeAsync();
     }
 
     async Task ToggleImage()
     {
-        Model.Image = !Model.Image;
+        if (!CanImage)
+            return;
+
+        AiProviderModelSelectionRules.SetImageSelected(Model, !ImageActive);
+
         await OnChanged.InvokeAsync();
     }
+
+    static string Known(bool supported) => supported ? "known supported" : "not declared";
 }

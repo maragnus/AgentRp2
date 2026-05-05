@@ -59,9 +59,16 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 
 ## AI Integration Rules
 - Never manually construct or send HTTP requests directly to model generation endpoints. Text, image, tool, and agent model calls must go through the official OpenAI package or Microsoft.Extensions.AI abstractions.
-- OpenAI text generation must use the Responses API. Do not use Chat Completions for OpenAI generation, and do not add new code that posts to `chat/completions`.
+- AgentRp1 is the working prototype and behavioral source of truth for Responses/Open Responses generation. If implementation reveals a reason to deviate from this plan or from AgentRp1 behavior, stop and consult the user before changing direction.
+- All text and image generation must use the app-owned Responses/Open Responses abstraction backed by the official OpenAI SDK `ResponsesClient`. Do not use `IChatClient` for this app's generation contract.
+- OpenAI, Claude, Grok, and future providers must be treated as Responses/Open Responses-compatible providers that differ only by endpoint, API key, model id, provider metadata, and resolved capabilities.
+- Do not use Chat Completions, Anthropic Messages, provider-native image endpoints, or any other provider-specific generation transport. Do not add code that posts to `chat/completions`, `messages`, `images/generations`, or similar generation endpoints.
+- Provider-specific APIs may be used only for non-generation widgets and metadata, such as usage, billing, health checks, or model discovery. Text and image generation must never use those provider-specific APIs.
+- Provider onboarding must require a `/v1` Responses/Open Responses-compatible base URL unless the provider has an approved built-in default.
 - OpenAI-compatible providers must still be isolated behind the approved AI abstraction layer. Do not hand-build OpenAI-shaped request bodies with `messages`, `response_format`, or provider-specific path strings in application services.
 - Structured model outputs must use typed responses from the approved package/abstraction instead of parsing raw response text or raw JSON documents.
+- Model capabilities must be resolved before displaying tuning controls or constructing requests. Unsupported/default-only tuning parameters must be omitted even if saved chat tuning values exist.
+- Unknown models default to basic text input/text output only: no tuning, no structured output, no streaming, no tools, and no image support until provider metadata, shipped catalog data, or user override JSON proves support.
 - If the approved packages do not yet expose a provider capability, stop and redesign or ask before adding a temporary direct HTTP integration.
 
 ## Coding Standards
@@ -89,6 +96,12 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 
 ## Design, UI/UX
 - Adhere to the Claude Design first and foremost
+- Every user-facing interaction must be designed from the user's task first. Whether creating a new screen, panel, modal, list, control, status display, or revising an existing one, start by identifying what the user is trying to decide or accomplish in that moment. Internal architecture, diagnostic detail, capability metadata, provider state, and technical distinctions must not be surfaced directly unless they help that immediate task. The default UI should be scannable, action-oriented, calm, and decision-supportive; advanced, diagnostic, or explanatory detail belongs behind progressive disclosure.
+- Do not treat backend state as UI requirements. New data from services, models, providers, diagnostics, or persistence must be translated into user-facing choices, summaries, warnings, or details based on workflow need. Raw technical state should never be placed into primary UI just because it exists.
+- Before creating or revising a user interaction, check whether it is a reusable interaction primitive such as a checklist, picker, selectable list, table, toolbar, editor panel, empty state, filter surface, or setup flow. If the pattern appears in more than one place, or combines generic behavior such as selection, sorting, filtering, disabled states, focus states, empty states, or templated rows, create or extend a shared component first. Feature components should compose shared primitives rather than reimplement generic interaction markup or CSS inline.
+- Name and design shared primitives around the real interaction shape. Do not call or model a pattern as a checklist when rows contain richer decisions such as role toggles, actions, badges, or setup states. Shared primitives should capture reusable visual grammar and accessibility behavior without flattening domain-specific interactions into yes/no controls.
+- Pages and modals should orchestrate workflows, not own repeated interaction primitives or large nested subflows inline. If markup or state begins to represent a reusable interaction, a repeated domain section, or a substantial editor/setup flow, extract it into a focused component.
+- Shared UI components must honor the design-system contracts of the containers they live inside. In particular, `Section` exposes `--section-color` for selected/accented child UI; new controls, selectable rows, checklist items, active states, and related component styling inside a `Section` should use that variable instead of hard-coded feature colors unless there is an explicit design reason to override it.
 - FontAwesome Pro 7 CSS with Classic Regular is available and should be the default icon system in the UI. Example: `<i class="fa-regular fa-check" aria-hidden="true"></i>`
 - Blazor wrapper components are encouraged to keep the code base DRY and maintainable.
 - Avoid excessive verbosity and repetition in the UI/UX, it should feel clean, compact

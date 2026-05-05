@@ -1,0 +1,68 @@
+@inject OverlayService Overlays
+@implements IAsyncDisposable
+
+<span @ref="AnchorElement" class="@AnchorCssClass">
+    @TriggerContent
+</span>
+
+@code {
+    Guid? EntryId;
+    bool IsOpen;
+    ElementReference AnchorElement;
+
+    [Parameter] public RenderFragment<AnchoredPopoverContext>? Trigger { get; set; }
+    [Parameter] public RenderFragment<AnchoredPopoverContext>? Content { get; set; }
+    [Parameter] public OverlayPlacement Placement { get; set; } = OverlayPlacement.BottomStart;
+    [Parameter] public OverlayLayer Layer { get; set; } = OverlayLayer.Page;
+    [Parameter] public bool CloseOnContentClick { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? AnchorClass { get; set; }
+
+    AnchoredPopoverContext Context => new(IsOpen, Open, Close, Toggle);
+    RenderFragment? TriggerContent => Trigger?.Invoke(Context);
+    string AnchorCssClass => string.Join(" ", new[] { "popover-anchor", AnchorClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    async Task Open()
+    {
+        if (Content is null)
+            return;
+
+        EntryId ??= Guid.NewGuid();
+        IsOpen = true;
+
+        await Overlays.ShowAsync(new OverlayEntry(
+            EntryId.Value,
+            AnchorElement,
+            Content(Context),
+            Placement,
+            Layer,
+            Class,
+            CloseOnContentClick,
+            CloseFromOverlay));
+    }
+
+    async Task Close()
+    {
+        IsOpen = false;
+
+        if (EntryId is Guid id)
+            await Overlays.CloseAsync(id, notifyOwner: false);
+
+        EntryId = null;
+    }
+
+    Task Toggle() => IsOpen ? Close() : Open();
+
+    Task CloseFromOverlay()
+    {
+        IsOpen = false;
+        EntryId = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (EntryId is Guid id)
+            await Overlays.CloseAsync(id, notifyOwner: false);
+    }
+}

@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject IModelCapabilityCatalog CapabilityCatalog
 @implements IDisposable
 
 <ModalShell Title="Model Tuning" MaxWidth="780px" BodyClass="is-flush" OnClose="OnClose">
@@ -18,33 +19,30 @@
         <MainContent>
         <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
             <Header>
-                <div class="tuning-toolbar">
-                    <strong>@CurrentStep.Label</strong>
-                    <span style="flex:1"></span>
+                <Toolbar Title="@CurrentStep.Label" Class="tuning-toolbar">
                     <AppButton Variant="secondary" Size="xs" OnClick="ImportSettings"><FaIcon Name="download" />Import</AppButton>
                     <AppButton Variant="secondary" Size="xs" OnClick="ExportSettings"><FaIcon Name="upload" />Export</AppButton>
-                    <div class="dropdown-wrap">
-                        <AppButton Variant="@(CopyOpen ? "outline" : "secondary")" Size="xs" OnClick="@(_ => CopyOpen = !CopyOpen)">
-                            <FaIcon Name="copy" />Copy To <FaIcon Name="@(CopyOpen ? "chevron-up" : "chevron-down")" />
-                        </AppButton>
-                        @if (CopyOpen)
-                        {
-                            <div class="popover copy-popover">
-                                <div class="popover-label">Copy settings to</div>
-                                @foreach (var step in Steps.Where(step => step.Id != Active))
-                                {
-                                    <SelectableButton @key="step.Id" Class="select-row" OnClick="@(_ => CopyTo(step.Id))">@step.Label</SelectableButton>
-                                }
-                                <div class="divider"></div>
-                                <SelectableButton Class="select-row is-accent" OnClick="@(_ => CopyToAll())">All phases</SelectableButton>
-                            </div>
-                        }
-                    </div>
+                    <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Layer="OverlayLayer.Modal" Class="copy-popover">
+                        <Trigger Context="copy">
+                            <AppButton Variant="@(copy.IsOpen ? "outline" : "secondary")" Size="xs" OnClick="@(_ => copy.Toggle())">
+                                <FaIcon Name="copy" />Copy To <FaIcon Name="@(copy.IsOpen ? "chevron-up" : "chevron-down")" />
+                            </AppButton>
+                        </Trigger>
+                        <Content>
+                            <div class="popover-label">Copy settings to</div>
+                            @foreach (var step in Steps.Where(step => step.Id != Active))
+                            {
+                                <SelectableButton @key="step.Id" Class="select-row" OnClick="@(_ => CopyTo(step.Id))">@step.Label</SelectableButton>
+                            }
+                            <div class="divider"></div>
+                            <SelectableButton Class="select-row is-accent" OnClick="@(_ => CopyToAll())">All phases</SelectableButton>
+                        </Content>
+                    </AnchoredPopover>
                     @if (IsDirty())
                     {
                         <AppButton Size="xs" OnClick="@(_ => Reset())"><FaIcon Name="refresh" />Reset</AppButton>
                     }
-                </div>
+                </Toolbar>
             </Header>
 
             <ChildContent>
@@ -99,12 +97,13 @@
                             </div>
                             @if (Current.Temperature.HasValue && CanCustomizeTemperature)
                             {
-                                <div class="tuning-slider" style="--pct:@TemperaturePercent">
-                                    <span></span>
-                                    <input type="range" min="0" max="2" step="0.01" @bind:get="TemperatureSliderValue" @bind:set="SetTemperature" @bind:event="oninput" />
-                                    <i></i>
-                                </div>
-                                <div class="slider-scale"><span>0 · steadier</span><span>2 · wilder</span></div>
+                                <RangeSlider Value="@TemperatureSliderValue"
+                                             ValueChanged="SetTemperature"
+                                             Min="0"
+                                             Max="2"
+                                             Step="0.01"
+                                             StartLabel="0 · steadier"
+                                             EndLabel="2 · wilder" />
                             }
                             @if (!string.IsNullOrWhiteSpace(TemperatureSupportNote))
                             {
@@ -145,7 +144,6 @@
 @code {
     sealed record StepDef(string Id, string Label);
     string Active = "appearance";
-    bool CopyOpen;
     string? CopiedToast;
 
     readonly StepDef[] Steps =
@@ -165,11 +163,10 @@
     StepDef CurrentStep => Steps.First(step => step.Id == Active);
     Dictionary<string, ModelTuningStepState> Values => Session.Chat.ModelTuning.State.Values;
     ModelTuningStepState Current => Values[Active];
-    ActiveTextModel? ActiveTextModel => TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
-    ModelTuningCapabilities ActiveCapabilities => ActiveTextModel is null ? new() : TextModelTuningCatalog.Resolve(ActiveTextModel.Provider, ActiveTextModel.Model);
+    ActiveTextModel? ActiveTextModel => ResolveActiveTextModel();
+    ModelGenerationCapabilities ActiveCapabilities => ActiveTextModel?.Capabilities ?? ModelGenerationCapabilities.Fallback;
     bool CanCustomizeTemperature => ActiveCapabilities.Temperature == TuningSupport.Supported;
     double TemperatureSliderValue => Current.Temperature ?? 1d;
-    string TemperaturePercent => $"{TemperatureSliderValue / 2d * 100d:0.##}%";
     string? TemperatureSupportNote => ActiveCapabilities.Temperature switch
     {
         TuningSupport.Supported when Current.Temperature is null => "Temperature stays off until you switch to a custom value.",
@@ -184,6 +181,14 @@
     {
         Session.Chat.ModelTuning.Changed += OnStoreChanged;
         Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
+    }
+
+    ActiveTextModel? ResolveActiveTextModel()
+    {
+        foreach (var provider in Session.Providers.Items)
+            CapabilityCatalog.ApplyResolvedCapabilities(provider);
+
+        return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
@@ -237,7 +242,6 @@
     {
         Values[targetId] = Clone(Current);
         CopiedToast = $"Copied to {Steps.First(step => step.Id == targetId).Label}";
-        CopyOpen = false;
         _ = Session.Chat.ModelTuning.MarkChangedAsync();
     }
 
@@ -247,7 +251,6 @@
             Values[step.Id] = Clone(Current);
 
         CopiedToast = "Copied to all phases";
-        CopyOpen = false;
         _ = Session.Chat.ModelTuning.MarkChangedAsync();
     }
 

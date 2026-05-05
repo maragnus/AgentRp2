@@ -1,0 +1,27 @@
+<div class="@CssClass" @onclick="OnClick">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <FaIcon Name="@Icon" />
+    }
+    <span class="status-row-main">@ChildContent</span>
+    @if (BadgeContent is not null)
+    {
+        <span class="status-row-badge">@BadgeContent</span>
+    }
+    @if (TrailingContent is not null)
+    {
+        <span class="status-row-trailing">@TrailingContent</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? BadgeContent { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    string CssClass => $"status-row tone-{Tone} {(OnClick.HasDelegate ? "is-clickable" : "")} {Class}".Trim();
+}

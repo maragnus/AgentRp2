@@ -1,7 +1,3 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using AgentRp.Data;
 using AgentRp.Models;
 using AgentRp.Session;
@@ -32,10 +28,10 @@ public interface IImageGenerationService
 
 public sealed class ImageGenerationService(
     IDbContextFactory<RpDbContext> dbContextFactory,
-    IHttpClientFactory httpClientFactory) : IImageGenerationService
+    IResponseGenerationClient generationClient,
+    IModelCapabilityCatalog capabilityCatalog) : IImageGenerationService
 {
     const int MaxImageBytes = 10 * 1024 * 1024;
-    static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/png",
@@ -43,19 +39,24 @@ public sealed class ImageGenerationService(
         "image/webp"
     };
 
-    public IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers) =>
-        providers
+    public IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers)
+    {
+        foreach (var provider in providers)
+            capabilityCatalog.ApplyResolvedCapabilities(provider);
+
+        return providers
             .Where(provider => provider.Enabled)
             .SelectMany(provider => provider.Models
-                .Where(model => model.Enabled && model.Image)
+                .Where(AiProviderModelSelectionRules.IsSelectedForImage)
                 .Select(model => new ImageModelOption(
                     BuildModelKey(provider.Id, model.Id),
-                    $"{model.Id} ({provider.Name})",
+                    $"{DisplayName(model)} ({provider.Name})",
                     provider.Id,
                     provider.Name,
                     provider.Type,
                     model.Id)))
             .ToList();
+    }
 
     public async Task<GeneratedImageResult> GenerateAsync(
         RpChatDocument document,
@@ -70,12 +71,8 @@ public sealed class ImageGenerationService(
 
         var size = NormalizeSize(request.Size);
         var quality = NormalizeQuality(request.Quality);
-        var generated = model.Provider.Type switch
-        {
-            "openai" => await GenerateOpenAiAsync(model.Provider, model.Model, finalPrompt, size, quality, cancellationToken),
-            "grok" => await GenerateGrokAsync(model.Provider, model.Model, finalPrompt, size, cancellationToken),
-            _ => throw new InvalidOperationException($"Generating an image failed because '{model.Provider.Name}' does not support image generation yet.")
-        };
+        var referenceImages = await LoadReferenceImagesAsync(document.Chat.Id, request.ReferenceImageIds, cancellationToken);
+        var generated = await GenerateResponsesImageAsync(model.Provider, model.Model, finalPrompt, size, quality, request.ReferenceFidelity, referenceImages, cancellationToken);
 
         ValidateImageBytes(generated.ContentType, generated.Bytes, generated.FileName);
         var dimensions = StoryImageDimensions.TryRead(generated.Bytes, generated.ContentType);
@@ -117,68 +114,51 @@ public sealed class ImageGenerationService(
         return new(galleryImage, finalPrompt, model.Provider.Name, model.Model.Id);
     }
 
-    async Task<GeneratedImage> GenerateOpenAiAsync(AiProvider provider, AiProviderModel model, string prompt, string size, string quality, CancellationToken cancellationToken)
+    async Task<GeneratedImage> GenerateResponsesImageAsync(
+        AiProvider provider,
+        AiProviderModel model,
+        string prompt,
+        string size,
+        string quality,
+        string referenceFidelity,
+        IReadOnlyList<ResponseImageInput> referenceImages,
+        CancellationToken cancellationToken)
     {
-        using var client = CreateBearerClient(provider.ApiKey, TimeSpan.FromMinutes(5));
-        var body = new JsonObject
+        var capabilities = capabilityCatalog.Resolve(provider, model);
+        byte[]? lastBytes = null;
+        var contentType = "image/png";
+        await foreach (var update in generationClient.GetStreamingImageAsync(new(
+            provider,
+            model,
+            capabilities,
+            prompt,
+            size,
+            quality,
+            referenceFidelity,
+            referenceImages,
+            $"Generating an image with '{DisplayName(model)}'"), cancellationToken))
         {
-            ["model"] = model.Id,
-            ["prompt"] = prompt,
-            ["size"] = size,
-            ["quality"] = quality,
-            ["n"] = 1
-        };
-
-        if (!model.Id.StartsWith("gpt-image-", StringComparison.OrdinalIgnoreCase)
-            && !model.Id.StartsWith("chatgpt-image-", StringComparison.OrdinalIgnoreCase))
-        {
-            body["response_format"] = "b64_json";
+            if (update.ImageBytes is { Length: > 0 })
+            {
+                lastBytes = update.ImageBytes;
+                contentType = update.ContentType;
+            }
         }
 
-        using var response = await client.PostAsJsonAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "images/generations"), body, JsonOptions, cancellationToken);
-        var json = await ReadJsonAsync(response, $"Generating an OpenAI image with '{model.Id}'", cancellationToken);
-        var b64 = json["data"]?.AsArray().FirstOrDefault()?["b64_json"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(b64))
-            throw new InvalidOperationException("OpenAI did not return image bytes.");
+        if (lastBytes is null)
+            throw new InvalidOperationException($"{provider.Name} did not return image bytes through Responses image output.");
 
-        return new(Convert.FromBase64String(b64), "image/png", "openai-image.png");
+        return new(lastBytes, contentType, "responses-image.png");
     }
 
-    async Task<GeneratedImage> GenerateGrokAsync(AiProvider provider, AiProviderModel model, string prompt, string size, CancellationToken cancellationToken)
+    (AiProvider Provider, AiProviderModel Model) ResolveModel(IReadOnlyList<AiProvider> providers, string modelKey)
     {
-        using var client = CreateBearerClient(provider.ApiKey, TimeSpan.FromMinutes(5));
-        var body = new JsonObject
-        {
-            ["model"] = model.Id,
-            ["prompt"] = prompt,
-            ["size"] = size
-        };
+        foreach (var provider in providers)
+            capabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        using var response = await client.PostAsJsonAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "images/generations"), body, JsonOptions, cancellationToken);
-        var json = await ReadJsonAsync(response, $"Generating a Grok image with '{model.Id}'", cancellationToken);
-        var data = json["data"]?.AsArray().FirstOrDefault();
-        var b64 = data?["b64_json"]?.GetValue<string>();
-        if (!string.IsNullOrWhiteSpace(b64))
-            return new(Convert.FromBase64String(b64), "image/png", "grok-image.png");
-
-        var url = data?["url"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(url))
-            throw new InvalidOperationException("Grok did not return an image URL or image bytes.");
-
-        using var imageResponse = await client.GetAsync(url, cancellationToken);
-        if (!imageResponse.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Downloading the generated Grok image failed because the image endpoint returned {(int)imageResponse.StatusCode} ({imageResponse.StatusCode}).");
-
-        var bytes = await imageResponse.Content.ReadAsByteArrayAsync(cancellationToken);
-        var contentType = imageResponse.Content.Headers.ContentType?.MediaType ?? "image/png";
-        return new(bytes, contentType, "grok-image.png");
-    }
-
-    static (AiProvider Provider, AiProviderModel Model) ResolveModel(IReadOnlyList<AiProvider> providers, string modelKey)
-    {
         foreach (var provider in providers.Where(provider => provider.Enabled))
         {
-            foreach (var model in provider.Models.Where(model => model.Enabled && model.Image))
+            foreach (var model in provider.Models.Where(AiProviderModelSelectionRules.IsSelectedForImage))
             {
                 if (string.Equals(BuildModelKey(provider.Id, model.Id), modelKey, StringComparison.Ordinal))
                     return (provider, model);
@@ -186,6 +166,19 @@ public sealed class ImageGenerationService(
         }
 
         throw new InvalidOperationException("Generating an image failed because the selected image model is not enabled.");
+    }
+
+    async Task<IReadOnlyList<ResponseImageInput>> LoadReferenceImagesAsync(string chatId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken)
+    {
+        if (imageIds.Count == 0)
+            return [];
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await dbContext.ImageAssets
+            .AsNoTracking()
+            .Where(image => image.ChatId == chatId && imageIds.Contains(image.Id))
+            .Select(image => new ResponseImageInput(image.Bytes, image.ContentType))
+            .ToListAsync(cancellationToken);
     }
 
     static string BuildPrompt(RpChatDocument document, GenerateImageRequest request)
@@ -238,41 +231,6 @@ public sealed class ImageGenerationService(
             throw new InvalidOperationException($"Adding image '{displayName}' failed because images must be 10 MB or smaller.");
     }
 
-    HttpClient CreateBearerClient(string apiKey, TimeSpan timeout)
-    {
-        var client = httpClientFactory.CreateClient();
-        client.Timeout = timeout;
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-        return client;
-    }
-
-    static async Task<JsonNode> ReadJsonAsync(HttpResponseMessage response, string operation, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-            return await response.Content.ReadFromJsonAsync<JsonNode>(JsonOptions, cancellationToken) ?? new JsonObject();
-
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var message = UserFacingErrorMessageBuilder.BuildExternalHttpFailure(operation, response.StatusCode, responseBody);
-        throw new ExternalServiceFailureException(message, response.StatusCode, responseBody);
-    }
-
-    static string NormalizeEndpoint(AiProvider provider)
-    {
-        var endpoint = string.IsNullOrWhiteSpace(provider.Endpoint) ? DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint was empty.");
-        return endpoint.EndsWith('/') ? endpoint : $"{endpoint}/";
-    }
-
-    static string DefaultEndpoint(string providerType) => providerType switch
-    {
-        "openai" => "https://api.openai.com/v1/",
-        "grok" => "https://api.x.ai/v1/",
-        _ => ""
-    };
-
     static string NormalizeSize(string value) => value switch
     {
         "Portrait" => "1024x1536",
@@ -299,6 +257,9 @@ public sealed class ImageGenerationService(
     };
 
     public static string BuildModelKey(string providerId, string modelId) => $"{providerId}::{modelId}";
+
+    static string DisplayName(AiProviderModel model) =>
+        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 
     public static string BuildImageUrl(string imageId) => $"/story-images/{Uri.EscapeDataString(imageId)}";
 

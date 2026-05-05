@@ -11,11 +11,11 @@
                 <span>@Chat.Messages messages</span>
             </div>
         </div>
-        <div class="chat-menu-wrap">
-            <IconButton Icon="more-h" Title="Chat menu" Active="@MenuOpen" OnClick="@(_ => MenuOpen = !MenuOpen)" />
-            @if (MenuOpen)
-            {
-                <div class="popover menu-popover">
+        <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Class="menu-popover" CloseOnContentClick="false">
+            <Trigger Context="menu">
+                <IconButton Icon="more-h" Title="Chat menu" Active="@menu.IsOpen" OnClick="@(_ => menu.Toggle())" />
+            </Trigger>
+            <Content>
                     <div class="popover-label">Visible Blocks</div>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ShowAppearance = !ShowAppearance)">
                         <FaIcon Name="eye" />
@@ -29,20 +29,16 @@
                     </SelectableButton>
                     <div class="divider"></div>
                     <div class="popover-label">Appearance</div>
-                    <div style="padding:4px 12px 8px"><ThemeToggle /></div>
-                </div>
-            }
-        </div>
+                    <div class="popover-pad"><ThemeToggle /></div>
+            </Content>
+        </AnchoredPopover>
     </header>
 
     <section class="claude-chat-scroll">
-        <div style="flex:1">
+        <div class="chat-message-stack">
             @if (Session.Chat.Transcript.LastBackgroundError is not null)
             {
-                <div class="appearance-row" style="margin:0 16px 12px;border-color:var(--c-rose);color:var(--c-rose)">
-                    <FaIcon Name="warning" />
-                    <span style="flex:1">@Session.Chat.Transcript.LastBackgroundError.Message</span>
-                </div>
+                <StatusRow Icon="warning" Tone="danger" Class="appearance-row chat-error-row">@Session.Chat.Transcript.LastBackgroundError.Message</StatusRow>
             }
             @for (var i = 0; i < Messages.Count; i++)
             {
@@ -58,51 +54,49 @@
         </div>
         <div class="claude-footer">
             <div class="claude-composer">
-                <textarea @bind="Draft" @onkeydown="HandleKeyDown" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
+                <textarea @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
                 <div class="claude-composer-actions">
-                    <div class="dropdown-wrap">
-                        <AppButton Variant="secondary" Size="xs" OnClick="@(_ => SpeakerOpen = !SpeakerOpen)">
-                            @if (Session.SpeakingAs is null)
-                            {
-                                <span class="mini-narrator"><FaIcon Name="book-open" /></span>
-                            }
-                            else
-                            {
-                                <Avatar Name="@Session.SpeakingAs.Name" Size="14" />
-                            }
-                            <span>@SpeakerName</span>
-                            <FaIcon Name="chevron-down" />
-                        </AppButton>
-                        @if (SpeakerOpen)
-                        {
-                            <div class="popover composer-popover bottom-left">
-                                <SelectableButton Class="select-row" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
-                                @foreach (var character in Characters)
+                    <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
+                        <Trigger Context="speaker">
+                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" OnClick="@(_ => speaker.Toggle())">
+                                @if (Session.SpeakingAs is null)
                                 {
-                                    <SelectableButton @key="character.Id" Class="select-row" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
+                                    <span class="mini-narrator"><FaIcon Name="book-open" /></span>
                                 }
-                            </div>
-                        }
-                    </div>
-
-                    <div style="flex:1"></div>
-
-                    <div class="dropdown-wrap">
-                        <AppButton Size="xs" OnClick="@(_ => RespondOpen = !RespondOpen)">
-                            <FaIcon Name="user" /> Respond As <FaIcon Name="chevron-down" />
-                        </AppButton>
-                        @if (RespondOpen)
-                        {
-                            <div class="popover composer-popover bottom-right">
-                                <div class="popover-label">Respond As</div>
-                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
-                                @foreach (var character in Characters)
+                                else
                                 {
-                                    <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
+                                    <Avatar Name="@Session.SpeakingAs.Name" Size="14" />
                                 }
-                            </div>
-                        }
-                    </div>
+                                <span>@SpeakerName</span>
+                                <FaIcon Name="chevron-down" />
+                            </AppButton>
+                        </Trigger>
+                        <Content>
+                            <SelectableButton Class="select-row" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
+                            @foreach (var character in Characters)
+                            {
+                                <SelectableButton @key="character.Id" Class="select-row" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
+                            }
+                        </Content>
+                    </AnchoredPopover>
+
+                    <div class="toolbar-spacer"></div>
+
+                    <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
+                        <Trigger Context="respond">
+                            <AppButton Size="xs" Class="composer-action-button" Active="@respond.IsOpen" OnClick="@(_ => respond.Toggle())">
+                                <FaIcon Name="user" /> Respond As <FaIcon Name="chevron-down" />
+                            </AppButton>
+                        </Trigger>
+                        <Content>
+                            <div class="popover-label">Respond As</div>
+                            <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                            @foreach (var character in Characters)
+                            {
+                                <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
+                            }
+                        </Content>
+                    </AnchoredPopover>
 
                     <span class="v-divider"></span>
 
@@ -110,27 +104,28 @@
                         <SelectableButton Class="send-mode" Title="@ModeTitle" OnClick="@(_ => GenerateTurn())">
                             <FaIcon Name="@ModeIcon" /> @ModeLabel
                         </SelectableButton>
-                        <SelectableButton Class="send-shape" Title="Select Turn Shape" OnClick="@(_ => ShapeOpen = !ShapeOpen)">
-                            <FaIcon Name="chevron-down" />
-                        </SelectableButton>
-                        @if (ShapeOpen)
-                        {
-                            <div class="popover composer-popover bottom-right">
+                        <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
+                            <Trigger Context="shape">
+                                <SelectableButton Class="send-shape" Title="Select Turn Shape" Active="@shape.IsOpen" OnClick="@(_ => shape.Toggle())">
+                                    <FaIcon Name="chevron-down" />
+                                </SelectableButton>
+                            </Trigger>
+                            <Content>
                                 <div class="popover-label">Turn Shape</div>
                                 @foreach (var shape in TurnShapes)
                                 {
                                     <SelectableButton @key="shape" Class="@($"select-row {(TurnShape == shape ? "is-active" : "")}")" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (TurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
                                 }
-                            </div>
-                        }
+                            </Content>
+                        </AnchoredPopover>
                     </div>
 
                     <span class="v-divider"></span>
 
-                    <AppButton Variant="secondary" Size="xs" Disabled="@(Draft.Trim().Length == 0)" Title="Post the text directly as a manual turn" OnClick="@PostManual">
+                    <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Disabled="@(Draft.Trim().Length == 0)" Title="Post the text directly as a manual turn" OnClick="@PostManual">
                         <FaIcon Name="book-open" /> Manual
                     </AppButton>
-                    <AppButton Variant="primary" Size="xs" Title="Generate next turn (Ctrl+Enter)" OnClick="@GenerateTurn">
+                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Title="Generate next turn (Ctrl+Enter)" OnClick="@GenerateTurn">
                         <FaIcon Name="sparkle" /> Generate
                     </AppButton>
                     <span class="shortcut">Ctrl+↵</span>
@@ -143,10 +138,6 @@
 @code {
     bool ShowProcess = true;
     bool ShowAppearance = true;
-    bool MenuOpen;
-    bool SpeakerOpen;
-    bool RespondOpen;
-    bool ShapeOpen;
     string Draft = "";
     string TurnShape = "Brief";
     RpCharacter? RespondAs;
@@ -177,20 +168,17 @@
 
     async Task PickSpeaker(RpCharacter? character)
     {
-        SpeakerOpen = false;
         await Session.SetSpeakingAsAsync(character);
     }
 
     void PickRespondAs(RpCharacter? character)
     {
         RespondAs = character;
-        RespondOpen = false;
     }
 
     void PickShape(string shape)
     {
         TurnShape = shape;
-        ShapeOpen = false;
     }
 
     async Task HandleKeyDown(KeyboardEventArgs args)

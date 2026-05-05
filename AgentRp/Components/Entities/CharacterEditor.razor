@@ -1,16 +1,11 @@
 <div class="character-editor">
     <div class="character-editor-head">
-        <div style="display:flex;align-items:center;gap:10px">
-            <EntityImage Name="@Character.Name" Image="Image" Size="40" Editable OnClick="OnImagePickerRequested" />
-            <div>
-                <strong>@Character.Name</strong>
-                <div style="color:var(--c-text3);font-size:12px">Guided profile</div>
-            </div>
-        </div>
-        <div style="display:flex;gap:8px">
+        <EntityHeader Name="@Character.Name" Subtitle="Guided profile" Image="Image" ImageSize="40" Editable OnImagePickerRequested="OnImagePickerRequested">
+            <Actions>
             <AppButton Variant="secondary" OnClick="@(_ => WizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
             <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
-        </div>
+            </Actions>
+        </EntityHeader>
     </div>
 
     <section class="character-summary-card">

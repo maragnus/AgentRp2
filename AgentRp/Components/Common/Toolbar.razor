@@ -1,0 +1,21 @@
+<div class="@CssClass">
+    @if (!string.IsNullOrWhiteSpace(Title))
+    {
+        <strong>@Title</strong>
+    }
+    @if (LeadingContent is not null)
+    {
+        @LeadingContent
+    }
+    <span class="toolbar-spacer"></span>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CssClass => $"toolbar {Class}".Trim();
+}

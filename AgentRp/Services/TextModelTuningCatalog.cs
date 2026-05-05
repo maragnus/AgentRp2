@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+using System.Globalization;
 using AgentRp.Models;
 using AgentRp.Session;
 
@@ -11,90 +11,100 @@ public enum TuningSupport
     Unsupported
 }
 
-public sealed class ModelTuningCapabilities
+public class ModelTuningCapabilities
 {
-    public TuningSupport Temperature { get; init; } = TuningSupport.Supported;
-    public TuningSupport TopP { get; init; } = TuningSupport.Supported;
-    public TuningSupport MaxTokens { get; init; } = TuningSupport.Supported;
-    public TuningSupport Seed { get; init; } = TuningSupport.Supported;
-    public TuningSupport FrequencyPenalty { get; init; } = TuningSupport.Supported;
-    public TuningSupport PresencePenalty { get; init; } = TuningSupport.Supported;
-    public TuningSupport StopSequences { get; init; } = TuningSupport.Supported;
+    public TuningSupport Temperature { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport TopP { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport MaxTokens { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport Seed { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport FrequencyPenalty { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport PresencePenalty { get; init; } = TuningSupport.Unsupported;
+    public TuningSupport StopSequences { get; init; } = TuningSupport.Unsupported;
     public bool SupportsReasoningEffort { get; init; }
     public bool SupportsVerbosity { get; init; }
     public string Guidance { get; init; } = "";
 }
 
-public sealed record ActiveTextModel(AiProvider Provider, AiProviderModel Model);
+public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
+{
+    public bool TextInput { get; init; } = true;
+    public bool ImageInput { get; init; }
+    public bool TextOutput { get; init; } = true;
+    public bool ImageOutput { get; init; }
+    public bool Streaming { get; init; }
+    public bool StructuredOutput { get; init; }
+    public bool Tools { get; init; }
+    public string ImageGenerationModel { get; init; } = "";
+    public string Source { get; init; } = "fallback";
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+
+    public bool CanGenerateText => TextInput && TextOutput;
+    public bool CanGenerateStructuredText => CanGenerateText && StructuredOutput;
+    public bool CanGenerateStreamingText => CanGenerateText && Streaming;
+    public bool CanGenerateImage => TextInput && ImageOutput;
+
+    public static ModelGenerationCapabilities Fallback { get; } = new()
+    {
+        TextInput = true,
+        TextOutput = true,
+        Source = "fallback",
+        Guidance = "No capability record was found. Text is allowed, but tuning, structured output, streaming, tools, and image generation stay disabled until capabilities are provided."
+    };
+}
+
+public sealed record ActiveTextModel(AiProvider Provider, AiProviderModel Model, ModelGenerationCapabilities Capabilities);
+
+public sealed record ResponseTuningOptions(
+    float? Temperature,
+    float? TopP,
+    int? MaxOutputTokenCount);
 
 public static class TextModelTuningCatalog
 {
-    static readonly ModelTuningCapabilities DefaultCapabilities = new();
-    static readonly ModelTuningCapabilities OpenAiGpt55Capabilities = new()
-    {
-        Temperature = TuningSupport.DefaultOnly,
-        SupportsReasoningEffort = true,
-        SupportsVerbosity = true,
-        Guidance = "OpenAI's current GPT-5.5 guidance focuses on reasoning effort and verbosity. Temperature only accepts the model default."
-    };
-
     public static ActiveTextModel? TryResolveActiveTextModel(IReadOnlyList<AiProvider> providers)
     {
-        foreach (var provider in providers.Where(provider => provider.Enabled))
+        var enabled = providers.Where(provider => provider.Enabled).ToList();
+        foreach (var provider in enabled)
         {
-            foreach (var model in provider.Models.Where(model => model.Enabled && model.Text))
-                return new(provider, model);
+            foreach (var model in provider.Models.Where(IsActiveTextCandidate))
+                return new(provider, model, model.Capabilities);
+        }
+
+        foreach (var provider in enabled)
+        {
+            foreach (var model in provider.Models.Where(IsTextCandidate))
+                return new(provider, model, model.Capabilities);
         }
 
         return null;
     }
 
-    public static ModelTuningCapabilities Resolve(AiProvider provider, AiProviderModel model) => Resolve(provider.Type, model.Id);
+    static bool IsActiveTextCandidate(AiProviderModel model) =>
+        model.ActiveText && IsTextCandidate(model);
 
-    public static ModelTuningCapabilities Resolve(string providerType, string modelId)
+    static bool IsTextCandidate(AiProviderModel model) =>
+        AiProviderModelSelectionRules.IsSelectedForChat(model);
+
+    public static ResponseTuningOptions Filter(ModelTuningStepState tuning, ModelGenerationCapabilities capabilities) => new(
+        FilterTemperature(tuning.Temperature, capabilities.Temperature),
+        capabilities.TopP == TuningSupport.Supported && TryParseFloat(tuning.TopP, out var topP) ? topP : null,
+        capabilities.MaxTokens == TuningSupport.Supported ? ParsePositiveInt(tuning.MaxTokens) : null);
+
+    static float? FilterTemperature(double? value, TuningSupport support)
     {
-        if (providerType == "openai" && IsOpenAiGpt55Model(modelId))
-            return OpenAiGpt55Capabilities;
+        if (support == TuningSupport.Unsupported || value is not double temperature)
+            return null;
 
-        return DefaultCapabilities;
+        if (support == TuningSupport.DefaultOnly && !IsDefaultTemperature(temperature))
+            return null;
+
+        return (float)temperature;
     }
-
-    public static void Apply(JsonObject body, string providerType, string modelId, ModelTuningStepState tuning)
-    {
-        var capabilities = Resolve(providerType, modelId);
-
-        if (capabilities.Temperature != TuningSupport.Unsupported && tuning.Temperature is double temperature)
-        {
-            if (capabilities.Temperature == TuningSupport.Supported || IsDefaultTemperature(temperature))
-                body["temperature"] = temperature;
-        }
-
-        if (capabilities.TopP == TuningSupport.Supported && TryParseDouble(tuning.TopP, out var topP))
-            body["top_p"] = topP;
-        if (capabilities.MaxTokens == TuningSupport.Supported && ParsePositiveInt(tuning.MaxTokens) is int maxTokens)
-            body["max_tokens"] = maxTokens;
-        if (capabilities.Seed == TuningSupport.Supported && ParsePositiveInt(tuning.Seed) is int seed)
-            body["seed"] = seed;
-        if (capabilities.FrequencyPenalty == TuningSupport.Supported && TryParseDouble(tuning.FrequencyPenalty, out var frequencyPenalty))
-            body["frequency_penalty"] = frequencyPenalty;
-        if (capabilities.PresencePenalty == TuningSupport.Supported && TryParseDouble(tuning.PresencePenalty, out var presencePenalty))
-            body["presence_penalty"] = presencePenalty;
-
-        if (capabilities.StopSequences != TuningSupport.Unsupported)
-        {
-            var stops = tuning.StopSequences
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (stops.Length > 0)
-                body["stop"] = new JsonArray(stops.Select(stop => (JsonNode)stop).ToArray());
-        }
-    }
-
-    static bool IsOpenAiGpt55Model(string modelId) => modelId.StartsWith("gpt-5.5", StringComparison.OrdinalIgnoreCase);
 
     static bool IsDefaultTemperature(double value) => Math.Abs(value - 1d) < 0.000001d;
 
     static int? ParsePositiveInt(string value) => int.TryParse(value, out var parsed) && parsed > 0 ? parsed : null;
 
-    static bool TryParseDouble(string value, out double parsed) =>
-        double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsed);
+    static bool TryParseFloat(string value, out float parsed) =>
+        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed);
 }

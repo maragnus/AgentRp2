@@ -1,7 +1,4 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using AgentRp.Models;
 using AgentRp.Session;
 
@@ -46,7 +43,8 @@ public sealed class TranscriptGenerationException(string message, RpTurnTrace tr
 }
 
 public sealed class TextGenerationService(
-    IHttpClientFactory httpClientFactory,
+    IResponseGenerationClient generationClient,
+    IModelCapabilityCatalog capabilityCatalog,
     TranscriptPromptContextBuilder promptContextBuilder) : ITextGenerationService
 {
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -57,7 +55,8 @@ public sealed class TextGenerationService(
         GenerateTurnRequest request,
         CancellationToken cancellationToken = default)
     {
-        var selection = ResolveTextModel(providers);
+            ApplyCapabilities(providers);
+            var selection = ResolveTextModel(providers);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -118,6 +117,7 @@ public sealed class TextGenerationService(
         GenerateSnapshotRequest request,
         CancellationToken cancellationToken = default)
     {
+        ApplyCapabilities(providers);
         var selection = ResolveTextModel(providers);
         var trace = new RpTurnTrace
         {
@@ -135,8 +135,8 @@ public sealed class TextGenerationService(
             var systemPrompt = RenderPrompt(document.PromptLibrary, "snapshot", "system", tokens);
             var userPrompt = RenderPrompt(document.PromptLibrary, "snapshot", "user", tokens);
             var startedUtc = DateTime.UtcNow;
-            var completion = await SendCompletionAsync(selection.Provider, selection.Model, tuning, systemPrompt, userPrompt, true, cancellationToken);
-            var result = DeserializeJson<SnapshotResponse>(completion.Text);
+            var completion = await SendStructuredAsync<SnapshotResponse>(selection, tuning, systemPrompt, userPrompt, "Generating snapshot", cancellationToken);
+            var result = completion.Value;
             trace.Steps.Add(CreateStepTrace(
                 "snapshot",
                 "Snapshot",
@@ -182,8 +182,8 @@ public sealed class TextGenerationService(
         var systemPrompt = RenderPrompt(document.PromptLibrary, "appearance", "system", tokens);
         var userPrompt = RenderPrompt(document.PromptLibrary, "appearance", "user", tokens);
         var startedUtc = DateTime.UtcNow;
-        var completion = await SendCompletionAsync(selection.Provider, selection.Model, tuning, systemPrompt, userPrompt, true, cancellationToken);
-        var result = DeserializeJson<AppearanceResponse>(completion.Text);
+        var completion = await SendStructuredAsync<AppearanceResponse>(selection, tuning, systemPrompt, userPrompt, "Generating appearance state", cancellationToken);
+        var result = completion.Value;
         trace.Steps.Add(CreateStepTrace(
             "appearance",
             "Appearance",
@@ -231,8 +231,8 @@ public sealed class TextGenerationService(
         var systemPrompt = RenderPrompt(document.PromptLibrary, "selection", "system", tokens);
         var userPrompt = RenderPrompt(document.PromptLibrary, "selection", "user", tokens);
         var startedUtc = DateTime.UtcNow;
-        var completion = await SendCompletionAsync(selection.Provider, selection.Model, tuning, systemPrompt, userPrompt, true, cancellationToken);
-        var result = DeserializeJson<SelectionResponse>(completion.Text);
+        var completion = await SendStructuredAsync<SelectionResponse>(selection, tuning, systemPrompt, userPrompt, "Selecting transcript actor", cancellationToken);
+        var result = completion.Value;
         trace.Steps.Add(CreateStepTrace(
             "selection",
             "Selection",
@@ -262,8 +262,8 @@ public sealed class TextGenerationService(
         var systemPrompt = RenderPrompt(document.PromptLibrary, "planning", "system", tokens);
         var userPrompt = RenderPrompt(document.PromptLibrary, "planning", "user", tokens);
         var startedUtc = DateTime.UtcNow;
-        var completion = await SendCompletionAsync(selection.Provider, selection.Model, tuning, systemPrompt, userPrompt, true, cancellationToken);
-        var result = DeserializeJson<PlanningResponse>(completion.Text);
+        var completion = await SendStructuredAsync<PlanningResponse>(selection, tuning, systemPrompt, userPrompt, "Planning transcript turn", cancellationToken);
+        var result = completion.Value;
         trace.Steps.Add(CreateStepTrace(
             "planning",
             "Planning",
@@ -293,7 +293,7 @@ public sealed class TextGenerationService(
         var systemPrompt = RenderPrompt(document.PromptLibrary, "prose", "system", tokens);
         var userPrompt = RenderPrompt(document.PromptLibrary, "prose", "user", tokens);
         var startedUtc = DateTime.UtcNow;
-        var completion = await SendCompletionAsync(selection.Provider, selection.Model, tuning, systemPrompt, userPrompt, false, cancellationToken);
+        var completion = await SendStreamingTextAsync(selection, tuning, systemPrompt, userPrompt, "Writing transcript prose", cancellationToken);
         trace.Steps.Add(CreateStepTrace(
             "prose",
             "Prose",
@@ -327,104 +327,55 @@ public sealed class TextGenerationService(
         return defaults.Values.TryGetValue(stepId, out var defaultTuning) ? defaultTuning : new();
     }
 
-    async Task<TextCompletion> SendCompletionAsync(
-        AiProvider provider,
-        AiProviderModel model,
+    async Task<StructuredTextCompletion<T>> SendStructuredAsync<T>(
+        ActiveTextModel selection,
         ModelTuningStepState tuning,
         string systemPrompt,
         string userPrompt,
-        bool expectJson,
+        string operationName,
         CancellationToken cancellationToken)
     {
-        return provider.Type switch
-        {
-            "openai" or "grok" or "compatible" => await SendOpenAiStyleAsync(provider, model, tuning, systemPrompt, userPrompt, expectJson, cancellationToken),
-            "claude" => await SendClaudeAsync(provider, model, tuning, systemPrompt, userPrompt, cancellationToken),
-            _ => throw new InvalidOperationException($"Generating text failed because '{provider.Name}' is not supported for transcript generation yet.")
-        };
+        var completion = await generationClient.GetResponseAsync<T>(new(
+            selection.Provider,
+            selection.Model,
+            selection.Capabilities,
+            tuning,
+            systemPrompt,
+            userPrompt,
+            operationName), cancellationToken);
+        return new(completion.Value, completion.Text, completion.InputTokens, completion.OutputTokens);
     }
 
-    async Task<TextCompletion> SendOpenAiStyleAsync(
-        AiProvider provider,
-        AiProviderModel model,
+    async Task<TextCompletion> SendStreamingTextAsync(
+        ActiveTextModel selection,
         ModelTuningStepState tuning,
         string systemPrompt,
         string userPrompt,
-        bool expectJson,
+        string operationName,
         CancellationToken cancellationToken)
     {
-        using var client = CreateBearerClient(provider.ApiKey, TimeSpan.FromMinutes(3));
-        var body = new JsonObject
+        var text = new System.Text.StringBuilder();
+        var inputTokens = 0;
+        var outputTokens = 0;
+        await foreach (var update in generationClient.GetStreamingResponseAsync(new(
+            selection.Provider,
+            selection.Model,
+            selection.Capabilities,
+            tuning,
+            systemPrompt,
+            userPrompt,
+            operationName), cancellationToken))
         {
-            ["model"] = model.Id,
-            ["messages"] = new JsonArray
+            if (!string.IsNullOrEmpty(update.TextDelta))
+                text.Append(update.TextDelta);
+            if (update.Completed)
             {
-                new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
-                new JsonObject { ["role"] = "user", ["content"] = userPrompt }
+                inputTokens = update.InputTokens;
+                outputTokens = update.OutputTokens;
             }
-        };
-        TextModelTuningCatalog.Apply(body, provider.Type, model.Id, tuning);
-        if (expectJson)
-            body["response_format"] = new JsonObject { ["type"] = "json_object" };
+        }
 
-        using var response = await client.PostAsJsonAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "chat/completions"), body, JsonOptions, cancellationToken);
-        var json = await ReadJsonAsync(response, $"Generating transcript text with '{model.Id}'", cancellationToken);
-        var content = json["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(content))
-            throw new InvalidOperationException($"{provider.Name} did not return any text.");
-
-        return new(
-            content,
-            json["usage"]?["prompt_tokens"]?.GetValue<int>() ?? 0,
-            json["usage"]?["completion_tokens"]?.GetValue<int>() ?? 0);
-    }
-
-    async Task<TextCompletion> SendClaudeAsync(
-        AiProvider provider,
-        AiProviderModel model,
-        ModelTuningStepState tuning,
-        string systemPrompt,
-        string userPrompt,
-        CancellationToken cancellationToken)
-    {
-        using var client = CreateClaudeClient(provider.ApiKey, TimeSpan.FromMinutes(3));
-        var body = new JsonObject
-        {
-            ["model"] = model.Id,
-            ["system"] = systemPrompt,
-            ["messages"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["type"] = "text",
-                            ["text"] = userPrompt
-                        }
-                    }
-                }
-            },
-            ["max_tokens"] = ParsePositiveInt(tuning.MaxTokens) ?? 1200
-        };
-        TextModelTuningCatalog.Apply(body, provider.Type, model.Id, tuning);
-
-        using var response = await client.PostAsJsonAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "messages"), body, JsonOptions, cancellationToken);
-        var json = await ReadJsonAsync(response, $"Generating transcript text with '{model.Id}'", cancellationToken);
-        var content = json["content"]?.AsArray()
-            .Select(item => item?["text"]?.GetValue<string>())
-            .Where(text => !string.IsNullOrWhiteSpace(text))
-            .ToList();
-        var text = string.Join("\n", content ?? []);
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException($"{provider.Name} did not return any text.");
-
-        return new(
-            text,
-            json["usage"]?["input_tokens"]?.GetValue<int>() ?? 0,
-            json["usage"]?["output_tokens"]?.GetValue<int>() ?? 0);
+        return new(text.ToString(), inputTokens, outputTokens);
     }
 
     static RpTurnTraceStep CreateStepTrace(
@@ -470,6 +421,12 @@ public sealed class TextGenerationService(
         trace.Summary = $"{status[..1].ToUpperInvariant()}{status[1..]} · {actor} · {string.Join(" -> ", trace.Steps.Select(step => step.Label))}";
     }
 
+    void ApplyCapabilities(IReadOnlyList<AiProvider> providers)
+    {
+        foreach (var provider in providers)
+            capabilityCatalog.ApplyResolvedCapabilities(provider);
+    }
+
     static ActiveTextModel ResolveTextModel(IReadOnlyList<AiProvider> providers) =>
         TextModelTuningCatalog.TryResolveActiveTextModel(providers)
         ?? throw new InvalidOperationException("Generating transcript text failed because no text-capable model is enabled.");
@@ -495,81 +452,8 @@ public sealed class TextGenerationService(
         return appearances;
     }
 
-    static T DeserializeJson<T>(string content)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(content, JsonOptions)
-                ?? throw new InvalidOperationException("The model returned an empty structured response.");
-        }
-        catch (JsonException)
-        {
-            var start = content.IndexOf('{');
-            var end = content.LastIndexOf('}');
-            if (start >= 0 && end >= start)
-            {
-                var json = content[start..(end + 1)];
-                return JsonSerializer.Deserialize<T>(json, JsonOptions)
-                    ?? throw new InvalidOperationException("The model returned an empty structured response.");
-            }
-
-            throw;
-        }
-    }
-
-    HttpClient CreateBearerClient(string apiKey, TimeSpan timeout)
-    {
-        var client = httpClientFactory.CreateClient();
-        client.Timeout = timeout;
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-        return client;
-    }
-
-    HttpClient CreateClaudeClient(string apiKey, TimeSpan timeout)
-    {
-        var client = httpClientFactory.CreateClient();
-        client.Timeout = timeout;
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            client.DefaultRequestHeaders.Add("x-api-key", apiKey);
-        client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        return client;
-    }
-
-    static async Task<JsonNode> ReadJsonAsync(HttpResponseMessage response, string operation, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-            return await response.Content.ReadFromJsonAsync<JsonNode>(JsonOptions, cancellationToken) ?? new JsonObject();
-
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        var message = UserFacingErrorMessageBuilder.BuildExternalHttpFailure(operation, response.StatusCode, responseBody);
-        throw new ExternalServiceFailureException(message, response.StatusCode, responseBody);
-    }
-
-    static string NormalizeEndpoint(AiProvider provider)
-    {
-        var endpoint = string.IsNullOrWhiteSpace(provider.Endpoint) ? DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint was empty.");
-
-        if (!endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint must start with http:// or https://.");
-
-        return endpoint.EndsWith('/') ? endpoint : $"{endpoint}/";
-    }
-
-    static string DefaultEndpoint(string providerType) => providerType switch
-    {
-        "openai" => "https://api.openai.com/v1/",
-        "grok" => "https://api.x.ai/v1/",
-        "claude" => "https://api.anthropic.com/v1/",
-        _ => ""
-    };
-
-    static int? ParsePositiveInt(string value) => int.TryParse(value, out var parsed) && parsed > 0 ? parsed : null;
-
-    sealed record TextCompletion(string Text, int InputTokens, int OutputTokens);
+    record TextCompletion(string Text, int InputTokens, int OutputTokens);
+    sealed record StructuredTextCompletion<T>(T Value, string Text, int InputTokens, int OutputTokens) : TextCompletion(Text, InputTokens, OutputTokens);
     sealed class AppearanceResponse
     {
         public Dictionary<string, string> Characters { get; set; } = [];

@@ -1,0 +1,59 @@
+@inject IJSRuntime JS
+@inject OverlayService Overlays
+@implements IAsyncDisposable
+
+<div @ref="Element"
+     class="@CssClass"
+     data-overlay-id="@Entry.Id"
+     @onclick="ContentClick"
+     @onclick:stopPropagation="true">
+    @Entry.Content
+</div>
+
+@code {
+    ElementReference Element;
+    DotNetObjectReference<OverlaySurface>? DotNetReference;
+
+    [Parameter] public OverlayEntry Entry { get; set; } = default!;
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "overlay-popover",
+        "popover",
+        Entry.Class,
+        Entry.Layer == OverlayLayer.Modal ? "is-layer-modal" : "is-layer-page"
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        DotNetReference ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("agentRp.overlay.track", Entry.Id.ToString(), Entry.Anchor, Element, Entry.Placement.ToString(), DotNetReference);
+    }
+
+    async Task ContentClick(MouseEventArgs args)
+    {
+        if (Entry.CloseOnContentClick)
+        {
+            await Overlays.CloseAsync(Entry.Id);
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task CloseFromBrowser() => Overlays.CloseAsync(Entry.Id);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("agentRp.overlay.untrack", Entry.Id.ToString());
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        DotNetReference?.Dispose();
+    }
+}

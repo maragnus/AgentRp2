@@ -1,6 +1,6 @@
 <button type="@Type"
+        @ref="Element"
         class="@CssClass"
-        style="@Style"
         title="@Title"
         disabled="@Disabled"
         aria-label="@AriaLabel"
@@ -10,6 +10,8 @@
 </button>
 
 @code {
+    public ElementReference Element { get; private set; }
+
     [Parameter] public string Type { get; set; } = "button";
     [Parameter] public string Variant { get; set; } = "ghost";
     [Parameter] public string Size { get; set; } = "sm";
@@ -18,7 +20,6 @@
     [Parameter] public bool Bare { get; set; }
     [Parameter] public bool StopPropagation { get; set; }
     [Parameter] public string? Class { get; set; }
-    [Parameter] public string? Style { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }

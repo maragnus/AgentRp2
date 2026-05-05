@@ -3,10 +3,7 @@
 <ModalShell Title="@Title" MaxWidth="860px" OnClose="OnClose">
     <ChildContent>
         <div class="modal-filter-bar">
-            <div style="position:relative;flex:1;max-width:240px">
-                <FaIcon Name="search" />
-                <input class="field search-field" placeholder="Search images…" @bind="Search" @bind:event="oninput" />
-            </div>
+            <SearchField Value="@Search" ValueChanged="value => Search = value" Placeholder="Search images..." />
             <div class="segmented">
                 @foreach (var type in Types)
                 {
@@ -44,7 +41,7 @@
                 }
                 else
                 {
-                    <span class="tiled-select-media tiled-gallery-media img-placeholder" style="--hue:@image.Hue">@image.Name</span>
+                    <ImagePlaceholder Label="@image.Name" Hue="@image.Hue" Class="tiled-select-media tiled-gallery-media" />
                 }
                 <span class="tiled-select-caption">
                     <strong class="tiled-select-label">@image.Name</strong>

@@ -8,7 +8,7 @@
 
     <div class="narrative-card">
         <div class="narrative-head">
-            <div class="message-author">
+            <div class="message-author transcript-speaker">
                 @if (IsNarrator)
                 {
                     <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
@@ -19,7 +19,7 @@
                 }
                 <span>@Message.AuthorName</span>
             </div>
-            <span style="margin-left:auto">@RelativeDateFormatter.FormatDate(Message.CreatedUtc)</span>
+            <span class="message-date">@RelativeDateFormatter.FormatDate(Message.CreatedUtc)</span>
             <span class="mode-badge @ModeClass">@ModeLabel</span>
         </div>
 
@@ -30,28 +30,23 @@
 
         @if (ShowAppearance && Message.AppearanceByCharacterId.Count > 0)
         {
-            <div class="appearance-row">
-                <FaIcon Name="eye" />
-                <span style="flex:1">@AppearanceSummary</span>
-                <Badge Tone="blue">@Message.AppearanceByCharacterId.Count chars</Badge>
-            </div>
+            <StatusRow Icon="eye" Class="appearance-row">
+                <ChildContent>@AppearanceSummary</ChildContent>
+                <BadgeContent><Badge Tone="blue">@Message.AppearanceByCharacterId.Count chars</Badge></BadgeContent>
+            </StatusRow>
         }
 
         @if (Snapshot is not null)
         {
-            <div class="appearance-row">
-                <FaIcon Name="flag" />
-                <span style="flex:1">@Snapshot.Summary</span>
-                <Badge Tone="amber">Snapshot</Badge>
-            </div>
+            <StatusRow Icon="flag" Class="appearance-row">
+                <ChildContent>@Snapshot.Summary</ChildContent>
+                <BadgeContent><Badge Tone="amber">Snapshot</Badge></BadgeContent>
+            </StatusRow>
         }
 
         @if (!string.IsNullOrWhiteSpace(FailureMessage))
         {
-            <div class="appearance-row" style="border-color:var(--c-rose);color:var(--c-rose)">
-                <FaIcon Name="warning" />
-                <span style="flex:1">@FailureMessage</span>
-            </div>
+            <StatusRow Icon="warning" Tone="danger" Class="appearance-row">@FailureMessage</StatusRow>
         }
 
         <div class="narrative-actions">
@@ -69,39 +64,39 @@
             }
 
             <div class="action-cluster">
-                <div class="dropdown-wrap">
-                    <IconButton Icon="users" Title="Change author" Active="@AuthorOpen" OnClick="@(_ => AuthorOpen = !AuthorOpen)" />
-                    @if (AuthorOpen)
-                    {
-                        <div class="popover message-popover">
-                            <div class="popover-label">Change Author</div>
-                            <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
-                            @foreach (var character in Characters)
-                            {
-                                var current = Message.AuthorCharacterId == character.Id;
-                                <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
-                            }
-                        </div>
-                    }
-                </div>
+                <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover">
+                    <Trigger Context="author">
+                        <IconButton Icon="users" Title="Change author" Active="@author.IsOpen" OnClick="@(_ => author.Toggle())" />
+                    </Trigger>
+                    <Content>
+                        <div class="popover-label">Change Author</div>
+                        <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
+                        @foreach (var character in Characters)
+                        {
+                            var current = Message.AuthorCharacterId == character.Id;
+                            <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" OnClick="@(_ => RecastTurn(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
+                        }
+                    </Content>
+                </AnchoredPopover>
                 <IconButton Icon="edit" Title="Edit message" OnClick="@(_ => OpenEditBody())" />
                 <span class="v-divider"></span>
                 <div class="regen-group">
                     <IconButton Icon="refresh" Title="Regenerate from saved plan" OnClick="@(_ => Regenerate())" />
                     <span></span>
-                    <AppButton Variant="ghost" Size="icon" Title="Change turn shape & regenerate" OnClick="@(_ => ShapeOpen = !ShapeOpen)"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
-                    <span></span>
-                    <IconButton Icon="sliders" Title="Edit saved plan" OnClick="@(_ => OpenPlanEditor())" />
-                    @if (ShapeOpen)
-                    {
-                        <div class="popover message-popover shape-popover">
+                    <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover shape-popover">
+                        <Trigger Context="shapeMenu">
+                            <AppButton Variant="ghost" Size="icon" Active="@shapeMenu.IsOpen" Title="Change turn shape & regenerate" OnClick="@(_ => shapeMenu.Toggle())"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
+                        </Trigger>
+                        <Content>
                             <div class="popover-label">Turn Shape</div>
                             @foreach (var shape in TurnShapes)
                             {
                                 <SelectableButton @key="shape" Class="@($"select-row {(SelectedTurnShape == shape ? "is-active" : "")}")" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (SelectedTurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
                             }
-                        </div>
-                    }
+                        </Content>
+                    </AnchoredPopover>
+                    <span></span>
+                    <IconButton Icon="sliders" Title="Edit saved plan" OnClick="@(_ => OpenPlanEditor())" />
                 </div>
                 <span class="v-divider"></span>
                 <IconButton Icon="flag" Title="Create snapshot here" OnClick="@(_ => CreateSnapshot())" />
@@ -154,27 +149,21 @@
                         <Header>
                             @if (ActivePlanTab == "appearance")
                             {
-                                <div class="tuning-toolbar">
-                                    <strong>Characters</strong>
-                                    <span style="flex:1"></span>
+                                <Toolbar Title="Characters" Class="tuning-toolbar">
                                     <Badge Tone="blue">@Characters.Count</Badge>
-                                </div>
+                                </Toolbar>
                             }
                             else if (ActivePlanTab == "plan")
                             {
-                                <div class="tuning-toolbar">
-                                    <strong>Plan</strong>
-                                    <span style="flex:1"></span>
+                                <Toolbar Title="Plan" Class="tuning-toolbar">
                                     <Badge Tone="amber">@PlanShape</Badge>
-                                </div>
+                                </Toolbar>
                             }
                             else
                             {
-                                <div class="tuning-toolbar">
-                                    <strong>Private Intent</strong>
-                                    <span style="flex:1"></span>
+                                <Toolbar Title="Private Intent" Class="tuning-toolbar">
                                     <Badge Tone="violet">@Characters.Count</Badge>
-                                </div>
+                                </Toolbar>
                             }
                         </Header>
                         <ChildContent>
@@ -262,8 +251,6 @@
     bool ConfirmDelete;
     bool EditPlan;
     bool EditBody;
-    bool AuthorOpen;
-    bool ShapeOpen;
     string ActivePlanTab = "appearance";
     string SelectedTurnShape = "";
     string BodyDraft = "";
@@ -372,7 +359,6 @@
     void PickShape(string shape)
     {
         SelectedTurnShape = shape;
-        ShapeOpen = false;
     }
 
     async Task Regenerate()
@@ -425,7 +411,6 @@
 
     async Task RecastTurn(RpCharacter? character)
     {
-        AuthorOpen = false;
         await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
     }
 }

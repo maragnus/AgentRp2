@@ -13,10 +13,10 @@ public interface IAiProviderConnectionService
     Task<List<AiProviderModel>> DiscoverModelsAsync(AiProvider provider, CancellationToken cancellationToken = default);
 }
 
-public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFactory) : IAiProviderConnectionService
+public sealed class AiProviderConnectionService(
+    IHttpClientFactory httpClientFactory,
+    IModelCapabilityCatalog capabilityCatalog) : IAiProviderConnectionService
 {
-    static readonly Uri HuggingFaceWhoAmIUri = new("https://huggingface.co/api/whoami-v2");
-    static readonly Uri HuggingFaceManagementBaseUri = new("https://api.endpoints.huggingface.cloud/v2/");
     static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task TestProviderAsync(AiProvider provider, CancellationToken cancellationToken = default)
@@ -32,18 +32,20 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         {
             "openai" => await DiscoverOpenAiModelsAsync(provider, cancellationToken),
             "grok" => await DiscoverGrokModelsAsync(provider, cancellationToken),
-            "claude" => await DiscoverClaudeModelsAsync(provider, cancellationToken),
+            "claude" => await DiscoverOpenAiCompatibleModelsAsync(provider, cancellationToken),
             "huggingface" => await DiscoverHuggingFaceModelsAsync(provider, cancellationToken),
             "compatible" => await DiscoverOpenAiCompatibleModelsAsync(provider, cancellationToken),
             _ => []
         };
 
-        discovered = AddKnownImageModels(provider.Type, discovered);
+        discovered = AddKnownProviderModels(provider.Type, discovered);
         return discovered
             .DistinctBy(model => model.Id, StringComparer.Ordinal)
-            .OrderBy(model => ModelSortRank(provider.Type, model.Id))
+            .OrderByDescending(model => model.CreatedUnix.HasValue)
+            .ThenByDescending(model => model.CreatedUnix ?? 0)
+            .ThenBy(model => ModelSortRank(provider.Type, model.Id))
             .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(model => ToProviderModel(provider.Type, model.Id))
+            .Select(model => ToProviderModel(provider.Type, model))
             .ToList();
     }
 
@@ -52,7 +54,7 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         using var client = CreateBearerClient(provider.ApiKey);
         using var response = await client.GetAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "models"), cancellationToken);
         var json = await ReadJsonAsync(response, $"Discovering OpenAI models for '{provider.Name}'", cancellationToken);
-        return ReadOpenAiModelIds(json).Select(id => new DiscoveredModel(id)).ToList();
+        return ReadOpenAiModels(json);
     }
 
     async Task<List<DiscoveredModel>> DiscoverOpenAiCompatibleModelsAsync(AiProvider provider, CancellationToken cancellationToken)
@@ -63,7 +65,7 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
             return [];
 
         var json = await ReadJsonAsync(response, $"Discovering OpenAI-compatible models for '{provider.Name}'", cancellationToken);
-        return ReadOpenAiModelIds(json).Select(id => new DiscoveredModel(id)).ToList();
+        return ReadOpenAiModels(json);
     }
 
     async Task<List<DiscoveredModel>> DiscoverGrokModelsAsync(AiProvider provider, CancellationToken cancellationToken)
@@ -73,6 +75,7 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         if (response.IsSuccessStatusCode)
         {
             var json = await response.Content.ReadFromJsonAsync<JsonNode>(JsonOptions, cancellationToken) ?? new JsonObject();
+            capabilityCatalog.UpdateLiveGrokCapabilities(json);
             var languageModels = json["models"]?.AsArray().SelectMany(BuildGrokModels).ToList();
             if (languageModels is { Count: > 0 })
                 return languageModels;
@@ -80,27 +83,35 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
 
         using var fallbackResponse = await client.GetAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "models"), cancellationToken);
         var fallbackJson = await ReadJsonAsync(fallbackResponse, $"Discovering Grok models for '{provider.Name}'", cancellationToken);
-        return ReadOpenAiModelIds(fallbackJson).Select(id => new DiscoveredModel(id)).ToList();
+        return ReadOpenAiModels(fallbackJson);
     }
 
-    async Task<List<DiscoveredModel>> DiscoverClaudeModelsAsync(AiProvider provider, CancellationToken cancellationToken)
+    static IEnumerable<DiscoveredModel> BuildGrokModels(JsonNode? node)
     {
-        using var client = CreateApiKeyClient(provider.ApiKey);
-        client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        using var response = await client.GetAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "models"), cancellationToken);
-        var json = await ReadJsonAsync(response, $"Discovering Claude models for '{provider.Name}'", cancellationToken);
-        return json["data"]?.AsArray()
-            .Select(node => node?["id"]?.GetValue<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => new DiscoveredModel(id!))
-            .ToList()
-            ?? [];
+        var id = node?["id"]?.GetValue<string>();
+        var created = ReadCreatedUnix(node);
+        if (!string.IsNullOrWhiteSpace(id))
+            yield return new(id, CreatedUnix: created);
+
+        foreach (var alias in node?["aliases"]?.AsArray() ?? [])
+        {
+            var aliasId = alias?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(aliasId))
+                yield return new(aliasId, CreatedUnix: created);
+        }
     }
+
+    static List<DiscoveredModel> ReadOpenAiModels(JsonNode json) =>
+        json["data"]?.AsArray()
+            .Select(node => new DiscoveredModel(node?["id"]?.GetValue<string>() ?? "", CreatedUnix: ReadCreatedUnix(node)))
+            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+            .ToList()
+        ?? [];
 
     async Task<List<DiscoveredModel>> DiscoverHuggingFaceModelsAsync(AiProvider provider, CancellationToken cancellationToken)
     {
         using var client = CreateBearerClient(provider.ApiKey);
-        using var whoAmIResponse = await client.GetAsync(HuggingFaceWhoAmIUri, cancellationToken);
+        using var whoAmIResponse = await client.GetAsync(new Uri("https://huggingface.co/api/whoami-v2"), cancellationToken);
         var whoAmI = await ReadJsonAsync(whoAmIResponse, $"Discovering Hugging Face namespaces for '{provider.Name}'", cancellationToken);
         var namespaces = new List<string>();
         AddNamespace(namespaces, whoAmI["name"]?.GetValue<string>());
@@ -110,44 +121,69 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         var models = new List<DiscoveredModel>();
         foreach (var @namespace in namespaces)
         {
-            var requestUri = new Uri(HuggingFaceManagementBaseUri, $"endpoint/{Uri.EscapeDataString(@namespace)}?limit=100");
-            using var response = await client.GetAsync(requestUri, cancellationToken);
-            var json = await ReadJsonAsync(response, $"Discovering Hugging Face endpoints for '{provider.Name}'", cancellationToken);
-            foreach (var item in json["items"]?.AsArray() ?? [])
+            var cursor = "";
+            var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+            do
             {
-                var endpointName = item?["name"]?.GetValue<string>();
-                var repository = item?["model"]?["repository"]?.GetValue<string>();
-                var modelId = string.IsNullOrWhiteSpace(repository) ? endpointName : repository;
-                if (!string.IsNullOrWhiteSpace(modelId))
-                    models.Add(new(modelId));
+                var path = $"endpoint/{Uri.EscapeDataString(@namespace)}?limit=100";
+                if (!string.IsNullOrWhiteSpace(cursor))
+                    path += $"&cursor={Uri.EscapeDataString(cursor)}";
+
+                using var response = await client.GetAsync(new Uri(new Uri("https://api.endpoints.huggingface.cloud/v2/"), path), cancellationToken);
+                var json = await ReadJsonAsync(response, $"Discovering Hugging Face endpoints for '{provider.Name}'", cancellationToken);
+                foreach (var item in json["items"]?.AsArray() ?? [])
+                {
+                    var endpointName = item?["name"]?.GetValue<string>();
+                    var repository = item?["model"]?["repository"]?.GetValue<string>();
+                    var endpoint = item?["status"]?["url"]?.GetValue<string>();
+                    var modelId = string.IsNullOrWhiteSpace(repository) ? endpointName : repository;
+                    if (string.IsNullOrWhiteSpace(modelId))
+                        continue;
+
+                    var displayName = string.IsNullOrWhiteSpace(endpointName) || string.Equals(endpointName, modelId, StringComparison.Ordinal)
+                        ? modelId
+                        : $"{endpointName} ({modelId})";
+                    models.Add(new(modelId, displayName, endpoint ?? "", repository ?? ""));
+                }
+
+                var nextCursor = json["nextCursor"]?.GetValue<string>();
+                cursor = string.IsNullOrWhiteSpace(nextCursor) || !seenCursors.Add(nextCursor) ? "" : nextCursor;
             }
+            while (!string.IsNullOrWhiteSpace(cursor));
         }
 
         return models;
     }
 
-    static IEnumerable<DiscoveredModel> BuildGrokModels(JsonNode? node)
+    static void AddNamespace(List<string> namespaces, string? candidate)
     {
-        var id = node?["id"]?.GetValue<string>();
-        if (!string.IsNullOrWhiteSpace(id))
-            yield return new(id);
+        if (string.IsNullOrWhiteSpace(candidate) || namespaces.Any(value => string.Equals(value, candidate, StringComparison.Ordinal)))
+            return;
 
-        foreach (var alias in node?["aliases"]?.AsArray() ?? [])
+        namespaces.Add(candidate);
+    }
+
+    static long? ReadCreatedUnix(JsonNode? node)
+    {
+        var value = node?["created"];
+        if (value is null)
+            return null;
+
+        try
         {
-            var aliasId = alias?.GetValue<string>();
-            if (!string.IsNullOrWhiteSpace(aliasId))
-                yield return new(aliasId);
+            return value.GetValue<long>();
+        }
+        catch (InvalidOperationException)
+        {
+            return long.TryParse(value.GetValue<string>(), out var number) ? number : null;
+        }
+        catch (FormatException)
+        {
+            return null;
         }
     }
 
-    static IEnumerable<string> ReadOpenAiModelIds(JsonNode json) =>
-        json["data"]?.AsArray()
-            .Select(node => node?["id"]?.GetValue<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id!)
-        ?? [];
-
-    static List<DiscoveredModel> AddKnownImageModels(string providerType, List<DiscoveredModel> models)
+    static List<DiscoveredModel> AddKnownProviderModels(string providerType, List<DiscoveredModel> models)
     {
         void Add(string id)
         {
@@ -157,6 +193,10 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
 
         if (providerType == "openai")
         {
+            Add("gpt-5.2");
+            Add("gpt-5");
+            Add("gpt-5.5");
+            Add("gpt-5.5-mini");
             Add("gpt-image-1.5");
             Add("gpt-image-1");
             Add("gpt-image-1-mini");
@@ -165,18 +205,29 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         {
             Add("grok-imagine-image");
         }
+        else if (providerType == "claude")
+        {
+            Add("claude-opus-4-5");
+            Add("claude-sonnet-4-5");
+            Add("claude-haiku-4-5");
+        }
 
         return models;
     }
 
-    static AiProviderModel ToProviderModel(string providerType, string modelId)
+    AiProviderModel ToProviderModel(string providerType, DiscoveredModel model)
     {
-        var image = IsKnownImageModel(providerType, modelId);
+        var capabilities = capabilityCatalog.Resolve(providerType, model.Id);
         return new()
         {
-            Id = modelId,
-            Text = !image,
-            Image = image
+            Id = model.Id,
+            DisplayName = model.DisplayName,
+            Endpoint = model.Endpoint,
+            Repository = model.Repository,
+            CreatedUnix = model.CreatedUnix,
+            Text = false,
+            Image = false,
+            Capabilities = capabilities
         };
     }
 
@@ -185,10 +236,6 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         {
             "openai" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase) || modelId.Contains("dall-e", StringComparison.OrdinalIgnoreCase),
             "grok" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase) || modelId.Contains("imagine", StringComparison.OrdinalIgnoreCase),
-            "huggingface" => modelId.Contains("flux", StringComparison.OrdinalIgnoreCase)
-                || modelId.Contains("stable-diffusion", StringComparison.OrdinalIgnoreCase)
-                || modelId.Contains("sdxl", StringComparison.OrdinalIgnoreCase)
-                || modelId.Contains("image", StringComparison.OrdinalIgnoreCase),
             "compatible" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase)
                 || modelId.Contains("dall-e", StringComparison.OrdinalIgnoreCase),
             _ => false
@@ -209,16 +256,6 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
         client.Timeout = TimeSpan.FromSeconds(30);
         if (!string.IsNullOrWhiteSpace(apiKey))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-        return client;
-    }
-
-    HttpClient CreateApiKeyClient(string apiKey)
-    {
-        var client = httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(30);
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            client.DefaultRequestHeaders.Add("x-api-key", apiKey);
 
         return client;
     }
@@ -249,18 +286,16 @@ public sealed class AiProviderConnectionService(IHttpClientFactory httpClientFac
     {
         "openai" => "https://api.openai.com/v1/",
         "grok" => "https://api.x.ai/v1/",
-        "claude" => "https://api.anthropic.com/v1/",
-        "huggingface" => "https://api.endpoints.huggingface.cloud/v2/",
+        "claude" => "",
         _ => ""
     };
 
     static bool IsOpenAiCompatible(string providerType) => providerType == "compatible";
 
-    static void AddNamespace(List<string> namespaces, string? candidate)
-    {
-        if (!string.IsNullOrWhiteSpace(candidate) && namespaces.All(value => !string.Equals(value, candidate, StringComparison.Ordinal)))
-            namespaces.Add(candidate);
-    }
-
-    sealed record DiscoveredModel(string Id);
+    sealed record DiscoveredModel(
+        string Id,
+        string DisplayName = "",
+        string Endpoint = "",
+        string Repository = "",
+        long? CreatedUnix = null);
 }

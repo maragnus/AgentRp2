@@ -1,19 +1,16 @@
 @using AgentRp.Services
 
 <div class="process-row">
-    <div class="process-summary" @onclick="() => Open = !Open">
-        <FaIcon Name="zap" />
-        <span style="flex:1">@Trace.Summary</span>
-        @if (Trace.Status == "completed")
-        {
-            <span style="color:var(--c-emerald)">Completed · @RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)</span>
-        }
-        else if (Trace.Status == "failed")
-        {
-            <span style="color:var(--c-rose)">Failed · @RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)</span>
-        }
-        <FaIcon Name="@(Open ? "chevron-up" : "chevron-down")" />
-    </div>
+    <StatusRow Icon="zap" Class="process-summary" OnClick="@(_ => Open = !Open)">
+        <ChildContent>@Trace.Summary</ChildContent>
+        <BadgeContent>
+            @if (!string.IsNullOrWhiteSpace(StatusText))
+            {
+                <span class="@StatusClass">@StatusText</span>
+            }
+        </BadgeContent>
+        <TrailingContent><FaIcon Name="@(Open ? "chevron-up" : "chevron-down")" /></TrailingContent>
+    </StatusRow>
     @if (Open)
     {
         <div class="process-steps">
@@ -22,7 +19,7 @@
                 <div @key="step.Id" class="process-step">
                     <div class="process-step-head" @onclick="() => Toggle(step.Id)">
                         <FaIcon Name="@IconFor(step.Id)" />
-                        <strong style="font-size:12px;flex:1">@step.Label</strong>
+                        <strong class="process-step-title">@step.Label</strong>
                         <code>@step.InputTokens.ToString("N0") in</code>
                         <code>@step.OutputTokens.ToString("N0") out</code>
                         <code>@RelativeDateFormatter.FormatDuration(step.DurationSeconds)</code>
@@ -55,6 +52,15 @@
     HashSet<string> OpenSteps = [];
 
     [Parameter] public RpTurnTrace Trace { get; set; } = new();
+
+    string StatusText => Trace.Status switch
+    {
+        "completed" => $"Completed · {RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)}",
+        "failed" => $"Failed · {RelativeDateFormatter.FormatDuration(Trace.DurationSeconds)}",
+        _ => ""
+    };
+
+    string StatusClass => Trace.Status == "failed" ? "status-text-danger" : "status-text-success";
 
     void Toggle(string id)
     {

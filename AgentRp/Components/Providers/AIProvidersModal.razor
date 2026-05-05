@@ -1,5 +1,7 @@
 @implements IDisposable
 @inject IAiProviderConnectionService ProviderConnectionService
+@inject IModelCapabilityCatalog CapabilityCatalog
+@inject IAiProviderWidgetService ProviderWidgetService
 
 <ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
     <ModalSplitLayout RailWidth="230px">
@@ -124,16 +126,12 @@
                         }
                         else
                         {
-                            <SectionHeader Title="Models" Count="@OnboardModels.Count(model => model.Enabled)" MaxCount="@OnboardModels.Count">
-                                <RightContent>
-                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(true))">Enable all</AppButton>
-                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetOnboardModels(false))">Disable all</AppButton>
-                                </RightContent>
-                            </SectionHeader>
-                            @foreach (var model in OnboardModels)
-                            {
-                                <ProviderModelRow @key="model.Id" Model="model" />
-                            }
+                            <ProviderModelList Models="OnboardModels"
+                                               ShowHeader="true"
+                                               ShowAdvanced="@ShowAdvancedModels"
+                                               ShowAdvancedChanged="value => ShowAdvancedModels = value"
+                                               OnChanged="OnOnboardModelChanged"
+                                               OnSetup="model => OpenSetup(BuildOnboardProvider(), model)" />
                         }
                     </ChildContent>
                     <Footer>
@@ -170,6 +168,7 @@
                             <AppButton Variant="primary" Size="sm" OnClick="SaveSelectedClick"><FaIcon Name="check" />Save</AppButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="TestProvider"><FaIcon Name="zap" />Test connection</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
+                            <BusyButton Variant="secondary" Size="sm" OnClick="RefreshWidget"><FaIcon Name="chart-line" />Refresh widget</BusyButton>
                             @if (TestOk is true)
                             {
                                 <span class="provider-connected"><FaIcon Name="check" />Connected</span>
@@ -196,6 +195,12 @@
                                 </LabelAction>
                                 <ChildContent><KeyInput @bind-Value="Selected.ApiKey" /></ChildContent>
                             </AppField>
+                            @if (Selected.Type is "grok" or "claude")
+                            {
+                                <AppField Label="Admin / Management Key" Hint="Used only for provider usage, billing, or management widgets.">
+                                    <ChildContent><KeyInput @bind-Value="Selected.ManagementApiKey" /></ChildContent>
+                                </AppField>
+                            }
                             @if (meta.NeedsEndpoint)
                             {
                                 <AppField Label="Endpoint URL">
@@ -203,20 +208,72 @@
                                     <ChildContent><input class="field" value="@Selected.Endpoint" placeholder="https://..." @oninput="args => Selected.Endpoint = args.Value?.ToString() ?? string.Empty" /></ChildContent>
                                 </AppField>
                             }
+                            @if (Selected.Type is "openai" or "claude")
+                            {
+                                <AppField Label="Project">
+                                    <ChildContent><input class="field" value="@Selected.ProjectId" @oninput="args => Selected.ProjectId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                                </AppField>
+                                <AppField Label="Account">
+                                    <ChildContent><input class="field" value="@Selected.AccountId" @oninput="args => Selected.AccountId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                                </AppField>
+                            }
+                            @if (Selected.Type == "grok")
+                            {
+                                <AppField Label="Team">
+                                    <ChildContent><input class="field" value="@Selected.TeamId" @oninput="args => Selected.TeamId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                                </AppField>
+                            }
                         </Section>
 
-                        <Section Title="Models" Hint="click dot · toggle caps" Class="provider-section">
-                            <RightContent>
-                                <span class="section-action-group">
-                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetModels(Selected, true))">All on</AppButton>
-                                    <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetModels(Selected, false))">All off</AppButton>
-                                </span>
-                            </RightContent>
+                        <Section Title="Provider Widget" Hint="@ProviderWidgetHint(Selected)" Class="provider-section">
                             <ChildContent>
-                                @foreach (var model in Selected.Models)
+                                @if (!string.IsNullOrWhiteSpace(Selected.LastMetricsError))
                                 {
-                                    <ProviderModelRow @key="model.Id" Model="model" OnChanged="SaveSelected" />
+                                    <div class="modal-error">@Selected.LastMetricsError</div>
                                 }
+                                @if (Selected.Metrics.Count == 0)
+                                {
+                                    <div class="providers-empty-state is-compact">
+                                        <FaIcon Name="chart-line" />
+                                        <strong>No widget details loaded</strong>
+                                        <span>Refresh the widget to load provider-specific status.</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="provider-metric-grid">
+                                        @foreach (var metric in Selected.Metrics)
+                                        {
+                                            <div @key="metric.Id" class="provider-metric-card" title="@metric.Detail">
+                                                <small>@metric.Label</small>
+                                                <strong>@metric.Value</strong>
+                                                @if (!string.IsNullOrWhiteSpace(metric.Detail))
+                                                {
+                                                    <span>@metric.Detail</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (Selected.Type == "huggingface")
+                                {
+                                    <div class="provider-endpoint-stack">
+                                        @foreach (var model in Selected.Models.Where(model => !string.IsNullOrWhiteSpace(model.Endpoint)))
+                                        {
+                                            <HuggingFaceEndpointWidget @key="model.Id" Provider="@Selected" Model="@model" />
+                                        }
+                                    </div>
+                                }
+                            </ChildContent>
+                        </Section>
+
+                        <Section Title="Models" Hint="Enable models for Chat, Image Gen, or both." Class="provider-section">
+                            <ChildContent>
+                                <ProviderModelList Models="Selected.Models"
+                                                   ShowAdvanced="@ShowAdvancedModels"
+                                                   ShowAdvancedChanged="value => ShowAdvancedModels = value"
+                                                   OnChanged="SaveSelected"
+                                                   OnSetup="model => OpenSetup(Selected, model)" />
                             </ChildContent>
                         </Section>
                     </ChildContent>
@@ -243,6 +300,57 @@
                    OnConfirm="DeleteProvider" />
 }
 
+@if (SetupModel is not null)
+{
+    <ModalShell Title="Set Up Model" Subtitle="@SetupModel.Id" Icon="wrench" MaxWidth="620px" Height="" OnClose="CloseSetup">
+        <Section Title="Roles" Hint="Choose how AgentRp can use this model.">
+            <div class="setup-grid">
+                <label class="setup-toggle-row">
+                    <span><strong>Chat</strong><small>Text input and text output</small></span>
+                    <ToggleSwitch Value="@SetupChat" ValueChanged="value => SetupChat = value" Title="Toggle chat capability" />
+                </label>
+                <label class="setup-toggle-row">
+                    <span><strong>Image Gen</strong><small>Text prompt to image output</small></span>
+                    <ToggleSwitch Value="@SetupImage" ValueChanged="value => SetupImage = value" Title="Toggle image generation capability" />
+                </label>
+                <label class="setup-toggle-row">
+                    <span><strong>Vision</strong><small>Accepts image input</small></span>
+                    <ToggleSwitch Value="@SetupVision" ValueChanged="value => SetupVision = value" Title="Toggle vision capability" />
+                </label>
+                <label class="setup-toggle-row">
+                    <span><strong>Structured</strong><small>Reliable JSON/schema output</small></span>
+                    <ToggleSwitch Value="@SetupStructured" ValueChanged="value => SetupStructured = value" Title="Toggle structured output capability" />
+                </label>
+                <label class="setup-toggle-row">
+                    <span><strong>Streaming</strong><small>Can stream text responses</small></span>
+                    <ToggleSwitch Value="@SetupStreaming" ValueChanged="value => SetupStreaming = value" Title="Toggle streaming capability" />
+                </label>
+                <label class="setup-toggle-row">
+                    <span><strong>Tools</strong><small>Can call tools/functions</small></span>
+                    <ToggleSwitch Value="@SetupTools" ValueChanged="value => SetupTools = value" Title="Toggle tool capability" />
+                </label>
+            </div>
+        </Section>
+
+        <Section Title="Tuning Support">
+            <div class="setup-tuning-grid">
+                <FieldRow Label="Temperature"><AppSelect Value="@SetupTemperature" ValueChanged="value => SetupTemperature = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Top P"><AppSelect Value="@SetupTopP" ValueChanged="value => SetupTopP = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Max Tokens"><AppSelect Value="@SetupMaxTokens" ValueChanged="value => SetupMaxTokens = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Seed"><AppSelect Value="@SetupSeed" ValueChanged="value => SetupSeed = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Frequency Penalty"><AppSelect Value="@SetupFrequencyPenalty" ValueChanged="value => SetupFrequencyPenalty = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Presence Penalty"><AppSelect Value="@SetupPresencePenalty" ValueChanged="value => SetupPresencePenalty = value">@TuningOptions()</AppSelect></FieldRow>
+                <FieldRow Label="Stop Sequences"><AppSelect Value="@SetupStopSequences" ValueChanged="value => SetupStopSequences = value">@TuningOptions()</AppSelect></FieldRow>
+            </div>
+        </Section>
+
+        <div class="modal-actions">
+            <AppButton Variant="secondary" OnClick="@(_ => CloseSetup())">Cancel</AppButton>
+            <AppButton Variant="primary" OnClick="@(_ => SaveSetup())"><FaIcon Name="check" />Save Setup</AppButton>
+        </div>
+    </ModalShell>
+}
+
 @code {
     string? SelectedId;
     int OnboardStep;
@@ -251,6 +359,22 @@
     string OnboardEndpoint = "";
     bool? TestOk;
     bool ConfirmDelete;
+    bool ShowAdvancedModels;
+    AiProvider? SetupProvider;
+    AiProviderModel? SetupModel;
+    bool SetupChat;
+    bool SetupImage;
+    bool SetupVision;
+    bool SetupStructured;
+    bool SetupStreaming;
+    bool SetupTools;
+    string SetupTemperature = nameof(TuningSupport.Unsupported);
+    string SetupTopP = nameof(TuningSupport.Unsupported);
+    string SetupMaxTokens = nameof(TuningSupport.Unsupported);
+    string SetupSeed = nameof(TuningSupport.Unsupported);
+    string SetupFrequencyPenalty = nameof(TuningSupport.Unsupported);
+    string SetupPresencePenalty = nameof(TuningSupport.Unsupported);
+    string SetupStopSequences = nameof(TuningSupport.Unsupported);
     string ProviderError = "";
     List<AiProviderModel> OnboardModels = [];
     readonly IReadOnlyList<AiProviderMeta> ProviderTypes = SeedData.ProviderMetadata();
@@ -266,8 +390,11 @@
         && (!OnboardMeta.EndpointRequired || !string.IsNullOrWhiteSpace(OnboardEndpoint));
     string? EndpointHint => OnboardType switch
     {
-        "compatible" => "Works with LM Studio, Ollama, or any OpenAI-compatible API. Point to the /v1 base URL.",
-        "huggingface" => "Leave blank to use the default HF Inference API endpoint.",
+        "openai" => "Uses the default OpenAI /v1 base URL.",
+        "grok" => "Uses the default xAI /v1 base URL.",
+        "claude" => "Point to a /v1 Responses/Open Responses-compatible Claude endpoint.",
+        "huggingface" => "Discovers managed endpoints from your Hugging Face account.",
+        "compatible" => "Works with any Responses/Open Responses-compatible API. Point to the /v1 base URL.",
         _ => null
     };
 
@@ -280,10 +407,13 @@
     Task OnProvidersChanged() => InvokeAsync(StateHasChanged);
 
     AiProviderMeta MetaFor(string type) => ProviderTypes.FirstOrDefault(provider => provider.Id == type) ?? ProviderTypes.Last();
-    static (int TextCount, int ImageCount) Counts(AiProvider provider)
+    (int TextCount, int ImageCount) Counts(AiProvider provider)
     {
+        CapabilityCatalog.ApplyResolvedCapabilities(provider);
         var enabled = provider.Models.Where(model => model.Enabled).ToList();
-        return (enabled.Count(model => model.Text), enabled.Count(model => model.Image));
+        return (
+            enabled.Count(AiProviderModelSelectionRules.IsSelectedForChat),
+            enabled.Count(AiProviderModelSelectionRules.IsSelectedForImage));
     }
 
     void Select(string id)
@@ -334,7 +464,7 @@
         ProviderError = "";
         try
         {
-            OnboardModels = (await ProviderConnectionService.DiscoverModelsAsync(BuildOnboardProvider())).Select(CloneDisabled).ToList();
+            OnboardModels = ProviderModelListRules.SortModels((await ProviderConnectionService.DiscoverModelsAsync(BuildOnboardProvider())).Select(CloneDisabled)).ToList();
             OnboardStep = 3;
         }
         catch (Exception exception)
@@ -356,20 +486,21 @@
             Enabled = true,
             ApiKey = OnboardApiKey,
             Endpoint = OnboardMeta.NeedsEndpoint ? OnboardEndpoint : "",
-            Models = OnboardModels.Select(Clone).ToList()
+            Models = ProviderModelListRules.SortModels(OnboardModels.Select(Clone)).ToList()
         };
+        if (!HasActiveTextModel())
+        {
+            var active = provider.Models.FirstOrDefault(AiProviderModelSelectionRules.IsSelectedForChat);
+            if (active is not null)
+                active.ActiveText = true;
+        }
+
         await Session.Providers.AddAsync(provider);
         SelectedId = provider.Id;
         OnboardStep = 0;
     }
 
-    Task SetModels(AiProvider provider, bool enabled) => Session.Providers.SetModelsAsync(provider, enabled);
-
-    void SetOnboardModels(bool enabled)
-    {
-        foreach (var model in OnboardModels)
-            model.Enabled = enabled;
-    }
+    Task OnOnboardModelChanged() => InvokeAsync(StateHasChanged);
 
     async Task TestProvider()
     {
@@ -400,11 +531,33 @@
         {
             var discovered = await ProviderConnectionService.DiscoverModelsAsync(Selected);
             MergeModels(Selected, discovered);
+            Selected.Models = ProviderModelListRules.SortModels(Selected.Models).ToList();
             await Session.Providers.MarkChangedAsync();
         }
         catch (Exception exception)
         {
             ProviderError = UserFacingErrorMessageBuilder.Build($"Refreshing models for {Selected.Name} failed.", exception);
+        }
+    }
+
+    async Task RefreshWidget()
+    {
+        if (Selected is null)
+            return;
+
+        ProviderError = "";
+        try
+        {
+            Selected.Metrics = (await ProviderWidgetService.RefreshMetricsAsync(Selected)).ToList();
+            Selected.LastMetricsRefreshUtc = DateTime.UtcNow;
+            Selected.LastMetricsError = "";
+            await Session.Providers.MarkChangedAsync();
+        }
+        catch (Exception exception)
+        {
+            Selected.LastMetricsError = UserFacingErrorMessageBuilder.Build($"Refreshing widget details for {Selected.Name} failed.", exception);
+            ProviderError = Selected.LastMetricsError;
+            await Session.Providers.MarkChangedAsync();
         }
     }
 
@@ -446,8 +599,12 @@
         {
             if (existing.TryGetValue(model.Id, out var current))
             {
-                current.Text = model.Text;
-                current.Image = model.Image;
+                current.Capabilities = model.Capabilities;
+                current.DisplayName = string.IsNullOrWhiteSpace(model.DisplayName) ? current.DisplayName : model.DisplayName;
+                current.Endpoint = string.IsNullOrWhiteSpace(model.Endpoint) ? current.Endpoint : model.Endpoint;
+                current.Repository = string.IsNullOrWhiteSpace(model.Repository) ? current.Repository : model.Repository;
+                current.CreatedUnix = model.CreatedUnix ?? current.CreatedUnix;
+                AiProviderModelSelectionRules.SynchronizeEnabled(current);
             }
             else
             {
@@ -456,8 +613,120 @@
         }
     }
 
-    static AiProviderModel Clone(AiProviderModel model) => new() { Id = model.Id, Enabled = model.Enabled, Text = model.Text, Image = model.Image };
-    static AiProviderModel CloneDisabled(AiProviderModel model) => new() { Id = model.Id, Text = model.Text, Image = model.Image };
+    void OpenSetup(AiProvider provider, AiProviderModel model)
+    {
+        SetupProvider = Providers.FirstOrDefault(item => item.Id == provider.Id) ?? provider;
+        SetupModel = model;
+        SetupChat = model.Capabilities.CanGenerateText;
+        SetupImage = model.Capabilities.CanGenerateImage;
+        SetupVision = model.Capabilities.ImageInput;
+        SetupStructured = model.Capabilities.StructuredOutput;
+        SetupStreaming = model.Capabilities.Streaming;
+        SetupTools = model.Capabilities.Tools;
+        SetupTemperature = model.Capabilities.Temperature.ToString();
+        SetupTopP = model.Capabilities.TopP.ToString();
+        SetupMaxTokens = model.Capabilities.MaxTokens.ToString();
+        SetupSeed = model.Capabilities.Seed.ToString();
+        SetupFrequencyPenalty = model.Capabilities.FrequencyPenalty.ToString();
+        SetupPresencePenalty = model.Capabilities.PresencePenalty.ToString();
+        SetupStopSequences = model.Capabilities.StopSequences.ToString();
+    }
+
+    void CloseSetup()
+    {
+        SetupProvider = null;
+        SetupModel = null;
+    }
+
+    async Task SaveSetup()
+    {
+        if (SetupProvider is null || SetupModel is null)
+            return;
+
+        var capabilities = new ModelGenerationCapabilities
+        {
+            TextInput = SetupChat || SetupImage || SetupVision,
+            TextOutput = SetupChat,
+            ImageInput = SetupVision,
+            ImageOutput = SetupImage,
+            Streaming = SetupStreaming,
+            StructuredOutput = SetupStructured,
+            Tools = SetupTools,
+            Temperature = ParseSupport(SetupTemperature),
+            TopP = ParseSupport(SetupTopP),
+            MaxTokens = ParseSupport(SetupMaxTokens),
+            Seed = ParseSupport(SetupSeed),
+            FrequencyPenalty = ParseSupport(SetupFrequencyPenalty),
+            PresencePenalty = ParseSupport(SetupPresencePenalty),
+            StopSequences = ParseSupport(SetupStopSequences),
+            Source = "user"
+        };
+
+        CapabilityCatalog.SaveUserCapabilities(SetupProvider.Type, SetupModel.Id, capabilities);
+        SetupModel.Capabilities = CapabilityCatalog.Resolve(SetupProvider, SetupModel);
+        AiProviderModelSelectionRules.SynchronizeEnabled(SetupModel);
+        if (Providers.Any(provider => provider.Id == SetupProvider.Id))
+            await Session.Providers.MarkChangedAsync();
+
+        CloseSetup();
+    }
+
+    static TuningSupport ParseSupport(string value) =>
+        Enum.TryParse<TuningSupport>(value, out var parsed) ? parsed : TuningSupport.Unsupported;
+
+    bool HasActiveTextModel() =>
+        Providers.Any(provider => provider.Enabled && provider.Models.Any(model => model.ActiveText && AiProviderModelSelectionRules.IsSelectedForChat(model)));
+
+    static string ProviderWidgetHint(AiProvider provider) => provider.Type switch
+    {
+        "openai" => "Shows connection, model inventory, and usage guidance.",
+        "grok" => "Shows xAI billing status when a team id is configured.",
+        "claude" => "Shows Anthropic usage status when an admin key is configured.",
+        "huggingface" => "Shows managed endpoint runtime and controls.",
+        _ => "Shows provider-specific connection details."
+    };
+
+    static RenderFragment TuningOptions() => builder =>
+    {
+        builder.OpenElement(0, "option");
+        builder.AddAttribute(1, "value", nameof(TuningSupport.Unsupported));
+        builder.AddContent(2, "Unsupported");
+        builder.CloseElement();
+        builder.OpenElement(3, "option");
+        builder.AddAttribute(4, "value", nameof(TuningSupport.DefaultOnly));
+        builder.AddContent(5, "Default only");
+        builder.CloseElement();
+        builder.OpenElement(6, "option");
+        builder.AddAttribute(7, "value", nameof(TuningSupport.Supported));
+        builder.AddContent(8, "Supported");
+        builder.CloseElement();
+    };
+
+    static AiProviderModel Clone(AiProviderModel model) => new()
+    {
+        Id = model.Id,
+        DisplayName = model.DisplayName,
+        Endpoint = model.Endpoint,
+        Repository = model.Repository,
+        CreatedUnix = model.CreatedUnix,
+        Enabled = model.Enabled,
+        Text = model.Text,
+        Image = model.Image,
+        ActiveText = model.ActiveText,
+        Capabilities = model.Capabilities
+    };
+
+    static AiProviderModel CloneDisabled(AiProviderModel model) => new()
+    {
+        Id = model.Id,
+        DisplayName = model.DisplayName,
+        Endpoint = model.Endpoint,
+        Repository = model.Repository,
+        CreatedUnix = model.CreatedUnix,
+        Text = false,
+        Image = false,
+        Capabilities = model.Capabilities
+    };
 
     public void Dispose()
     {

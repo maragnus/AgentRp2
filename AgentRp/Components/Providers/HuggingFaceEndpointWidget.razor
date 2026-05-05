@@ -1,0 +1,194 @@
+@implements IDisposable
+@inject IAiProviderWidgetService ProviderWidgetService
+
+<div class="hf-endpoint-widget">
+    @if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <div class="modal-error">@Error</div>
+    }
+    else if (Status is null)
+    {
+        <div class="hf-endpoint-main">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Loading endpoint status</span>
+        </div>
+    }
+    else
+    {
+        <div class="hf-endpoint-main">
+            <span class="@StatusClass" title="@StateLabel">
+                <FaIcon Name="@StatusIcon" />
+            </span>
+            <span class="hf-endpoint-copy">
+                @if (ShowModelName)
+                {
+                    <strong>@DisplayName</strong>
+                }
+                <small>@StatusText</small>
+            </span>
+        </div>
+        @if (Status.IsLinked)
+        {
+            <div class="hf-endpoint-actions">
+                @if (Status.CanStart)
+                {
+                    <BusyButton Variant="secondary" Size="xs" Title="@($"Start {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Start))"><FaIcon Name="play" /></BusyButton>
+                }
+                @if (Status.CanPause)
+                {
+                    <BusyButton Variant="secondary" Size="xs" Title="@($"Pause {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Pause))"><FaIcon Name="pause" /></BusyButton>
+                }
+                @if (Status.CanScaleToZero)
+                {
+                    <BusyButton Variant="danger" Size="xs" Title="@($"Scale {DisplayName} to zero")" OnClick="@(() => Manage(ManagedEndpointAction.ScaleToZero))"><FaIcon Name="power-off" /></BusyButton>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    CancellationTokenSource? PollingCancellation;
+    Task? PollingTask;
+    string? ProviderId;
+    string? ModelId;
+    ManagedEndpointStatusView? Status;
+    string Error = "";
+
+    [Parameter] public AiProvider Provider { get; set; } = new();
+    [Parameter] public AiProviderModel Model { get; set; } = new();
+    [Parameter] public bool ShowModelName { get; set; } = true;
+
+    string DisplayName => string.IsNullOrWhiteSpace(Model.DisplayName) ? Model.Id : Model.DisplayName;
+    string StateLabel => FormatState(Status?.State);
+    string StatusText => Status switch
+    {
+        null => "",
+        { IsLinked: false } => Status.UnlinkedReason ?? "No matching managed endpoint.",
+        { StatusUpdatedUtc: DateTime updated } => $"{StateLabel} · {RelativeDateFormatter.FormatDate(updated)}",
+        { StatusMessage: { Length: > 0 } message } => $"{StateLabel} · {message}",
+        _ => StateLabel
+    };
+    string StatusClass => StateLabel switch
+    {
+        "Running" => "hf-endpoint-status is-running",
+        "Paused" => "hf-endpoint-status is-paused",
+        "Scaled to Zero" => "hf-endpoint-status is-zero",
+        "Initializing" or "Updating" => "hf-endpoint-status is-busy",
+        "Failed" => "hf-endpoint-status is-failed",
+        _ => "hf-endpoint-status"
+    };
+    string StatusIcon => StateLabel switch
+    {
+        "Running" => "circle-play",
+        "Paused" => "circle-pause",
+        "Scaled to Zero" => "circle-stop",
+        "Initializing" or "Updating" => "spinner",
+        "Failed" => "circle-exclamation",
+        _ => "circle-question"
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProviderId == Provider.Id && ModelId == Model.Id)
+            return;
+
+        ProviderId = Provider.Id;
+        ModelId = Model.Id;
+        Status = null;
+        Error = "";
+        StopPolling();
+        await Refresh(CancellationToken.None);
+        StartPolling();
+    }
+
+    public void Dispose() => StopPolling();
+
+    void StartPolling()
+    {
+        if (Provider.Type != "huggingface" || string.IsNullOrWhiteSpace(Model.Endpoint))
+            return;
+
+        PollingCancellation = new();
+        PollingTask = Poll(PollingCancellation.Token);
+    }
+
+    void StopPolling()
+    {
+        PollingCancellation?.Cancel();
+        PollingCancellation?.Dispose();
+        PollingCancellation = null;
+        PollingTask = null;
+    }
+
+    async Task Poll(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                await Refresh(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    async Task Refresh(CancellationToken cancellationToken)
+    {
+        if (Provider.Type != "huggingface" || string.IsNullOrWhiteSpace(Model.Endpoint))
+            return;
+
+        try
+        {
+            var statuses = await ProviderWidgetService.GetHuggingFaceStatusesAsync([Provider], cancellationToken);
+            Status = statuses.FirstOrDefault(status => status.ProviderId == Provider.Id && status.ModelId == Model.Id);
+            Error = "";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Status = null;
+            Error = UserFacingErrorMessageBuilder.Build($"Loading Hugging Face endpoint status for {DisplayName} failed.", exception);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task Manage(ManagedEndpointAction action)
+    {
+        Error = "";
+        try
+        {
+            Status = await ProviderWidgetService.ExecuteHuggingFaceActionAsync(Provider, Model, action);
+        }
+        catch (Exception exception)
+        {
+            Error = UserFacingErrorMessageBuilder.Build($"{DescribeAction(action)} the Hugging Face endpoint for {DisplayName} failed.", exception);
+        }
+    }
+
+    static string FormatState(string? state) =>
+        state?.Trim().ToLowerInvariant() switch
+        {
+            "running" => "Running",
+            "paused" => "Paused",
+            "scaledtozero" or "scaled_to_zero" or "scale-to-zero" => "Scaled to Zero",
+            "initializing" => "Initializing",
+            "updating" => "Updating",
+            "failed" => "Failed",
+            { Length: > 0 } value => value,
+            _ => "Unknown"
+        };
+
+    static string DescribeAction(ManagedEndpointAction action) =>
+        action switch
+        {
+            ManagedEndpointAction.Start => "Starting",
+            ManagedEndpointAction.Pause => "Pausing",
+            ManagedEndpointAction.ScaleToZero => "Scaling to zero",
+            _ => "Managing"
+        };
+}

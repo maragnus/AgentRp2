@@ -2,6 +2,19 @@
 @import url("./dark.css");
 @import url("./components.css");
 
+:root {
+    --font-family-ui: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-family-content: var(--font-family-ui);
+    --font-family-display: var(--font-family-ui);
+    --font-family-mono: "DM Mono", Consolas, monospace;
+    --font-app: var(--font-family-ui);
+    --font-heading: var(--font-family-display);
+    --font-control: var(--font-family-ui);
+    --font-transcript-speaker: var(--font-family-ui);
+    --font-transcript-body: var(--font-family-content);
+    --font-technical: var(--font-family-mono);
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -13,7 +26,7 @@ body {
     margin: 0;
     background: var(--c-bg);
     color: var(--c-text);
-    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--font-app);
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
 }
@@ -23,6 +36,7 @@ input,
 textarea,
 select {
     font: inherit;
+    font-family: var(--font-control);
 }
 
 button {

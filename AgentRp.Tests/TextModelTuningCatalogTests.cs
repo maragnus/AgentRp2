@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using AgentRp.Services;
 using AgentRp.Session;
 
@@ -17,26 +16,22 @@ public sealed class TextModelTuningCatalogTests
     [Fact]
     public void Gpt55TemperatureIsOmittedWhenCustomValueIsUnsupported()
     {
-        var body = new JsonObject();
-
-        TextModelTuningCatalog.Apply(body, "openai", "gpt-5.5", new ModelTuningStepState
+        var tuning = TextModelTuningCatalog.Filter(new ModelTuningStepState
         {
             Temperature = 0.4
-        });
+        }, new ModelGenerationCapabilities { Temperature = TuningSupport.DefaultOnly });
 
-        Assert.False(body.ContainsKey("temperature"));
+        Assert.Null(tuning.Temperature);
     }
 
     [Fact]
     public void LegacyTemperatureIsStillSentForSupportedModels()
     {
-        var body = new JsonObject();
-
-        TextModelTuningCatalog.Apply(body, "openai", "gpt-4o", new ModelTuningStepState
+        var tuning = TextModelTuningCatalog.Filter(new ModelTuningStepState
         {
             Temperature = 0.4
-        });
+        }, new ModelGenerationCapabilities { Temperature = TuningSupport.Supported });
 
-        Assert.Equal(0.4, body["temperature"]!.GetValue<double>());
+        Assert.Equal(0.4f, tuning.Temperature);
     }
 }

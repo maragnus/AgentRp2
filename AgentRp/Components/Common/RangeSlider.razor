@@ -1,0 +1,39 @@
+<div class="@CssClass" style="@Style">
+    <span></span>
+    <input type="range"
+           min="@Min"
+           max="@Max"
+           step="@Step"
+           value="@Value"
+           disabled="@Disabled"
+           @oninput="HandleInput" />
+    <i></i>
+</div>
+@if (!string.IsNullOrWhiteSpace(StartLabel) || !string.IsNullOrWhiteSpace(EndLabel))
+{
+    <div class="slider-scale"><span>@StartLabel</span><span>@EndLabel</span></div>
+}
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
+    [Parameter] public double Min { get; set; }
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public double Step { get; set; } = 1;
+    [Parameter] public string? StartLabel { get; set; }
+    [Parameter] public string? EndLabel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    string CssClass => $"range-slider {Class}".Trim();
+    string Style => $"--pct:{Percent:0.##}%";
+    double Percent => Max <= Min ? 0 : Math.Clamp((Value - Min) / (Max - Min) * 100d, 0d, 100d);
+
+    Task HandleInput(ChangeEventArgs args)
+    {
+        if (double.TryParse(args.Value?.ToString(), out var value))
+            return ValueChanged.InvokeAsync(value);
+
+        return Task.CompletedTask;
+    }
+}

@@ -18,29 +18,13 @@
     </div>
 
     <div class="sidebar-scroll">
-        <Section Title="AI Model" Compact="true" OnHeaderClick="@(_ => ModelOpen = !ModelOpen)">
+        <Section Title="AI Model" Compact="true">
             <RightContent>
                 <IconButton Icon="wrench" Title="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
                 <IconButton Icon="settings" Title="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
-                <FaIcon Name="@(ModelOpen ? "chevron-up" : "chevron-down")" />
             </RightContent>
         </Section>
-        <div style="padding:2px 14px 6px">
-            <div style="display:flex;align-items:center;gap:6px">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--c-emerald)"></span>
-                    <span style="font-size:12px;font-weight:500;color:var(--c-text)">@ActiveModelName</span>
-            </div>
-            <div style="font-size:11px;color:var(--c-text3);margin-top:2px;padding-left:12px">Grok / xAI</div>
-            @if (ModelOpen)
-            {
-                <div class="model-card">
-                    <div style="display:flex;justify-content:space-between"><span>Temp</span><code>0.9</code></div>
-                    <div style="display:flex;justify-content:space-between"><span>Top-P</span><code>0.9</code></div>
-                    <div class="divider"></div>
-                    <div>Tok In: <code>331,152</code> · Out: <code>18,974</code></div>
-                </div>
-            }
-        </div>
+        <SidebarModelPanel OnOpenProviders="@(() => OnOpenModal.InvokeAsync("aiProviders"))" />
 
         <div class="divider"></div>
 
@@ -76,11 +60,7 @@
             <IconButton Icon="edit" Title="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
             </RightContent>
         </Section>
-        <div class="row @(Session.SpeakingAs is null ? "is-active" : "")" @onclick="() => SetSpeakingAs(null)">
-            <span class="brand-mark" style="width:24px;height:24px;background:var(--c-surface4);color:var(--c-text3)"><FaIcon Name="book-open" /></span>
-            <span class="row-title" style="font-style:italic">Narrator</span>
-            <FaIcon Name="message-sq" />
-        </div>
+        <SidebarNarratorRow Active="@(Session.SpeakingAs is null)" OnClick="@(_ => SetSpeakingAs(null))" />
         @foreach (var character in Characters)
         {
             <div @key="character.Id" class="row @(Session.SpeakingAs?.Id == character.Id ? "is-active" : "")">
@@ -105,47 +85,27 @@
             <IconButton Icon="edit" Title="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
             </RightContent>
         </Section>
-        <div class="row" @onclick="@(() => OnOpenEntities.InvokeAsync(("items", null)))">
-            <FaIcon Name="box" />
-            <span class="row-title">Tesla Model S Plaid</span>
-        </div>
-
-        <div class="divider"></div>
-
-        <Section Title="Chats" Compact="true">
-            <RightContent><span style="font-size:10px;color:var(--c-text3);letter-spacing:0;text-transform:none;font-weight:400">Starred first</span></RightContent>
-        </Section>
-        @foreach (var chat in Chats)
+        @foreach (var item in Items)
         {
-            <div @key="chat.Id" class="row @(ActiveChat?.Id == chat.Id ? "is-active" : "")" @onclick="() => Session.Chats.SelectAsync(chat.Id)">
-                <div style="min-width:0;flex:1">
-                    <div style="display:flex;align-items:center;gap:5px">
-                        @if (chat.Starred)
-                        {
-                            <FaIcon Name="star" />
-                        }
-                        <span class="row-title">@chat.Title</span>
-                        <span style="font-size:10.5px;color:var(--c-text3)">@chat.Updated</span>
-                    </div>
-                    <div class="row-sub">@chat.Location</div>
-                </div>
+            <div @key="item.Id" class="row" @onclick="@(() => OnOpenEntities.InvokeAsync(("items", item.Id)))">
+                <FaIcon Name="box" />
+                <span class="row-title">@item.Name</span>
             </div>
         }
 
         <div class="divider"></div>
-        <div class="sidebar-user">
-            <span class="user-mark"><FaIcon Name="user" /></span>
-            <span style="flex:1;min-width:0">
-                <span style="display:block;font-size:12px;font-weight:500;color:var(--c-text)">Primary User</span>
-                <span style="display:block;font-size:10px;color:var(--c-text3)">Admin</span>
-            </span>
-            <IconButton Icon="settings" Title="Settings" />
-        </div>
+
+        <Section Title="Chats" Compact="true">
+            <RightContent><span class="section-header-note">Starred first</span></RightContent>
+        </Section>
+        @foreach (var chat in Chats)
+        {
+            <SidebarChatRow @key="chat.Id" Chat="chat" Active="@(ActiveChat?.Id == chat.Id)" OnClick="@(_ => Session.Chats.SelectAsync(chat.Id))" />
+        }
     </div>
 </aside>
 
 @code {
-    bool ModelOpen;
     bool LocationOpen;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -154,9 +114,9 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<RpLocation> Locations => Session.Chat.Locations.Items;
+    List<RpItem> Items => Session.Chat.Items.Items;
     IReadOnlyList<RpChat> Chats => Session.Chats.Items;
     RpChat? ActiveChat => Session.Chats.Active;
-    string ActiveModelName => Session.Providers.Items.SelectMany(provider => provider.Models).FirstOrDefault(model => model.Enabled && model.Text)?.Id ?? "No model selected";
     RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.FirstOrDefault() ?? new() { Name = "No location" };
 
     protected override void OnInitialized()

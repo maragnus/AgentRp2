@@ -1,0 +1,9 @@
+<div class="@CssClass">@ChildContent</div>
+
+@code {
+    [Parameter] public string Tone { get; set; } = "muted";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CssClass => $"inline-note tone-{Tone} {Class}".Trim();
+}

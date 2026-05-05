@@ -1,3 +1,5 @@
+using AgentRp.Services;
+
 namespace AgentRp.Models;
 
 public sealed class RpCharacter
@@ -109,16 +111,39 @@ public sealed class AiProvider
     public string Type { get; set; } = "";
     public bool Enabled { get; set; }
     public string ApiKey { get; set; } = "";
+    public string ManagementApiKey { get; set; } = "";
     public string Endpoint { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string ProjectId { get; set; } = "";
+    public string TeamId { get; set; } = "";
+    public DateTime? LastMetricsRefreshUtc { get; set; }
+    public string LastMetricsError { get; set; } = "";
     public List<AiProviderModel> Models { get; set; } = [];
+    public List<AiProviderMetric> Metrics { get; set; } = [];
 }
 
 public sealed class AiProviderModel
 {
     public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+    public string Repository { get; set; } = "";
+    public long? CreatedUnix { get; set; }
     public bool Enabled { get; set; }
     public bool Text { get; set; }
     public bool Image { get; set; }
+    public bool ActiveText { get; set; }
+    public ModelGenerationCapabilities Capabilities { get; set; } = ModelGenerationCapabilities.Fallback;
+}
+
+public sealed class AiProviderMetric
+{
+    public string Id { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string Detail { get; set; } = "";
+    public DateTime RefreshedUtc { get; set; }
 }
 
 public sealed class AiProviderMeta

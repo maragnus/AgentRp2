@@ -1,0 +1,13 @@
+<div class="@CssClass" role="progressbar" aria-valuemin="0" aria-valuemax="@Max" aria-valuenow="@Value">
+    <div class="progress-bar-fill" style="@FillStyle"></div>
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Max { get; set; } = 100;
+    [Parameter] public string? Class { get; set; }
+
+    string CssClass => $"progress-bar {Class}".Trim();
+    string FillStyle => $"width:{Percent:0.##}%";
+    double Percent => Max <= 0 ? 0 : Math.Clamp(Value / Max * 100d, 0d, 100d);
+}

@@ -1,17 +1,17 @@
 <Section Title="@Title" Hint="@Hint" Count="@MultiValues?.Count" MaxCount="@Max">
-    <div class="v2-card-grid cols-@Columns">
+    <div class="character-option-grid cols-@Columns">
         @foreach (var item in Items)
         {
             var selected = MultiValues?.Contains(item.Id) ?? Selected == item.Id;
             var disabled = MultiValues is not null && Max.HasValue && !selected && MultiValues.Count >= Max.Value;
-            <SelectableButton @key="item.Id" Title="@item.Hover" Disabled="@disabled" Class="@($"v2-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
-                <span class="v2-card-dot">
+            <SelectableButton @key="item.Id" Title="@item.Hover" Disabled="@disabled" Class="@($"character-option-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
+                <span class="character-option-dot">
                     @if (selected)
                     {
                         <FaIcon Name="check" />
                     }
                 </span>
-                <span class="v2-card-copy">
+                <span class="character-option-copy">
                     <strong>@item.Label</strong>
                     <small>@item.Hover</small>
                 </span>

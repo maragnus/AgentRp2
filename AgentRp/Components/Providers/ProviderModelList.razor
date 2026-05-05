@@ -1,0 +1,64 @@
+@if (ShowHeader)
+{
+    <SectionHeader Title="@Title" Count="@Models.Count(model => model.Enabled)" MaxCount="@Models.Count">
+        <RightContent>
+            <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetChatModels(true))">Chat all</AppButton>
+            <AppButton Variant="ghost" Size="xs" OnClick="@(_ => ClearModels())">Clear</AppButton>
+        </RightContent>
+    </SectionHeader>
+}
+
+<div class="provider-model-summary">
+    <span>@ProviderModelListRules.ReadyCount(Models) ready · @ProviderModelListRules.NeedsSetupCount(Models) advanced</span>
+    <ToggleSwitch Value="@ShowAdvanced" ValueChanged="SetShowAdvanced" Title="Show models needing setup" />
+    @if (!ShowHeader)
+    {
+        <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetChatModels(true))">Chat all</AppButton>
+        <AppButton Variant="ghost" Size="xs" OnClick="@(_ => ClearModels())">Clear</AppButton>
+    }
+</div>
+
+<SelectableList Class="provider-model-list">
+    @foreach (var model in VisibleModels)
+    {
+        <ProviderModelRow @key="model.Id" Model="model" OnChanged="OnChanged" OnSetup="OnSetup" />
+    }
+</SelectableList>
+
+@code {
+    [Parameter] public IReadOnlyList<AiProviderModel> Models { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "Models";
+    [Parameter] public bool ShowHeader { get; set; }
+    [Parameter] public bool ShowAdvanced { get; set; }
+    [Parameter] public EventCallback<bool> ShowAdvancedChanged { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<AiProviderModel> OnSetup { get; set; }
+
+    IEnumerable<AiProviderModel> VisibleModels =>
+        ProviderModelListRules.SortModels(Models).Where(model => ShowAdvanced || ProviderModelListRules.IsReady(model) || model.Enabled);
+
+    async Task SetShowAdvanced(bool value)
+    {
+        ShowAdvanced = value;
+        await ShowAdvancedChanged.InvokeAsync(value);
+    }
+
+    async Task SetChatModels(bool selected)
+    {
+        foreach (var model in Models)
+        {
+            if (ProviderModelListRules.IsReady(model))
+                ProviderModelListRules.SetChatSelected(model, selected);
+        }
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task ClearModels()
+    {
+        foreach (var model in Models)
+            ProviderModelListRules.ClearSelectedRoles(model);
+
+        await OnChanged.InvokeAsync();
+    }
+}

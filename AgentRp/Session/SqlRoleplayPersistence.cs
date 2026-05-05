@@ -34,6 +34,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         var rows = await dbContext.AiProviders
             .AsNoTracking()
             .Include(x => x.Models)
+            .Include(x => x.Metrics)
             .OrderBy(x => x.SortOrder)
             .ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
@@ -45,16 +46,40 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             Type = row.Type,
             Enabled = row.Enabled,
             ApiKey = row.ApiKey,
+            ManagementApiKey = row.ManagementApiKey,
             Endpoint = row.Endpoint,
+            AccountId = row.AccountId,
+            ProjectId = row.ProjectId,
+            TeamId = row.TeamId,
+            LastMetricsRefreshUtc = row.LastMetricsRefreshUtc,
+            LastMetricsError = row.LastMetricsError,
             Models = row.Models
                 .OrderBy(model => model.SortOrder)
                 .ThenBy(model => model.Id)
                 .Select(model => new AiProviderModel
                 {
                     Id = model.Id,
+                    DisplayName = model.DisplayName,
+                    Endpoint = model.Endpoint,
+                    Repository = model.Repository,
+                    CreatedUnix = model.CreatedUnix,
                     Enabled = model.Enabled,
                     Text = model.Text,
-                    Image = model.Image
+                    Image = model.Image,
+                    ActiveText = model.ActiveText
+                })
+                .ToList(),
+            Metrics = row.Metrics
+                .OrderBy(metric => metric.Label)
+                .ThenBy(metric => metric.Kind)
+                .Select(metric => new AiProviderMetric
+                {
+                    Id = metric.Id,
+                    Kind = metric.Kind,
+                    Label = metric.Label,
+                    Value = metric.Value,
+                    Detail = metric.Detail,
+                    RefreshedUtc = metric.RefreshedUtc
                 })
                 .ToList()
         }).ToList();
@@ -137,17 +162,37 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
                 Type = provider.Type,
                 Enabled = provider.Enabled,
                 ApiKey = provider.ApiKey,
+                ManagementApiKey = provider.ManagementApiKey,
                 Endpoint = provider.Endpoint,
+                AccountId = provider.AccountId,
+                ProjectId = provider.ProjectId,
+                TeamId = provider.TeamId,
+                LastMetricsRefreshUtc = provider.LastMetricsRefreshUtc,
+                LastMetricsError = provider.LastMetricsError,
                 SortOrder = providerIndex,
                 CreatedUtc = now,
                 UpdatedUtc = now,
                 Models = provider.Models.Select((model, modelIndex) => new AiProviderModelRow
                 {
                     Id = model.Id,
+                    DisplayName = model.DisplayName,
+                    Endpoint = model.Endpoint,
+                    Repository = model.Repository,
+                    CreatedUnix = model.CreatedUnix,
                     Enabled = model.Enabled,
                     Text = model.Text,
                     Image = model.Image,
+                    ActiveText = model.ActiveText,
                     SortOrder = modelIndex
+                }).ToList(),
+                Metrics = provider.Metrics.Select(metric => new AiProviderMetricRow
+                {
+                    Id = string.IsNullOrWhiteSpace(metric.Id) ? $"pm{Guid.NewGuid():N}" : metric.Id,
+                    Kind = metric.Kind,
+                    Label = metric.Label,
+                    Value = metric.Value,
+                    Detail = metric.Detail,
+                    RefreshedUtc = metric.RefreshedUtc
                 }).ToList()
             });
         }

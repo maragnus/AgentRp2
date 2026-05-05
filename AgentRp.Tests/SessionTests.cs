@@ -162,6 +162,7 @@ public sealed class SessionTests
     public async Task ChatAreaRerendersFromCrossSessionTranscriptNotification()
     {
         using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
         await using var liveStore = NewLiveStore();
         var sessionA = new RoleplaySession(liveStore);

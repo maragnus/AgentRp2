@@ -1,10 +1,16 @@
-<span class="provider-badge provider-@Type" style="width:@SizePx;height:@SizePx;font-size:@FontSize">@Glyph</span>
+<span class="@CssClass">@Glyph</span>
 
 @code {
     [Parameter] public string Type { get; set; } = "compatible";
     [Parameter] public int Size { get; set; } = 28;
-    string SizePx => $"{Size}px";
-    string FontSize => $"{Size * .42}px";
+    string CssClass => $"provider-badge provider-{Type} provider-badge-{SizeClass}";
+    string SizeClass => Size switch
+    {
+        <= 28 => "sm",
+        <= 32 => "md",
+        _ => "lg"
+    };
+
     string Glyph => Type switch
     {
         "grok" => "⚡",

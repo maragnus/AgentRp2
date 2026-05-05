@@ -239,14 +239,60 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore) 
     public async Task SetModelsAsync(AiProvider provider, bool enabled)
     {
         foreach (var model in provider.Models)
-            model.Enabled = enabled;
+        {
+            if (enabled)
+                AiProviderModelSelectionRules.SetChatSelected(model, true);
+            else
+                AiProviderModelSelectionRules.ClearSelectedRoles(model);
+        }
 
+        await MarkChangedAsync();
+    }
+
+    public async Task SetActiveTextModelAsync(string providerId, string modelId)
+    {
+        var targetProvider = _items.FirstOrDefault(provider => provider.Id == providerId)
+            ?? throw new InvalidOperationException("Selecting the AI model failed because the provider is not available.");
+        if (!targetProvider.Enabled)
+            throw new InvalidOperationException($"Selecting the AI model failed because {targetProvider.Name} is disabled.");
+
+        var targetModel = targetProvider.Models.FirstOrDefault(model => model.Id == modelId)
+            ?? throw new InvalidOperationException("Selecting the AI model failed because the model is not available.");
+        if (!AiProviderModelSelectionRules.IsSelectedForChat(targetModel))
+            throw new InvalidOperationException($"Selecting the AI model failed because {DisplayName(targetModel)} is not enabled for chat.");
+
+        foreach (var provider in _items)
+        {
+            foreach (var model in provider.Models)
+                model.ActiveText = false;
+        }
+
+        targetModel.ActiveText = true;
         await MarkChangedAsync();
     }
 
     public async Task MarkChangedAsync()
     {
+        NormalizeActiveTextSelection();
         await liveStore.ReplaceProvidersAsync(sessionId, _items);
         await NotifyChangedAsync();
     }
+
+    void NormalizeActiveTextSelection()
+    {
+        var active = _items
+            .Where(provider => provider.Enabled)
+            .SelectMany(provider => provider.Models.Select(model => new { Provider = provider, Model = model }))
+            .Where(item => item.Model.ActiveText && AiProviderModelSelectionRules.IsSelectedForChat(item.Model))
+            .ToList();
+
+        foreach (var item in _items.SelectMany(provider => provider.Models))
+            item.ActiveText = false;
+
+        if (active.Count > 0)
+            active[0].Model.ActiveText = true;
+    }
+
+    static string DisplayName(AiProviderModel model) =>
+        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 }

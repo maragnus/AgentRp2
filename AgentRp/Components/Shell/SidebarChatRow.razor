@@ -1,0 +1,21 @@
+<SelectableButton Class="@CssClass" OnClick="@OnClick">
+    <span class="sidebar-chat-copy">
+        <span class="sidebar-chat-title-line">
+            @if (Chat.Starred)
+            {
+                <FaIcon Name="star" />
+            }
+            <span class="row-title">@Chat.Title</span>
+            <span class="sidebar-chat-date">@Chat.Updated</span>
+        </span>
+        <span class="row-sub">@Chat.Location</span>
+    </span>
+</SelectableButton>
+
+@code {
+    [Parameter] public RpChat Chat { get; set; } = new();
+    [Parameter] public bool Active { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    string CssClass => $"row {(Active ? "is-active" : "")}".Trim();
+}

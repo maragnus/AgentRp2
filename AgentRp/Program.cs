@@ -9,9 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContextFactory<RpDbContext>((serviceProvider, options) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-    var connectionString = configuration.GetConnectionString("agentrp-db2")
-        ?? configuration.GetConnectionString("agentrp-db")
-        ?? throw new InvalidOperationException("Connection string 'agentrp-db2' was not found.");
+    var connectionString = configuration.GetConnectionString("db")
+        ?? throw new InvalidOperationException("Connection string 'db' was not found.");
 
     options.UseSqlServer(connectionString);
 });
@@ -21,8 +20,12 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
+builder.Services.AddSingleton<IResponseGenerationClient, OpenAiResponsesGenerationClient>();
 builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionService>();
+builder.Services.AddScoped<IAiProviderWidgetService, AiProviderWidgetService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
+builder.Services.AddScoped<OverlayService>();
 builder.Services.AddScoped<TranscriptPromptContextBuilder>();
 builder.Services.AddScoped<ITextGenerationService, TextGenerationService>();
 builder.Services.AddSingleton<IRoleplayPersistence, SqlRoleplayPersistence>();

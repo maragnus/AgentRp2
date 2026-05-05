@@ -8,6 +8,7 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
     public DbSet<RpChatDocumentRow> ChatDocuments => Set<RpChatDocumentRow>();
     public DbSet<AiProviderRow> AiProviders => Set<AiProviderRow>();
     public DbSet<AiProviderModelRow> AiProviderModels => Set<AiProviderModelRow>();
+    public DbSet<AiProviderMetricRow> AiProviderMetrics => Set<AiProviderMetricRow>();
     public DbSet<ImageAssetRow> ImageAssets => Set<ImageAssetRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -48,9 +49,18 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.Name).HasMaxLength(200);
             builder.Property(x => x.Type).HasMaxLength(100);
             builder.Property(x => x.ApiKey).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.ManagementApiKey).HasColumnType("nvarchar(max)");
             builder.Property(x => x.Endpoint).HasMaxLength(1000);
+            builder.Property(x => x.AccountId).HasMaxLength(200);
+            builder.Property(x => x.ProjectId).HasMaxLength(200);
+            builder.Property(x => x.TeamId).HasMaxLength(200);
+            builder.Property(x => x.LastMetricsError).HasMaxLength(1000);
             builder.HasIndex(x => x.SortOrder);
             builder.HasMany(x => x.Models)
+                .WithOne(x => x.Provider)
+                .HasForeignKey(x => x.ProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasMany(x => x.Metrics)
                 .WithOne(x => x.Provider)
                 .HasForeignKey(x => x.ProviderId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -61,7 +71,22 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.HasKey(x => new { x.ProviderId, x.Id });
             builder.Property(x => x.ProviderId).HasMaxLength(80);
             builder.Property(x => x.Id).HasMaxLength(500);
+            builder.Property(x => x.DisplayName).HasMaxLength(500);
+            builder.Property(x => x.Endpoint).HasMaxLength(1000);
+            builder.Property(x => x.Repository).HasMaxLength(500);
             builder.HasIndex(x => x.SortOrder);
+        });
+
+        modelBuilder.Entity<AiProviderMetricRow>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).HasMaxLength(80);
+            builder.Property(x => x.ProviderId).HasMaxLength(80);
+            builder.Property(x => x.Kind).HasMaxLength(100);
+            builder.Property(x => x.Label).HasMaxLength(200);
+            builder.Property(x => x.Value).HasMaxLength(500);
+            builder.Property(x => x.Detail).HasColumnType("nvarchar(max)");
+            builder.HasIndex(x => new { x.ProviderId, x.Kind });
         });
 
         modelBuilder.Entity<ImageAssetRow>(builder =>
@@ -120,21 +145,45 @@ public sealed class AiProviderRow
     public string Type { get; set; } = "";
     public bool Enabled { get; set; }
     public string ApiKey { get; set; } = "";
+    public string ManagementApiKey { get; set; } = "";
     public string Endpoint { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string ProjectId { get; set; } = "";
+    public string TeamId { get; set; } = "";
+    public DateTime? LastMetricsRefreshUtc { get; set; }
+    public string LastMetricsError { get; set; } = "";
     public int SortOrder { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
     public List<AiProviderModelRow> Models { get; set; } = [];
+    public List<AiProviderMetricRow> Metrics { get; set; } = [];
 }
 
 public sealed class AiProviderModelRow
 {
     public string ProviderId { get; set; } = "";
     public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+    public string Repository { get; set; } = "";
+    public long? CreatedUnix { get; set; }
     public bool Enabled { get; set; }
     public bool Text { get; set; }
     public bool Image { get; set; }
+    public bool ActiveText { get; set; }
     public int SortOrder { get; set; }
+    public AiProviderRow Provider { get; set; } = null!;
+}
+
+public sealed class AiProviderMetricRow
+{
+    public string Id { get; set; } = "";
+    public string ProviderId { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string Detail { get; set; } = "";
+    public DateTime RefreshedUtc { get; set; }
     public AiProviderRow Provider { get; set; } = null!;
 }
 
