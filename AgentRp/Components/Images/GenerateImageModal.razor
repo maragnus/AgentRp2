@@ -1,10 +1,10 @@
 @implements IDisposable
 @inject IImageGenerationService ImageGenerationService
 
-<ModalShell Title="Generate Image" MaxWidth="1000px" OnClose="RequestClose">
+<ModalShell Title="Generate Image" MaxWidth="1000px" BodyClass="is-flush" OnClose="RequestClose">
     <ChildContent>
-        <div class="generate-layout">
-            <aside class="generate-settings">
+        <ModalSplitLayout RailWidth="400px" Class="generate-layout" RailClass="generate-settings">
+            <RailContent>
                 <Section Title="Settings" Class="generate-block">
                     <FieldRow Label="Image Model">
                         <select class="select" @bind="ModelKey">
@@ -75,44 +75,46 @@
                         </ItemTemplate>
                     </TiledSelectList>
                 </Section>
-            </aside>
+            </RailContent>
 
-            <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
-                <div class="generated-frame">
-                    @if (Generating)
-                    {
-                        <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
-                    }
-                    else if (SelectedGenerated is not null)
-                    {
-                        <img class="generated-image-preview" src="@SelectedGenerated.Image.Url" alt="@SelectedGenerated.Image.Name" />
-                    }
-                    else
-                    {
-                        <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
-                    }
-                </div>
-                <TiledSelectList TItem="GeneratedImageOption"
-                                 Items="Generated"
-                                 SelectedIds="SelectedGeneratedIds"
-                                 GetId="@(option => option.Id)"
-                                 Title="@(option => option.Image.Name)"
-                                 Layout="TiledSelectLayout.Horizontal"
-                                 OnToggle="SelectGenerated">
-                    <EmptyContent>Generate to add options</EmptyContent>
-                    <ItemTemplate Context="option">
-                        <img class="tiled-select-media image-asset" src="@option.Image.Url" alt="@option.Image.Name" />
-                        <strong class="tiled-select-label">@option.Image.Name</strong>
-                    </ItemTemplate>
-                    <BadgeTemplate Context="option">
-                        @if (option.IsSaved)
+            <MainContent>
+                <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
+                    <div class="generated-frame">
+                        @if (Generating)
                         {
-                            <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
+                            <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
                         }
-                    </BadgeTemplate>
-                </TiledSelectList>
-            </Section>
-        </div>
+                        else if (SelectedGenerated is not null)
+                        {
+                            <img class="generated-image-preview" src="@SelectedGenerated.Image.Url" alt="@SelectedGenerated.Image.Name" />
+                        }
+                        else
+                        {
+                            <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
+                        }
+                    </div>
+                    <TiledSelectList TItem="GeneratedImageOption"
+                                     Items="Generated"
+                                     SelectedIds="SelectedGeneratedIds"
+                                     GetId="@(option => option.Id)"
+                                     Title="@(option => option.Image.Name)"
+                                     Layout="TiledSelectLayout.Horizontal"
+                                     OnToggle="SelectGenerated">
+                        <EmptyContent>Generate to add options</EmptyContent>
+                        <ItemTemplate Context="option">
+                            <img class="tiled-select-media image-asset" src="@option.Image.Url" alt="@option.Image.Name" />
+                            <strong class="tiled-select-label">@option.Image.Name</strong>
+                        </ItemTemplate>
+                        <BadgeTemplate Context="option">
+                            @if (option.IsSaved)
+                            {
+                                <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
+                            }
+                        </BadgeTemplate>
+                    </TiledSelectList>
+                </Section>
+            </MainContent>
+        </ModalSplitLayout>
     </ChildContent>
     <Footer>
         <span class="modal-action-spacer"></span>

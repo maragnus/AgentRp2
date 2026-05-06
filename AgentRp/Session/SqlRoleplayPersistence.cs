@@ -12,20 +12,14 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
     public async Task<List<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        return await dbContext.Chats
+        var rows = await dbContext.Chats
             .AsNoTracking()
+            .Include(x => x.Document)
             .OrderBy(x => x.SortOrder)
             .ThenByDescending(x => x.UpdatedUtc)
-            .Select(x => new RpChat
-            {
-                Id = x.Id,
-                Title = x.Title,
-                Updated = x.Updated,
-                Starred = x.Starred,
-                Messages = x.Messages,
-                Location = x.Location
-            })
             .ToListAsync(cancellationToken);
+
+        return rows.Select(ToChatListModel).ToList();
     }
 
     public async Task<List<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default)
@@ -258,6 +252,22 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         Messages = row.Messages,
         Location = row.Location
     };
+
+    static RpChat ToChatListModel(RpChatRow row)
+    {
+        var chat = ToModel(row);
+        if (row.Document is null)
+            return chat;
+
+        var characters = Deserialize(row.Document.CharactersJson, new List<RpCharacter>());
+        var images = Deserialize(row.Document.ImagesJson, new List<GalleryImage>());
+        var transcript = Deserialize(row.Document.MessagesJson, new RpTranscriptState());
+        var sceneCharacterIds = TranscriptGraph.GetActiveScene(transcript).InSceneCharacterIds.ToHashSet(StringComparer.Ordinal);
+
+        ChatPreviewProjector.ApplySceneCharacters(chat, characters, images, sceneCharacterIds);
+
+        return chat;
+    }
 
     static void Apply(RpChat chat, RpChatRow row, int sortOrder, DateTime now)
     {

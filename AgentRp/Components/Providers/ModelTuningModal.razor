@@ -19,7 +19,9 @@
         <MainContent>
         <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
             <Header>
-                <Toolbar Title="@CurrentStep.Label" Class="tuning-toolbar">
+                <ModalPaneToolbar Class="tuning-toolbar">
+                    <strong>@CurrentStep.Label</strong>
+                    <span class="toolbar-spacer"></span>
                     <AppButton Variant="secondary" Size="xs" OnClick="ImportSettings"><FaIcon Name="download" />Import</AppButton>
                     <AppButton Variant="secondary" Size="xs" OnClick="ExportSettings"><FaIcon Name="upload" />Export</AppButton>
                     <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Layer="OverlayLayer.Modal" Class="copy-popover">
@@ -42,7 +44,7 @@
                     {
                         <AppButton Size="xs" OnClick="@(_ => Reset())"><FaIcon Name="refresh" />Reset</AppButton>
                     }
-                </Toolbar>
+                </ModalPaneToolbar>
             </Header>
 
             <ChildContent>

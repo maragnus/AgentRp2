@@ -4,9 +4,7 @@
                   RailWidth="@RailWidth"
                   Class="@Class"
                   RailClass="@RailClass"
-                  MainClass="@MainClass"
-                  MainScrollClass="@MainScrollClass"
-                  MainHeader="@SelectedHeader">
+                  MainClass="@MainClass">
     <RailHeader>@ListHeader</RailHeader>
     <RailContent>
         @if (ItemsList.Count == 0)
@@ -27,14 +25,23 @@
     </RailContent>
     <RailFooter>@ListFooter</RailFooter>
     <MainContent>
-        @if (SelectedItem is not null)
-        {
-            @ItemTemplate(SelectedItem)
-        }
-        else
-        {
-            @EmptySelectionTemplate
-        }
+        <ModalStackLayout Class="@ItemStackClass"
+                          HeaderClass="@StackHeaderClass"
+                          BodyClass="@ItemBodyClass"
+                          FooterClass="@ItemFooterClass"
+                          Header="@SelectedHeader"
+                          Footer="@SelectedFooter">
+            <ChildContent>
+                @if (SelectedItem is not null)
+                {
+                    @ItemTemplate(SelectedItem)
+                }
+                else
+                {
+                    @EmptySelectionTemplate
+                }
+            </ChildContent>
+        </ModalStackLayout>
     </MainContent>
 </ModalSplitLayout>
 
@@ -48,20 +55,42 @@
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? RailClass { get; set; }
     [Parameter] public string? MainClass { get; set; }
-    [Parameter] public string? MainScrollClass { get; set; }
+    [Parameter] public string? ItemStackClass { get; set; }
+    [Parameter] public string? ItemHeaderClass { get; set; }
+    [Parameter] public string? ItemBodyClass { get; set; }
+    [Parameter] public string? ItemFooterClass { get; set; }
+    [Parameter] public bool ItemHeaderChrome { get; set; } = true;
     [Parameter] public RenderFragment? ListHeader { get; set; }
     [Parameter] public RenderFragment? ListFooter { get; set; }
     [Parameter] public RenderFragment? EmptyListTemplate { get; set; }
     [Parameter] public RenderFragment? EmptySelectionTemplate { get; set; }
     [Parameter] public RenderFragment<EntityListEditorItem<TItem>> ListItemTemplate { get; set; } = _ => builder => { };
     [Parameter] public RenderFragment<TItem>? ItemHeaderTemplate { get; set; }
+    [Parameter] public RenderFragment<TItem>? ItemFooterTemplate { get; set; }
     [Parameter] public RenderFragment<TItem> ItemTemplate { get; set; } = _ => builder => { };
 
     List<TItem> ItemsList => Items.ToList();
     TItem? SelectedItem => ItemsList.FirstOrDefault(item => GetId(item) == SelectedId);
     RenderFragment? SelectedHeader => SelectedItem is not null && ItemHeaderTemplate is not null
-        ? builder => builder.AddContent(0, ItemHeaderTemplate(SelectedItem))
+        ? builder =>
+        {
+            if (ItemHeaderChrome)
+            {
+                builder.OpenComponent<ModalPaneHeader>(0);
+                builder.AddAttribute(1, nameof(ModalPaneHeader.Class), ItemHeaderClass);
+                builder.AddAttribute(2, nameof(ModalPaneHeader.ChildContent), ItemHeaderTemplate(SelectedItem));
+                builder.CloseComponent();
+            }
+            else
+            {
+                builder.AddContent(3, ItemHeaderTemplate(SelectedItem));
+            }
+        }
         : null;
+    RenderFragment? SelectedFooter => SelectedItem is not null && ItemFooterTemplate is not null
+        ? builder => builder.AddContent(0, ItemFooterTemplate(SelectedItem))
+        : null;
+    string? StackHeaderClass => ItemHeaderChrome ? null : ItemHeaderClass;
 
     Task Select(string id) => SelectedIdChanged.InvokeAsync(id);
 }

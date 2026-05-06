@@ -202,6 +202,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             document.Transcript.RootScene.InSceneCharacterIds = document.Characters.Where(character => character.InScene).Select(character => character.Id).ToList();
             document.Transcript.RootScene.InSceneItemIds = document.Items.Where(item => item.InScene).Select(item => item.Id).ToList();
             TranscriptProjector.Apply(document);
+            ChatPreviewProjector.Apply(chat, document);
             _loadedChats[chat.Id] = new()
             {
                 Document = SessionCloner.Clone(document),
@@ -257,7 +258,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         }
 
         QueueSaveDocument(snapshot);
-        if (area is RoleplayStoreArea.Locations or RoleplayStoreArea.Transcript)
+        if (area is RoleplayStoreArea.Characters or RoleplayStoreArea.Locations or RoleplayStoreArea.Images or RoleplayStoreArea.Transcript)
         {
             QueueSaveChats();
             await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, _chatListVersion));
@@ -339,11 +340,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         if (chat is null)
             return;
 
-        chat.Title = document.Chat.Title;
-        chat.Location = document.Chat.Location;
-        chat.Messages = document.Chat.Messages;
-        chat.Updated = document.Chat.Updated;
-        chat.Starred = document.Chat.Starred;
+        ChatPreviewProjector.Apply(chat, document);
         _chatListVersion++;
     }
 

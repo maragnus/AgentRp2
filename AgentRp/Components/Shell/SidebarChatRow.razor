@@ -1,4 +1,10 @@
-<SelectableButton Class="@CssClass" OnClick="@OnClick">
+<SelectableButton Class="@CssClass" Title="@Title" OnClick="@OnClick">
+    <span class="sidebar-chat-avatars" aria-label="@AvatarSummary">
+        @foreach (var character in VisibleSceneCharacters)
+        {
+            <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" Size="22" Class="sidebar-chat-avatar" />
+        }
+    </span>
     <span class="sidebar-chat-copy">
         <span class="sidebar-chat-title-line">
             @if (Chat.Starred)
@@ -6,9 +12,8 @@
                 <FaIcon Name="star" />
             }
             <span class="row-title">@Chat.Title</span>
-            <span class="sidebar-chat-date">@Chat.Updated</span>
         </span>
-        <span class="row-sub">@Chat.Location</span>
+        <span class="sidebar-chat-date">@Chat.Updated</span>
     </span>
 </SelectableButton>
 
@@ -17,5 +22,10 @@
     [Parameter] public bool Active { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
-    string CssClass => $"row {(Active ? "is-active" : "")}".Trim();
+    IEnumerable<RpChatSceneCharacter> VisibleSceneCharacters => Chat.SceneCharacters.Take(3);
+    string CssClass => $"row sidebar-chat-row {(Active ? "is-active" : "")}".Trim();
+    string Title => string.IsNullOrWhiteSpace(Chat.Updated) ? Chat.Title : $"{Chat.Title} · {Chat.Updated}";
+    string AvatarSummary => Chat.SceneCharacters.Count == 0
+        ? "No characters in scene"
+        : $"In scene: {string.Join(", ", Chat.SceneCharacters.Take(3).Select(character => character.Name))}";
 }

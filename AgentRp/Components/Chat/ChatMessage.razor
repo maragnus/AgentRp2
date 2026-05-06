@@ -147,21 +147,27 @@
                         <Header>
                             @if (ActivePlanTab == "appearance")
                             {
-                                <Toolbar Title="Characters" Class="tuning-toolbar">
+                                <ModalPaneToolbar Class="tuning-toolbar">
+                                    <strong>Characters</strong>
+                                    <span class="toolbar-spacer"></span>
                                     <Badge Tone="blue">@Characters.Count</Badge>
-                                </Toolbar>
+                                </ModalPaneToolbar>
                             }
                             else if (ActivePlanTab == "plan")
                             {
-                                <Toolbar Title="Plan" Class="tuning-toolbar">
+                                <ModalPaneToolbar Class="tuning-toolbar">
+                                    <strong>Plan</strong>
+                                    <span class="toolbar-spacer"></span>
                                     <Badge Tone="amber">@PlanShape</Badge>
-                                </Toolbar>
+                                </ModalPaneToolbar>
                             }
                             else
                             {
-                                <Toolbar Title="Private Intent" Class="tuning-toolbar">
+                                <ModalPaneToolbar Class="tuning-toolbar">
+                                    <strong>Private Intent</strong>
+                                    <span class="toolbar-spacer"></span>
                                     <Badge Tone="violet">@Characters.Count</Badge>
-                                </Toolbar>
+                                </ModalPaneToolbar>
                             }
                         </Header>
                         <ChildContent>
@@ -235,13 +241,15 @@
 @if (EditBody)
 {
     <ModalShell Title="Edit Message" Subtitle="@($"{Message.AuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
-        <Section Title="Body">
-            <textarea class="field plan-field" rows="8" @bind="BodyDraft"></textarea>
-        </Section>
-        <div class="modal-actions">
+        <ChildContent>
+            <Section Title="Body">
+                <textarea class="field plan-field" rows="8" @bind="BodyDraft"></textarea>
+            </Section>
+        </ChildContent>
+        <Footer>
             <AppButton Variant="secondary" OnClick="@(_ => EditBody = false)">Cancel</AppButton>
             <AppButton Variant="primary" Disabled="@TranscriptBusy" OnClick="@(_ => SaveBody())"><FaIcon Name="check" />Save Edit</AppButton>
-        </div>
+        </Footer>
     </ModalShell>
 }
 

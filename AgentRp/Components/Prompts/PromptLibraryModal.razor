@@ -19,7 +19,7 @@
         <MainContent>
         <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
             <Header>
-                <div class="prompt-stepbar">
+                <ModalPaneToolbar Class="prompt-stepbar">
                     <div>
                         <strong>@CurrentStep.Label</strong>
                         @if (CurrentStep.HasTurnShapes)
@@ -32,7 +32,7 @@
                         <span>Placeholders</span>
                         <FaIcon Name="@(ShowPlaceholders ? "chevron-up" : "chevron-down")" />
                     </SelectableButton>
-                </div>
+                </ModalPaneToolbar>
 
                 @if (ShowPlaceholders)
                 {

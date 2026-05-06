@@ -229,21 +229,11 @@ public sealed class AiProviderConnectionService(
         };
     }
 
-    static bool IsKnownImageModel(string providerType, string modelId) =>
-        providerType switch
-        {
-            "openai" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase) || modelId.Contains("dall-e", StringComparison.OrdinalIgnoreCase),
-            "grok" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase) || modelId.Contains("imagine", StringComparison.OrdinalIgnoreCase),
-            "compatible" => modelId.Contains("image", StringComparison.OrdinalIgnoreCase)
-                || modelId.Contains("dall-e", StringComparison.OrdinalIgnoreCase),
-            _ => false
-        };
-
     static int ModelSortRank(string providerType, string modelId)
     {
         if (providerType == "openai" && string.Equals(modelId, "gpt-image-1.5", StringComparison.Ordinal))
             return 0;
-        if (IsKnownImageModel(providerType, modelId))
+        if (AiProviderModelIdentityRules.IsKnownImageGenerationModel(providerType, modelId))
             return 1;
         return 2;
     }
@@ -270,7 +260,9 @@ public sealed class AiProviderConnectionService(
 
     static string NormalizeEndpoint(AiProvider provider)
     {
-        var endpoint = string.IsNullOrWhiteSpace(provider.Endpoint) ? DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
+        var endpoint = AiProviderEndpointRules.UsesFixedEndpoint(provider.Type)
+            ? AiProviderEndpointRules.DefaultEndpoint(provider.Type)
+            : string.IsNullOrWhiteSpace(provider.Endpoint) ? AiProviderEndpointRules.DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint was empty.");
 
@@ -279,14 +271,6 @@ public sealed class AiProviderConnectionService(
 
         return endpoint.EndsWith('/') ? endpoint : $"{endpoint}/";
     }
-
-    static string DefaultEndpoint(string providerType) => providerType switch
-    {
-        "openai" => "https://api.openai.com/v1/",
-        "grok" => "https://api.x.ai/v1/",
-        "claude" => "",
-        _ => ""
-    };
 
     static bool IsOpenAiCompatible(string providerType) => providerType == "compatible";
 

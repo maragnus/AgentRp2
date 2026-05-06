@@ -1,8 +1,9 @@
 @inject IJSRuntime JS
 
-<ModalShell Title="Export" Subtitle="Choose what to include in your export file" MaxWidth="680px" OnClose="OnClose">
-    <div class="export-layout">
-        <section class="export-options">
+<ModalShell Title="Export" Subtitle="Choose what to include in your export file" MaxWidth="680px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalSplitLayout Class="export-layout" RailWidth="220px" RailClass="export-summary-rail" RailAtEnd>
+        <MainContent>
+            <section class="export-options">
             <Section Title="Format">
                 <div class="export-choice-grid">
                     @foreach (var format in Formats)
@@ -47,30 +48,33 @@
                     }
                 </div>
             </Section>
-        </section>
+            </section>
+        </MainContent>
 
-        <Section Title="Summary" Class="export-summary" BodyClass="export-summary-body">
-            <div class="summary-format">
-                <FaIcon Name="@SelectedFormat.Icon" />
-                <span><strong>@SelectedFormat.Label</strong><code>@SelectedFormat.Ext</code></span>
-            </div>
-            @if (SummaryLines.Count > 0)
-            {
-                @foreach (var line in SummaryLines)
+        <RailContent>
+            <Section Title="Summary" Class="export-summary" BodyClass="export-summary-body">
+                <div class="summary-format">
+                    <FaIcon Name="@SelectedFormat.Icon" />
+                    <span><strong>@SelectedFormat.Label</strong><code>@SelectedFormat.Ext</code></span>
+                </div>
+                @if (SummaryLines.Count > 0)
                 {
-                    <div @key="line" class="summary-line"><FaIcon Name="check" /><span>@line</span></div>
+                    @foreach (var line in SummaryLines)
+                    {
+                        <div @key="line" class="summary-line"><FaIcon Name="check" /><span>@line</span></div>
+                    }
                 }
-            }
-            else
-            {
-                <InlineNote Tone="empty">Nothing selected yet</InlineNote>
-            }
-            <div class="modal-action-spacer"></div>
-            <div class="divider"></div>
-            <InlineNote Tone="summary">Exporting "@ActiveChat.Title"</InlineNote>
-            <AppButton Variant="primary" Size="md" Disabled="@(SummaryLines.Count == 0)" OnClick="Download"><FaIcon Name="download" />Export</AppButton>
-        </Section>
-    </div>
+                else
+                {
+                    <InlineNote Tone="empty">Nothing selected yet</InlineNote>
+                }
+                <div class="modal-action-spacer"></div>
+                <div class="divider"></div>
+                <InlineNote Tone="summary">Exporting "@ActiveChat.Title"</InlineNote>
+                <AppButton Variant="primary" Size="md" Disabled="@(SummaryLines.Count == 0)" OnClick="Download"><FaIcon Name="download" />Export</AppButton>
+            </Section>
+        </RailContent>
+    </ModalSplitLayout>
 </ModalShell>
 
 @code {

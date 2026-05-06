@@ -85,6 +85,15 @@ public sealed class RpChat
     public bool Starred { get; set; }
     public int Messages { get; set; }
     public string Location { get; set; } = "";
+    public List<RpChatSceneCharacter> SceneCharacters { get; set; } = [];
+}
+
+public sealed class RpChatSceneCharacter
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string ImageId { get; set; } = "";
+    public GalleryImage? Image { get; set; }
 }
 
 public sealed class GalleryImage

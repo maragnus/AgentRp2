@@ -139,7 +139,7 @@ public sealed class ModelCapabilityCatalogTests
               "models": [
                 {
                   "provider": "openai",
-                  "id": "chat-and-image",
+                  "id": "chat-and-visual",
                   "textInput": true,
                   "textOutput": true,
                   "imageOutput": true
@@ -155,7 +155,7 @@ public sealed class ModelCapabilityCatalogTests
             [
                 new()
                 {
-                    Id = "chat-and-image",
+                    Id = "chat-and-visual",
                     Enabled = true,
                     Text = false,
                     Image = true
@@ -169,6 +169,24 @@ public sealed class ModelCapabilityCatalogTests
         Assert.True(provider.Models[0].Image);
         Assert.True(provider.Models[0].Capabilities.CanGenerateText);
         Assert.True(provider.Models[0].Capabilities.CanGenerateImage);
+    }
+
+    [Theory]
+    [InlineData("gpt-image-1.5")]
+    [InlineData("dall-e-3")]
+    public void OpenAiImageNamedModelsResolveAsImageGenerationOnly(string modelId)
+    {
+        var root = CreateTempRoot();
+        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
+        File.WriteAllText(Path.Combine(root, "wwwroot", "model-capabilities.default.json"), """{ "models": [] }""");
+        var catalog = new ModelCapabilityCatalog(new FakeWebHostEnvironment(root), Path.Combine(root, "model-capabilities.user.json"));
+
+        var capabilities = catalog.Resolve("openai", modelId);
+
+        Assert.False(capabilities.CanGenerateText);
+        Assert.True(capabilities.CanGenerateImage);
+        Assert.False(capabilities.Streaming);
+        Assert.False(capabilities.StructuredOutput);
     }
 
     [Fact]

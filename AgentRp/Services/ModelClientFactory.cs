@@ -61,7 +61,9 @@ public sealed class ModelClientFactory : IModelClientFactory
     {
         var endpoint = provider.Type == "huggingface" && !string.IsNullOrWhiteSpace(model.Endpoint)
             ? model.Endpoint.Trim()
-            : string.IsNullOrWhiteSpace(provider.Endpoint) ? DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
+            : AiProviderEndpointRules.UsesFixedEndpoint(provider.Type)
+                ? AiProviderEndpointRules.DefaultEndpoint(provider.Type)
+                : string.IsNullOrWhiteSpace(provider.Endpoint) ? AiProviderEndpointRules.DefaultEndpoint(provider.Type) : provider.Endpoint.Trim();
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new InvalidOperationException($"Connecting to {provider.Name} failed because the endpoint was empty. Responses/Open Responses providers must use a /v1-compatible base URL.");
 
@@ -73,13 +75,6 @@ public sealed class ModelClientFactory : IModelClientFactory
 
         return endpoint.EndsWith('/') ? endpoint : $"{endpoint}/";
     }
-
-    static string DefaultEndpoint(string providerType) => providerType switch
-    {
-        "openai" => "https://api.openai.com/v1/",
-        "grok" => "https://api.x.ai/v1/",
-        _ => ""
-    };
 
     static string Fingerprint(string value)
     {

@@ -97,6 +97,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 
 ## Design, UI/UX
 - Adhere to the Claude Design first and foremost
+- Before creating or changing a modal, read [Modal Layouts](Docs/ModalLayouts.md). Use the shared modal primitives documented there instead of reimplementing generic modal scroll, split, toolbar, fixed header, or footer behavior in feature CSS.
 - Every user-facing interaction must be designed from the user's task first. Whether creating a new screen, panel, modal, list, control, status display, or revising an existing one, start by identifying what the user is trying to decide or accomplish in that moment. Internal architecture, diagnostic detail, capability metadata, provider state, and technical distinctions must not be surfaced directly unless they help that immediate task. The default UI should be scannable, action-oriented, calm, and decision-supportive; advanced, diagnostic, or explanatory detail belongs behind progressive disclosure.
 - Do not treat backend state as UI requirements. New data from services, models, providers, diagnostics, or persistence must be translated into user-facing choices, summaries, warnings, or details based on workflow need. Raw technical state should never be placed into primary UI just because it exists.
 - Before creating or revising a user interaction, check whether it is a reusable interaction primitive such as a checklist, picker, selectable list, table, toolbar, editor panel, empty state, filter surface, or setup flow. If the pattern appears in more than one place, or combines generic behavior such as selection, sorting, filtering, disabled states, focus states, empty states, or templated rows, create or extend a shared component first. Feature components should compose shared primitives rather than reimplement generic interaction markup or CSS inline.
@@ -113,6 +114,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - Do not add redundant indicators when selection state, active styling, or layout already makes the current item obvious.
 - Display simple representations of complex things but enable access to details through accordions, popups, and/or dedicated detail pages.
   Example: A task list may be a checklist where the active items display real-time status, but can be expanded to display more details. And a the task list itself should have a full detail page that examples all steps in full detail.
+- Dates should be displayed to users in shorthand with a duration "Mar 4, 2026 (25 days ago)", it can also user "(today)" or "(yesterday)" for very recent dates. Future dates are possible and should use "(in 10 days)" and "(tomorrow)".
 
 ## Blazor Render Isolation
 - Timers, polling, subscriptions, busy state, edit state, and modal state must live in the smallest component that owns the UI they affect. A parent page or shell must not call `StateHasChanged()` for a passive refresh when only one small panel needs new data.
@@ -160,6 +162,10 @@ dotnet add ProjectPath reference OtherProject.csproj
 
 Only write tests when uncertain if a solution will work reliably. This is not a production tool, so tests are not required.
 
-## Preferences
+# Remember
 
-- Dates should be displayed to users in shorthand with a duration "Mar 4, 2026 (25 days ago)", it can also user "(today)" or "(yesterday)" for very recent dates. Future dates are possible and should use "(in 10 days)" and "(tomorrow)".
+Your context window is finite, so make sure the codebase is optimized for that fact. Keep code reuse very high, files small and concise where possible.
+
+- Always double check that a solution is a DRY implementation, that existence of existing behavior has been checked. It's always in best interest to increase scope to reuse and expand existing components and logic than to recreate it.
+
+- Always suggest breaking large or complex files logically as part of a plan that will be touching that file.

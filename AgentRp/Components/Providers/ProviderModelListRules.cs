@@ -13,8 +13,13 @@ internal static class ProviderModelListRules
             .ThenByDescending(model => model.CreatedUnix ?? 0)
             .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase);
 
-    public static IEnumerable<AiProviderModel> VisibleModels(IEnumerable<AiProviderModel> models, bool hideNeedsSetup) =>
-        SortModels(models).Where(model => !hideNeedsSetup || IsReady(model));
+    public static IEnumerable<AiProviderModel> VisibleModels(IEnumerable<AiProviderModel> models, bool showNeedsSetup)
+    {
+        var sorted = SortModels(models).ToList();
+        return showNeedsSetup || sorted.All(NeedsSetup)
+            ? sorted
+            : sorted.Where(IsReady);
+    }
 
     public static int ReadyCount(IEnumerable<AiProviderModel> models) => models.Count(IsReady);
 

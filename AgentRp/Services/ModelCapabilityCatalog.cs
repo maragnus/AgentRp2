@@ -66,6 +66,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
             Overlay(merged, shipped.GetValueOrDefault(key), "default");
             Overlay(merged, live.GetValueOrDefault(key), "live");
             Overlay(merged, user.GetValueOrDefault(key), "user");
+            ApplyProviderConventions(merged);
             return ToCapabilities(merged);
         }
     }
@@ -250,6 +251,32 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         target.Guidance = string.IsNullOrWhiteSpace(source.Guidance) ? target.Guidance : source.Guidance;
         target.Aliases = source.Aliases is { Count: > 0 } ? source.Aliases : target.Aliases;
         target.Source = sourceName;
+    }
+
+    static void ApplyProviderConventions(CapabilityRecord record)
+    {
+        if (record.Provider is null || record.Id is null)
+            return;
+
+        if (!record.Provider.Equals("openai", StringComparison.OrdinalIgnoreCase)
+            || !AiProviderModelIdentityRules.IsKnownImageGenerationModel(record.Provider, record.Id))
+            return;
+
+        record.TextInput = true;
+        record.TextOutput = false;
+        record.ImageOutput = true;
+        record.Streaming = false;
+        record.StructuredOutput = false;
+        record.Temperature = TuningSupport.Unsupported;
+        record.TopP = TuningSupport.Unsupported;
+        record.MaxTokens = TuningSupport.Unsupported;
+        record.Seed = TuningSupport.Unsupported;
+        record.FrequencyPenalty = TuningSupport.Unsupported;
+        record.PresencePenalty = TuningSupport.Unsupported;
+        record.StopSequences = TuningSupport.Unsupported;
+        record.SupportsReasoningEffort = false;
+        record.SupportsVerbosity = false;
+        record.Guidance = "Resolved as an image generation model from its provider model id.";
     }
 
     static ModelGenerationCapabilities ToCapabilities(CapabilityRecord record) => new()

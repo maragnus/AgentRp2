@@ -12,7 +12,12 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
     public Task<List<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default)
     {
         lock (_gate)
+        {
+            foreach (var chat in _chats)
+                ChatPreviewProjector.Apply(chat, GetOrCreateDocument(chat.Id));
+
             return Task.FromResult(_chats.Select(SessionCloner.Clone).ToList());
+        }
     }
 
     public Task<List<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default)
@@ -52,11 +57,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             if (chat is not null)
             {
                 TranscriptProjector.Apply(document);
-                chat.Title = document.Chat.Title;
-                chat.Location = document.Chat.Location;
-                chat.Messages = document.Chat.Messages;
-                chat.Updated = document.Chat.Updated;
-                chat.Starred = document.Chat.Starred;
+                ChatPreviewProjector.Apply(chat, document);
             }
         }
 

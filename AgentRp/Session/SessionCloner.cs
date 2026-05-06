@@ -12,7 +12,16 @@ static class SessionCloner
         Updated = value.Updated,
         Starred = value.Starred,
         Messages = value.Messages,
-        Location = value.Location
+        Location = value.Location,
+        SceneCharacters = value.SceneCharacters.Select(Clone).ToList()
+    };
+
+    static RpChatSceneCharacter Clone(RpChatSceneCharacter value) => new()
+    {
+        Id = value.Id,
+        Name = value.Name,
+        ImageId = value.ImageId,
+        Image = value.Image is null ? null : Clone(value.Image)
     };
 
     public static RpCharacter Clone(RpCharacter value) => new()

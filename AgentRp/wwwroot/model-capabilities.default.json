@@ -100,11 +100,11 @@
       "textInput": true,
       "imageInput": true,
       "textOutput": false,
-      "imageOutput": false,
+      "imageOutput": true,
       "streaming": false,
       "structuredOutput": false,
       "tools": true,
-      "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
+      "guidance": "Responses/Open Responses image generation model."
     },
     {
       "provider": "openai",
@@ -112,11 +112,11 @@
       "textInput": true,
       "imageInput": true,
       "textOutput": false,
-      "imageOutput": false,
+      "imageOutput": true,
       "streaming": false,
       "structuredOutput": false,
       "tools": true,
-      "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
+      "guidance": "Responses/Open Responses image generation model."
     },
     {
       "provider": "openai",
@@ -124,11 +124,11 @@
       "textInput": true,
       "imageInput": true,
       "textOutput": false,
-      "imageOutput": false,
+      "imageOutput": true,
       "streaming": false,
       "structuredOutput": false,
       "tools": true,
-      "guidance": "Hosted GPT Image tool model. Use a mainline Responses model with image output enabled to call this tool."
+      "guidance": "Responses/Open Responses image generation model."
     },
     {
       "provider": "grok",

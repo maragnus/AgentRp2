@@ -1,60 +1,72 @@
 @if (ShowHeader)
 {
-    <SectionHeader Title="@Title" Count="@Models.Count(model => model.Enabled)" MaxCount="@Models.Count">
-        <RightContent>
-            <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetChatModels(true))">Chat all</AppButton>
-            <AppButton Variant="ghost" Size="xs" OnClick="@(_ => ClearModels())">Clear</AppButton>
-        </RightContent>
-    </SectionHeader>
+    <SectionHeader Title="@Title" Count="@SelectedCount" MaxCount="@Models.Count" />
 }
 
-<div class="provider-model-summary">
-    <span>@ProviderModelListRules.ReadyCount(Models) ready · @ProviderModelListRules.NeedsSetupCount(Models) need setup</span>
-    <span class="provider-model-filter">
-        <span>Hide setup</span>
-        <ToggleSwitch Value="@HideNeedsSetup" ValueChanged="SetHideNeedsSetup" Title="Hide models needing setup" />
-    </span>
-    @if (!ShowHeader)
-    {
-        <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetChatModels(true))">Chat all</AppButton>
-        <AppButton Variant="ghost" Size="xs" OnClick="@(_ => ClearModels())">Clear</AppButton>
-    }
+<div class="provider-model-toolbar">
+    <div class="provider-model-summary">
+        <span>@ReadyCount ready</span>
+        @if (NeedsSetupCount > 0)
+        {
+            <span>@NeedsSetupCount need setup</span>
+        }
+    </div>
+    <div class="provider-model-actions">
+        @if (CanToggleNeedsSetup)
+        {
+            <span class="provider-model-filter">
+                <span>Show setup</span>
+                <ToggleSwitch Value="@ShowNeedsSetup" ValueChanged="SetShowNeedsSetup" Title="Show models needing setup" />
+            </span>
+        }
+        <AppButton Variant="secondary"
+                   Size="xs"
+                   Disabled="@(!HasSelectedModels)"
+                   Title="Clear selected models"
+                   OnClick="@(_ => ClearModels())">
+            <FaIcon Name="x" />Clear
+        </AppButton>
+    </div>
 </div>
 
-<SelectableList Class="provider-model-list">
-    @foreach (var model in VisibleModels)
-    {
-        <ProviderModelRow @key="model.Id" Model="model" OnChanged="OnChanged" OnSetup="OnSetup" />
-    }
-</SelectableList>
+@if (Models.Count > 0 && VisibleModelsList.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="layers" />
+        <strong>No configured models visible</strong>
+        <span>Show setup models to configure the rest.</span>
+    </div>
+}
+else
+{
+    <SelectableList Class="provider-model-list">
+        @foreach (var model in VisibleModelsList)
+        {
+            <ProviderModelRow @key="model.Id" Model="model" OnChanged="OnChanged" OnSetup="OnSetup" />
+        }
+    </SelectableList>
+}
 
 @code {
     [Parameter] public IReadOnlyList<AiProviderModel> Models { get; set; } = [];
     [Parameter] public string Title { get; set; } = "Models";
     [Parameter] public bool ShowHeader { get; set; }
-    [Parameter] public bool HideNeedsSetup { get; set; }
-    [Parameter] public EventCallback<bool> HideNeedsSetupChanged { get; set; }
+    [Parameter] public bool ShowNeedsSetup { get; set; }
+    [Parameter] public EventCallback<bool> ShowNeedsSetupChanged { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback<AiProviderModel> OnSetup { get; set; }
 
-    IEnumerable<AiProviderModel> VisibleModels =>
-        ProviderModelListRules.VisibleModels(Models, HideNeedsSetup);
+    int ReadyCount => ProviderModelListRules.ReadyCount(Models);
+    int NeedsSetupCount => ProviderModelListRules.NeedsSetupCount(Models);
+    int SelectedCount => Models.Count(ProviderModelListRules.IsSelectedForAnyRole);
+    bool HasSelectedModels => SelectedCount > 0;
+    bool CanToggleNeedsSetup => ReadyCount > 0 && NeedsSetupCount > 0;
+    IReadOnlyList<AiProviderModel> VisibleModelsList => ProviderModelListRules.VisibleModels(Models, ShowNeedsSetup).ToList();
 
-    async Task SetHideNeedsSetup(bool value)
+    async Task SetShowNeedsSetup(bool value)
     {
-        HideNeedsSetup = value;
-        await HideNeedsSetupChanged.InvokeAsync(value);
-    }
-
-    async Task SetChatModels(bool selected)
-    {
-        foreach (var model in Models)
-        {
-            if (ProviderModelListRules.IsReady(model))
-                ProviderModelListRules.SetChatSelected(model, selected);
-        }
-
-        await OnChanged.InvokeAsync();
+        ShowNeedsSetup = value;
+        await ShowNeedsSetupChanged.InvokeAsync(value);
     }
 
     async Task ClearModels()

@@ -55,6 +55,31 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
+    public void FeatureRazorFilesDoNotUseModalPaneChromeClassesDirectly()
+    {
+        var root = FindRepoRoot();
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            Normalize("AgentRp/Components/Common/ModalPaneActionBar.razor"),
+            Normalize("AgentRp/Components/Common/ModalPaneHeader.razor"),
+            Normalize("AgentRp/Components/Common/ModalPaneToolbar.razor")
+        };
+        var classNames = new[] { "modal-pane-head", "modal-pane-toolbar", "modal-pane-action-bar" };
+        var violations = Directory
+            .EnumerateFiles(Path.Combine(root, "AgentRp", "Components"), "*.razor", SearchOption.AllDirectories)
+            .Where(path => !allowed.Contains(Normalize(Path.GetRelativePath(root, path))))
+            .Where(path =>
+            {
+                var text = File.ReadAllText(path);
+                return classNames.Any(className => text.Contains(className, StringComparison.Ordinal));
+            })
+            .Select(path => Normalize(Path.GetRelativePath(root, path)))
+            .ToList();
+
+        Assert.True(violations.Count == 0, $"Use ModalPaneHeader/ModalPaneToolbar/ModalPaneActionBar instead of raw modal pane chrome classes: {string.Join(", ", violations)}");
+    }
+
+    [Fact]
     public async Task SidebarRendersRealSessionDataWithoutFakeMetrics()
     {
         using var context = new BunitContext();
@@ -200,7 +225,7 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
-    public void ProviderModelListHideSetupToggleFiltersModelsThatNeedSetup()
+    public void ProviderModelListShowsSetupModelsOnlyAfterOptIn()
     {
         using var context = new BunitContext();
         var models = new List<AiProviderModel>
@@ -219,12 +244,31 @@ public sealed class UiCompositionPolicyTests
 
         var component = context.Render<ProviderModelList>(parameters => parameters.Add(item => item.Models, models));
 
-        Assert.Contains("needs-setup", component.Markup, StringComparison.Ordinal);
-
-        component.Find("button[title='Hide models needing setup']").Click();
-
         Assert.Contains("ready", component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("needs-setup", component.Markup, StringComparison.Ordinal);
+
+        component.Find("button[title='Show models needing setup']").Click();
+
+        Assert.Contains("needs-setup", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProviderModelListShowsSetupModelsWhenAllModelsNeedSetup()
+    {
+        using var context = new BunitContext();
+        var models = new List<AiProviderModel>
+        {
+            new()
+            {
+                Id = "needs-setup",
+                Capabilities = new() { TextInput = false, TextOutput = false, ImageOutput = false }
+            }
+        };
+
+        var component = context.Render<ProviderModelList>(parameters => parameters.Add(item => item.Models, models));
+
+        Assert.Contains("needs-setup", component.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Show setup", component.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -248,6 +292,73 @@ public sealed class UiCompositionPolicyTests
         Assert.DoesNotContain($">{session.Chat.Characters.Items.Count + 1}<", component.Markup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task EntityManagerWrapsSelectedHeaderInModalPaneChrome()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<EntityManagerModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.InitialType, "characters")
+            .Add(item => item.OnSelectEntityImage, _ => Task.CompletedTask)
+            .Add(item => item.OnClose, () => Task.CompletedTask));
+
+        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head .entity-form-head"));
+    }
+
+    [Fact]
+    public void EntityListEditorAppliesHeaderChromeByDefault()
+    {
+        using var context = new BunitContext();
+        var item = new ModalPolicyItem("one", "One");
+
+        var component = context.Render<EntityListEditor<ModalPolicyItem>>(parameters => parameters
+            .Add(value => value.Items, [item])
+            .Add(value => value.SelectedId, item.Id)
+            .Add(value => value.GetId, value => value.Id)
+            .Add(value => value.ItemHeaderTemplate, value => builder =>
+            {
+                builder.OpenElement(0, "strong");
+                builder.AddContent(1, value.Title);
+                builder.CloseElement();
+            })
+            .Add(value => value.ItemTemplate, value => builder =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddContent(1, value.Title);
+                builder.CloseElement();
+            }));
+
+        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head"));
+    }
+
+    [Fact]
+    public async Task AiProvidersKeepsProviderHeaderAndActionBarOutsideScrollBody()
+    {
+        using var context = new BunitContext();
+        context.Services.AddSingleton<IJSRuntime, TestJsRuntime>();
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
+        context.Services.AddScoped<IAiProviderConnectionService, TestProviderConnectionService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<AIProvidersModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.OnClose, () => Task.CompletedTask));
+
+        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head.provider-detail-head"));
+        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-action-bar.provider-action-bar"));
+        Assert.Empty(component.FindAll(".modal-stack-scroll .modal-pane-head.provider-detail-head"));
+        Assert.Empty(component.FindAll(".modal-stack-scroll .modal-pane-action-bar.provider-action-bar"));
+    }
+
     static LiveRoleplayStore NewLiveStore() =>
         new(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
 
@@ -268,6 +379,8 @@ public sealed class UiCompositionPolicyTests
     }
 
     static string Normalize(string path) => path.Replace('\\', '/');
+
+    sealed record ModalPolicyItem(string Id, string Title);
 
     sealed class TestJsRuntime : IJSRuntime
     {
@@ -308,5 +421,13 @@ public sealed class UiCompositionPolicyTests
 
         public Task<ManagedEndpointStatusView> ExecuteHuggingFaceActionAsync(AiProvider provider, AiProviderModel model, ManagedEndpointAction action, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    sealed class TestProviderConnectionService : IAiProviderConnectionService
+    {
+        public Task TestProviderAsync(AiProvider provider, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<List<AiProviderModel>> DiscoverModelsAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new List<AiProviderModel>());
     }
 }

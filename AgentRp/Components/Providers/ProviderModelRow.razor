@@ -1,6 +1,6 @@
 <SelectableRow Class="provider-model"
                Selected="@AnyEnabled"
-               Disabled="@(!AnyEnabled)"
+               Disabled="@(!HasAnyRole)"
                Limited="@(!HasAnyRole)"
                SelectionTitle="@RowTitle"
                OnToggle="@(_ => ToggleModel())">
@@ -25,10 +25,6 @@
                             Title="@ChatTitle"
                             OnClick="@(_ => ToggleChat())">Chat</CapabilityPill>
         }
-        else
-        {
-            <span class="cap cap-disabled" title="@ChatTitle">Chat</span>
-        }
         @if (CanImage)
         {
             <CapabilityPill Tone="image"
@@ -36,18 +32,14 @@
                             Title="@ImageTitle"
                             OnClick="@(_ => ToggleImage())">Image Gen</CapabilityPill>
         }
-        else
-        {
-            <span class="cap cap-disabled" title="@ImageTitle">Image Gen</span>
-        }
         @if (Model.Capabilities.ImageInput)
         {
             <span class="cap cap-passive cap-vision" title="@VisionTitle">Vision</span>
         }
         @if (NeedsSetup)
         {
-            <AppButton Bare Class="cap cap-warning model-setup-button" Title="@NeedsSetupTitle" OnClick="@(_ => OnSetup.InvokeAsync(Model))">
-                Set up
+            <AppButton Variant="secondary" Size="xs" Class="model-setup-button" Title="@NeedsSetupTitle" OnClick="@(_ => OnSetup.InvokeAsync(Model))">
+                <FaIcon Name="wrench" />Set up
             </AppButton>
         }
     </Actions>
@@ -67,7 +59,7 @@
     bool NeedsSetup => !HasAnyRole;
     string DisplayName => string.IsNullOrWhiteSpace(Model.DisplayName) ? Model.Id : Model.DisplayName;
     bool ShowModelId => !string.Equals(DisplayName.Trim(), Model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
-    string RowTitle => AnyEnabled ? $"Clear selected roles for {Model.Id}" : $"Choose Chat or Image Gen for {Model.Id}";
+    string RowTitle => AnyEnabled ? $"Clear selected roles for {Model.Id}" : $"Choose available roles for {Model.Id}";
     string ChatTitle => CanChat
         ? $"Enable this model for chat."
         : "Chat is not available for this model.";
@@ -79,10 +71,10 @@
 
     async Task ToggleModel()
     {
-        if (!AnyEnabled)
-            return;
-
-        AiProviderModelSelectionRules.ClearSelectedRoles(Model);
+        if (AnyEnabled)
+            AiProviderModelSelectionRules.ClearSelectedRoles(Model);
+        else
+            AiProviderModelSelectionRules.SelectAvailableRoles(Model);
 
         await OnChanged.InvokeAsync();
     }

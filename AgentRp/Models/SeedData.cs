@@ -266,12 +266,10 @@ public static class SeedData
         {
             Id = "claude",
             Name = "Claude / Anthropic",
-            Description = "Claude through a Responses/Open Responses-compatible /v1 endpoint.",
+            Description = "Claude through Anthropic's /v1 endpoint.",
             KeyLabel = "Anthropic API Key",
             KeyLink = "https://console.anthropic.com/settings/keys",
-            NeedsEndpoint = true,
             ApiKeyRequired = true,
-            EndpointRequired = true,
             SampleModels =
             [
                 new() { Id = "claude-opus-4-5", Text = true },
