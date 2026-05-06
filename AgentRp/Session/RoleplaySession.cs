@@ -3,7 +3,10 @@ using AgentRp.Services;
 
 namespace AgentRp.Session;
 
-public sealed class RoleplaySession(ILiveRoleplayStore liveStore, ITextGenerationService? textGenerationService = null) : IAsyncDisposable
+public sealed class RoleplaySession(
+    ILiveRoleplayStore liveStore,
+    ITextGenerationService? textGenerationService = null,
+    IStoryAssistantService? storyAssistantService = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
     bool _initialized;
@@ -28,7 +31,7 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, ITextGeneratio
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
         Providers = new(_sessionId, liveStore);
-        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance);
+        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, storyAssistantService);
         liveStore.Changed += OnLiveStoreChanged;
 
         await Chats.LoadAsync();
@@ -141,7 +144,7 @@ public sealed class ChatRegistry(Guid sessionId, ILiveRoleplayStore liveStore, A
 
 public sealed class ChatWorkspace
 {
-    public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers, ITextGenerationService textGenerationService)
+    public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers, ITextGenerationService textGenerationService, IStoryAssistantService? storyAssistantService)
     {
         Characters = new(activeChat, registry);
         Locations = new(activeChat, registry);
@@ -149,7 +152,9 @@ public sealed class ChatWorkspace
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry);
         Transcript = new(activeChat, registry, providers, textGenerationService);
+        StoryAssistant = new(activeChat, registry, providers, storyAssistantService);
         PromptLibrary = new(activeChat, registry);
+        CharacterTraitLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);
 
         Characters.Start();
@@ -158,7 +163,9 @@ public sealed class ChatWorkspace
         Timeline.Start();
         Images.Start();
         Transcript.Start();
+        StoryAssistant.Start();
         PromptLibrary.Start();
+        CharacterTraitLibrary.Start();
         ModelTuning.Start();
     }
 
@@ -168,7 +175,9 @@ public sealed class ChatWorkspace
     public TimelineStore Timeline { get; }
     public ImageStore Images { get; }
     public TranscriptStore Transcript { get; }
+    public StoryAssistantStore StoryAssistant { get; }
     public PromptLibraryStore PromptLibrary { get; }
+    public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
     public ModelTuningStore ModelTuning { get; }
 }
 

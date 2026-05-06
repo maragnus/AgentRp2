@@ -152,8 +152,64 @@ static class SessionCloner
         Timeline = value.Timeline.Select(Clone).ToList(),
         Images = value.Images.Select(Clone).ToList(),
         Transcript = Clone(value.Transcript),
+        StoryAssistant = Clone(value.StoryAssistant),
         PromptLibrary = Clone(value.PromptLibrary),
+        CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
         ModelTuning = Clone(value.ModelTuning)
+    };
+
+    public static StoryAssistantState Clone(StoryAssistantState value) => new()
+    {
+        SchemaVersion = value.SchemaVersion,
+        ReviewMode = value.ReviewMode,
+        ConversationId = value.ConversationId,
+        Items = value.Items.Select(Clone).ToList()
+    };
+
+    static StoryAssistantTranscriptItem Clone(StoryAssistantTranscriptItem value) => new()
+    {
+        Id = value.Id,
+        Kind = value.Kind,
+        Status = value.Status,
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
+        Text = value.Text,
+        Title = value.Title,
+        ToolName = value.ToolName,
+        ToolCallId = value.ToolCallId,
+        EntityType = value.EntityType,
+        EntityId = value.EntityId,
+        EntityName = value.EntityName,
+        ArgumentsJson = value.ArgumentsJson,
+        ResultJson = value.ResultJson,
+        Before = Clone(value.Before),
+        After = Clone(value.After),
+        Diffs = value.Diffs.Select(Clone).ToList(),
+        Risk = value.Risk,
+        DecisionReason = value.DecisionReason,
+        Question = Clone(value.Question)
+    };
+
+    static StoryAssistantFieldDiff Clone(StoryAssistantFieldDiff value) => new()
+    {
+        Field = value.Field,
+        Label = value.Label,
+        Before = value.Before,
+        After = value.After
+    };
+
+    static StoryAssistantQuestion Clone(StoryAssistantQuestion value) => new()
+    {
+        Prompt = value.Prompt,
+        AllowsFreeform = value.AllowsFreeform,
+        Choices = value.Choices.Select(Clone).ToList(),
+        Answer = value.Answer
+    };
+
+    static StoryAssistantQuestionChoice Clone(StoryAssistantQuestionChoice value) => new()
+    {
+        Id = value.Id,
+        Label = value.Label
     };
 
     public static RpTranscriptState Clone(RpTranscriptState value) => new()
@@ -196,10 +252,34 @@ static class SessionCloner
         CreatedUtc = value.CreatedUtc,
         Summary = value.Summary,
         EarlierPrivateIntentContinuity = value.EarlierPrivateIntentContinuity,
+        Facts = value.Facts.Select(Clone).ToList(),
+        TimelineEntries = value.TimelineEntries.Select(Clone).ToList(),
         CharacterAppearances = value.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
         Data = Clone(value.Data)
+    };
+
+    static RpTranscriptSnapshotFact Clone(RpTranscriptSnapshotFact value) => new()
+    {
+        Title = value.Title,
+        Summary = value.Summary,
+        Details = value.Details,
+        CharacterNames = [.. value.CharacterNames],
+        LocationNames = [.. value.LocationNames],
+        ItemNames = [.. value.ItemNames]
+    };
+
+    static RpTranscriptSnapshotTimelineEntry Clone(RpTranscriptSnapshotTimelineEntry value) => new()
+    {
+        TimelineEntryId = value.TimelineEntryId,
+        WhenText = value.WhenText,
+        Title = value.Title,
+        Summary = value.Summary,
+        Details = value.Details,
+        CharacterNames = [.. value.CharacterNames],
+        LocationNames = [.. value.LocationNames],
+        ItemNames = [.. value.ItemNames]
     };
 
     public static RpSceneFrame Clone(RpSceneFrame value) => new()
@@ -274,6 +354,35 @@ static class SessionCloner
         Label = value.Label,
         Value = value.Value
     };
+
+    public static CharacterTraitLibraryState Clone(CharacterTraitLibraryState value) => new()
+    {
+        SchemaVersion = value.SchemaVersion,
+        SceneRoles = value.SceneRoles.Select(Clone).ToList(),
+        TraitCategories = value.TraitCategories.Select(Clone).ToList(),
+        CoreDrives = value.CoreDrives.Select(Clone).ToList(),
+        CoreFears = value.CoreFears.Select(Clone).ToList(),
+        SurfaceMasks = value.SurfaceMasks.Select(Clone).ToList(),
+        HiddenTruths = value.HiddenTruths.Select(Clone).ToList(),
+        SentenceStyles = value.SentenceStyles.Select(Clone).ToList(),
+        HonestyStyles = value.HonestyStyles.Select(Clone).ToList(),
+        EmotionalLeakages = value.EmotionalLeakages.Select(Clone).ToList(),
+        ActionFingerprints = value.ActionFingerprints.Select(Clone).ToList(),
+        StressPatterns = value.StressPatterns.Select(Clone).ToList(),
+        SoftSpots = value.SoftSpots.Select(Clone).ToList(),
+        AvoidPatterns = value.AvoidPatterns.Select(Clone).ToList(),
+        BondTypes = [.. value.BondTypes],
+        Dynamics = [.. value.Dynamics]
+    };
+
+    static CharacterTraitGroupState Clone(CharacterTraitGroupState value) => new()
+    {
+        Name = value.Name,
+        Color = value.Color,
+        Items = value.Items.Select(Clone).ToList()
+    };
+
+    static CharacterOption Clone(CharacterOption value) => new(value.Id, value.Label, value.Hover);
 
     public static ModelTuningState Clone(ModelTuningState value) => new()
     {

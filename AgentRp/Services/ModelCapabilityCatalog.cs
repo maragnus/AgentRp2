@@ -58,6 +58,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
                 Id = modelId,
                 TextInput = true,
                 TextOutput = true,
+                Tools = DefaultsToTools(providerType),
                 Source = "fallback",
                 Guidance = ModelGenerationCapabilities.Fallback.Guidance
             };
@@ -140,7 +141,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
                 ImageOutput = output.Contains("image"),
                 Streaming = output.Contains("text"),
                 StructuredOutput = output.Contains("text"),
-                Tools = output.Contains("image"),
+                Tools = true,
                 Aliases = aliases,
                 Source = "live",
                 Guidance = "Resolved from xAI /v1/language-models."
@@ -286,6 +287,11 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
     static ModelCapabilityKey NormalizeKey(string providerType, string modelId) => new(
         providerType.Trim().ToLowerInvariant(),
         modelId.Trim().ToLowerInvariant());
+
+    static bool DefaultsToTools(string providerType) =>
+        providerType.Equals("openai", StringComparison.OrdinalIgnoreCase)
+        || providerType.Equals("claude", StringComparison.OrdinalIgnoreCase)
+        || providerType.Equals("grok", StringComparison.OrdinalIgnoreCase);
 
     sealed record ModelCapabilityKey(string Provider, string ModelId);
 

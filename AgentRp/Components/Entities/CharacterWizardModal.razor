@@ -77,12 +77,12 @@
                             <Section Title="Summary" Hint="— one sentence, optional">
                                 <textarea class="character-wizard-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
                             </Section>
-                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="2">
+                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var role in SceneRoles)
                                     {
                                         var selected = Character.SceneRoles.Contains(role.Id);
-                                        <SelectableButton @key="role.Id" Title="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= 2)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, 2))">
+                                        <SelectableButton @key="role.Id" Title="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= CharacterProfileRules.MaxSceneRoles)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, CharacterProfileRules.MaxSceneRoles))">
                                             @role.Label
                                         </SelectableButton>
                                     }
@@ -93,8 +93,8 @@
                     else if (Step == 1)
                     {
                         <div class="character-wizard-personality-intro">
-                            <p>Pick 3 to 6 total. Hover any trait for a description.</p>
-                            <span class="character-wizard-count-pill @(Character.Traits.Count >= 3 ? "is-ready" : "")">@Character.Traits.Count / 6</span>
+                            <p>Pick @CharacterProfileRules.RecommendedMinTraits to @CharacterProfileRules.MaxTraits total. Hover any trait for a description.</p>
+                            <span class="character-wizard-count-pill @(Character.Traits.Count >= CharacterProfileRules.RecommendedMinTraits ? "is-ready" : "")">@Character.Traits.Count / @CharacterProfileRules.MaxTraits</span>
                         </div>
                         <div class="character-wizard-trait-section-list">
                             @foreach (var group in TraitCategories)
@@ -105,7 +105,7 @@
                                         @foreach (var trait in group.Items)
                                         {
                                             var selected = Character.Traits.Contains(trait.Id);
-                                            <SelectableButton @key="trait.Id" Title="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= 6)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, 6))">
+                                            <SelectableButton @key="trait.Id" Title="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= CharacterProfileRules.MaxTraits)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, CharacterProfileRules.MaxTraits))">
                                                 @trait.Label
                                             </SelectableButton>
                                         }
@@ -138,8 +138,8 @@
                     else if (Step == 4)
                     {
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="3" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, 3))" />
-                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="5" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, 5))" />
+                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
+                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="CharacterProfileRules.MaxAvoidPatterns" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, CharacterProfileRules.MaxAvoidPatterns))" />
                         </div>
                     }
                     else
@@ -259,8 +259,25 @@
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
     string WizardTitle => string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name;
+    CharacterTraitLibraryState TraitLibrary => Session.Chat.CharacterTraitLibrary.State;
+    IReadOnlyList<CharacterOption> SceneRoles => TraitLibrary.SceneRoles;
+    IReadOnlyList<CharacterTraitGroupState> TraitCategories => TraitLibrary.TraitCategories;
+    IReadOnlyList<CharacterOption> CoreDrives => TraitLibrary.CoreDrives;
+    IReadOnlyList<CharacterOption> CoreFears => TraitLibrary.CoreFears;
+    IReadOnlyList<CharacterOption> SurfaceMasks => TraitLibrary.SurfaceMasks;
+    IReadOnlyList<CharacterOption> HiddenTruths => TraitLibrary.HiddenTruths;
+    IReadOnlyList<CharacterOption> SentenceStyles => TraitLibrary.SentenceStyles;
+    IReadOnlyList<CharacterOption> HonestyStyles => TraitLibrary.HonestyStyles;
+    IReadOnlyList<CharacterOption> EmotionalLeakages => TraitLibrary.EmotionalLeakages;
+    IReadOnlyList<CharacterOption> ActionFingerprints => TraitLibrary.ActionFingerprints;
+    IReadOnlyList<CharacterOption> StressPatterns => TraitLibrary.StressPatterns;
+    IReadOnlyList<CharacterOption> SoftSpots => TraitLibrary.SoftSpots;
+    IReadOnlyList<CharacterOption> AvoidPatterns => TraitLibrary.AvoidPatterns;
+    IReadOnlyList<string> BondTypes => TraitLibrary.BondTypes;
+    IReadOnlyList<string> Dynamics => TraitLibrary.Dynamics;
 
     static readonly WizardStep[] Steps =
     [
@@ -271,51 +288,6 @@
         new("limits", "Limits", "Soft spots & avoids"),
         new("relationships", "Relationships", "Who they know"),
     ];
-
-    static readonly CharacterOption[] SceneRoles =
-    [
-        new("instigator", "Instigator", "Starts motion."),
-        new("anchor", "Anchor", "Stabilizes others."),
-        new("mirror", "Mirror", "Reveals others by reacting to them."),
-        new("complication", "Complication", "Makes the simple path harder."),
-        new("conscience", "Conscience", "Names the moral cost."),
-        new("tempter", "Tempter", "Offers the risky path."),
-        new("wildcard", "Wildcard", "Breaks the expected rhythm."),
-        new("witness", "Witness", "Notices what others miss."),
-        new("protector", "Protector", "Makes danger personal."),
-        new("pressure-valve", "Pressure Valve", "Releases tension."),
-        new("button-pusher", "Button-Pusher", "Provokes useful reactions."),
-        new("mediator", "Mediator", "Helps others reconnect."),
-    ];
-
-    static readonly TraitGroup[] TraitCategories =
-    [
-        new("Conflict", "amber", [new("deadpan-deflector", "Deadpan Deflector", "Uses calm understatement to deflect pressure."), new("bratty-provoker", "Bratty Provoker", "Teases and tests reactions."), new("proud-reactor", "Proud Reactor", "Takes disrespect seriously."), new("soft-avoider", "Soft Avoider", "Smooths conflict instead of confronting it."), new("strategic-de-escalator", "Strategic De-escalator", "Lowers tension to preserve the goal."), new("combative-escalator", "Combative Escalator", "Pushes harder when pressured."), new("passive-aggressive-needler", "Passive-Aggressive Needler", "Attacks indirectly through polite barbs."), new("boundary-setter", "Boundary Setter", "Names limits clearly and calmly.")]),
-        new("Emotional Style", "rose", [new("open-hearted", "Open-Hearted", "Shows emotion plainly."), new("guarded", "Guarded", "Feels more than they reveal."), new("volatile", "Volatile", "Reacts quickly and visibly."), new("controlled", "Controlled", "Regulates emotion before acting."), new("melodramatic", "Melodramatic", "Makes reactions theatrical."), new("numb", "Numb", "Detaches under emotional pressure.")]),
-        new("Social Style", "violet", [new("charmer", "Charmer", "Steers with warmth and attention."), new("manipulator", "Manipulator", "Guides choices while hiding the agenda."), new("caretaker", "Caretaker", "Helps, organizes, and comforts."), new("commander", "Commander", "Takes charge under uncertainty."), new("observer", "Observer", "Watches first, acts second."), new("social-chameleon", "Social Chameleon", "Adapts to the room."), new("outsider", "Outsider", "Does not instinctively follow norms.")]),
-        new("Attachment", "blue", [new("clingy-loyalist", "Clingy Loyalist", "Seeks closeness and reassurance."), new("avoidant-protector", "Avoidant Protector", "Cares through action, not admission."), new("devoted", "Devoted", "Prioritizes loyalty even at cost."), new("possessive", "Possessive", "Treats closeness as threatened territory."), new("flirtatious", "Flirtatious", "Turns tension into charged play."), new("touch-averse", "Touch-Averse", "Treats contact as significant."), new("touch-affectionate", "Touch-Affectionate", "Uses physical closeness to connect.")]),
-        new("Humor", "emerald", [new("dry-wit", "Dry Wit", "Understated, precise humor."), new("snarky", "Snarky", "Sharp sarcasm as armor or attack."), new("playful-tease", "Playful Tease", "Light mockery for connection."), new("gallows-humor", "Gallows Humor", "Jokes when things are bleak."), new("self-deprecating", "Self-Deprecating", "Defuses tension by mocking self first.")]),
-        new("Agency", "amber", [new("agency-instigator", "Instigator", "Starts motion when scenes stall."), new("tester", "Tester", "Probes people with small challenges."), new("fixer", "Fixer", "Turns emotion into tasks."), new("free-spirit", "Free Spirit", "Resists rigid expectations."), new("rule-keeper", "Rule-Keeper", "Finds safety in structure."), new("chaos-gremlin", "Chaos Gremlin", "Disrupts stability for energy or escape.")]),
-        new("Moral Posture", "rose", [new("principled", "Principled", "Acts from firm values."), new("pragmatist", "Pragmatist", "Chooses what works."), new("honorable", "Honorable", "Cares about fair conduct."), new("ruthless", "Ruthless", "Will pay moral costs to win."), new("merciful", "Merciful", "Looks for the least harmful option."), new("cynic", "Cynic", "Expects selfishness or failure."), new("idealist", "Idealist", "Believes things can be better.")]),
-        new("Vulnerability", "violet", [new("masked-insecure", "Masked Insecure", "Hides self-doubt behind style."), new("approval-seeking", "Approval-Seeking", "Wants validation and reassurance."), new("shame-defensive", "Shame-Defensive", "Turns embarrassment into defense."), new("soft-centered", "Soft-Centered", "Has an emotional weak point."), new("wounded-romantic", "Wounded Romantic", "Wants connection but expects pain."), new("martyr", "Martyr", "Makes suffering part of usefulness.")]),
-    ];
-
-    static readonly CharacterOption[] CoreDrives = [new("prove-worth", "Prove Worth", "Needs to feel valuable."), new("stay-safe", "Stay Safe", "Avoids danger and exposure."), new("protect-their-people", "Protect Their People", "Keeps chosen people safe."), new("maintain-control", "Maintain Control", "Prevents chaos and helplessness."), new("be-wanted", "Be Wanted", "Needs to feel chosen."), new("be-free", "Be Free", "Resists confinement and ownership."), new("find-truth", "Find Truth", "Needs to know what is real."), new("avoid-shame", "Avoid Shame", "Hides flaws or failure."), new("earn-belonging", "Earn Belonging", "Tries to become worth keeping."), new("win-respect", "Win Respect", "Wants dignity and competence recognized."), new("keep-peace", "Keep Peace", "Preserves stability."), new("experience-life", "Experience Life Fully", "Chases intensity and meaning."), new("redeem-themselves", "Redeem Themselves", "Seeks to make up for guilt."), new("preserve-independence", "Preserve Independence", "Avoids needing others.")];
-    static readonly CharacterOption[] CoreFears = [new("being-abandoned", "Being Abandoned", "Fears being left behind."), new("being-useless", "Being Useless", "Fears having no value."), new("being-controlled", "Being Controlled", "Fears losing autonomy."), new("being-exposed", "Being Exposed", "Fears being truly seen."), new("being-rejected", "Being Rejected", "Fears not being accepted."), new("being-betrayed", "Being Betrayed", "Fears trust becoming dangerous."), new("hurting-others", "Hurting Others", "Fears causing harm."), new("failing-again", "Failing Again", "Fears repeating old mistakes."), new("being-ordinary", "Being Ordinary", "Fears being forgettable."), new("losing-control", "Losing Control", "Fears unpredictability."), new("being-unlovable", "Being Unlovable", "Fears being too much or not enough."), new("depending-on-someone", "Depending on Someone", "Fears needing others.")];
-    static readonly CharacterOption[] SurfaceMasks = [new("smug-untouchable", "Smug and Untouchable", "Acts above it all."), new("polite-composed", "Polite and Composed", "Uses manners as armor."), new("charming-effortless", "Charming and Effortless", "Performs ease and likability."), new("cold-detached", "Cold and Detached", "Keeps emotion distant."), new("helpful-capable", "Helpful and Capable", "Stays useful to feel safe."), new("reckless-fearless", "Reckless and Fearless", "Performs boldness."), new("sweet-harmless", "Sweet and Harmless", "Appears gentle and agreeable."), new("funny-unbothered", "Funny and Unbothered", "Hides behind humor."), new("professional-efficient", "Professional and Efficient", "Hides emotion behind competence."), new("mysterious-withholding", "Mysterious and Withholding", "Reveals little.")];
-    static readonly CharacterOption[] HiddenTruths = [new("needs-reassurance", "Needs Reassurance", "Wants proof they matter."), new("feels-too-much", "Feels Too Much", "Emotion runs deeper than shown."), new("wants-to-be-chosen", "Wants to Be Chosen", "Wants to be preferred, not tolerated."), new("afraid-of-being-known", "Afraid of Being Known", "Understanding feels risky."), new("feels-responsible", "Feels Responsible", "Carries too much blame."), new("craves-freedom", "Craves Freedom", "Hates being trapped."), new("longs-for-rest", "Longs for Rest", "Wants permission to stop."), new("wants-to-trust", "Wants to Trust", "Hopes someone proves safe."), new("fears-their-own-anger", "Fears Their Own Anger", "Avoids what rage might reveal."), new("still-hopes", "Still Hopes", "Cynicism is not the whole truth.")];
-
-    static readonly CharacterOption[] SentenceStyles = [new("terse", "Terse", "Short and efficient."), new("rambling", "Rambling", "Thinks aloud."), new("precise", "Precise", "Careful and exact."), new("blunt", "Blunt", "Direct, sometimes too direct."), new("elegant", "Elegant", "Polished and rhythmic."), new("casual", "Casual", "Relaxed and everyday."), new("formal", "Formal", "Structured and mannered."), new("fragmented", "Fragmented", "Broken under pressure.")];
-    static readonly CharacterOption[] HonestyStyles = [new("direct", "Direct", "Says what they mean."), new("evasive", "Evasive", "Dodges direct answers."), new("layered", "Layered", "Speaks with subtext."), new("performative", "Performative", "Shapes answers for effect."), new("accidentally-honest", "Accidentally Honest", "Truth slips out.")];
-    static readonly CharacterOption[] EmotionalLeakages = [new("gets-quieter", "Gets Quieter", "Emotion makes them smaller."), new("gets-sharper", "Gets Sharper", "Emotion makes them more cutting."), new("gets-warmer", "Gets Warmer", "Emotion makes them softer."), new("gets-funnier", "Gets Funnier", "Emotion increases humor."), new("gets-formal", "Gets Formal", "Emotion sends them into manners."), new("gets-physical", "Gets Physical", "Emotion shows through movement.")];
-    static readonly CharacterOption[] ActionFingerprints = [new("lounger", "Lounger", "Claims space casually."), new("tidy-avoider", "Tidy Avoider", "Fidgets through tasks."), new("still-watcher", "Still Watcher", "Goes quiet and observant."), new("pacer", "Pacer", "Moves to think."), new("touch-connector", "Touch Connector", "Communicates through contact."), new("space-keeper", "Space Keeper", "Maintains distance."), new("protective-mover", "Protective Mover", "Shields others with positioning."), new("performer", "Performer", "Uses expressive movement."), new("minimalist", "Minimalist", "Makes small movements matter."), new("restless-spark", "Restless Spark", "Constant small motion.")];
-    static readonly CharacterOption[] StressPatterns = [new("sharper-under-pressure", "Sharper Under Pressure", "Gets more pointed as stress rises."), new("quieter-under-pressure", "Quieter Under Pressure", "Withdraws as stress rises."), new("louder-under-pressure", "Louder Under Pressure", "Gets more expressive as stress rises."), new("colder-under-pressure", "Colder Under Pressure", "Freezes emotion into control."), new("funnier-under-pressure", "Funnier Under Pressure", "Jokes harder as stress rises."), new("helpful-under-pressure", "Helpful Under Pressure", "Converts feelings into tasks."), new("controlling-under-pressure", "Controlling Under Pressure", "Manages harder as stress rises."), new("reckless-under-pressure", "Reckless Under Pressure", "Acts before thinking."), new("appeasing-under-pressure", "Appeasing Under Pressure", "Smooths and self-erases."), new("protective-under-pressure", "Protective Under Pressure", "Threat makes them decisive.")];
-
-    static readonly CharacterOption[] SoftSpots = [new("quiet-inclusion", "Quiet Inclusion", "Being included without pressure."), new("practical-care", "Practical Care", "Help without drama."), new("remembered-details", "Remembered Details", "Someone remembered."), new("unasked-loyalty", "Unasked Loyalty", "Someone stays without being begged."), new("gentle-honesty", "Gentle Honesty", "Truth without cruelty."), new("being-trusted", "Being Trusted", "Someone relies on them."), new("being-seen-clearly", "Being Seen Clearly", "Understood without pressure."), new("shared-silence", "Shared Silence", "Comfort without words."), new("competence-recognized", "Competence Recognized", "Skill is genuinely respected."), new("protected-vulnerability", "Protected Vulnerability", "Weakness is guarded, not used.")];
-    static readonly CharacterOption[] AvoidPatterns = [new("no-random-cruelty", "No Random Cruelty", "Do not make this character cruel without cause."), new("no-instant-vulnerable", "No Instant Vulnerability", "Do not make this character suddenly confess before the scene earns it."), new("no-passive-in-danger", "No Passive in Danger", "Do not make this character freeze in serious danger unless established."), new("no-solve-every-conflict", "No Solving Every Conflict", "Do not make this character immediately repair every emotional conflict."), new("no-escalate-every-jab", "No Escalating Every Jab", "Do not turn casual teasing into a serious fight unless a boundary is crossed."), new("no-treat-teasing-injury", "No Treating Teasing as Injury", "Do not make this character wounded by light teasing unless it hits a known vulnerability."), new("no-reveal-secrets-early", "No Early Secret Reveals", "Do not reveal private truths before the narrative hook allows it."), new("no-generic-flirty", "No Generic Flirting", "Do not turn every warm or teasing moment into direct flirting."), new("no-ignore-core-kindness", "No Ignoring Core Kindness", "Do not make this character violate their basic loyalty or care for a cheap reaction."), new("no-overexplain-feelings", "No Overexplaining Feelings", "Do not have this character narrate emotions plainly if they avoid direct vulnerability."), new("no-act-on-unknown-info", "No Psychic Knowledge", "Do not make this character respond to private information they have not learned."), new("no-flatten-into-one-trait", "No Flattening", "Do not reduce this character to only one behavior, joke, emotion, or gimmick.")];
-
-    static readonly string[] BondTypes = ["Close Friend", "Romantic Interest", "Rival", "Mentor", "Mentee", "Ally", "Complicated", "Estranged", "Family", "Colleague", "Acquaintance"];
-    static readonly string[] Dynamics = ["Power struggle", "Protective", "Competitive", "Dependent", "Avoidant", "Charged", "Playful rivalry", "Unspoken tension", "Loyal", "Complicated history"];
 
     int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
     bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Character.Name);
@@ -461,5 +433,4 @@
     static CharacterOption? Find(IEnumerable<CharacterOption> items, string id) => items.FirstOrDefault(item => item.Id == id);
 
     public sealed record WizardStep(string Id, string Label, string Sub);
-    public sealed record TraitGroup(string Name, string Color, CharacterOption[] Items);
 }

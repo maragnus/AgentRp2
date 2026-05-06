@@ -28,6 +28,76 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
+    public async Task StructuredGenerationRendersPromptLibraryDefaultsAndPlannerPrivateIntent()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        var result = await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        var appearance = client.GenerationRequests.First(request => request.OperationName == "Generating appearance state");
+        var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Contains("You update character scene state.", appearance.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Test private intent", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("- Gemma only", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("**Actor:** Bella", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("You are Gemma", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Equal("Brief", result.Plan.TurnShape);
+    }
+
+    [Fact]
+    public async Task ProsePromptUsesAgentRp1StrictGuidanceHeading()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "Keep this sharp.", "Brief", "", ""));
+
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Contains("**Guidance to follow strictly:**\nKeep this sharp.", prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SnapshotGenerationReturnsAgentRp1SnapshotShape()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        var result = await service.GenerateSnapshotAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3"));
+
+        var snapshotRequest = client.GenerationRequests.First(request => request.OperationName == "Generating snapshot");
+
+        Assert.Contains("Return a concise narrative summary, then propose canonical facts and timeline entries", snapshotRequest.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Thread title: Devonshire Games", snapshotRequest.UserPrompt, StringComparison.Ordinal);
+        Assert.Equal("Test snapshot narrative", result.Summary);
+        var fact = Assert.Single(result.Facts);
+        Assert.Equal("Test fact", fact.Title);
+        var timelineEntry = Assert.Single(result.TimelineEntries);
+        Assert.Equal("Test event", timelineEntry.Title);
+        Assert.NotEmpty(result.CharacterAppearances);
+        Assert.Equal("completed", result.Trace.Status);
+    }
+
+    [Fact]
     public async Task DumbProseModeRequiresExplicitRespondAs()
     {
         var service = new TextGenerationService(new FakeModelGenerationClient(), new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
@@ -101,17 +171,22 @@ public sealed class TextGenerationServiceTests
     sealed class FakeModelGenerationClient : IModelGenerationClient
     {
         public List<string> StructuredCalls { get; } = [];
+        public List<ModelGenerationRequest> GenerationRequests { get; } = [];
         public int StreamingTextCalls { get; private set; }
 
         public Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default)
         {
+            GenerationRequests.Add(request);
             StructuredCalls.Add(typeof(T).Name);
             var value = CreateStructuredValue<T>();
             return Task.FromResult(new ModelStructuredCompletion<T>(value, $"{typeof(T).Name} raw", 1, 2, $"{typeof(T).Name}-response"));
         }
 
-        public Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ModelTextCompletion("Generated prose", 3, 4, "text-response"));
+        public Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
+        {
+            GenerationRequests.Add(request);
+            return Task.FromResult(new ModelTextCompletion("Generated prose", 3, 4, "text-response"));
+        }
 
         public Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
         {
@@ -120,6 +195,15 @@ public sealed class TextGenerationServiceTests
         }
 
         public async IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default) =>
+            Task.FromResult("conv-test");
+
+        public async IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield break;
@@ -140,6 +224,7 @@ public sealed class TextGenerationServiceTests
                 ?? throw new InvalidOperationException($"Could not create {type.Name}.");
             SetProperty(type, value, "CharacterName", "Gemma");
             SetProperty(type, value, "Reason", "Test selection");
+            SetProperty(type, value, "TurnShape", "Brief");
             SetProperty(type, value, "Beat", "Test beat");
             SetProperty(type, value, "Intent", "Test intent");
             SetProperty(type, value, "ImmediateGoal", "Test goal");
@@ -147,7 +232,33 @@ public sealed class TextGenerationServiceTests
             SetProperty(type, value, "ChangeIntroduced", "Test change");
             SetProperty(type, value, "Guardrails", "Test guardrails");
             SetProperty(type, value, "PrivateIntent", "Test private intent");
+            SetProperty(type, value, "NarrativeSummary", "Test snapshot narrative");
             SetProperty(type, value, "Summary", "Test snapshot");
+            SetProperty(type, value, "Facts", new List<TextGenerationService.SnapshotFactResponse>
+            {
+                new()
+                {
+                    Title = "Test fact",
+                    Summary = "Test fact summary",
+                    Details = "Test fact details",
+                    CharacterNames = ["Gemma"],
+                    LocationNames = ["Devonshire Apartment 822"],
+                    ItemNames = ["Tesla Model S Plaid"]
+                }
+            });
+            SetProperty(type, value, "TimelineEntries", new List<TextGenerationService.SnapshotTimelineEntryResponse>
+            {
+                new()
+                {
+                    WhenText = "Today",
+                    Title = "Test event",
+                    Summary = "Test event summary",
+                    Details = "Test event details",
+                    CharacterNames = ["Gemma"],
+                    LocationNames = ["Devonshire Apartment 822"],
+                    ItemNames = ["Tesla Model S Plaid"]
+                }
+            });
             return (T)value;
         }
 

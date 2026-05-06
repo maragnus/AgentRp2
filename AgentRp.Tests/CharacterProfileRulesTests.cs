@@ -1,0 +1,111 @@
+using System.Text.Json;
+using AgentRp.Models;
+using AgentRp.Serialization;
+using AgentRp.Services;
+using AgentRp.Session;
+
+namespace AgentRp.Tests;
+
+public sealed class CharacterProfileRulesTests
+{
+    [Fact]
+    public void CharacterToolSchemaKeepsTraitLibraryOutOfMutationTools()
+    {
+        var document = new RpChatDocument
+        {
+            CharacterTraitLibrary = CharacterTraitLibraryService.CreateDefaultState()
+        };
+        var tool = StoryAssistantService.BuildTools(document).Single(tool => tool.Name == "update_character");
+
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        var updates = json.RootElement.GetProperty("properties").GetProperty("updates").GetProperty("properties");
+        var traits = updates.GetProperty("traits");
+        var sceneRoles = updates.GetProperty("sceneRoles");
+        var schemaText = tool.Parameters.ToJsonString();
+
+        Assert.True(traits.GetProperty("uniqueItems").GetBoolean());
+        Assert.Equal(CharacterProfileRules.MaxTraits, traits.GetProperty("maxItems").GetInt32());
+        Assert.True(sceneRoles.GetProperty("uniqueItems").GetBoolean());
+        Assert.Equal(CharacterProfileRules.MaxSceneRoles, sceneRoles.GetProperty("maxItems").GetInt32());
+        Assert.False(traits.GetProperty("items").TryGetProperty("enum", out _));
+        Assert.DoesNotContain("guarded", schemaText, StringComparison.Ordinal);
+        Assert.False(updates.TryGetProperty("relationships", out _));
+        Assert.Contains("get_character_profile_options", schemaText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProfileOptionsToolReturnsCustomizedTraitLibraryValues()
+    {
+        var document = new RpChatDocument
+        {
+            CharacterTraitLibrary = CharacterTraitLibraryService.CreateDefaultState()
+        };
+        document.CharacterTraitLibrary.SceneRoles = [new("foil", "Foil", "Contrasts another character.")];
+        var options = CharacterProfileRules.ProfileOptions(document.CharacterTraitLibrary, ["sceneRoles"]);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(options, AppJsonSerializerOptions.Web));
+        var sceneRoleEnum = json.RootElement
+            .GetProperty("fields")
+            .GetProperty("sceneRoles")
+            .GetProperty("options")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .ToList();
+
+        Assert.Contains("foil", sceneRoleEnum);
+        Assert.DoesNotContain("anchor", sceneRoleEnum);
+    }
+
+    [Fact]
+    public void ProfileOptionsSchemaUsesOnlyFieldNameEnums()
+    {
+        var tool = StoryAssistantService.BuildTools(new()).Single(tool => tool.Name == "get_character_profile_options");
+
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        var fieldEnum = json.RootElement
+            .GetProperty("properties")
+            .GetProperty("fields")
+            .GetProperty("items")
+            .GetProperty("enum")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .ToList();
+
+        Assert.Contains("traits", fieldEnum);
+        Assert.Contains("coreDrive", fieldEnum);
+        Assert.DoesNotContain("protect-their-people", fieldEnum);
+    }
+
+    [Fact]
+    public void LocationItemAndTimelineSchemasUseExplicitPatchFields()
+    {
+        var tools = StoryAssistantService.BuildTools(new()).ToDictionary(tool => tool.Name);
+
+        AssertCreateSchemaRequires(tools["create_location"], "name");
+        AssertCreateSchemaRequires(tools["create_item"], "name");
+        AssertCreateSchemaRequires(tools["create_timeline_entry"], "title");
+        AssertUpdateSchemaRequiresEntityId(tools["update_location"]);
+        AssertUpdateSchemaRequiresEntityId(tools["update_item"]);
+        AssertUpdateSchemaRequiresEntityId(tools["update_timeline_entry"]);
+        Assert.DoesNotContain("isActive", tools["create_location"].Parameters.ToJsonString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("inScene", tools["create_item"].Parameters.ToJsonString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("get_story_entities", tools["update_location"].Description, StringComparison.Ordinal);
+        Assert.Contains("get_story_entities", tools["update_item"].Description, StringComparison.Ordinal);
+        Assert.Contains("get_story_entities", tools["update_timeline_entry"].Description, StringComparison.Ordinal);
+    }
+
+    static void AssertCreateSchemaRequires(ModelAssistantTool tool, string requiredField)
+    {
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        var updates = json.RootElement.GetProperty("properties").GetProperty("updates");
+        Assert.False(updates.GetProperty("additionalProperties").GetBoolean());
+        Assert.Contains(updates.GetProperty("required").EnumerateArray(), item => item.GetString() == requiredField);
+    }
+
+    static void AssertUpdateSchemaRequiresEntityId(ModelAssistantTool tool)
+    {
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        Assert.Contains(json.RootElement.GetProperty("required").EnumerateArray(), item => item.GetString() == "entityId");
+        Assert.False(json.RootElement.GetProperty("properties").GetProperty("updates").GetProperty("additionalProperties").GetBoolean());
+    }
+}

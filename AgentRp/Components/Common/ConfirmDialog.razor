@@ -1,4 +1,4 @@
-<div class="modal-backdrop confirm-backdrop" @onclick="Cancel">
+<div class="modal-backdrop confirm-backdrop" @onclick="BackdropClick">
     <section class="confirm-dialog" @onclick:stopPropagation="true">
         <div class="confirm-head">
             <span class="danger-mark @IconClass"><FaIcon Name="@Icon" /></span>
@@ -6,8 +6,15 @@
         </div>
         <p>@Body</p>
         <div class="confirm-actions">
-            <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
-            <AppButton Variant="@ConfirmVariant" OnClick="@Confirm"><FaIcon Name="@Icon" /> @ConfirmText</AppButton>
+            @if (Actions is not null)
+            {
+                @Actions
+            }
+            else
+            {
+                <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
+                <AppButton Variant="@ConfirmVariant" OnClick="@Confirm"><FaIcon Name="@Icon" /> @ConfirmText</AppButton>
+            }
         </div>
     </section>
 </div>
@@ -18,11 +25,14 @@
     [Parameter] public string Icon { get; set; } = "trash";
     [Parameter] public string ConfirmText { get; set; } = "Delete";
     [Parameter] public string ConfirmVariant { get; set; } = "rose";
+    [Parameter] public bool CloseOnBackdropClick { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
 
     string IconClass => Icon == "trash" ? "" : "is-neutral";
 
+    Task BackdropClick(MouseEventArgs args) => CloseOnBackdropClick ? OnCancel.InvokeAsync() : Task.CompletedTask;
     Task Cancel(MouseEventArgs args) => OnCancel.InvokeAsync();
     Task Confirm(MouseEventArgs args) => OnConfirm.InvokeAsync();
 }

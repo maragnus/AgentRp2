@@ -112,23 +112,18 @@
 
 @if (ConfirmDelete)
 {
-    <div class="modal-backdrop confirm-backdrop" @onclick="@(() => ConfirmDelete = false)">
-        <section class="confirm-dialog" @onclick:stopPropagation="true">
-            <div class="confirm-head">
-                <span class="danger-mark"><FaIcon Name="trash" /></span>
-                <strong>Delete this message?</strong>
-            </div>
-            <p>This removes this turn only. You can also delete this turn and @SubsequentCount later turns as a branch.</p>
-            <div class="confirm-actions">
-                <AppButton Variant="secondary" OnClick="@(_ => ConfirmDelete = false)">Cancel</AppButton>
-                @if (SubsequentCount > 0)
-                {
-                    <AppButton Variant="danger" Disabled="@TranscriptBusy" OnClick="DeleteBranch"><FaIcon Name="branch" /> Delete Branch</AppButton>
-                }
-                <AppButton Variant="rose" Disabled="@TranscriptBusy" OnClick="DeleteSingle"><FaIcon Name="trash" /> Delete</AppButton>
-            </div>
-        </section>
-    </div>
+    <ConfirmDialog Title="Delete this message?"
+                   Body="@($"This removes this turn only. You can also delete this turn and {SubsequentCount} later turns as a branch.")"
+                   OnCancel="@(() => ConfirmDelete = false)">
+        <Actions>
+            <AppButton Variant="secondary" OnClick="@(_ => ConfirmDelete = false)">Cancel</AppButton>
+            @if (SubsequentCount > 0)
+            {
+                <AppButton Variant="danger" Disabled="@TranscriptBusy" OnClick="DeleteBranch"><FaIcon Name="branch" /> Delete Branch</AppButton>
+            }
+            <AppButton Variant="rose" Disabled="@TranscriptBusy" OnClick="DeleteSingle"><FaIcon Name="trash" /> Delete</AppButton>
+        </Actions>
+    </ConfirmDialog>
 }
 
 @if (EditPlan)
@@ -148,7 +143,7 @@
                     </div>
                 </RailFooter>
                 <MainContent>
-                    <ModalStackLayout Class="modal-editor-main edit-plan-main" BodyClass="edit-plan-fields">
+                    <ModalStackLayout Class="modal-editor-main edit-plan-main" BodyClass="modal-form-stack edit-plan-fields">
                         <Header>
                             @if (ActivePlanTab == "appearance")
                             {

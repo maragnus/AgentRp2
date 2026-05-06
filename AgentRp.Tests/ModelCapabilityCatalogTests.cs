@@ -73,16 +73,60 @@ public sealed class ModelCapabilityCatalogTests
         Assert.Equal("user", live.Source);
         Assert.True(live.ImageInput);
         Assert.True(live.StructuredOutput);
+        Assert.True(live.Tools);
         Assert.True(live.ImageOutput);
         Assert.Equal("gpt-image-test", live.ImageGenerationModel);
         Assert.Equal(TuningSupport.DefaultOnly, live.Temperature);
         Assert.Equal("default", fromDefault.Source);
         Assert.True(fromDefault.StructuredOutput);
+        Assert.True(fromDefault.Tools);
         Assert.Equal("fallback", fallback.Source);
         Assert.True(fallback.CanGenerateText);
         Assert.True(fallback.StructuredOutput);
         Assert.True(fallback.Streaming);
+        Assert.False(fallback.Tools);
         Assert.False(fallback.ImageOutput);
+    }
+
+    [Theory]
+    [InlineData("openai")]
+    [InlineData("claude")]
+    [InlineData("grok")]
+    public void KnownResponsesProvidersDefaultToToolSupport(string providerType)
+    {
+        var root = CreateTempRoot();
+        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
+        File.WriteAllText(Path.Combine(root, "wwwroot", "model-capabilities.default.json"), """{ "models": [] }""");
+        var catalog = new ModelCapabilityCatalog(new FakeWebHostEnvironment(root), Path.Combine(root, "model-capabilities.user.json"));
+
+        var capabilities = catalog.Resolve(providerType, "unknown-model");
+
+        Assert.True(capabilities.Tools);
+    }
+
+    [Fact]
+    public void ExplicitToolDisableOverridesProviderDefault()
+    {
+        var root = CreateTempRoot();
+        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
+        File.WriteAllText(Path.Combine(root, "wwwroot", "model-capabilities.default.json"), """
+            {
+              "models": [
+                {
+                  "provider": "openai",
+                  "id": "no-tools-model",
+                  "textInput": true,
+                  "textOutput": true,
+                  "tools": false
+                }
+              ]
+            }
+            """);
+        var catalog = new ModelCapabilityCatalog(new FakeWebHostEnvironment(root), Path.Combine(root, "model-capabilities.user.json"));
+
+        var capabilities = catalog.Resolve("openai", "no-tools-model");
+
+        Assert.False(capabilities.Tools);
     }
 
     [Fact]

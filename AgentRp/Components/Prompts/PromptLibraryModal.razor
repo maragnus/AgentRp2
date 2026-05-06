@@ -38,7 +38,7 @@
                 {
                     <div class="placeholder-panel">
                         <div class="pill-list">
-                            @foreach (var placeholder in Placeholders[Active])
+                            @foreach (var placeholder in PromptLibraryService.GetPlaceholders(Active))
                             {
                                 var copied = CopiedToken == placeholder.Token;
                                 <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" Title="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
@@ -49,6 +49,10 @@
                         </div>
                         <InlineNote Class="placeholder-help">Click any placeholder to copy it to your clipboard.</InlineNote>
                     </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <InlineNote Tone="error">@ErrorMessage</InlineNote>
                 }
             </Header>
             <ChildContent>
@@ -85,7 +89,7 @@
             </ChildContent>
             <Footer>
                 <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                <AppButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</AppButton>
+                <BusyButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</BusyButton>
             </Footer>
         </ModalStackLayout>
         </MainContent>
@@ -93,64 +97,29 @@
 </ModalShell>
 
 @code {
-    sealed record PromptStep(string Id, string Label, bool HasTurnShapes);
-    sealed record Placeholder(string Token, string Description);
-
     string Active = "appearance";
     bool ShowPlaceholders;
     string? CopiedToken;
+    string? ErrorMessage;
 
-    readonly PromptStep[] Steps =
-    [
-        new("snapshot", "Snapshot", false),
-        new("appearance", "Appearance", false),
-        new("selection", "Selection", false),
-        new("planning", "Planning", true),
-        new("prose", "Prose", true)
-    ];
-
-    Dictionary<string, PromptPairState> DefaultPrompts = new();
-    Dictionary<string, List<ShapePromptState>> DefaultTurnShapes = new();
-    Dictionary<string, Placeholder[]> Placeholders = new();
+    readonly IReadOnlyList<PromptLibraryStageDefinition> Steps = PromptLibraryService.GetStageDefinitions();
+    readonly PromptLibraryState Defaults = PromptLibraryService.CreateDefaultState();
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
 
-    PromptStep CurrentStep => Steps.First(step => step.Id == Active);
+    PromptLibraryStageDefinition CurrentStep => Steps.First(step => step.Id == Active);
     Dictionary<string, PromptPairState> PromptValues => Session.Chat.PromptLibrary.State.Prompts;
     Dictionary<string, List<ShapePromptState>> TurnShapes => Session.Chat.PromptLibrary.State.TurnShapes;
+    Dictionary<string, PromptPairState> DefaultPrompts => Defaults.Prompts;
+    Dictionary<string, List<ShapePromptState>> DefaultTurnShapes => Defaults.TurnShapes;
 
     protected override void OnInitialized()
     {
         Session.Chat.PromptLibrary.Changed += OnStoreChanged;
-        DefaultPrompts = new()
-        {
-            ["snapshot"] = new() { System = "You summarize the state of an interactive roleplay scene for future continuation. Return concise JSON only.", User = "{context.transcript}\n\n{context.characterAppearances}\n\nSummarize the scene state for a pinned checkpoint." },
-            ["appearance"] = new() { System = "You update character scene state. Return JSON only.", User = "Characters:\n{appearance.characters}\n\nTranscript:\n{appearance.transcript}" },
-            ["selection"] = new() { System = "Choose the next responder from the active scene. Return JSON only.", User = "{context.transcript}\n\nPresent: {context.characters}\n\nWho should respond next?" },
-            ["planning"] = new() { System = "Produce a structured dramatic plan before prose. Return JSON only.", User = "{context.snapshot}\n\n{context.transcript}\n\n{context.characterAppearances}\n\nActor: {actor.name}\n\n{guidanceSection}\n\n{requestedTurnShapeSection}\n\n{turnScopeRules}" },
-            ["prose"] = new() { System = "Write polished contemporary roleplay prose.", User = "{context.snapshot}\n\n{context.transcript}\n\n{context.characterAppearances}\n\nActor: {actor.name}\n\n{guidanceSection}\n\n{requestedTurnShapeSection}\n\n{planning.output}" }
-        };
-        DefaultTurnShapes = new()
-        {
-            ["planning"] = Shapes("Compact", "Brief", "Extended", "Monologue"),
-            ["prose"] = Shapes("Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended")
-        };
-        Placeholders = Steps.ToDictionary(
-            step => step.Id,
-            step => step.Id switch
-            {
-                "snapshot" => new Placeholder[] { new("{context.transcript}", "Transcript on the current branch"), new("{context.characterAppearances}", "Current appearance state") },
-                "appearance" => new Placeholder[] { new("{appearance.characters}", "Appearance-stage character list"), new("{appearance.transcript}", "Transcript segment for appearance updates") },
-                "selection" => new Placeholder[] { new("{context.characters}", "Present characters"), new("{context.transcript}", "Transcript since the latest snapshot") },
-                "planning" => new Placeholder[] { new("{context.snapshot}", "Latest snapshot summary"), new("{context.transcript}", "Transcript since the latest snapshot"), new("{context.characterAppearances}", "Current appearance state"), new("{actor.name}", "Current actor"), new("{guidanceSection}", "Guidance block"), new("{requestedTurnShapeSection}", "Requested turn shape"), new("{turnScopeRules}", "Planning scope rules") },
-                _ => new Placeholder[] { new("{context.snapshot}", "Latest snapshot summary"), new("{context.transcript}", "Transcript since the latest snapshot"), new("{context.characterAppearances}", "Current appearance state"), new("{actor.name}", "Current actor"), new("{guidanceSection}", "Guidance block"), new("{requestedTurnShapeSection}", "Requested turn shape"), new("{planning.output}", "Planning phase output") }
-            });
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
-
-    static List<ShapePromptState> Shapes(params string[] labels) => labels.Select(label => new ShapePromptState { Id = label.ToLowerInvariant().Replace(" ", "-"), Label = label, Value = $"Use {label.ToLowerInvariant()} pacing and scope." }).ToList();
 
     void SwitchStep(string? id)
     {
@@ -159,6 +128,7 @@
 
         Active = id;
         ShowPlaceholders = false;
+        ErrorMessage = null;
     }
 
     bool IsDirtyStep(string id)
@@ -171,13 +141,13 @@
     async Task SetSystem(string value)
     {
         PromptValues[Active].System = value;
-        await Session.Chat.PromptLibrary.MarkChangedAsync();
+        await SaveChangesAsync();
     }
 
     async Task SetUser(string value)
     {
         PromptValues[Active].User = value;
-        await Session.Chat.PromptLibrary.MarkChangedAsync();
+        await SaveChangesAsync();
     }
 
     async Task ResetPrompt(string field)
@@ -187,19 +157,19 @@
         else
             PromptValues[Active].User = DefaultPrompts[Active].User;
 
-        await Session.Chat.PromptLibrary.MarkChangedAsync();
+        await SaveChangesAsync();
     }
 
     async Task UpdateTurnShape(string id, string value)
     {
         TurnShapes[Active].First(shape => shape.Id == id).Value = value;
-        await Session.Chat.PromptLibrary.MarkChangedAsync();
+        await SaveChangesAsync();
     }
 
     async Task ResetTurnShape(string id)
     {
         TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
-        await Session.Chat.PromptLibrary.MarkChangedAsync();
+        await SaveChangesAsync();
     }
 
     async Task CopyToken(string token)
@@ -208,7 +178,20 @@
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", token);
     }
 
-    Task Save(MouseEventArgs args) => Session.Chat.PromptLibrary.MarkChangedAsync();
+    Task Save() => SaveChangesAsync();
+
+    async Task SaveChangesAsync()
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Session.Chat.PromptLibrary.MarkChangedAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Saving the prompt library failed.", exception);
+        }
+    }
 
     public void Dispose()
     {

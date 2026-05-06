@@ -351,6 +351,327 @@ public sealed class ImageStore(ActiveChatContext activeChat, ChatRegistry regist
     }
 }
 
+public sealed class StoryAssistantStore(
+    ActiveChatContext activeChat,
+    ChatRegistry registry,
+    ProviderStore providers,
+    IStoryAssistantService? storyAssistantService) : ActiveChatStoreBase(activeChat, registry), IStoryAssistantCallbacks
+{
+    readonly Dictionary<string, TaskCompletionSource<StoryAssistantDecision>> _pendingReviews = [];
+    readonly Dictionary<string, TaskCompletionSource<string>> _pendingQuestions = [];
+    readonly object _operationLock = new();
+    CancellationTokenSource? _activeRunCancellation;
+
+    protected override RoleplayStoreArea Area => RoleplayStoreArea.StoryAssistant;
+
+    public StoryAssistantState State => Document?.StoryAssistant ?? new();
+    public IReadOnlyList<StoryAssistantTranscriptItem> Items => State.Items;
+    public bool IsBusy { get; private set; }
+    public string BusyMessage { get; private set; } = "";
+
+    protected override bool ShouldHandleArea(RoleplayStoreArea? changedArea) => changedArea is null || changedArea == Area;
+
+    public async Task SetReviewModeAsync(StoryAssistantReviewMode mode)
+    {
+        State.ReviewMode = mode;
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public async Task ClearAsync()
+    {
+        if (Document is null)
+            return;
+
+        State.Items.Clear();
+        State.ConversationId = "";
+        CancelPendingInteractions();
+        _pendingReviews.Clear();
+        _pendingQuestions.Clear();
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public async Task SendAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (Document is null || string.IsNullOrWhiteSpace(text) || storyAssistantService is null)
+            return;
+
+        CancellationTokenSource runCancellation;
+        lock (_operationLock)
+        {
+            if (IsBusy)
+                return;
+
+            IsBusy = true;
+            BusyMessage = "Thinking...";
+            runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _activeRunCancellation = runCancellation;
+        }
+
+        ClearBackgroundError();
+        State.Items.Add(AddMessage(StoryAssistantItemKind.UserMessage, StoryAssistantItemStatus.Applied, text.Trim()));
+        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, ""));
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+
+        var runToken = runCancellation.Token;
+        try
+        {
+            await storyAssistantService.RunTurnAsync(
+                Document,
+                providers.Items.ToList(),
+                new(text),
+                this,
+                runToken);
+            CompleteStreamingAssistantMessages();
+            await SaveAssistantStateAsync(runToken);
+        }
+        catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
+        {
+            MarkPendingInteractionsStopped();
+            CancelPendingInteractions();
+            MarkStopped();
+            await SaveAssistantStateAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            CaptureBackgroundError(exception);
+            FailCurrentAssistantMessage(UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception));
+            await SaveAssistantStateAsync(CancellationToken.None);
+        }
+        finally
+        {
+            lock (_operationLock)
+            {
+                IsBusy = false;
+                BusyMessage = "";
+                if (ReferenceEquals(_activeRunCancellation, runCancellation))
+                    _activeRunCancellation = null;
+            }
+
+            runCancellation.Dispose();
+            await NotifyChangedAsync();
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_operationLock)
+        {
+            cancellation = _activeRunCancellation;
+            if (cancellation is null || cancellation.IsCancellationRequested)
+                return;
+
+            BusyMessage = "Stopping...";
+            cancellation.Cancel();
+        }
+
+        MarkPendingInteractionsStopped();
+        CancelPendingInteractions();
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public Task ResolveReviewAsync(string itemId, StoryAssistantDecisionKind kind, string reason)
+    {
+        if (_pendingReviews.TryGetValue(itemId, out var pending))
+        {
+            _pendingReviews.Remove(itemId);
+            pending.TrySetResult(new(kind, reason.Trim()));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    void CancelPendingInteractions()
+    {
+        foreach (var pending in _pendingReviews.Values)
+            pending.TrySetCanceled();
+
+        foreach (var pending in _pendingQuestions.Values)
+            pending.TrySetCanceled();
+
+        _pendingReviews.Clear();
+        _pendingQuestions.Clear();
+    }
+
+    void MarkPendingInteractionsStopped()
+    {
+        var pendingIds = _pendingReviews.Keys.Concat(_pendingQuestions.Keys).ToHashSet(StringComparer.Ordinal);
+        foreach (var item in State.Items.Where(item => pendingIds.Contains(item.Id)))
+        {
+            item.Status = StoryAssistantItemStatus.Stopped;
+            item.DecisionReason = "Stopped before a decision.";
+            item.UpdatedUtc = DateTime.UtcNow;
+        }
+    }
+
+    public Task ResolveQuestionAsync(string itemId, string answer)
+    {
+        if (_pendingQuestions.TryGetValue(itemId, out var pending))
+        {
+            _pendingQuestions.Remove(itemId);
+            pending.TrySetResult(answer.Trim());
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return;
+
+        var item = State.Items.LastOrDefault();
+        if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
+        {
+            item = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
+            State.Items.Add(item);
+        }
+
+        item.Text += delta;
+        item.UpdatedUtc = DateTime.UtcNow;
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+    }
+
+    public async Task RecordToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    {
+        CloseTrailingAssistantMessage();
+        item.UpdatedUtc = DateTime.UtcNow;
+        State.Items.Add(item);
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+    }
+
+    public async Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    {
+        item.UpdatedUtc = DateTime.UtcNow;
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+    }
+
+    public async Task<StoryAssistantDecision> ReviewChangeAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    {
+        var pending = new TaskCompletionSource<StoryAssistantDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingReviews[item.Id] = pending;
+        using var registration = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
+        return await pending.Task;
+    }
+
+    public async Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    {
+        CloseTrailingAssistantMessage();
+        item.UpdatedUtc = DateTime.UtcNow;
+        State.Items.Add(item);
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+        var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingQuestions[item.Id] = pending;
+        using var registration = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
+        var answer = await pending.Task;
+        item.Question.Answer = answer;
+        item.Status = StoryAssistantItemStatus.Answered;
+        item.UpdatedUtc = DateTime.UtcNow;
+        await SaveAssistantStateAsync(cancellationToken);
+        await NotifyChangedAsync();
+        return answer;
+    }
+
+    void CloseTrailingAssistantMessage()
+    {
+        if (State.Items.LastOrDefault() is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+            return;
+
+        if (string.IsNullOrWhiteSpace(item.Text))
+            State.Items.RemoveAt(State.Items.Count - 1);
+        else
+        {
+            item.Status = StoryAssistantItemStatus.Applied;
+            item.UpdatedUtc = DateTime.UtcNow;
+        }
+    }
+
+    void CompleteStreamingAssistantMessages()
+    {
+        for (var index = State.Items.Count - 1; index >= 0; index--)
+        {
+            var item = State.Items[index];
+            if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
+                continue;
+
+            if (string.IsNullOrWhiteSpace(item.Text))
+                State.Items.RemoveAt(index);
+            else
+            {
+                item.Status = StoryAssistantItemStatus.Applied;
+                item.UpdatedUtc = DateTime.UtcNow;
+            }
+        }
+    }
+
+    void FailCurrentAssistantMessage(string message)
+    {
+        if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+        {
+            item.Status = StoryAssistantItemStatus.Failed;
+            item.Text = message;
+            item.UpdatedUtc = DateTime.UtcNow;
+            return;
+        }
+
+        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Failed, message));
+    }
+
+    void MarkStopped()
+    {
+        if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+        {
+            if (string.IsNullOrWhiteSpace(item.Text))
+                item.Text = "Stopped.";
+
+            item.Status = StoryAssistantItemStatus.Stopped;
+            item.UpdatedUtc = DateTime.UtcNow;
+            return;
+        }
+
+        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Stopped, "Stopped."));
+    }
+
+    public async Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken)
+    {
+        if (Document is null)
+            return;
+
+        await Registry.ReplaceAreaAsync(Document, area);
+        await ActiveChat.UpdateAsync(Document, area);
+    }
+
+    public async Task SaveAssistantStateAsync(CancellationToken cancellationToken)
+    {
+        if (Document is null)
+            return;
+
+        await Registry.ReplaceAreaAsync(Document, Area);
+    }
+
+    static StoryAssistantTranscriptItem AddMessage(StoryAssistantItemKind kind, StoryAssistantItemStatus status, string text)
+    {
+        var now = DateTime.UtcNow;
+        return new()
+        {
+            Id = $"assistant-item-{Guid.NewGuid():N}",
+            Kind = kind,
+            Status = status,
+            CreatedUtc = now,
+            UpdatedUtc = now,
+            Text = text
+        };
+    }
+}
+
 public sealed class TranscriptStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
@@ -535,9 +856,13 @@ public sealed class TranscriptStore(
                 providers.Items.ToList(),
                 new(turnId));
             var snapshot = TranscriptGraph.FindSnapshotByTurn(Document.Transcript, turnId) ?? new RpTranscriptSnapshot { Id = NextSnapshotId(), TurnId = turnId };
+            RemoveSnapshotTimelineEntries(snapshot);
             snapshot.CreatedUtc = DateTime.UtcNow;
             snapshot.Summary = result.Summary;
             snapshot.EarlierPrivateIntentContinuity = result.EarlierPrivateIntentContinuity;
+            snapshot.Facts = result.Facts.Select(CloneSnapshotFact).ToList();
+            snapshot.TimelineEntries = result.TimelineEntries.Select(CloneSnapshotTimelineEntry).ToList();
+            AddSnapshotTimelineEntries(snapshot);
             snapshot.CharacterAppearances = CloneMap(result.CharacterAppearances);
             snapshot.Scene = SessionCloner.Clone(result.Scene);
             snapshot.Trace = SessionCloner.Clone(result.Trace);
@@ -552,7 +877,7 @@ public sealed class TranscriptStore(
             }
 
             TranscriptProjector.Apply(Document);
-            await SaveTranscriptAsync();
+            await SaveTranscriptAndTimelineAsync();
         }
         catch (TranscriptGenerationException exception)
         {
@@ -768,6 +1093,83 @@ public sealed class TranscriptStore(
         await NotifyChangedAsync();
     }
 
+    async Task SaveTranscriptAndTimelineAsync()
+    {
+        if (Document is null)
+            return;
+
+        TranscriptProjector.Apply(Document);
+        await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
+        await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Timeline);
+        await NotifyChangedAsync();
+    }
+
+    void RemoveSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null || snapshot.TimelineEntries.Count == 0)
+            return;
+
+        var ids = snapshot.TimelineEntries
+            .Select(entry => entry.TimelineEntryId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.Ordinal);
+        Document.Timeline.RemoveAll(entry => ids.Contains(entry.Id));
+    }
+
+    void AddSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return;
+
+        foreach (var entry in snapshot.TimelineEntries)
+        {
+            var timelineEntry = new RpTimelineEntry
+            {
+                Id = NextTimelineId(),
+                Title = entry.Title,
+                Date = string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText,
+                Description = BuildSnapshotTimelineDescription(entry),
+                Characters = [.. entry.CharacterNames],
+                Significance = "Generated from snapshot."
+            };
+            entry.TimelineEntryId = timelineEntry.Id;
+            Document.Timeline.Add(timelineEntry);
+        }
+    }
+
+    static RpTranscriptSnapshotFact CloneSnapshotFact(RpTranscriptSnapshotFact value) => new()
+    {
+        Title = value.Title,
+        Summary = value.Summary,
+        Details = value.Details,
+        CharacterNames = [.. value.CharacterNames],
+        LocationNames = [.. value.LocationNames],
+        ItemNames = [.. value.ItemNames]
+    };
+
+    static RpTranscriptSnapshotTimelineEntry CloneSnapshotTimelineEntry(RpTranscriptSnapshotTimelineEntry value) => new()
+    {
+        TimelineEntryId = value.TimelineEntryId,
+        WhenText = value.WhenText,
+        Title = value.Title,
+        Summary = value.Summary,
+        Details = value.Details,
+        CharacterNames = [.. value.CharacterNames],
+        LocationNames = [.. value.LocationNames],
+        ItemNames = [.. value.ItemNames]
+    };
+
+    static string BuildSnapshotTimelineDescription(RpTranscriptSnapshotTimelineEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Details))
+            return entry.Summary;
+
+        if (string.IsNullOrWhiteSpace(entry.Summary))
+            return entry.Details;
+
+        return $"{entry.Summary}\n\n{entry.Details}";
+    }
+
     HashSet<string> CollectSubtreeIds(string rootId)
     {
         if (Document is null)
@@ -823,21 +1225,41 @@ public sealed class TranscriptStore(
 
     static string NextTurnId() => $"turn-{Guid.NewGuid():N}";
     static string NextSnapshotId() => $"snap-{Guid.NewGuid():N}";
+    static string NextTimelineId() => $"t-{Guid.NewGuid():N}";
 }
 
 public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.PromptLibrary;
-    public PromptLibraryState State => EnsureDefaults(Document?.PromptLibrary ?? PromptLibraryState.CreateDefault());
+    public PromptLibraryState State
+    {
+        get
+        {
+            if (Document is null)
+                return PromptLibraryState.CreateDefault();
+
+            Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
+            return Document.PromptLibrary;
+        }
+    }
 
     public IReadOnlyDictionary<string, PromptPairState> Prompts => State.Prompts;
     public IReadOnlyDictionary<string, List<ShapePromptState>> TurnShapes => State.TurnShapes;
 
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
+    public async Task MarkChangedAsync()
+    {
+        if (Document is not null)
+        {
+            Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
+            PromptLibraryService.ValidateState(Document.PromptLibrary);
+        }
+
+        await SaveActiveDocumentAsync();
+    }
 
     public void ResetPrompt(string stepId, string field)
     {
-        var defaults = PromptLibraryState.CreateDefault();
+        var defaults = PromptLibraryService.CreateDefaultState();
         if (field == "system")
             State.Prompts[stepId].System = defaults.Prompts[stepId].System;
         else
@@ -846,23 +1268,44 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
 
     public void ResetTurnShape(string stepId, string shapeId)
     {
-        var defaults = PromptLibraryState.CreateDefault();
+        var defaults = PromptLibraryService.CreateDefaultState();
         State.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value = defaults.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value;
     }
+}
 
-    static PromptLibraryState EnsureDefaults(PromptLibraryState state)
+public sealed class CharacterTraitLibraryStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+{
+    protected override RoleplayStoreArea Area => RoleplayStoreArea.CharacterTraitLibrary;
+    public CharacterTraitLibraryState State
     {
-        var defaults = PromptLibraryState.CreateDefault();
-        foreach (var pair in defaults.Prompts)
-            state.Prompts.TryAdd(pair.Key, new PromptPairState { System = pair.Value.System, User = pair.Value.User });
-
-        foreach (var pair in defaults.TurnShapes)
+        get
         {
-            if (!state.TurnShapes.ContainsKey(pair.Key))
-                state.TurnShapes[pair.Key] = pair.Value.Select(shape => new ShapePromptState { Id = shape.Id, Label = shape.Label, Value = shape.Value }).ToList();
+            if (Document is null)
+                return CharacterTraitLibraryState.CreateDefault();
+
+            Document.CharacterTraitLibrary = CharacterTraitLibraryService.NormalizeState(Document.CharacterTraitLibrary);
+            return Document.CharacterTraitLibrary;
+        }
+    }
+
+    public async Task MarkChangedAsync()
+    {
+        if (Document is not null)
+        {
+            Document.CharacterTraitLibrary = CharacterTraitLibraryService.NormalizeState(Document.CharacterTraitLibrary);
+            CharacterTraitLibraryService.ValidateState(Document.CharacterTraitLibrary);
         }
 
-        return state;
+        await SaveActiveDocumentAsync();
+    }
+
+    public async Task ResetAsync()
+    {
+        if (Document is null)
+            return;
+
+        Document.CharacterTraitLibrary = CharacterTraitLibraryService.CreateDefaultState();
+        await MarkChangedAsync();
     }
 }
 

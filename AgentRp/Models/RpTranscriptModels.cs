@@ -42,10 +42,34 @@ public sealed class RpTranscriptSnapshot
     public DateTime CreatedUtc { get; set; }
     public string Summary { get; set; } = "";
     public string EarlierPrivateIntentContinuity { get; set; } = "";
+    public List<RpTranscriptSnapshotFact> Facts { get; set; } = [];
+    public List<RpTranscriptSnapshotTimelineEntry> TimelineEntries { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpTranscriptSnapshotFact
+{
+    public string Title { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string Details { get; set; } = "";
+    public List<string> CharacterNames { get; set; } = [];
+    public List<string> LocationNames { get; set; } = [];
+    public List<string> ItemNames { get; set; } = [];
+}
+
+public sealed class RpTranscriptSnapshotTimelineEntry
+{
+    public string TimelineEntryId { get; set; } = "";
+    public string WhenText { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string Details { get; set; } = "";
+    public List<string> CharacterNames { get; set; } = [];
+    public List<string> LocationNames { get; set; } = [];
+    public List<string> ItemNames { get; set; } = [];
 }
 
 public sealed class RpSceneFrame

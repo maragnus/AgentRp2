@@ -55,6 +55,30 @@ public sealed class TranscriptFeatureTests
         var snapshot = sessionB.Chat.Transcript.SnapshotFor(activeTurnId);
         Assert.NotNull(snapshot);
         Assert.Equal("Snapshot for turn-3", snapshot!.Summary);
+        var fact = Assert.Single(snapshot.Facts);
+        Assert.Equal("Snapshot fact", fact.Title);
+        var snapshotTimelineEntry = Assert.Single(snapshot.TimelineEntries);
+        Assert.Equal("Snapshot event", snapshotTimelineEntry.Title);
+        Assert.Contains(sessionB.Chat.Timeline.Items, entry => entry.Id == snapshotTimelineEntry.TimelineEntryId && entry.Title == "Snapshot event");
+    }
+
+    [Fact]
+    public async Task CharacterTraitLibraryPersistsAcrossSessions()
+    {
+        await using var liveStore = NewLiveStore();
+        var generator = new FakeTextGenerationService();
+        var sessionA = new RoleplaySession(liveStore, generator);
+        var sessionB = new RoleplaySession(liveStore, generator);
+        await sessionA.InitializeAsync();
+        await sessionB.InitializeAsync();
+
+        sessionA.Chat.CharacterTraitLibrary.State.CoreDrives =
+        [
+            new("custom-drive", "Custom Drive", "Custom hover.")
+        ];
+        await sessionA.Chat.CharacterTraitLibrary.MarkChangedAsync();
+
+        Assert.Equal("custom-drive", sessionB.Chat.CharacterTraitLibrary.State.CoreDrives.Single().Id);
     }
 
     [Fact]
@@ -142,6 +166,29 @@ public sealed class TranscriptFeatureTests
             return Task.FromResult(new GeneratedSnapshotResult(
                 $"Snapshot for {request.TurnId}",
                 "Earlier continuity",
+                [
+                    new()
+                    {
+                        Title = "Snapshot fact",
+                        Summary = "Snapshot fact summary",
+                        Details = "Snapshot fact details",
+                        CharacterNames = ["Gemma"],
+                        LocationNames = ["Devonshire Apartment 822"],
+                        ItemNames = ["Tesla Model S Plaid"]
+                    }
+                ],
+                [
+                    new()
+                    {
+                        WhenText = "Today",
+                        Title = "Snapshot event",
+                        Summary = "Snapshot event summary",
+                        Details = "Snapshot event details",
+                        CharacterNames = ["Gemma"],
+                        LocationNames = ["Devonshire Apartment 822"],
+                        ItemNames = ["Tesla Model S Plaid"]
+                    }
+                ],
                 turn.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
                 CloneScene(turn.Scene),
                 new RpTurnTrace

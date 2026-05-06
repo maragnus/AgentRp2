@@ -11,6 +11,12 @@
             </SelectableButton>
         }
     </div>
+    @if (Type == "assistant")
+    {
+        <StoryAssistantPanel />
+    }
+    else
+    {
     <EntityListEditor TItem="EntityEntry"
                       Items="Entries"
                       SelectedId="@SelectedId"
@@ -99,6 +105,7 @@
             <div class="empty-preview"><FaIcon Name="@ActiveIcon" /><span>Select an entity to edit, or add a new one</span><AppButton Variant="secondary" OnClick="@(_ => AddEntity())"><FaIcon Name="plus" />Add @ActiveSingular</AppButton></div>
         </EmptySelectionTemplate>
     </EntityListEditor>
+    }
 </ModalShell>
 
 @if (CharacterWizardOpen && SelectedCharacter is not null)
@@ -116,7 +123,8 @@
         ("characters", "Characters", "users"),
         ("locations", "Locations", "map-pin"),
         ("items", "Items", "box"),
-        ("timeline", "Timeline", "clock")
+        ("timeline", "Timeline", "clock"),
+        ("assistant", "Assistant", "sparkles")
     ];
 
     [Parameter] public string InitialType { get; set; } = "characters";
@@ -145,7 +153,8 @@
         "characters" => Characters.Select(character => new EntityEntry(character.Id, character.Name, character.Summary, character.ImageId, character.InScene)),
         "locations" => Locations.Select(location => new EntityEntry(location.Id, location.Name, location.Summary, location.ImageId, location.IsActive)),
         "items" => Items.Select(item => new EntityEntry(item.Id, item.Name, item.Summary, item.ImageId, item.InScene)),
-        _ => Timeline.Select(entry => new EntityEntry(entry.Id, entry.Title, entry.Date, "", false))
+        "timeline" => Timeline.Select(entry => new EntityEntry(entry.Id, entry.Title, entry.Date, "", false)),
+        _ => []
     };
 
     protected override void OnInitialized()
@@ -165,7 +174,7 @@
     void SelectType(string type)
     {
         Type = type;
-        SelectedId = Entries.FirstOrDefault()?.Id;
+        SelectedId = type == "assistant" ? null : Entries.FirstOrDefault()?.Id;
     }
 
     void SetSelected(string? id) => SelectedId = id;
@@ -224,7 +233,8 @@
         "characters" => Characters.Count,
         "locations" => Locations.Count,
         "items" => Items.Count,
-        _ => Timeline.Count
+        "timeline" => Timeline.Count,
+        _ => Session.Chat.StoryAssistant.Items.Count
     };
 
     async Task DeleteSelected()

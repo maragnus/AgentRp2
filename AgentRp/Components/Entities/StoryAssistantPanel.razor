@@ -1,0 +1,298 @@
+@implements IDisposable
+@inject IModelCapabilityCatalog CapabilityCatalog
+
+<div class="story-assistant">
+    <div class="story-assistant-toolbar">
+        <div class="story-assistant-model">
+            <FaIcon Name="sparkles" />
+            <span>@ModelStatus</span>
+        </div>
+        <AppSelect Value="@Session.Chat.StoryAssistant.State.ReviewMode.ToString()" ValueChanged="SetReviewMode" Class="story-assistant-review">
+            <option value="@StoryAssistantReviewMode.ReviewAll">Every change</option>
+            <option value="@StoryAssistantReviewMode.ReviewMajor">Major changes</option>
+            <option value="@StoryAssistantReviewMode.AutoApprove">Apply automatically</option>
+        </AppSelect>
+        <AppButton Variant="secondary" Disabled="@(Session.Chat.StoryAssistant.Items.Count == 0 || Session.Chat.StoryAssistant.IsBusy)" OnClick="@(_ => ConfirmClear = true)">
+            <FaIcon Name="eraser" /> Clear
+        </AppButton>
+    </div>
+
+    @if (!CanRun)
+    {
+        <div class="story-assistant-capability">
+            <FaIcon Name="circle-alert" />
+            <span>The active model needs streaming text and tools for the Story Assistant.</span>
+        </div>
+    }
+
+    <div class="story-assistant-scroll">
+        @if (Session.Chat.StoryAssistant.Items.Count == 0)
+        {
+            <div class="story-assistant-empty">
+                <FaIcon Name="wand-sparkles" />
+                <span>Ask for a cast, a location, relationship passes, or timeline cleanup.</span>
+            </div>
+        }
+        else
+        {
+            @foreach (var item in Session.Chat.StoryAssistant.Items)
+            {
+                <div @key="item.Id" class="@ItemClass(item)">
+                    @if (item.Kind is StoryAssistantItemKind.UserMessage or StoryAssistantItemKind.AssistantMessage)
+                    {
+                        @if (IsThinking(item) || item.Kind == StoryAssistantItemKind.UserMessage)
+                        {
+                            <div class="story-assistant-bubble @(IsThinking(item) ? "is-thinking" : "")">@(IsThinking(item) ? "Thinking..." : item.Text)</div>
+                        }
+                        else
+                        {
+                            <div class="story-assistant-bubble is-markdown">
+                                <MarkdownContent Markdown="@item.Text" Class="story-assistant-markdown" />
+                            </div>
+                        }
+                    }
+                    else if (item.Kind == StoryAssistantItemKind.Question)
+                    {
+                        <div class="story-tool-card">
+                            <div class="story-tool-head">
+                                <span><FaIcon Name="message-circle-question" /> @item.Question.Prompt</span>
+                                <Badge Tone="@ToneFor(item.Status)">@StatusText(item.Status)</Badge>
+                            </div>
+                            @if (item.Status == StoryAssistantItemStatus.Pending)
+                            {
+                                @if (item.Question.Choices.Count > 0)
+                                {
+                                    <div class="story-question-choices">
+                                        @foreach (var choice in item.Question.Choices)
+                                        {
+                                            <BusyButton @key="choice.Id" Variant="secondary" OnClick="@(() => AnswerQuestion(item.Id, choice.Label))">@choice.Label</BusyButton>
+                                        }
+                                    </div>
+                                }
+                                @if (item.Question.AllowsFreeform || item.Question.Choices.Count == 0)
+                                {
+                                    <div class="story-review-note">
+                                        <AppTextarea Rows="2" Value="@NoteFor(item.Id)" ValueChanged="value => SetNote(item.Id, value)" Placeholder="Your answer" />
+                                        <BusyButton Variant="primary" Disabled="@string.IsNullOrWhiteSpace(NoteFor(item.Id))" OnClick="@(() => AnswerQuestion(item.Id, NoteFor(item.Id)))">Send</BusyButton>
+                                    </div>
+                                }
+                            }
+                            else if (!string.IsNullOrWhiteSpace(item.Question.Answer))
+                            {
+                                <p class="story-tool-result">@item.Question.Answer</p>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="story-tool-card">
+                            <div class="story-tool-head">
+                                <span><FaIcon Name="@IconFor(item)" /> @item.Title</span>
+                                @if (ShowStatusBadge(item))
+                                {
+                                    <Badge Tone="@ToneFor(item.Status)">@StatusText(item.Status)</Badge>
+                                }
+                            </div>
+                            @if (item.Diffs.Count > 0 && item.Operation == StoryAssistantOperationKind.Create)
+                            {
+                                <details class="story-tool-details">
+                                    <summary>@item.Diffs.Count field@(item.Diffs.Count == 1 ? "" : "s")</summary>
+                                    <div class="story-created-list">
+                                        @foreach (var diff in item.Diffs)
+                                        {
+                                            <div @key="diff.Field" class="story-created-row">
+                                                <strong>@diff.Label</strong>
+                                                <span>@Display(diff.After)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </details>
+                            }
+                            else if (item.Diffs.Count > 0)
+                            {
+                                <details class="story-tool-details">
+                                    <summary>@item.Diffs.Count field@(item.Diffs.Count == 1 ? "" : "s")</summary>
+                                    <div class="story-diff-list">
+                                        @foreach (var diff in item.Diffs)
+                                        {
+                                            <div @key="diff.Field" class="story-diff-row">
+                                                <strong>@diff.Label</strong>
+                                                <span>@Display(diff.Before)</span>
+                                                <FaIcon Name="arrow-right" />
+                                                <span>@Display(diff.After)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </details>
+                            }
+                            @if (item.Status == StoryAssistantItemStatus.NeedsReview)
+                            {
+                                <div class="story-review-note">
+                                    <AppTextarea Rows="2" Value="@NoteFor(item.Id)" ValueChanged="value => SetNote(item.Id, value)" Placeholder="Optional guidance" />
+                                    <div class="story-review-actions">
+                                        <BusyButton Variant="primary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.Accept))">Accept</BusyButton>
+                                        <BusyButton Variant="secondary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.TryAgain))">Try Again</BusyButton>
+                                        <BusyButton Variant="danger" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.Reject))">Reject</BusyButton>
+                                    </div>
+                                </div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(item.DecisionReason))
+                            {
+                                <p class="story-tool-result">@item.DecisionReason</p>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="story-assistant-composer">
+        <AppTextarea Rows="3" Value="@Draft" ValueChanged="value => Draft = value" Placeholder="Ask the assistant to build or revise story entities" />
+        <div class="story-assistant-actions">
+            @if (Session.Chat.StoryAssistant.IsBusy)
+            {
+                <span class="composer-busy-status"><span class="spinner"></span>@Session.Chat.StoryAssistant.BusyMessage</span>
+                <BusyButton Variant="secondary" OnClick="Stop" Title="Stop assistant run" AriaLabel="Stop assistant run">
+                    <FaIcon Name="square" /> Stop
+                </BusyButton>
+            }
+            <span class="toolbar-spacer"></span>
+            <BusyButton Variant="primary" Disabled="@(!CanRun || string.IsNullOrWhiteSpace(Draft) || Session.Chat.StoryAssistant.IsBusy)" OnClick="Send">
+                <FaIcon Name="send" /> Send
+            </BusyButton>
+        </div>
+    </div>
+</div>
+
+@if (ConfirmClear)
+{
+    <ConfirmDialog Title="Clear assistant transcript?"
+                   Body="Clear the Story Assistant chat and provider conversation. Story entities will stay unchanged."
+                   Icon="eraser"
+                   ConfirmText="Clear"
+                   ConfirmVariant="rose"
+                   OnCancel="@(() => ConfirmClear = false)"
+                   OnConfirm="Clear" />
+}
+
+@code {
+    string Draft = "";
+    bool ConfirmClear;
+    readonly Dictionary<string, string> Notes = [];
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+
+    ActiveTextModel? ActiveModel
+    {
+        get
+        {
+            foreach (var provider in Session.Providers.Items)
+                CapabilityCatalog.ApplyResolvedCapabilities(provider);
+
+            return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items.ToList());
+        }
+    }
+
+    bool CanRun => ActiveModel is { Capabilities.CanGenerateStreamingText: true, Capabilities.Tools: true };
+    string ModelStatus => ActiveModel is null
+        ? "No active model"
+        : string.IsNullOrWhiteSpace(ActiveModel.Model.DisplayName) ? ActiveModel.Model.Id : ActiveModel.Model.DisplayName;
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.StoryAssistant.Changed += OnStoreChanged;
+        Session.Providers.Changed += OnStoreChanged;
+    }
+
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    async Task Send()
+    {
+        var text = Draft;
+        Draft = "";
+        await Session.Chat.StoryAssistant.SendAsync(text);
+    }
+
+    async Task SetReviewMode(string value)
+    {
+        if (Enum.TryParse<StoryAssistantReviewMode>(value, out var mode))
+            await Session.Chat.StoryAssistant.SetReviewModeAsync(mode);
+    }
+
+    async Task Clear()
+    {
+        ConfirmClear = false;
+        await Session.Chat.StoryAssistant.ClearAsync();
+    }
+
+    async Task Stop()
+    {
+        await Session.Chat.StoryAssistant.StopAsync();
+    }
+
+    string NoteFor(string id) => Notes.GetValueOrDefault(id, "");
+
+    void SetNote(string id, string value) => Notes[id] = value;
+
+    async Task Decide(string id, StoryAssistantDecisionKind kind)
+    {
+        await Session.Chat.StoryAssistant.ResolveReviewAsync(id, kind, NoteFor(id));
+        Notes.Remove(id);
+    }
+
+    async Task AnswerQuestion(string id, string answer)
+    {
+        await Session.Chat.StoryAssistant.ResolveQuestionAsync(id, answer);
+        Notes.Remove(id);
+    }
+
+    static string ItemClass(StoryAssistantTranscriptItem item) => item.Kind switch
+    {
+        StoryAssistantItemKind.UserMessage => "story-assistant-item is-user",
+        StoryAssistantItemKind.AssistantMessage => "story-assistant-item is-assistant",
+        _ => "story-assistant-item is-tool"
+    };
+
+    static bool IsThinking(StoryAssistantTranscriptItem item) =>
+        item.Kind == StoryAssistantItemKind.AssistantMessage
+        && item.Status == StoryAssistantItemStatus.Streaming
+        && string.IsNullOrWhiteSpace(item.Text);
+
+    static bool ShowStatusBadge(StoryAssistantTranscriptItem item) => item.Status != StoryAssistantItemStatus.Read;
+
+    static string IconFor(StoryAssistantTranscriptItem item) => item.EntityType switch
+    {
+        "character" => "user",
+        "location" => "map-pin",
+        "item" => "box",
+        "timeline" => "clock",
+        "relationship" => "users",
+        _ => "wrench"
+    };
+
+    static string ToneFor(StoryAssistantItemStatus status) => status switch
+    {
+        StoryAssistantItemStatus.Accepted or StoryAssistantItemStatus.Applied or StoryAssistantItemStatus.Answered => "emerald",
+        StoryAssistantItemStatus.Read => "blue",
+        StoryAssistantItemStatus.NeedsReview or StoryAssistantItemStatus.RetryRequested or StoryAssistantItemStatus.Stopped => "amber",
+        StoryAssistantItemStatus.Rejected or StoryAssistantItemStatus.Failed => "rose",
+        _ => "blue"
+    };
+
+    static string StatusText(StoryAssistantItemStatus status) => status switch
+    {
+        StoryAssistantItemStatus.NeedsReview => "Review",
+        StoryAssistantItemStatus.RetryRequested => "Try again",
+        StoryAssistantItemStatus.Stopped => "Stopped",
+        _ => status.ToString()
+    };
+
+    static string Display(string value) => string.IsNullOrWhiteSpace(value) ? "Not set" : value;
+
+    public void Dispose()
+    {
+        Session.Chat.StoryAssistant.Changed -= OnStoreChanged;
+        Session.Providers.Changed -= OnStoreChanged;
+    }
+}

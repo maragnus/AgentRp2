@@ -1,8 +1,10 @@
 #pragma warning disable OPENAI001
 
 using System.ClientModel;
+using System.Text.Json.Nodes;
 using System.Runtime.CompilerServices;
 using AgentRp.Models;
+using AgentRp.Serialization;
 using AgentRp.Session;
 using Microsoft.Extensions.AI;
 using OpenAI.Responses;
@@ -38,11 +40,52 @@ public sealed record ModelStructuredCompletion<T>(T Value, string Text, int Inpu
 
 public sealed record ResponseImageStreamingUpdate(byte[]? ImageBytes, string ContentType, string? RevisedPrompt, int InputTokens, int OutputTokens, string ResponseId, bool Completed);
 
+public enum ModelAssistantInputKind
+{
+    UserMessage,
+    FunctionCallOutput
+}
+
+public enum ModelAssistantStreamingUpdateKind
+{
+    TextDelta,
+    ToolCall,
+    Completed
+}
+
+public sealed record ModelAssistantInput(ModelAssistantInputKind Kind, string Content, string ToolCallId = "");
+
+public sealed record ModelAssistantTool(string Name, string Description, JsonObject Parameters);
+
+public sealed record ModelAssistantRequest(
+    AiProvider Provider,
+    AiProviderModel Model,
+    ModelGenerationCapabilities Capabilities,
+    ModelTuningStepState Tuning,
+    string Instructions,
+    string ConversationId,
+    IReadOnlyList<ModelAssistantInput> Inputs,
+    IReadOnlyList<ModelAssistantTool> Tools,
+    string OperationName);
+
+public sealed record ModelAssistantStreamingUpdate(
+    ModelAssistantStreamingUpdateKind Kind,
+    string TextDelta = "",
+    string ToolCallId = "",
+    string ToolName = "",
+    string ToolArgumentsJson = "",
+    string ResponseId = "",
+    string ConversationId = "",
+    int InputTokens = 0,
+    int OutputTokens = 0);
+
 public interface IModelGenerationClient
 {
     Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
+    Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -101,6 +144,58 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         }
 
         return ToCompletion(await EnumerateUpdates(updates, cancellationToken).ToChatResponseAsync(cancellationToken));
+    }
+
+    public async Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default)
+    {
+        var result = await clientFactory.GetConversationClient(provider, model).CreateConversationAsync(
+            BinaryContent.Create(BinaryData.FromString("{}")),
+            null);
+        var json = JsonNode.Parse(result.GetRawResponse().Content.ToString());
+        return json?["id"]?.GetValue<string>() ?? "";
+    }
+
+    public async IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(
+        ModelAssistantRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (!request.Capabilities.CanGenerateStreamingText || !request.Capabilities.Tools)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' must support streaming text and tools.");
+
+        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildAssistantOptions(request), cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (update is StreamingResponseOutputTextDeltaUpdate text)
+            {
+                yield return new(ModelAssistantStreamingUpdateKind.TextDelta, TextDelta: text.Delta);
+            }
+            else if (update is StreamingResponseOutputItemDoneUpdate done && done.Item is FunctionCallResponseItem functionCall)
+            {
+                yield return new(
+                    ModelAssistantStreamingUpdateKind.ToolCall,
+                    ToolCallId: functionCall.CallId,
+                    ToolName: functionCall.FunctionName,
+                    ToolArgumentsJson: functionCall.FunctionArguments.ToString());
+            }
+            else if (update is StreamingResponseCompletedUpdate completed)
+            {
+                var usage = completed.Response.Usage;
+                yield return new(
+                    ModelAssistantStreamingUpdateKind.Completed,
+                    ResponseId: completed.Response.Id,
+                    ConversationId: completed.Response.ConversationOptions?.ConversationId ?? request.ConversationId,
+                    InputTokens: usage?.InputTokenCount ?? 0,
+                    OutputTokens: usage?.OutputTokenCount ?? 0);
+            }
+            else if (update is StreamingResponseFailedUpdate failed)
+            {
+                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses assistant stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}");
+            }
+            else if (update is StreamingResponseErrorUpdate error)
+            {
+                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a Responses assistant stream error: {error.Message}");
+            }
+        }
     }
 
     public async IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(
@@ -195,6 +290,41 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
             parts.Add(ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(image.Bytes), ResponseImageDetailLevel.High));
 
         options.InputItems.Add(ResponseItem.CreateUserMessageItem(parts));
+        return options;
+    }
+
+    static CreateResponseOptions BuildAssistantOptions(ModelAssistantRequest request)
+    {
+        var tuning = TextModelTuningCatalog.Filter(request.Tuning, request.Capabilities);
+        var options = new CreateResponseOptions
+        {
+            Model = request.Model.Id,
+            Instructions = request.Instructions,
+            ConversationOptions = string.IsNullOrWhiteSpace(request.ConversationId) ? null : new(request.ConversationId),
+            StoredOutputEnabled = true,
+            StreamingEnabled = true,
+            ParallelToolCallsEnabled = false,
+            ToolChoice = ResponseToolChoice.CreateAutoChoice(),
+            Temperature = tuning.Temperature,
+            TopP = tuning.TopP,
+            MaxOutputTokenCount = tuning.MaxOutputTokenCount
+        };
+
+        foreach (var tool in request.Tools)
+            options.Tools.Add(ResponseTool.CreateFunctionTool(
+                tool.Name,
+                BinaryData.FromString(tool.Parameters.ToJsonString(AppJsonSerializerOptions.Web)),
+                false,
+                tool.Description));
+
+        foreach (var input in request.Inputs)
+        {
+            if (input.Kind == ModelAssistantInputKind.UserMessage)
+                options.InputItems.Add(ResponseItem.CreateUserMessageItem(input.Content));
+            else
+                options.InputItems.Add(ResponseItem.CreateFunctionCallOutputItem(input.ToolCallId, input.Content));
+        }
+
         return options;
     }
 

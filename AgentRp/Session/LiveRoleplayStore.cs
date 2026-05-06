@@ -13,7 +13,9 @@ public enum RoleplayStoreArea
     Timeline,
     Images,
     Transcript,
+    StoryAssistant,
     PromptLibrary,
+    CharacterTraitLibrary,
     ModelTuning
 }
 
@@ -187,7 +189,8 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 Items = template?.Items.Select(SessionCloner.Clone).ToList() ?? [],
                 Timeline = template?.Timeline.Select(SessionCloner.Clone).ToList() ?? [],
                 Images = template?.Images.Select(SessionCloner.Clone).ToList() ?? [],
-                Transcript = new()
+                Transcript = new(),
+                StoryAssistant = new()
             };
             document.Transcript.RootScene.LocationName = location;
             document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault(item => item.Name == location)?.Id
@@ -307,8 +310,14 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             case RoleplayStoreArea.Transcript:
                 target.Transcript = SessionCloner.Clone(source.Transcript);
                 break;
+            case RoleplayStoreArea.StoryAssistant:
+                target.StoryAssistant = SessionCloner.Clone(source.StoryAssistant);
+                break;
             case RoleplayStoreArea.PromptLibrary:
                 target.PromptLibrary = SessionCloner.Clone(source.PromptLibrary);
+                break;
+            case RoleplayStoreArea.CharacterTraitLibrary:
+                target.CharacterTraitLibrary = SessionCloner.Clone(source.CharacterTraitLibrary);
                 break;
             case RoleplayStoreArea.ModelTuning:
                 target.ModelTuning = SessionCloner.Clone(source.ModelTuning);

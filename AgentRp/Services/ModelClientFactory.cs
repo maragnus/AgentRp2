@@ -6,6 +6,7 @@ using System.Text;
 using AgentRp.Models;
 using Microsoft.Extensions.AI;
 using OpenAI;
+using OpenAI.Conversations;
 using OpenAI.Responses;
 
 namespace AgentRp.Services;
@@ -14,6 +15,7 @@ public interface IModelClientFactory
 {
     IChatClient GetChatClient(AiProvider provider, AiProviderModel model);
     ResponsesClient GetResponsesClient(AiProvider provider, AiProviderModel model);
+    ConversationClient GetConversationClient(AiProvider provider, AiProviderModel model);
 }
 
 public sealed class ModelClientFactory : IModelClientFactory
@@ -26,6 +28,9 @@ public sealed class ModelClientFactory : IModelClientFactory
 
     public ResponsesClient GetResponsesClient(AiProvider provider, AiProviderModel model) =>
         GetEntry(provider, model).ResponsesClient;
+
+    public ConversationClient GetConversationClient(AiProvider provider, AiProviderModel model) =>
+        GetEntry(provider, model).ConversationClient;
 
     ClientEntry GetEntry(AiProvider provider, AiProviderModel model)
     {
@@ -42,11 +47,11 @@ public sealed class ModelClientFactory : IModelClientFactory
             if (clients.TryGetValue(key, out var entry))
                 return entry;
 
-            var responsesClient = new OpenAIClient(
+            var openAiClient = new OpenAIClient(
                 new ApiKeyCredential(provider.ApiKey),
-                new OpenAIClientOptions { Endpoint = new Uri(endpoint) })
-                .GetResponsesClient();
-            entry = new(responsesClient, responsesClient.AsIChatClient(model.Id));
+                new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+            var responsesClient = openAiClient.GetResponsesClient();
+            entry = new(responsesClient, responsesClient.AsIChatClient(model.Id), openAiClient.GetConversationClient());
             clients[key] = entry;
             return entry;
         }
@@ -86,5 +91,5 @@ public sealed class ModelClientFactory : IModelClientFactory
     }
 
     sealed record ClientCacheKey(string ProviderType, string ProviderId, string ModelId, string Endpoint, string ApiKeyFingerprint);
-    sealed record ClientEntry(ResponsesClient ResponsesClient, IChatClient ChatClient);
+    sealed record ClientEntry(ResponsesClient ResponsesClient, IChatClient ChatClient, ConversationClient ConversationClient);
 }
