@@ -11,7 +11,8 @@ public sealed record GenerateTurnRequest(
     string Guidance,
     string RequestedTurnShape,
     string RequestedActorCharacterId,
-    string RequestedActorName);
+    string RequestedActorName,
+    bool RequestedNarrator = false);
 
 public sealed record GenerateSnapshotRequest(string TurnId);
 
@@ -76,7 +77,8 @@ public sealed class TextGenerationService(
                 request.ParentTurnId,
                 request.Guidance,
                 request.RequestedTurnShape,
-                document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId));
+                document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId),
+                request.RequestedNarrator);
             if (!selection.Capabilities.CanGenerateStructuredText)
                 return await GenerateDumbProseTurnAsync(document, selection, request, context, trace, cancellationToken);
 
@@ -87,7 +89,8 @@ public sealed class TextGenerationService(
                 request.ParentTurnId,
                 request.Guidance,
                 request.RequestedTurnShape,
-                document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id));
+                document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
+                request.RequestedNarrator);
             var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, cancellationToken);
             var prose = await RunProseStepAsync(document, selection, selectedContext, selectedActor, plan, trace, cancellationToken);
             FinalizeTrace(trace, "completed");
@@ -195,18 +198,20 @@ public sealed class TextGenerationService(
         RpTurnTrace trace,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.RequestedActorCharacterId))
+        if (string.IsNullOrWhiteSpace(request.RequestedActorCharacterId) && !request.RequestedNarrator)
             throw new InvalidOperationException("Generating transcript prose failed because Respond As is required when the active model has structured output disabled.");
 
-        var actor = (request.RequestedActorCharacterId, request.RequestedActorName);
+        (string Id, string Name) actor = request.RequestedNarrator
+            ? ("", "Narrator")
+            : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
         var prose = await RunProseStepAsync(document, selection, context, actor, plan, trace, cancellationToken);
         FinalizeTrace(trace, "completed");
 
         var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
         return new(
-            request.RequestedActorCharacterId,
-            request.RequestedActorName,
+            actor.Id,
+            actor.Name,
             new RpTurnPlan
             {
                 TurnShape = ResolveTurnShape(plan.TurnShape, context.RequestedTurnShape),
@@ -265,6 +270,24 @@ public sealed class TextGenerationService(
         RpTurnTrace trace,
         CancellationToken cancellationToken)
     {
+        if (request.RequestedNarrator)
+        {
+            var explicitSelection = new SelectionResponse("Narrator", "User override");
+            var now = DateTime.UtcNow;
+            trace.Steps.Add(CreateStepTrace(
+                "selection",
+                "Selection",
+                selection,
+                now,
+                now,
+                "User override",
+                "Narrator",
+                new ModelTextCompletion("User override", 0, 0, ""),
+                JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
+                ""));
+            return ("", "Narrator");
+        }
+
         if (!string.IsNullOrWhiteSpace(request.RequestedActorCharacterId))
         {
             var explicitSelection = new SelectionResponse(request.RequestedActorName, "User override");

@@ -2,6 +2,7 @@ using System.Text.Json;
 using AgentRp.Data;
 using AgentRp.Models;
 using AgentRp.Serialization;
+using AgentRp.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Session;
@@ -114,6 +115,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             Images = Deserialize(row.ImagesJson, new List<GalleryImage>()),
             Transcript = Deserialize(row.MessagesJson, new RpTranscriptState()),
             StoryAssistant = Deserialize(row.StoryAssistantJson, new StoryAssistantState()),
+            NarratorProfile = Deserialize(row.NarratorProfileJson, NarratorProfileState.CreateDefault()),
             PromptLibrary = Deserialize(row.PromptLibraryJson, PromptLibraryState.CreateDefault()),
             CharacterTraitLibrary = Deserialize(row.CharacterTraitLibraryJson, CharacterTraitLibraryState.CreateDefault()),
             ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault())
@@ -238,6 +240,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         TranscriptProjector.Apply(document, now);
         row.MessagesJson = Serialize(document.Transcript);
         row.StoryAssistantJson = Serialize(document.StoryAssistant);
+        row.NarratorProfileJson = Serialize(NarratorProfileService.NormalizeState(document.NarratorProfile));
         row.PromptLibraryJson = Serialize(document.PromptLibrary);
         row.CharacterTraitLibraryJson = Serialize(document.CharacterTraitLibrary);
         row.ModelTuningJson = Serialize(document.ModelTuning);

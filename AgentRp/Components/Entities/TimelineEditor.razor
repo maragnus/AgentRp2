@@ -8,26 +8,15 @@
         <FieldRow Label="Characters"><input class="field" value="@string.Join(", ", Entry.Characters)" @onchange="UpdateCharacters" /></FieldRow>
         <FieldRow Label="Significance"><textarea class="field" rows="4" @bind="Entry.Significance" @bind:after="Changed"></textarea></FieldRow>
     </Section>
-    <div class="entity-form-actions">
-        <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
-    </div>
 </div>
 
-@if (ConfirmDelete)
-{
-    <ConfirmDialog Title="Delete timeline entry?" Body="@($"Remove {Entry.Title}.")" OnCancel="@(() => ConfirmDelete = false)" OnConfirm="Delete" />
-}
-
 @code {
-    bool ConfirmDelete;
     [Parameter] public RpTimelineEntry Entry { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
-    [Parameter] public EventCallback OnDelete { get; set; }
     Task Changed() => OnChanged.InvokeAsync();
     async Task UpdateCharacters(ChangeEventArgs args)
     {
         Entry.Characters = (args.Value?.ToString() ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         await Changed();
     }
-    async Task Delete() { ConfirmDelete = false; await OnDelete.InvokeAsync(); }
 }

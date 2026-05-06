@@ -13,7 +13,17 @@
         }
     </aside>
     <main class="@MainCssClass">
-        @MainContent
+        @if (MainHeader is not null)
+        {
+            <div class="@MainHeaderCssClass">@MainHeader</div>
+        }
+        <div class="@MainScrollCssClass">
+            @MainContent
+        </div>
+        @if (MainFooter is not null)
+        {
+            <div class="@MainFooterCssClass">@MainFooter</div>
+        }
     </main>
 </div>
 
@@ -23,14 +33,22 @@
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? RailClass { get; set; }
     [Parameter] public string? MainClass { get; set; }
+    [Parameter] public string? MainHeaderClass { get; set; }
+    [Parameter] public string? MainScrollClass { get; set; }
+    [Parameter] public string? MainFooterClass { get; set; }
     [Parameter] public RenderFragment? RailHeader { get; set; }
     [Parameter] public RenderFragment? RailContent { get; set; }
     [Parameter] public RenderFragment? RailFooter { get; set; }
+    [Parameter] public RenderFragment? MainHeader { get; set; }
     [Parameter] public RenderFragment? MainContent { get; set; }
+    [Parameter] public RenderFragment? MainFooter { get; set; }
 
     string CssClass => $"modal-split {Class}".Trim();
     string RailCssClass => $"modal-split-rail {RailClass}".Trim();
     string MainCssClass => $"modal-split-main {MainClass}".Trim();
+    string MainHeaderCssClass => $"modal-split-main-head {MainHeaderClass}".Trim();
+    string MainScrollCssClass => $"modal-split-main-scroll {MainScrollClass}".Trim();
+    string MainFooterCssClass => $"modal-split-main-footer {MainFooterClass}".Trim();
     string Style => $"--modal-split-height:{Height};--modal-split-rail-width:{RailWidth};";
     string RailStyle => $"width:{RailWidth};flex-basis:{RailWidth};";
 }

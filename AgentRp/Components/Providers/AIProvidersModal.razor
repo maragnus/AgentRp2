@@ -128,8 +128,8 @@
                         {
                             <ProviderModelList Models="OnboardModels"
                                                ShowHeader="true"
-                                               ShowAdvanced="@ShowAdvancedModels"
-                                               ShowAdvancedChanged="value => ShowAdvancedModels = value"
+                                               HideNeedsSetup="@HideModelsNeedingSetup"
+                                               HideNeedsSetupChanged="value => HideModelsNeedingSetup = value"
                                                OnChanged="OnOnboardModelChanged"
                                                OnSetup="model => OpenSetup(BuildOnboardProvider(), model)" />
                         }
@@ -270,8 +270,8 @@
                         <Section Title="Models" Hint="Enable models for Chat, Image Gen, or both." Class="provider-section">
                             <ChildContent>
                                 <ProviderModelList Models="Selected.Models"
-                                                   ShowAdvanced="@ShowAdvancedModels"
-                                                   ShowAdvancedChanged="value => ShowAdvancedModels = value"
+                                                   HideNeedsSetup="@HideModelsNeedingSetup"
+                                                   HideNeedsSetupChanged="value => HideModelsNeedingSetup = value"
                                                    OnChanged="SaveSelected"
                                                    OnSetup="model => OpenSetup(Selected, model)" />
                             </ChildContent>
@@ -359,7 +359,7 @@
     string OnboardEndpoint = "";
     bool? TestOk;
     bool ConfirmDelete;
-    bool ShowAdvancedModels;
+    bool HideModelsNeedingSetup;
     AiProvider? SetupProvider;
     AiProviderModel? SetupModel;
     bool SetupChat;
@@ -664,7 +664,7 @@
 
         CapabilityCatalog.SaveUserCapabilities(SetupProvider.Type, SetupModel.Id, capabilities);
         SetupModel.Capabilities = CapabilityCatalog.Resolve(SetupProvider, SetupModel);
-        AiProviderModelSelectionRules.SynchronizeEnabled(SetupModel);
+        AiProviderModelSelectionRules.SelectAvailableRoles(SetupModel);
         if (Providers.Any(provider => provider.Id == SetupProvider.Id))
             await Session.Providers.MarkChangedAsync();
 

@@ -39,6 +39,13 @@ public static class AiProviderModelSelectionRules
         model.ActiveText = false;
     }
 
+    public static void SelectAvailableRoles(AiProviderModel model)
+    {
+        model.Text = HasChatRole(model);
+        model.Image = HasImageRole(model);
+        SynchronizeEnabled(model);
+    }
+
     public static void SynchronizeEnabled(AiProviderModel model)
     {
         model.Text = model.Text && HasChatRole(model);

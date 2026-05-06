@@ -1,0 +1,205 @@
+<ModalShell Title="Narrator" Subtitle="Story voice" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="Close">
+    <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="character-wizard-rail">
+        <RailHeader>
+            <div class="character-wizard-profile">
+                <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
+                <span class="character-wizard-profile-name">Narrator</span>
+                <div class="character-wizard-role-list">
+                    <span class="character-wizard-mini-role">@NarratorProfileService.VoiceLabel(Profile.VoicePreset)</span>
+                </div>
+            </div>
+        </RailHeader>
+        <RailContent>
+            @for (var i = 0; i < Steps.Length; i++)
+            {
+                var index = i;
+                var step = Steps[index];
+                <SidebarTabRow @key="step.Id"
+                               Title="@step.Label"
+                               Summary="@step.Sub"
+                               Active="@(Step == index)"
+                               Done="@StepDone(index)"
+                               Class="character-wizard-step"
+                               OnClick="@(_ => GoToStep(index))">
+                    <IndexContent>
+                        @if (StepDone(index) && Step != index)
+                        {
+                            <FaIcon Name="check" />
+                        }
+                        else
+                        {
+                            @(index + 1)
+                        }
+                    </IndexContent>
+                </SidebarTabRow>
+            }
+        </RailContent>
+        <RailFooter>
+            <div class="character-wizard-progress">
+                <div>
+                    <span>Completeness</span>
+                    <span>@DoneCount/@Steps.Length</span>
+                </div>
+                <ProgressBar Value="@DoneCount" Max="@Steps.Length" Class="character-wizard-progress-track" />
+            </div>
+        </RailFooter>
+        <MainContent>
+            <ModalStackLayout BodyClass="character-wizard-step-content">
+                <Header>
+                    <div class="character-wizard-main-head">
+                        <h3>@Steps[Step].Label</h3>
+                        <p>@Steps[Step].Sub</p>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (Step == 0)
+                    {
+                        <div class="character-wizard-step-stack is-roomy">
+                            <CharacterOptionGrid Title="Voice"
+                                                 Columns="2"
+                                                 Items="VoiceOptions"
+                                                 Selected="@Profile.VoicePreset"
+                                                 OnSelect="SetVoice" />
+                            <Section Title="Custom Guidance" Hint="— optional">
+                                <textarea class="character-wizard-textarea" rows="4" placeholder="Anything this narrator should consistently honor?" @bind="Profile.CustomGuidance" @bind:event="oninput"></textarea>
+                            </Section>
+                        </div>
+                    }
+                    else if (Step == 1)
+                    {
+                        <div class="character-wizard-step-stack is-roomy">
+                            @SliderSection("Scene Setup", NarratorProfileService.SetupDepthText(Profile.SetupDepth), Profile.SetupDepth, value => Profile.SetupDepth = value)
+                            @SliderSection("Visual Detail", NarratorProfileService.VisualDetailText(Profile.VisualDetail), Profile.VisualDetail, value => Profile.VisualDetail = value)
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="character-wizard-step-stack is-roomy">
+                            @SliderSection("Transition Context", NarratorProfileService.TransitionContextText(Profile.TransitionContext), Profile.TransitionContext, value => Profile.TransitionContext = value)
+                            @SliderSection("Foreshadowing", NarratorProfileService.ForeshadowingText(Profile.Foreshadowing), Profile.Foreshadowing, value => Profile.Foreshadowing = value)
+                            @SliderSection("Story Direction", NarratorProfileService.DirectionText(Profile.DirectionStrength), Profile.DirectionStrength, value => Profile.DirectionStrength = value)
+                        </div>
+                    }
+                </ChildContent>
+                <Footer>
+                    @if (Step > 0)
+                    {
+                        <AppButton Variant="secondary" Size="sm" OnClick="Back"><FaIcon Name="chevron-left" />Back</AppButton>
+                    }
+                    <span class="modal-action-spacer"></span>
+                    @if (Step == Steps.Length - 1)
+                    {
+                        <AppButton Variant="primary" Size="sm" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
+                    }
+                    else
+                    {
+                        <AppButton Variant="primary" Size="sm" OnClick="Next">Next<FaIcon Name="chevron-right" /></AppButton>
+                    }
+                </Footer>
+            </ModalStackLayout>
+        </MainContent>
+    </ModalSplitLayout>
+</ModalShell>
+
+@code {
+    int Step;
+
+    [Parameter] public NarratorProfileState Profile { get; set; } = NarratorProfileState.CreateDefault();
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    static readonly WizardStep[] Steps =
+    [
+        new("voice", "Voice", "Style & custom guidance"),
+        new("scene", "Scene", "Setup & visuals"),
+        new("motion", "Motion", "Transitions & direction")
+    ];
+
+    static readonly IReadOnlyList<CharacterOption> VoiceOptions =
+        NarratorProfileService.VoicePresets.Select(option => new CharacterOption(option.Id, option.Label, option.Description)).ToList();
+
+    int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
+
+    bool StepDone(int step) => step switch
+    {
+        0 => !string.IsNullOrWhiteSpace(Profile.VoicePreset),
+        _ => true
+    };
+
+    Task SetVoice(string id)
+    {
+        Profile.VoicePreset = id;
+        return Task.CompletedTask;
+    }
+
+    RenderFragment SliderSection(string title, string hint, int value, Action<int> setValue) => builder =>
+    {
+        builder.OpenComponent<Section>(0);
+        builder.AddAttribute(1, "Title", title);
+        builder.AddAttribute(2, "Hint", $"— {LevelLabel(value)}");
+        builder.AddAttribute(3, "ChildContent", (RenderFragment)(child =>
+        {
+            child.OpenComponent<FieldRow>(0);
+            child.AddAttribute(1, "Label", LevelLabel(value));
+            child.AddAttribute(2, "Hint", hint);
+            child.AddAttribute(3, "ChildContent", (RenderFragment)(slider =>
+            {
+                slider.OpenComponent<RangeSlider>(0);
+                slider.AddAttribute(1, "Value", (double)value);
+                slider.AddAttribute(2, "ValueChanged", EventCallback.Factory.Create<double>(this, next => setValue((int)next)));
+                slider.AddAttribute(3, "Min", 0d);
+                slider.AddAttribute(4, "Max", 2d);
+                slider.AddAttribute(5, "Step", 1d);
+                slider.AddAttribute(6, "StartLabel", "low");
+                slider.AddAttribute(7, "EndLabel", "high");
+                slider.AddAttribute(8, "AriaLabel", title);
+                slider.CloseComponent();
+            }));
+            child.CloseComponent();
+        }));
+        builder.CloseComponent();
+    };
+
+    async Task GoToStep(int step)
+    {
+        Step = step;
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Back()
+    {
+        if (Step > 0)
+            Step--;
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Next()
+    {
+        if (Step < Steps.Length - 1)
+            Step++;
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Done()
+    {
+        await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    async Task Close()
+    {
+        await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    static string LevelLabel(int value) => Math.Clamp(value, 0, 2) switch
+    {
+        0 => "Low",
+        1 => "Balanced",
+        _ => "High"
+    };
+
+    public sealed record WizardStep(string Id, string Label, string Sub);
+}

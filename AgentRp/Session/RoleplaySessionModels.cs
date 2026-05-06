@@ -13,9 +13,24 @@ public sealed class RpChatDocument
     public List<GalleryImage> Images { get; set; } = [];
     public RpTranscriptState Transcript { get; set; } = new();
     public StoryAssistantState StoryAssistant { get; set; } = new();
+    public NarratorProfileState NarratorProfile { get; set; } = NarratorProfileState.CreateDefault();
     public PromptLibraryState PromptLibrary { get; set; } = PromptLibraryState.CreateDefault();
     public CharacterTraitLibraryState CharacterTraitLibrary { get; set; } = CharacterTraitLibraryState.CreateDefault();
     public ModelTuningState ModelTuning { get; set; } = ModelTuningState.CreateDefault();
+}
+
+public sealed class NarratorProfileState
+{
+    public int SchemaVersion { get; set; } = 1;
+    public string VoicePreset { get; set; } = "cinematic-descriptive";
+    public int SetupDepth { get; set; } = 1;
+    public int VisualDetail { get; set; } = 1;
+    public int TransitionContext { get; set; } = 1;
+    public int Foreshadowing { get; set; }
+    public int DirectionStrength { get; set; } = 1;
+    public string CustomGuidance { get; set; } = "";
+
+    public static NarratorProfileState CreateDefault() => NarratorProfileService.CreateDefaultState();
 }
 
 public sealed class PromptLibraryState

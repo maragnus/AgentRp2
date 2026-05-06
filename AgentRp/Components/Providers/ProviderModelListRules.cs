@@ -7,10 +7,14 @@ internal static class ProviderModelListRules
 {
     public static IEnumerable<AiProviderModel> SortModels(IEnumerable<AiProviderModel> models) =>
         models
-            .OrderBy(model => model.ActiveText ? 0 : 1)
+            .OrderBy(model => IsSelectedForAnyRole(model) ? 0 : 1)
+            .ThenBy(model => model.ActiveText ? 0 : 1)
             .ThenBy(model => IsReady(model) ? 0 : 1)
             .ThenByDescending(model => model.CreatedUnix ?? 0)
             .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase);
+
+    public static IEnumerable<AiProviderModel> VisibleModels(IEnumerable<AiProviderModel> models, bool hideNeedsSetup) =>
+        SortModels(models).Where(model => !hideNeedsSetup || IsReady(model));
 
     public static int ReadyCount(IEnumerable<AiProviderModel> models) => models.Count(IsReady);
 
@@ -36,5 +40,4 @@ internal static class ProviderModelListRules
 
     public static bool IsSelectedForAnyRole(AiProviderModel model) =>
         AiProviderModelSelectionRules.IsSelectedForAnyRole(model);
-
 }

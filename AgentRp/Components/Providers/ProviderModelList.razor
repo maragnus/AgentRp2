@@ -9,8 +9,11 @@
 }
 
 <div class="provider-model-summary">
-    <span>@ProviderModelListRules.ReadyCount(Models) ready · @ProviderModelListRules.NeedsSetupCount(Models) advanced</span>
-    <ToggleSwitch Value="@ShowAdvanced" ValueChanged="SetShowAdvanced" Title="Show models needing setup" />
+    <span>@ProviderModelListRules.ReadyCount(Models) ready · @ProviderModelListRules.NeedsSetupCount(Models) need setup</span>
+    <span class="provider-model-filter">
+        <span>Hide setup</span>
+        <ToggleSwitch Value="@HideNeedsSetup" ValueChanged="SetHideNeedsSetup" Title="Hide models needing setup" />
+    </span>
     @if (!ShowHeader)
     {
         <AppButton Variant="ghost" Size="xs" OnClick="@(_ => SetChatModels(true))">Chat all</AppButton>
@@ -29,18 +32,18 @@
     [Parameter] public IReadOnlyList<AiProviderModel> Models { get; set; } = [];
     [Parameter] public string Title { get; set; } = "Models";
     [Parameter] public bool ShowHeader { get; set; }
-    [Parameter] public bool ShowAdvanced { get; set; }
-    [Parameter] public EventCallback<bool> ShowAdvancedChanged { get; set; }
+    [Parameter] public bool HideNeedsSetup { get; set; }
+    [Parameter] public EventCallback<bool> HideNeedsSetupChanged { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback<AiProviderModel> OnSetup { get; set; }
 
     IEnumerable<AiProviderModel> VisibleModels =>
-        ProviderModelListRules.SortModels(Models).Where(model => ShowAdvanced || ProviderModelListRules.IsReady(model) || model.Enabled);
+        ProviderModelListRules.VisibleModels(Models, HideNeedsSetup);
 
-    async Task SetShowAdvanced(bool value)
+    async Task SetHideNeedsSetup(bool value)
     {
-        ShowAdvanced = value;
-        await ShowAdvancedChanged.InvokeAsync(value);
+        HideNeedsSetup = value;
+        await HideNeedsSetupChanged.InvokeAsync(value);
     }
 
     async Task SetChatModels(bool selected)

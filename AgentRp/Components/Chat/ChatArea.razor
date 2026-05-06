@@ -94,11 +94,12 @@
                             <div class="popover-label">Respond As</div>
                             @if (CanAutoSelectResponder)
                             {
-                                <SelectableButton Class="@($"select-row {(RespondAs is null ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
+                                <SelectableButton Class="@($"select-row {(!RespondAsNarrator && RespondAs is null ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Auto-select</span>@if (!RespondAsNarrator && RespondAs is null) { <FaIcon Name="check" /> }</SelectableButton>
                             }
+                            <SelectableButton Class="@($"select-row {(RespondAsNarrator ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAsNarrator())"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (RespondAsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
                             @foreach (var character in Characters)
                             {
-                                <SelectableButton @key="character.Id" Class="@($"select-row {(RespondAs?.Id == character.Id ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
+                                <SelectableButton @key="character.Id" Class="@($"select-row {(!RespondAsNarrator && RespondAs?.Id == character.Id ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickRespondAs(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (!RespondAsNarrator && RespondAs?.Id == character.Id) { <FaIcon Name="check" /> }</SelectableButton>
                             }
                         </Content>
                     </AnchoredPopover>
@@ -150,6 +151,7 @@
     string Draft = "";
     string TurnShape = "Brief";
     RpCharacter? RespondAs;
+    bool RespondAsNarrator;
     readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -165,7 +167,7 @@
     string ModeTitle => CanGenerate ? IsGuided ? "Generate guided turn (Ctrl+Enter)" : "Auto-continue scene (Ctrl+Enter)" : GenerateTitle;
     string GenerateTitle => TranscriptBusy ? TranscriptBusyMessage : RequiresRespondAs ? "Choose Respond As to generate with this model" : "Generate next turn (Ctrl+Enter)";
     bool CanAutoSelectResponder => ActiveTextModel?.Capabilities.CanGenerateStructuredText != false;
-    bool RequiresRespondAs => !CanAutoSelectResponder && RespondAs is null;
+    bool RequiresRespondAs => !CanAutoSelectResponder && RespondAs is null && !RespondAsNarrator;
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
     bool CanGenerate => !TranscriptBusy && !RequiresRespondAs;
@@ -189,7 +191,14 @@
 
     void PickRespondAs(RpCharacter? character)
     {
+        RespondAsNarrator = false;
         RespondAs = character;
+    }
+
+    void PickRespondAsNarrator()
+    {
+        RespondAsNarrator = true;
+        RespondAs = null;
     }
 
     void PickShape(string shape)
@@ -210,7 +219,7 @@
 
         var text = Draft.Trim();
         Draft = "";
-        await Session.Chat.Transcript.GenerateAsync(text, RespondAs, IsGuided ? "guided" : "automatic", TurnShape);
+        await Session.Chat.Transcript.GenerateAsync(text, RespondAs, RespondAsNarrator, IsGuided ? "guided" : "automatic", TurnShape);
     }
 
     async Task PostManual()

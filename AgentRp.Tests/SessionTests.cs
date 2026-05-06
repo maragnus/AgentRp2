@@ -192,7 +192,7 @@ public sealed class SessionTests
         await session.InitializeAsync();
         var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(session));
 
-        var operation = session.Chat.Transcript.GenerateAsync("", null, "automatic", "Brief");
+        var operation = session.Chat.Transcript.GenerateAsync("", null, false, "automatic", "Brief");
         await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         component.WaitForAssertion(() =>
@@ -218,7 +218,7 @@ public sealed class SessionTests
         var session = new RoleplaySession(liveStore, generation);
         await session.InitializeAsync();
 
-        var operation = session.Chat.Transcript.GenerateAsync("", null, "automatic", "Brief");
+        var operation = session.Chat.Transcript.GenerateAsync("", null, false, "automatic", "Brief");
         await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(session.Chat.Transcript.IsBusy);

@@ -720,7 +720,7 @@ public sealed class TranscriptStore(
         await SaveTranscriptAsync();
     });
 
-    public async Task GenerateAsync(string guidance, RpCharacter? requestedActor, string mode, string turnShape) => await RunExclusiveAsync("Generating...", async () =>
+    public async Task GenerateAsync(string guidance, RpCharacter? requestedActor, bool requestedNarrator, string mode, string turnShape) => await RunExclusiveAsync("Generating...", async () =>
     {
         if (Document is null)
             return;
@@ -729,6 +729,7 @@ public sealed class TranscriptStore(
             parentTurnId: Document.Transcript.ActiveLeafTurnId,
             guidance,
             requestedActor,
+            requestedNarrator,
             turnShape,
             mode);
     });
@@ -742,11 +743,15 @@ public sealed class TranscriptStore(
         if (original is null)
             return;
 
-        var actor = requestedActor ?? Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId);
+        var requestedNarrator = requestedActor is null && string.IsNullOrWhiteSpace(original.ActorCharacterId);
+        var actor = requestedNarrator
+            ? null
+            : requestedActor ?? Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId);
         await GenerateTurnCoreAsync(
             parentTurnId: original.ParentTurnId,
             guidance: string.IsNullOrWhiteSpace(guidance) ? original.Guidance : guidance,
             requestedActor: actor,
+            requestedNarrator: requestedNarrator,
             turnShape: string.IsNullOrWhiteSpace(turnShape) ? original.Plan.TurnShape : turnShape,
             mode: "regenerated");
     });
@@ -993,7 +998,7 @@ public sealed class TranscriptStore(
         }
     }
 
-    async Task GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, string turnShape, string mode)
+    async Task GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string turnShape, string mode)
     {
         if (Document is null)
             return;
@@ -1010,7 +1015,8 @@ public sealed class TranscriptStore(
                     guidance,
                     turnShape,
                     requestedActor?.Id ?? "",
-                    requestedActor?.Name ?? ""));
+                    requestedActor?.Name ?? "",
+                    requestedNarrator));
             result.Trace.Data["actorName"] = result.ActorName;
             var now = DateTime.UtcNow;
             var turn = new RpTranscriptTurn
@@ -1037,7 +1043,7 @@ public sealed class TranscriptStore(
         }
         catch (TranscriptGenerationException exception)
         {
-            PersistFailedTurn(parentTurnId, guidance, requestedActor, mode, exception.Trace);
+            PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, exception.Trace);
             CaptureBackgroundError(exception);
             await SaveTranscriptAsync();
         }
@@ -1048,12 +1054,14 @@ public sealed class TranscriptStore(
         }
     }
 
-    void PersistFailedTurn(string parentTurnId, string guidance, RpCharacter? requestedActor, string mode, RpTurnTrace trace)
+    void PersistFailedTurn(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string mode, RpTurnTrace trace)
     {
         if (Document is null)
             return;
 
-        trace.Data["actorName"] = requestedActor?.Name ?? "Narrator";
+        var actorName = requestedNarrator ? "Narrator" : requestedActor?.Name ?? "Narrator";
+        var actorId = requestedNarrator ? "" : requestedActor?.Id ?? "";
+        trace.Data["actorName"] = actorName;
         var now = DateTime.UtcNow;
         var turn = new RpTranscriptTurn
         {
@@ -1062,10 +1070,10 @@ public sealed class TranscriptStore(
             CreatedUtc = now,
             UpdatedUtc = now,
             Mode = NormalizeMode(mode),
-            AuthorCharacterId = requestedActor?.Id ?? "",
-            AuthorName = requestedActor?.Name ?? "Narrator",
-            ActorCharacterId = requestedActor?.Id ?? "",
-            ActorName = requestedActor?.Name ?? "Narrator",
+            AuthorCharacterId = actorId,
+            AuthorName = actorName,
+            ActorCharacterId = actorId,
+            ActorName = actorName,
             Guidance = guidance.Trim(),
             Scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(Document.Transcript)),
             Trace = SessionCloner.Clone(trace)
@@ -1270,6 +1278,39 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
     {
         var defaults = PromptLibraryService.CreateDefaultState();
         State.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value = defaults.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value;
+    }
+}
+
+public sealed class NarratorProfileStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+{
+    protected override RoleplayStoreArea Area => RoleplayStoreArea.NarratorProfile;
+    public NarratorProfileState State
+    {
+        get
+        {
+            if (Document is null)
+                return NarratorProfileState.CreateDefault();
+
+            Document.NarratorProfile = NarratorProfileService.NormalizeState(Document.NarratorProfile);
+            return Document.NarratorProfile;
+        }
+    }
+
+    public async Task MarkChangedAsync()
+    {
+        if (Document is not null)
+            Document.NarratorProfile = NarratorProfileService.NormalizeState(Document.NarratorProfile);
+
+        await SaveActiveDocumentAsync();
+    }
+
+    public async Task ResetAsync()
+    {
+        if (Document is null)
+            return;
+
+        Document.NarratorProfile = NarratorProfileState.CreateDefault();
+        await MarkChangedAsync();
     }
 }
 

@@ -78,7 +78,8 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             Timeline = SeedData.Timeline().Select(SessionCloner.Clone).ToList(),
             Images = SeedData.GalleryImages().Select(SessionCloner.Clone).ToList(),
             Transcript = SessionCloner.Clone(SeedData.Transcript()),
-            StoryAssistant = new()
+            StoryAssistant = new(),
+            NarratorProfile = NarratorProfileState.CreateDefault()
         };
         TranscriptProjector.Apply(document);
         _documents[chatId] = document;

@@ -14,6 +14,7 @@ public enum RoleplayStoreArea
     Images,
     Transcript,
     StoryAssistant,
+    NarratorProfile,
     PromptLibrary,
     CharacterTraitLibrary,
     ModelTuning
@@ -190,7 +191,8 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 Timeline = template?.Timeline.Select(SessionCloner.Clone).ToList() ?? [],
                 Images = template?.Images.Select(SessionCloner.Clone).ToList() ?? [],
                 Transcript = new(),
-                StoryAssistant = new()
+                StoryAssistant = new(),
+                NarratorProfile = template is null ? NarratorProfileState.CreateDefault() : SessionCloner.Clone(template.NarratorProfile)
             };
             document.Transcript.RootScene.LocationName = location;
             document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault(item => item.Name == location)?.Id
@@ -312,6 +314,9 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 break;
             case RoleplayStoreArea.StoryAssistant:
                 target.StoryAssistant = SessionCloner.Clone(source.StoryAssistant);
+                break;
+            case RoleplayStoreArea.NarratorProfile:
+                target.NarratorProfile = SessionCloner.Clone(source.NarratorProfile);
                 break;
             case RoleplayStoreArea.PromptLibrary:
                 target.PromptLibrary = SessionCloner.Clone(source.PromptLibrary);

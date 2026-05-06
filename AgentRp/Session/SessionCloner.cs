@@ -153,9 +153,22 @@ static class SessionCloner
         Images = value.Images.Select(Clone).ToList(),
         Transcript = Clone(value.Transcript),
         StoryAssistant = Clone(value.StoryAssistant),
+        NarratorProfile = Clone(value.NarratorProfile),
         PromptLibrary = Clone(value.PromptLibrary),
         CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
         ModelTuning = Clone(value.ModelTuning)
+    };
+
+    public static NarratorProfileState Clone(NarratorProfileState value) => new()
+    {
+        SchemaVersion = value.SchemaVersion,
+        VoicePreset = value.VoicePreset,
+        SetupDepth = value.SetupDepth,
+        VisualDetail = value.VisualDetail,
+        TransitionContext = value.TransitionContext,
+        Foreshadowing = value.Foreshadowing,
+        DirectionStrength = value.DirectionStrength,
+        CustomGuidance = value.CustomGuidance
     };
 
     public static StoryAssistantState Clone(StoryAssistantState value) => new()

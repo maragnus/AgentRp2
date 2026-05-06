@@ -6,7 +6,7 @@ namespace AgentRp.Services;
 
 public sealed class TranscriptPromptContextBuilder
 {
-    public TurnPromptContext BuildTurnContext(RpChatDocument document, string parentTurnId, string guidance, string requestedTurnShape, RpCharacter? requestedActor)
+    public TurnPromptContext BuildTurnContext(RpChatDocument document, string parentTurnId, string guidance, string requestedTurnShape, RpCharacter? requestedActor, bool requestedNarrator = false)
     {
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         if (!string.IsNullOrWhiteSpace(parentTurnId))
@@ -34,11 +34,11 @@ public sealed class TranscriptPromptContextBuilder
         var otherCharacters = document.Characters.Where(character => !scene.InSceneCharacterIds.Contains(character.Id)).ToList();
         var presentItems = document.Items.Where(item => scene.InSceneItemIds.Contains(item.Id)).ToList();
         var characterAppearances = BuildAppearanceMap(snapshot, activePath, snapshotTurnIndex);
-        var actor = requestedActor ?? presentCharacters.FirstOrDefault() ?? document.Characters.FirstOrDefault();
+        var actor = requestedNarrator ? null : requestedActor ?? presentCharacters.FirstOrDefault() ?? document.Characters.FirstOrDefault();
         var activeSpeakerName = ResolveActiveSpeakerName(activePath.LastOrDefault());
         var requestedShape = string.IsNullOrWhiteSpace(requestedTurnShape) ? "Brief" : requestedTurnShape.Trim();
         var currentLocation = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId);
-        var actorText = FormatActor(actor);
+        var actorText = FormatActor(actor, document.NarratorProfile, requestedNarrator);
         var locationText = FormatLocation(currentLocation, scene);
         var charactersText = FormatCharactersInScene(presentCharacters, actor, characterAppearances);
         var otherCharactersText = FormatOtherKnownCharacters(otherCharacters);
@@ -92,7 +92,8 @@ public sealed class TranscriptPromptContextBuilder
             RequestedTurnShapeSection: BuildRequestedTurnShapeSection(document, requestedShape),
             PlanningTurnShapeDefinitions: FormatTurnShapeDefinitions(document, PromptLibraryStageIds.Planning),
             ProseInSceneNames: FormatProseInSceneNames(presentCharacters, actor),
-            TurnScopeRules: BuildTurnScopeRules(actor?.Name ?? "Narrator"));
+            NarratorGuidance: requestedNarrator ? NarratorProfileService.BuildPromptGuidance(document.NarratorProfile) : "",
+            TurnScopeRules: BuildTurnScopeRules(requestedNarrator ? "Narrator" : actor?.Name ?? "Narrator"));
     }
 
     public SnapshotPromptContext BuildSnapshotContext(RpChatDocument document, string turnId)
@@ -176,16 +177,17 @@ public sealed class TranscriptPromptContextBuilder
         PromptLibraryState promptLibrary)
     {
         var tokens = BuildTokens(context, planningOutput);
-        var speaker = context.Actor is null ? "the narrator" : context.Actor.Name;
+        var isNarrator = context.Actor is null;
+        var speaker = isNarrator ? "the narrator" : context.Actor!.Name;
         var turnShapeSystem = PromptLibraryService.BuildDefaultProseSystemTurnShape(turnShape);
         tokens["{speaker.name}"] = speaker;
         tokens["{prose.inSceneNames}"] = context.ProseInSceneNames;
         tokens["{prose.turnShapeSystem}"] = turnShapeSystem;
         tokens["{prose.turnShapeUser}"] = PromptLibraryService.GetTurnShapeTemplate(promptLibrary, PromptLibraryStageIds.Prose, turnShape);
-        tokens["{prose.narratorSystem}"] = string.Equals(speaker, "Narrator", StringComparison.OrdinalIgnoreCase)
-            ? "You are speaking as the story narrator guiding the narrative, write a descriptive narration instead of dialogue."
+        tokens["{prose.narratorSystem}"] = isNarrator
+            ? $"You are speaking as the story narrator guiding the narrative. Write natural prose narration instead of dialogue, without speaker labels or meta text.{Environment.NewLine}{context.NarratorGuidance}{Environment.NewLine}"
             : string.Empty;
-        tokens["{prose.characterOnlySystem}"] = string.Equals(speaker, "Narrator", StringComparison.OrdinalIgnoreCase)
+        tokens["{prose.characterOnlySystem}"] = isNarrator
             ? string.Empty
             : $"{turnShapeSystem}\n{BuildProseRules(speaker)}";
         tokens["{planner.beat}"] = beat;
@@ -266,10 +268,15 @@ public sealed class TranscriptPromptContextBuilder
                 .Select(line => $"- {CollapseWhitespace(line)}"));
     }
 
-    static string FormatActor(RpCharacter? actor)
+    static string FormatActor(RpCharacter? actor, NarratorProfileState narratorProfile, bool requestedNarrator)
     {
         if (actor is null)
-            return "**Actor:** Narrator";
+        {
+            if (!requestedNarrator)
+                return "**Actor:** Narrator";
+
+            return $"**Actor:** Narrator{Environment.NewLine}{NarratorProfileService.BuildPromptGuidance(narratorProfile)}";
+        }
 
         var builder = new StringBuilder();
         builder.AppendLine($"**Actor:** {actor.Name}");
@@ -610,6 +617,7 @@ public sealed record TurnPromptContext(
     string RequestedTurnShape,
     string RequestedTurnShapeSection,
     string PlanningTurnShapeDefinitions,
+    string NarratorGuidance,
     string ProseInSceneNames,
     string TurnScopeRules);
 

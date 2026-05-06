@@ -25,7 +25,8 @@
                       Height="580px"
                       RailWidth="260px"
                       Class="entity-manager-layout"
-                      MainClass="entity-editor-pane">
+                      MainClass="entity-editor-pane"
+                      MainScrollClass="is-padded">
         <ListHeader>
             <span>@ActiveTypeLabel</span>
             <IconButton Icon="plus" Title="Add entity" OnClick="@(_ => AddEntity())" />
@@ -38,7 +39,11 @@
                             OnClick="@row.Select">
                 <LeadingContent>
                     <span class="entity-list-icon">
-                        @if (Type == "characters")
+                        @if (row.Item.IsNarrator)
+                        {
+                            <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
+                        }
+                        else if (Type == "characters")
                         {
                             <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" Size="34" />
                         }
@@ -57,7 +62,7 @@
                     </span>
                 </LeadingContent>
                 <TrailingContent>
-                    @if (HasToggle)
+                    @if (HasToggle && !row.Item.IsNarrator)
                     {
                         <span class="entity-row-action" @onclick:stopPropagation="true">
                             <IconButton Icon="@(Type == "locations" ? "map-pin" : "eye")" Title="Toggle active" Active="@row.Item.Active" OnClick="@(_ => ToggleActive(row.Item.Id))" />
@@ -66,35 +71,72 @@
                 </TrailingContent>
             </SidebarListRow>
         </ListItemTemplate>
+        <ItemHeaderTemplate Context="entry">
+            @if (Type == "characters" && SelectedId == NarratorId)
+            {
+                <EntityHeader Name="Narrator" Subtitle="Story voice" ImageSize="40">
+                    <Actions>
+                        <AppButton Variant="secondary" OnClick="@(_ => NarratorWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
+                    </Actions>
+                </EntityHeader>
+            }
+            else if (Type == "characters" && SelectedCharacter is not null)
+            {
+                <EntityHeader Name="@SelectedCharacter.Name" Subtitle="Guided profile" Image="@ImageFor(SelectedCharacter.ImageId)" ImageSize="40" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                    <Actions>
+                        <AppButton Variant="secondary" OnClick="@(_ => CharacterWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
+                        <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                    </Actions>
+                </EntityHeader>
+            }
+            else if (Type == "locations" && SelectedLocation is not null)
+            {
+                <EntityHeader Name="@SelectedLocation.Name" Subtitle="Location profile" Image="@ImageFor(SelectedLocation.ImageId)" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                    <Actions>
+                        <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                    </Actions>
+                </EntityHeader>
+            }
+            else if (Type == "items" && SelectedItem is not null)
+            {
+                <EntityHeader Name="@SelectedItem.Name" Subtitle="Item profile" Image="@ImageFor(SelectedItem.ImageId)" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                    <Actions>
+                        <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                    </Actions>
+                </EntityHeader>
+            }
+            else if (Type == "timeline" && SelectedTimeline is not null)
+            {
+                <EntityHeader Name="@SelectedTimeline.Title" Subtitle="Timeline entry" ImageSize="40">
+                    <Actions>
+                        <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                    </Actions>
+                </EntityHeader>
+            }
+        </ItemHeaderTemplate>
         <ItemTemplate>
-            @if (Type == "characters" && SelectedCharacter is not null)
+            @if (Type == "characters" && SelectedId == NarratorId)
+            {
+                <NarratorEditor Profile="Session.Chat.NarratorProfile.State" />
+            }
+            else if (Type == "characters" && SelectedCharacter is not null)
             {
                 <CharacterEditor Character="SelectedCharacter"
-                                 ExistingCharacters="Characters"
-                                 Image="@ImageFor(SelectedCharacter.ImageId)"
-                                 OnImagePickerRequested="SelectSelectedEntityImage"
-                                 OnChanged="Changed"
-                                 OnDelete="@(() => DeleteSelected())" />
+                                 OnChanged="Changed" />
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
                 <LocationEditor Location="SelectedLocation"
-                                Image="@ImageFor(SelectedLocation.ImageId)"
-                                OnImagePickerRequested="SelectSelectedEntityImage"
-                                OnChanged="Changed"
-                                OnDelete="@(() => DeleteSelected())" />
+                                OnChanged="Changed" />
             }
             else if (Type == "items" && SelectedItem is not null)
             {
                 <ItemEditor Item="SelectedItem"
-                            Image="@ImageFor(SelectedItem.ImageId)"
-                            OnImagePickerRequested="SelectSelectedEntityImage"
-                            OnChanged="Changed"
-                            OnDelete="@(() => DeleteSelected())" />
+                            OnChanged="Changed" />
             }
             else if (Type == "timeline" && SelectedTimeline is not null)
             {
-                <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" OnDelete="@(() => DeleteSelected())" />
+                <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" />
             }
             else
             {
@@ -113,11 +155,24 @@
     <CharacterWizardModal Character="SelectedCharacter" ExistingCharacters="Characters" OnClose="@(() => CharacterWizardOpen = false)" OnChanged="Changed" />
 }
 
+@if (NarratorWizardOpen)
+{
+    <NarratorWizardModal Profile="Session.Chat.NarratorProfile.State" OnClose="@(() => NarratorWizardOpen = false)" OnChanged="Changed" />
+}
+
+@if (ConfirmDeleteOpen && SelectedId is not null)
+{
+    <ConfirmDialog Title="@DeleteDialogTitle" Body="@DeleteDialogBody" OnCancel="@(() => ConfirmDeleteOpen = false)" OnConfirm="ConfirmDeleteSelected" />
+}
+
 @code {
     string Type = "characters";
     string? SelectedId;
     bool CharacterWizardOpen;
-    sealed record EntityEntry(string Id, string Title, string Subtitle, string ImageId, bool Active);
+    bool NarratorWizardOpen;
+    bool ConfirmDeleteOpen;
+    const string NarratorId = "__narrator";
+    sealed record EntityEntry(string Id, string Title, string Subtitle, string ImageId, bool Active, bool IsNarrator = false);
     readonly (string Key, string Label, string Icon)[] EntityTypes =
     [
         ("characters", "Characters", "users"),
@@ -147,10 +202,26 @@
 
     bool HasToggle => Type is "characters" or "locations" or "items";
     string ActiveSingular => ActiveTypeLabel.TrimEnd('s');
+    string DeleteDialogTitle => Type switch
+    {
+        "characters" => "Delete character?",
+        "locations" => "Delete location?",
+        "items" => "Delete item?",
+        _ => "Delete timeline entry?"
+    };
+    string DeleteDialogBody => Type switch
+    {
+        "characters" when SelectedCharacter is not null => $"Remove {SelectedCharacter.Name} from the local prototype data.",
+        "locations" when SelectedLocation is not null => $"Remove {SelectedLocation.Name}.",
+        "items" when SelectedItem is not null => $"Remove {SelectedItem.Name}.",
+        "timeline" when SelectedTimeline is not null => $"Remove {SelectedTimeline.Title}.",
+        _ => "Remove the selected entry."
+    };
 
     IEnumerable<EntityEntry> Entries => Type switch
     {
-        "characters" => Characters.Select(character => new EntityEntry(character.Id, character.Name, character.Summary, character.ImageId, character.InScene)),
+        "characters" => new[] { new EntityEntry(NarratorId, "Narrator", NarratorProfileService.VoiceLabel(Session.Chat.NarratorProfile.State.VoicePreset), "", false, true) }
+            .Concat(Characters.Select(character => new EntityEntry(character.Id, character.Name, character.Summary, character.ImageId, character.InScene))),
         "locations" => Locations.Select(location => new EntityEntry(location.Id, location.Name, location.Summary, location.ImageId, location.IsActive)),
         "items" => Items.Select(item => new EntityEntry(item.Id, item.Name, item.Summary, item.ImageId, item.InScene)),
         "timeline" => Timeline.Select(entry => new EntityEntry(entry.Id, entry.Title, entry.Date, "", false)),
@@ -164,6 +235,7 @@
         Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Timeline.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
+        Session.Chat.NarratorProfile.Changed += OnStoreChanged;
 
         Type = InitialType;
         SelectedId = InitialId ?? Entries.FirstOrDefault()?.Id;
@@ -184,6 +256,7 @@
     Task SelectEntityImage(string type, string id) => OnSelectEntityImage.InvokeAsync((type, id));
 
     Task SelectSelectedEntityImage(MouseEventArgs args) => SelectedId is null
+        || SelectedId == NarratorId
         ? Task.CompletedTask
         : SelectEntityImage(Type, SelectedId);
 
@@ -254,8 +327,17 @@
         SelectedId = Entries.FirstOrDefault()?.Id;
     }
 
+    async Task ConfirmDeleteSelected()
+    {
+        ConfirmDeleteOpen = false;
+        CharacterWizardOpen = false;
+        NarratorWizardOpen = false;
+        await DeleteSelected();
+    }
+
     Task Changed() => Type switch
     {
+        "characters" when SelectedId == NarratorId => Session.Chat.NarratorProfile.MarkChangedAsync(),
         "characters" => Session.Chat.Characters.MarkChangedAsync(),
         "locations" => Session.Chat.Locations.MarkChangedAsync(),
         "items" => Session.Chat.Items.MarkChangedAsync(),
@@ -269,5 +351,6 @@
         Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Timeline.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
     }
 }

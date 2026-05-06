@@ -254,6 +254,38 @@ public sealed class ProviderModelSelectionTests
     }
 
     [Fact]
+    public void ModelSelectionRulesCanSelectEveryAvailableRoleAfterSetup()
+    {
+        var model = new AiProviderModel
+        {
+            Capabilities = new() { TextInput = true, TextOutput = true, ImageOutput = true }
+        };
+
+        AiProviderModelSelectionRules.SelectAvailableRoles(model);
+
+        Assert.True(model.Enabled);
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForChat(model));
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForImage(model));
+    }
+
+    [Fact]
+    public void ModelSelectionRulesDoNotSelectUnsupportedRolesAfterSetup()
+    {
+        var model = new AiProviderModel
+        {
+            Text = true,
+            Image = true,
+            Capabilities = new() { TextInput = false, TextOutput = false, ImageOutput = false }
+        };
+
+        AiProviderModelSelectionRules.SelectAvailableRoles(model);
+
+        Assert.False(model.Enabled);
+        Assert.False(model.Text);
+        Assert.False(model.Image);
+    }
+
+    [Fact]
     public async Task ProviderStorePersistsOneGlobalActiveTextModel()
     {
         await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));

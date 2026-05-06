@@ -60,7 +60,11 @@
             <IconButton Icon="edit" Title="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
             </RightContent>
         </Section>
-        <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" SpeakTitle="Speak as Narrator" OnSpeak="@(_ => SetSpeakingAs(null))" />
+        <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" SpeakTitle="Speak as Narrator" OnSpeak="@(_ => SetSpeakingAs(null))">
+            <Actions>
+                <IconButton Icon="edit" Title="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
+            </Actions>
+        </SidebarSpeakerRow>
         @foreach (var character in Characters)
         {
             <SidebarSpeakerRow @key="character.Id"

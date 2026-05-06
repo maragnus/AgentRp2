@@ -82,6 +82,46 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
+    public async Task NarratorProfileHasDefaultsAndPersistsAcrossSessions()
+    {
+        await using var liveStore = NewLiveStore();
+        var generator = new FakeTextGenerationService();
+        var sessionA = new RoleplaySession(liveStore, generator);
+        var sessionB = new RoleplaySession(liveStore, generator);
+        await sessionA.InitializeAsync();
+        await sessionB.InitializeAsync();
+
+        Assert.Equal("cinematic-descriptive", sessionA.Chat.NarratorProfile.State.VoicePreset);
+        Assert.Equal(1, sessionA.Chat.NarratorProfile.State.SetupDepth);
+
+        sessionA.Chat.NarratorProfile.State.VoicePreset = "noir-observer";
+        sessionA.Chat.NarratorProfile.State.Foreshadowing = 2;
+        sessionA.Chat.NarratorProfile.State.CustomGuidance = "Keep the narration dry and observant.";
+        await sessionA.Chat.NarratorProfile.MarkChangedAsync();
+
+        Assert.Equal("noir-observer", sessionB.Chat.NarratorProfile.State.VoicePreset);
+        Assert.Equal(2, sessionB.Chat.NarratorProfile.State.Foreshadowing);
+        Assert.Equal("Keep the narration dry and observant.", sessionB.Chat.NarratorProfile.State.CustomGuidance);
+    }
+
+    [Fact]
+    public async Task NewChatCopiesNarratorProfileFromTemplate()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        session.Chat.NarratorProfile.State.VoicePreset = "mythic-fable";
+        session.Chat.NarratorProfile.State.DirectionStrength = 2;
+        await session.Chat.NarratorProfile.MarkChangedAsync();
+
+        await session.Chats.AddAsync(session.Chats.Active?.Location ?? "");
+
+        Assert.Equal("mythic-fable", session.Chat.NarratorProfile.State.VoicePreset);
+        Assert.Equal(2, session.Chat.NarratorProfile.State.DirectionStrength);
+    }
+
+    [Fact]
     public async Task PromptContextUsesLatestSnapshotAsTranscriptBoundary()
     {
         var persistence = new SeedRoleplayPersistence();

@@ -73,6 +73,59 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
+    public async Task ExplicitNarratorGenerationUsesNarratorTuningWithoutCharacterContext()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        document.NarratorProfile.VoicePreset = "tense-foreshadowing";
+        document.NarratorProfile.Foreshadowing = 2;
+        document.NarratorProfile.CustomGuidance = "Frame the room like something is about to break.";
+
+        var result = await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "guided", "Set the next scene.", "Extended", "", "", true));
+
+        var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Equal(["AppearanceResponse", "PlanningResponse"], client.StructuredCalls);
+        Assert.Equal("", result.ActorCharacterId);
+        Assert.Equal("Narrator", result.ActorName);
+        Assert.Empty(result.PrivateIntentByCharacterId);
+        Assert.Contains("Narrator voice tuning:", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Tense Foreshadowing", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Frame the room like something is about to break.", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Write natural prose narration instead of dialogue", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Equal(["appearance", "selection", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
+        Assert.Equal("User override", result.Trace.Steps.First(step => step.Id == "selection").SystemPrompt);
+    }
+
+    [Fact]
+    public async Task AutomaticGenerationDoesNotReceiveNarratorTuning()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        document.NarratorProfile.CustomGuidance = "This should only affect narrator turns.";
+
+        await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        Assert.All(client.GenerationRequests, request =>
+        {
+            Assert.DoesNotContain("Narrator voice tuning:", request.SystemPrompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("Narrator voice tuning:", request.UserPrompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("This should only affect narrator turns.", request.SystemPrompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("This should only affect narrator turns.", request.UserPrompt, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public async Task SnapshotGenerationReturnsAgentRp1SnapshotShape()
     {
         var client = new FakeModelGenerationClient();

@@ -1,13 +1,4 @@
 <div class="character-editor">
-    <div class="character-editor-head">
-        <EntityHeader Name="@Character.Name" Subtitle="Guided profile" Image="Image" ImageSize="40" Editable OnImagePickerRequested="OnImagePickerRequested">
-            <Actions>
-            <AppButton Variant="secondary" OnClick="@(_ => WizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
-            <AppButton Variant="danger" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" /> Delete</AppButton>
-            </Actions>
-        </EntityHeader>
-    </div>
-
     <section class="character-summary-card">
         <div class="character-summary-top">
             <div>
@@ -55,26 +46,9 @@
     </section>
 </div>
 
-@if (WizardOpen)
-{
-    <CharacterWizardModal Character="Character" ExistingCharacters="ExistingCharacters" OnClose="@(() => WizardOpen = false)" OnChanged="Changed" />
-}
-
-@if (ConfirmDelete)
-{
-    <ConfirmDialog Title="Delete character?" Body="@($"Remove {Character.Name} from the local prototype data.")" OnCancel="@(() => ConfirmDelete = false)" OnConfirm="Delete" />
-}
-
 @code {
-    bool WizardOpen;
-    bool ConfirmDelete;
-
     [Parameter] public RpCharacter Character { get; set; } = new();
-    [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
-    [Parameter] public GalleryImage? Image { get; set; }
-    [Parameter] public EventCallback<MouseEventArgs> OnImagePickerRequested { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
-    [Parameter] public EventCallback OnDelete { get; set; }
 
     string SummaryText => string.IsNullOrWhiteSpace(Character.Summary)
         ? "No summary yet. Open the editor to define the character concept."
@@ -98,12 +72,6 @@
     ];
 
     Task Changed() => OnChanged.InvokeAsync();
-
-    async Task Delete()
-    {
-        ConfirmDelete = false;
-        await OnDelete.InvokeAsync();
-    }
 
     RenderFragment BadgeList(IReadOnlyCollection<string> values, string tone) => builder =>
     {

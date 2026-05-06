@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using AgentRp.Components.Common;
+using AgentRp.Components.Entities;
 using AgentRp.Models;
 using AgentRp.Components.Providers;
 using AgentRp.Components.Shell;
@@ -160,6 +161,91 @@ public sealed class UiCompositionPolicyTests
         Assert.Contains(active!.Model.Id, component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Tok In:", component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Top-P", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProviderModelListKeepsSelectedModelsAtTheTop()
+    {
+        using var context = new BunitContext();
+        var models = new List<AiProviderModel>
+        {
+            new()
+            {
+                Id = "newer-unselected",
+                CreatedUnix = 30,
+                Capabilities = new() { TextInput = true, TextOutput = true }
+            },
+            new()
+            {
+                Id = "selected-image",
+                CreatedUnix = 10,
+                Enabled = true,
+                Image = true,
+                Capabilities = new() { TextInput = true, TextOutput = false, ImageOutput = true }
+            },
+            new()
+            {
+                Id = "selected-chat",
+                CreatedUnix = 5,
+                Enabled = true,
+                Text = true,
+                Capabilities = new() { TextInput = true, TextOutput = true }
+            }
+        };
+
+        var component = context.Render<ProviderModelList>(parameters => parameters.Add(item => item.Models, models));
+        var rowTitles = component.FindAll(".provider-model-title strong").Select(item => item.TextContent.Trim()).ToList();
+
+        Assert.Equal(["selected-image", "selected-chat", "newer-unselected"], rowTitles);
+    }
+
+    [Fact]
+    public void ProviderModelListHideSetupToggleFiltersModelsThatNeedSetup()
+    {
+        using var context = new BunitContext();
+        var models = new List<AiProviderModel>
+        {
+            new()
+            {
+                Id = "ready",
+                Capabilities = new() { TextInput = true, TextOutput = true }
+            },
+            new()
+            {
+                Id = "needs-setup",
+                Capabilities = new() { TextInput = false, TextOutput = false, ImageOutput = false }
+            }
+        };
+
+        var component = context.Render<ProviderModelList>(parameters => parameters.Add(item => item.Models, models));
+
+        Assert.Contains("needs-setup", component.Markup, StringComparison.Ordinal);
+
+        component.Find("button[title='Hide models needing setup']").Click();
+
+        Assert.Contains("ready", component.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("needs-setup", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EntityManagerShowsFixedNarratorRowWithoutCountingItAsCharacter()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<EntityManagerModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.InitialType, "characters")
+            .Add(item => item.OnSelectEntityImage, _ => Task.CompletedTask)
+            .Add(item => item.OnClose, () => Task.CompletedTask));
+
+        Assert.Contains("Narrator", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Story voice", component.Markup, StringComparison.Ordinal);
+        Assert.Contains($">{session.Chat.Characters.Items.Count}<", component.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain($">{session.Chat.Characters.Items.Count + 1}<", component.Markup, StringComparison.Ordinal);
     }
 
     static LiveRoleplayStore NewLiveStore() =>

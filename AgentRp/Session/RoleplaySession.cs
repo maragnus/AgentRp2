@@ -153,6 +153,7 @@ public sealed class ChatWorkspace
         Images = new(activeChat, registry);
         Transcript = new(activeChat, registry, providers, textGenerationService);
         StoryAssistant = new(activeChat, registry, providers, storyAssistantService);
+        NarratorProfile = new(activeChat, registry);
         PromptLibrary = new(activeChat, registry);
         CharacterTraitLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);
@@ -164,6 +165,7 @@ public sealed class ChatWorkspace
         Images.Start();
         Transcript.Start();
         StoryAssistant.Start();
+        NarratorProfile.Start();
         PromptLibrary.Start();
         CharacterTraitLibrary.Start();
         ModelTuning.Start();
@@ -176,6 +178,7 @@ public sealed class ChatWorkspace
     public ImageStore Images { get; }
     public TranscriptStore Transcript { get; }
     public StoryAssistantStore StoryAssistant { get; }
+    public NarratorProfileStore NarratorProfile { get; }
     public PromptLibraryStore PromptLibrary { get; }
     public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
     public ModelTuningStore ModelTuning { get; }
