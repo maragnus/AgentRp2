@@ -144,6 +144,66 @@ public sealed class SessionTests
     }
 
     [Fact]
+    public async Task ProviderWidgetAutoLoadRunsOncePerProviderPerSession()
+    {
+        var widgetService = new CountingProviderWidgetService();
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(
+            liveStore,
+            new TestModelCapabilityCatalog(),
+            providerWidgetService: widgetService);
+        await session.InitializeAsync();
+        var providerId = session.Providers.Items.First().Id;
+
+        await session.Providers.EnsureWidgetLoadedAsync(providerId);
+        await session.Providers.EnsureWidgetLoadedAsync(providerId);
+
+        Assert.Equal(1, widgetService.RefreshCalls);
+        Assert.NotEmpty(session.Providers.Items.First(provider => provider.Id == providerId).Metrics);
+    }
+
+    [Fact]
+    public async Task ProviderWidgetAutoLoadRunsAgainForNewSession()
+    {
+        var widgetService = new CountingProviderWidgetService();
+        await using var liveStore = NewLiveStore();
+        var sessionA = new RoleplaySession(
+            liveStore,
+            new TestModelCapabilityCatalog(),
+            providerWidgetService: widgetService);
+        await sessionA.InitializeAsync();
+        var providerId = sessionA.Providers.Items.First().Id;
+        await sessionA.Providers.EnsureWidgetLoadedAsync(providerId);
+
+        var sessionB = new RoleplaySession(
+            liveStore,
+            new TestModelCapabilityCatalog(),
+            providerWidgetService: widgetService);
+        await sessionB.InitializeAsync();
+        await sessionB.Providers.EnsureWidgetLoadedAsync(providerId);
+
+        Assert.Equal(2, widgetService.RefreshCalls);
+    }
+
+    [Fact]
+    public async Task ProviderWidgetManualRefreshAlwaysReloads()
+    {
+        var widgetService = new CountingProviderWidgetService();
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(
+            liveStore,
+            new TestModelCapabilityCatalog(),
+            providerWidgetService: widgetService);
+        await session.InitializeAsync();
+        var providerId = session.Providers.Items.First().Id;
+
+        await session.Providers.RefreshWidgetAsync(providerId);
+        await session.Providers.RefreshWidgetAsync(providerId);
+
+        Assert.Equal(2, widgetService.RefreshCalls);
+    }
+
+    [Fact]
     public async Task UnreferencedInactiveChatsCanUnloadAfterTtl()
     {
         await using var liveStore = NewLiveStore(TimeSpan.FromMilliseconds(10));
@@ -255,6 +315,81 @@ public sealed class SessionTests
     }
 
     [Fact]
+    public void TurnShapePickerOptionsNormalizeKnownLabels()
+    {
+        Assert.Equal("Brief", TurnShapePickerOptions.Normalize("brief"));
+        Assert.Equal("Brief", TurnShapePickerOptions.Normalize("Brief"));
+        Assert.Equal("Silent Monologue", TurnShapePickerOptions.Normalize("silent-monologue"));
+        Assert.Equal("Silent Monologue", TurnShapePickerOptions.Normalize("silent monologue"));
+        Assert.Equal("Brief", TurnShapePickerOptions.Normalize(""));
+        Assert.Equal("Auto", TurnShapePickerOptions.Normalize("Auto"));
+        Assert.Equal("Brief", TurnShapePickerOptions.NormalizeExplicit("Auto"));
+    }
+
+    [Fact]
+    public async Task RegenerationHidesOriginalTurnWhileRunning()
+    {
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var original = session.Chat.Transcript.Items.Last();
+
+        var operation = session.Chat.Transcript.RegenerateAsync(original.Id, original.Guidance, null, "Extended");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(session.Chat.Transcript.IsBusy);
+        Assert.Equal("Regenerating...", session.Chat.Transcript.BusyMessage);
+        Assert.DoesNotContain(session.Chat.Transcript.Items, turn => turn.Id == original.Id);
+        Assert.Equal(original.ParentTurnId, session.Chat.Transcript.Items.Last().Id);
+
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task RegenerationCommitsSiblingWithRequestedTurnShape()
+    {
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var original = session.Chat.Transcript.Items.Last();
+
+        var operation = session.Chat.Transcript.RegenerateAsync(original.Id, original.Guidance, null, "Silent Monologue");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var regenerated = session.Chat.Transcript.Items.Last();
+        Assert.NotEqual(original.Id, regenerated.Id);
+        Assert.Equal(original.ParentTurnId, regenerated.ParentTurnId);
+        Assert.Equal("Silent Monologue", regenerated.Plan.TurnShape);
+        Assert.Equal("Silent Monologue", generation.Requests.Single().RequestedTurnShape);
+        Assert.Equal(2, session.Chat.Transcript.SiblingsFor(regenerated.Id).Count);
+    }
+
+    [Fact]
+    public async Task FailedRegenerationCommitsFailedSiblingAndKeepsOriginalHidden()
+    {
+        var generation = new FailingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var original = session.Chat.Transcript.Items.Last();
+
+        await session.Chat.Transcript.RegenerateAsync(original.Id, original.Guidance, null, "Extended");
+
+        var failedTurn = session.Chat.Transcript.Items.Last();
+        Assert.NotEqual(original.Id, failedTurn.Id);
+        Assert.Equal(original.ParentTurnId, failedTurn.ParentTurnId);
+        Assert.Equal("Extended", failedTurn.Plan.TurnShape);
+        Assert.Equal("failed", failedTurn.Trace?.Status);
+        Assert.DoesNotContain(session.Chat.Transcript.Items, turn => turn.Id == original.Id);
+        Assert.Equal(2, session.Chat.Transcript.SiblingsFor(failedTurn.Id).Count);
+    }
+
+    [Fact]
     public async Task TranscriptStoreClearsLiveTraceAndPersistsFailedTrace()
     {
         var generation = new FailingTextGenerationService();
@@ -283,12 +418,14 @@ public sealed class SessionTests
         int _generateCalls;
 
         public int GenerateCalls => _generateCalls;
+        public List<GenerateTurnRequest> Requests { get; } = [];
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _generateCalls);
+            Requests.Add(request);
             var startedUtc = DateTime.UtcNow;
             var trace = new RpTurnTrace
             {
@@ -390,5 +527,34 @@ public sealed class SessionTests
         public void UpdateLiveGrokCapabilities(JsonNode languageModelsJson)
         {
         }
+    }
+
+    sealed class CountingProviderWidgetService : IAiProviderWidgetService
+    {
+        int _refreshCalls;
+
+        public int RefreshCalls => _refreshCalls;
+
+        public Task<IReadOnlyList<AiProviderMetric>> RefreshMetricsAsync(AiProvider provider, CancellationToken cancellationToken = default)
+        {
+            var count = Interlocked.Increment(ref _refreshCalls);
+            return Task.FromResult<IReadOnlyList<AiProviderMetric>>(
+            [
+                new()
+                {
+                    Id = $"metric-{count}",
+                    Kind = "test",
+                    Label = "Test",
+                    Value = count.ToString(),
+                    RefreshedUtc = DateTime.UtcNow
+                }
+            ]);
+        }
+
+        public Task<IReadOnlyList<ManagedEndpointStatusView>> GetHuggingFaceStatusesAsync(IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ManagedEndpointStatusView>>([]);
+
+        public Task<ManagedEndpointStatusView> ExecuteHuggingFaceActionAsync(AiProvider provider, AiProviderModel model, ManagedEndpointAction action, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

@@ -22,21 +22,21 @@ public sealed class ProviderModelSelectionTests
                     {
                         Id = "capable-not-enabled",
                         Enabled = true,
-                        Text = false,
+                        Roles = [],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     },
                     new()
                     {
                         Id = "enabled-not-capable",
                         Enabled = true,
-                        Text = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = false, TextOutput = false }
                     },
                     new()
                     {
                         Id = "enabled-capable",
                         Enabled = true,
-                        Text = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     }
                 ]
@@ -64,7 +64,7 @@ public sealed class ProviderModelSelectionTests
                     {
                         Id = "fallback",
                         Enabled = true,
-                        Text = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     }
                 ]
@@ -79,15 +79,21 @@ public sealed class ProviderModelSelectionTests
                     {
                         Id = "active",
                         Enabled = true,
-                        Text = true,
-                        ActiveText = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     }
                 ]
             }
         };
+        var selections = new ActiveModelSelectionsState
+        {
+            Values =
+            {
+                [AiModelRole.Chat] = new() { ProviderId = "second", ModelId = "active" }
+            }
+        };
 
-        var active = TextModelTuningCatalog.TryResolveActiveTextModel(providers);
+        var active = TextModelTuningCatalog.TryResolveActiveTextModel(providers, selections);
 
         Assert.NotNull(active);
         Assert.Equal("second", active!.Provider.Id);
@@ -109,22 +115,28 @@ public sealed class ProviderModelSelectionTests
                     {
                         Id = "disabled-active",
                         Enabled = false,
-                        Text = true,
-                        ActiveText = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     },
                     new()
                     {
                         Id = "fallback",
                         Enabled = true,
-                        Text = true,
+                        Roles = [AiModelRole.Chat],
                         Capabilities = new() { TextInput = true, TextOutput = true }
                     }
                 ]
             }
         };
+        var selections = new ActiveModelSelectionsState
+        {
+            Values =
+            {
+                [AiModelRole.Chat] = new() { ProviderId = "first", ModelId = "disabled-active" }
+            }
+        };
 
-        var active = TextModelTuningCatalog.TryResolveActiveTextModel(providers);
+        var active = TextModelTuningCatalog.TryResolveActiveTextModel(providers, selections);
 
         Assert.NotNull(active);
         Assert.Equal("fallback", active!.Model.Id);
@@ -148,21 +160,21 @@ public sealed class ProviderModelSelectionTests
                     {
                         Id = "capable-not-enabled",
                         Enabled = true,
-                        Image = false,
+                        Roles = [],
                         Capabilities = new() { TextInput = true, ImageOutput = true }
                     },
                     new()
                     {
                         Id = "enabled-not-capable",
                         Enabled = true,
-                        Image = true,
+                        Roles = [AiModelRole.Image],
                         Capabilities = new() { TextInput = true, ImageOutput = false }
                     },
                     new()
                     {
                         Id = "enabled-capable",
                         Enabled = true,
-                        Image = true,
+                        Roles = [AiModelRole.Image],
                         Capabilities = new() { TextInput = true, ImageOutput = true }
                     }
                 ]
@@ -176,7 +188,7 @@ public sealed class ProviderModelSelectionTests
     }
 
     [Fact]
-    public async Task BulkModelToggleSelectsOnlyChatModels()
+    public async Task BulkModelToggleSelectsEveryAvailableRole()
     {
         await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
         var session = new RoleplaySession(store);
@@ -209,22 +221,21 @@ public sealed class ProviderModelSelectionTests
         await session.Providers.SetModelsAsync(provider, true);
 
         Assert.True(provider.Models[0].Enabled);
-        Assert.True(provider.Models[0].Text);
-        Assert.False(provider.Models[0].Image);
-        Assert.False(provider.Models[1].Enabled);
-        Assert.False(provider.Models[1].Text);
-        Assert.False(provider.Models[1].Image);
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForChat(provider.Models[0]));
+        Assert.False(AiProviderModelSelectionRules.IsSelectedForImage(provider.Models[0]));
+        Assert.True(provider.Models[1].Enabled);
+        Assert.False(AiProviderModelSelectionRules.IsSelectedForChat(provider.Models[1]));
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForImage(provider.Models[1]));
         Assert.False(provider.Models[2].Enabled);
-        Assert.False(provider.Models[2].Text);
-        Assert.False(provider.Models[2].Image);
+        Assert.False(AiProviderModelSelectionRules.IsSelectedForChat(provider.Models[2]));
+        Assert.False(AiProviderModelSelectionRules.IsSelectedForImage(provider.Models[2]));
 
         await session.Providers.SetModelsAsync(provider, false);
 
         Assert.All(provider.Models, model =>
         {
             Assert.False(model.Enabled);
-            Assert.False(model.Text);
-            Assert.False(model.Image);
+            Assert.Empty(model.Roles);
         });
     }
 
@@ -273,20 +284,19 @@ public sealed class ProviderModelSelectionTests
     {
         var model = new AiProviderModel
         {
-            Text = true,
-            Image = true,
+            Enabled = true,
+            Roles = [AiModelRole.Chat, AiModelRole.Image],
             Capabilities = new() { TextInput = false, TextOutput = false, ImageOutput = false }
         };
 
         AiProviderModelSelectionRules.SelectAvailableRoles(model);
 
         Assert.False(model.Enabled);
-        Assert.False(model.Text);
-        Assert.False(model.Image);
+        Assert.Empty(model.Roles);
     }
 
     [Fact]
-    public async Task ProviderStorePersistsOneGlobalActiveTextModel()
+    public async Task ChatModelSelectionPersistsActiveTextModel()
     {
         await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
         var session = new RoleplaySession(store);
@@ -302,28 +312,138 @@ public sealed class ProviderModelSelectionTests
                 {
                     Id = "first",
                     Enabled = true,
-                    Text = true,
-                    ActiveText = true,
+                    Roles = [AiModelRole.Chat],
                     Capabilities = new() { TextInput = true, TextOutput = true }
                 },
                 new()
                 {
                     Id = "second",
                     Enabled = true,
-                    Text = true,
+                    Roles = [AiModelRole.Chat],
                     Capabilities = new() { TextInput = true, TextOutput = true }
                 }
             ]
         };
         await session.Providers.AddAsync(provider);
 
-        await session.Providers.SetActiveTextModelAsync("active-provider", "second");
+        await session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Chat, "active-provider", "second");
 
         var reloaded = new RoleplaySession(store);
         await reloaded.InitializeAsync();
-        var activeModels = reloaded.Providers.Items.SelectMany(item => item.Models).Where(model => model.ActiveText).ToList();
-        Assert.Single(activeModels);
-        Assert.Equal("second", activeModels[0].Id);
+        var active = reloaded.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+        Assert.Equal("second", active?.Model.Id);
+    }
+
+    [Fact]
+    public void CapabilityPipelinePreservesElevenLabsVoiceSelectionAfterResolvingCapabilities()
+    {
+        var catalog = new FixedCapabilityCatalog(new()
+        {
+            [("elevenlabs", "eleven_multilingual_v2")] = new() { TextInput = true, TextOutput = false, SpeechOutput = true }
+        });
+        var pipeline = new AiProviderCapabilityPipeline(catalog);
+        var provider = new AiProvider
+        {
+            Type = "elevenlabs",
+            Enabled = true,
+            Models =
+            [
+                new()
+                {
+                    Id = "eleven_multilingual_v2",
+                    Enabled = true,
+                    Roles = [AiModelRole.Voice]
+                }
+            ]
+        };
+
+        pipeline.Normalize(provider);
+
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForVoice(provider.Models[0]));
+    }
+
+    [Fact]
+    public void CapabilityPipelineRemovesUnsupportedRolesAfterCapabilitiesResolve()
+    {
+        var catalog = new FixedCapabilityCatalog(new()
+        {
+            [("compatible", "text-only")] = new() { TextInput = true, TextOutput = true, SpeechOutput = false }
+        });
+        var pipeline = new AiProviderCapabilityPipeline(catalog);
+        var provider = new AiProvider
+        {
+            Type = "compatible",
+            Enabled = true,
+            Models =
+            [
+                new()
+                {
+                    Id = "text-only",
+                    Enabled = true,
+                    Roles = [AiModelRole.Voice]
+                }
+            ]
+        };
+
+        pipeline.Normalize(provider);
+
+        Assert.False(provider.Models[0].Enabled);
+        Assert.Empty(provider.Models[0].Roles);
+    }
+
+    [Fact]
+    public void CapabilityPipelineAddsAndSelectsProviderManagedXAiTtsModel()
+    {
+        var catalog = new FixedCapabilityCatalog(new()
+        {
+            [("grok", AiProviderModelIdentityRules.XAiTextToSpeechModelId)] = new() { TextInput = true, TextOutput = false, SpeechOutput = true }
+        });
+        var pipeline = new AiProviderCapabilityPipeline(catalog);
+        var provider = new AiProvider
+        {
+            Type = "grok",
+            ApiKey = "xai-key",
+            Enabled = true
+        };
+
+        pipeline.Normalize(provider);
+
+        var model = Assert.Single(provider.Models);
+        Assert.Equal(AiProviderModelIdentityRules.XAiTextToSpeechModelId, model.Id);
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForVoice(model));
+    }
+
+    [Fact]
+    public async Task ActiveModelResolutionDoesNotMutateProviderRoles()
+    {
+        await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+        var session = new RoleplaySession(
+            store,
+            new NoOpCapabilityCatalog(),
+            capabilityPipeline: new NoOpCapabilityPipeline());
+        await session.InitializeAsync();
+        var provider = new AiProvider
+        {
+            Id = "provider",
+            Enabled = true,
+            Models =
+            [
+                new()
+                {
+                    Id = "voice-with-unresolved-capability",
+                    Enabled = true,
+                    Roles = [AiModelRole.Voice],
+                    Capabilities = ModelGenerationCapabilities.Fallback
+                }
+            ]
+        };
+        await session.Providers.AddAsync(provider);
+
+        var active = session.Chat.ModelSelection.Resolve(AiModelRole.Voice);
+
+        Assert.Null(active);
+        Assert.Contains(AiModelRole.Voice, provider.Models[0].Roles);
+        Assert.True(provider.Models[0].Enabled);
     }
 
     [Fact]
@@ -388,6 +508,41 @@ public sealed class ProviderModelSelectionTests
         }
 
         public void UpdateLiveGrokCapabilities(JsonNode languageModelsJson)
+        {
+        }
+    }
+
+    sealed class FixedCapabilityCatalog(Dictionary<(string Provider, string Model), ModelGenerationCapabilities> capabilities) : IModelCapabilityCatalog
+    {
+        public string UserCatalogPath => "";
+
+        public ModelGenerationCapabilities Resolve(AiProvider provider, AiProviderModel model) => Resolve(provider.Type, model.Id);
+
+        public ModelGenerationCapabilities Resolve(string providerType, string modelId) =>
+            capabilities.TryGetValue((providerType, modelId), out var value) ? value : ModelGenerationCapabilities.Fallback;
+
+        public void ApplyResolvedCapabilities(AiProvider provider)
+        {
+            foreach (var model in provider.Models)
+                model.Capabilities = Resolve(provider, model);
+        }
+
+        public void SaveUserCapabilities(string providerType, string modelId, ModelGenerationCapabilities capabilities)
+        {
+        }
+
+        public void UpdateLiveGrokCapabilities(JsonNode languageModelsJson)
+        {
+        }
+    }
+
+    sealed class NoOpCapabilityPipeline : IAiProviderCapabilityPipeline
+    {
+        public void Normalize(AiProvider provider)
+        {
+        }
+
+        public void Normalize(IEnumerable<AiProvider> providers)
         {
         }
     }

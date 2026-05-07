@@ -1,0 +1,58 @@
+<BusyButton Bare
+            Class="@CssClass"
+            Disabled="@Disabled"
+            TooltipText="@TooltipText"
+            AriaLabel="@EffectiveAriaLabel"
+            OnClick="@OnClick">
+    @if (LeadingContent is not null)
+    {
+        <span class="popover-option-leading">@LeadingContent</span>
+    }
+    <span class="popover-option-copy">
+        @if (TitleContent is not null)
+        {
+            @TitleContent
+        }
+        else
+        {
+            <strong>@Title</strong>
+        }
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <small>@Subtitle</small>
+        }
+        @DetailContent
+    </span>
+    @if (TrailingContent is not null)
+    {
+        <span class="popover-option-trailing">@TrailingContent</span>
+    }
+    else if (Selected)
+    {
+        <FaIcon Name="check" />
+    }
+</BusyButton>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? TooltipText { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? TitleContent { get; set; }
+    [Parameter] public RenderFragment? DetailContent { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "popover-option",
+        Selected ? "is-selected" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string? EffectiveAriaLabel => AriaLabel
+        ?? (!string.IsNullOrWhiteSpace(TooltipText) ? TooltipText : Title);
+}

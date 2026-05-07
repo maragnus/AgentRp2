@@ -157,16 +157,15 @@ public sealed class ModelCapabilityCatalogTests
                 {
                     Id = "chat-and-visual",
                     Enabled = true,
-                    Text = false,
-                    Image = true
+                    Roles = [AiModelRole.Image]
                 }
             ]
         };
 
         catalog.ApplyResolvedCapabilities(provider);
 
-        Assert.False(provider.Models[0].Text);
-        Assert.True(provider.Models[0].Image);
+        Assert.False(AiProviderModelSelectionRules.IsSelectedForChat(provider.Models[0]));
+        Assert.True(AiProviderModelSelectionRules.IsSelectedForImage(provider.Models[0]));
         Assert.True(provider.Models[0].Capabilities.CanGenerateText);
         Assert.True(provider.Models[0].Capabilities.CanGenerateImage);
     }

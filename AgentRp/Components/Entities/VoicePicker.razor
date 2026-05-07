@@ -8,10 +8,9 @@
                                DebugName="@($"VoicePicker model picker for {OwnerName}")">
                 <TriggerContent Context="modelPicker">
                     <AppButton Variant="secondary"
-                               Size="icon"
+                               Size="sm"
                                Class="@ProviderButtonClass(modelPicker.IsOpen)"
-                               Title="@ModelPickerTitle"
-                               AriaLabel="@ModelPickerTitle"
+                               TooltipText="@ModelPickerTitle"
                                OnClick="@(_ => modelPicker.Toggle())">
                         <span class="voice-picker-provider-glyph">
                             @if (modelPicker.ActiveModel is null)

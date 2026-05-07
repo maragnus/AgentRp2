@@ -5,11 +5,15 @@ namespace AgentRp.Session;
 
 public sealed class RoleplaySession(
     ILiveRoleplayStore liveStore,
-    IModelCapabilityCatalog capabilityCatalog,
+    IModelCapabilityCatalog? capabilityCatalog = null,
     ITextGenerationService? textGenerationService = null,
-    IStoryAssistantService? storyAssistantService = null) : IAsyncDisposable
+    IStoryAssistantService? storyAssistantService = null,
+    IAiProviderCapabilityPipeline? capabilityPipeline = null,
+    IAiProviderWidgetService? providerWidgetService = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
+    readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
+    readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
     bool _initialized;
     string? _activeChatId;
 
@@ -31,7 +35,7 @@ public sealed class RoleplaySession(
         Registry = new(_sessionId, liveStore, ActiveChat);
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
-        Providers = new(_sessionId, liveStore, capabilityCatalog);
+        Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
         Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, storyAssistantService);
         liveStore.Changed += OnLiveStoreChanged;
 
@@ -225,9 +229,16 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
     }
 }
 
-public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, IModelCapabilityCatalog capabilityCatalog) : StoreBase
+public sealed class ProviderStore(
+    Guid sessionId,
+    ILiveRoleplayStore liveStore,
+    IAiProviderCapabilityPipeline? capabilityPipeline = null,
+    IAiProviderWidgetService? widgetService = null) : StoreBase
 {
     readonly List<AiProvider> _items = [];
+    readonly HashSet<string> _widgetLoadAttempts = new(StringComparer.Ordinal);
+    readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(NullModelCapabilityCatalog.Instance);
+    readonly IAiProviderWidgetService _widgetService = widgetService ?? NullAiProviderWidgetService.Instance;
 
     public IReadOnlyList<AiProvider> Items => _items;
 
@@ -237,12 +248,13 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, 
     {
         _items.Clear();
         _items.AddRange((await liveStore.LoadProvidersAsync()).Select(SessionCloner.Clone));
-        NormalizeProviderManagedVoiceModels();
+        NormalizeProviders();
         await NotifyChangedAsync();
     }
 
     public async Task AddAsync(AiProvider provider)
     {
+        _capabilityPipeline.Normalize(provider);
         _items.Add(provider);
         await MarkChangedAsync();
     }
@@ -266,16 +278,65 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, 
         await MarkChangedAsync();
     }
 
+    public async Task EnsureWidgetLoadedAsync(string providerId)
+    {
+        if (!_widgetLoadAttempts.Add(providerId))
+            return;
+
+        await RefreshWidgetAsync(providerId);
+    }
+
+    public async Task RefreshWidgetAsync(string providerId)
+    {
+        var provider = _items.FirstOrDefault(provider => provider.Id == providerId);
+        if (provider is null)
+            return;
+
+        try
+        {
+            provider.Metrics = (await _widgetService.RefreshMetricsAsync(provider)).ToList();
+            provider.LastMetricsRefreshUtc = DateTime.UtcNow;
+            provider.LastMetricsError = "";
+        }
+        catch (Exception exception)
+        {
+            provider.LastMetricsError = UserFacingErrorMessageBuilder.Build($"Refreshing widget details for {provider.Name} failed.", exception);
+        }
+
+        await MarkChangedAsync();
+    }
+
     public async Task MarkChangedAsync()
     {
-        NormalizeProviderManagedVoiceModels();
+        NormalizeProviders();
         await liveStore.ReplaceProvidersAsync(sessionId, _items);
         await NotifyChangedAsync();
     }
 
-    void NormalizeProviderManagedVoiceModels()
-    {
-        foreach (var provider in _items)
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, capabilityCatalog);
-    }
+    void NormalizeProviders() => _capabilityPipeline.Normalize(_items);
+}
+
+sealed class NullModelCapabilityCatalog : IModelCapabilityCatalog
+{
+    public static NullModelCapabilityCatalog Instance { get; } = new();
+    public string UserCatalogPath => "";
+    public ModelGenerationCapabilities Resolve(AiProvider provider, AiProviderModel model) => model.Capabilities;
+    public ModelGenerationCapabilities Resolve(string providerType, string modelId) => ModelGenerationCapabilities.Fallback;
+    public void ApplyResolvedCapabilities(AiProvider provider) { }
+    public void SaveUserCapabilities(string providerType, string modelId, ModelGenerationCapabilities capabilities) { }
+    public void UpdateLiveGrokCapabilities(System.Text.Json.Nodes.JsonNode languageModelsJson) { }
+}
+
+sealed class NullAiProviderWidgetService : IAiProviderWidgetService
+{
+    public static NullAiProviderWidgetService Instance { get; } = new();
+
+    public Task<IReadOnlyList<AiProviderMetric>> RefreshMetricsAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AiProviderMetric>>([]);
+
+    public Task<IReadOnlyList<ManagedEndpointStatusView>> GetHuggingFaceStatusesAsync(IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ManagedEndpointStatusView>>([]);
+
+    public Task<ManagedEndpointStatusView> ExecuteHuggingFaceActionAsync(AiProvider provider, AiProviderModel model, ManagedEndpointAction action, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
 }

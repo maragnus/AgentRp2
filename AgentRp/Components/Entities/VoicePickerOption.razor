@@ -1,25 +1,21 @@
-<BusyButton Variant="ghost"
-            Size="sm"
-            Class="@CssClass"
-            Disabled="@Selected"
-            Title="@Title"
-            AriaLabel="@Title"
-            OnClick="Select">
-    <strong>@DisplayName</strong>
-    @if (Tags.Count > 0)
-    {
-        <span class="voice-picker-tag-cloud">
-            @foreach (var tag in Tags)
-            {
-                <span @key="@($"{Voice.Id}:{tag}")">@tag</span>
-            }
-        </span>
-    }
-    @if (Selected)
-    {
-        <FaIcon Name="check" />
-    }
-</BusyButton>
+<PickerOptionButton Title="@DisplayName"
+                    Selected="@Selected"
+                    Disabled="@Selected"
+                    TooltipText="@TooltipText"
+                    AriaLabel="@TooltipText"
+                    OnClick="Select">
+    <DetailContent>
+        @if (Tags.Count > 0)
+        {
+            <span class="popover-option-tags">
+                @foreach (var tag in Tags)
+                {
+                    <span @key="@($"{Voice.Id}:{tag}")">@tag</span>
+                }
+            </span>
+        }
+    </DetailContent>
+</PickerOptionButton>
 
 @code {
     [Parameter] public AiProviderVoice Voice { get; set; } = new();
@@ -28,8 +24,7 @@
     [Parameter] public EventCallback<AiProviderVoice> OnSelected { get; set; }
 
     string DisplayName => AiProviderVoiceDisplayRules.DisplayVoice(Voice);
-    string Title => Selected ? $"{DisplayName} is selected" : $"Use {DisplayName}";
-    string CssClass => $"voice-picker-option-row {(Selected ? "is-selected" : "")}";
+    string TooltipText => Selected ? $"{DisplayName} is selected" : $"Use {DisplayName}";
 
     Task Select() => OnSelected.InvokeAsync(Voice);
 }

@@ -1,14 +1,14 @@
 @implements IDisposable
 @inject IAiProviderConnectionService ProviderConnectionService
 @inject IModelCapabilityCatalog CapabilityCatalog
-@inject IAiProviderWidgetService ProviderWidgetService
 @inject IAiProviderVoiceInventoryService VoiceInventoryService
+@inject IAiProviderCapabilityPipeline CapabilityPipeline
 
 <ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
     <ModalSplitLayout RailWidth="230px">
         <RailHeader>
             <span>Providers</span>
-            <IconButton Icon="plus" Title="Add provider" Class="providers-add-button" OnClick="@(_ => StartAdd())" />
+            <AppButton Icon="plus" TooltipText="Add provider" Class="providers-add-button" OnClick="@(_ => StartAdd())" />
         </RailHeader>
         <RailContent>
                 @foreach (var provider in Providers)
@@ -162,20 +162,13 @@
                             </div>
                             <div class="provider-enabled-wrap">
                                 <span>@(Selected.Enabled ? "Enabled" : "Disabled")</span>
-                                <ToggleSwitch Value="Selected.Enabled" ValueChanged="value => SetProviderEnabled(Selected, value)" Title="Toggle provider enabled" />
+                                <ToggleSwitch Value="Selected.Enabled" ValueChanged="value => SetProviderEnabled(Selected, value)" TooltipText="Toggle provider enabled" />
                             </div>
                         </ModalPaneHeader>
 
                         <ModalPaneActionBar Class="provider-action-bar">
-                            <AppButton Variant="primary" Size="sm" OnClick="SaveSelectedClick"><FaIcon Name="check" />Save</AppButton>
-                            <BusyButton Variant="secondary" Size="sm" OnClick="TestProvider"><FaIcon Name="zap" />Test connection</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" Disabled="@(!CanRefreshVoices(Selected))" OnClick="RefreshVoices"><FaIcon Name="waveform-lines" />Refresh voices</BusyButton>
-                            <BusyButton Variant="secondary" Size="sm" OnClick="RefreshWidget"><FaIcon Name="chart-line" />Refresh widget</BusyButton>
-                            @if (TestOk is true)
-                            {
-                                <span class="provider-connected"><FaIcon Name="check" />Connected</span>
-                            }
                             <span class="modal-action-spacer"></span>
                             <AppButton Variant="danger" Size="sm" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" />Delete</AppButton>
                         </ModalPaneActionBar>
@@ -185,90 +178,8 @@
                         {
                             <div class="modal-error">@ProviderError</div>
                         }
-                        <Section Title="Connection" Class="provider-section">
-                            <AppField Label="Display Name">
-                                <input class="field" value="@Selected.Name" @oninput="args => Selected.Name = args.Value?.ToString() ?? string.Empty" />
-                            </AppField>
-                            <AppField Label="@meta.KeyLabel" Hint="Stored locally, never sent to our servers.">
-                                <LabelAction>
-                                    @if (!string.IsNullOrWhiteSpace(meta.KeyLink))
-                                    {
-                                        <a href="@meta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
-                                    }
-                                </LabelAction>
-                                <ChildContent><KeyInput @bind-Value="Selected.ApiKey" /></ChildContent>
-                            </AppField>
-                            @if (Selected.Type is "grok" or "claude")
-                            {
-                                <AppField Label="Admin / Management Key" Hint="Used only for provider usage, billing, or management widgets.">
-                                    <ChildContent><KeyInput @bind-Value="Selected.ManagementApiKey" /></ChildContent>
-                                </AppField>
-                            }
-                            @if (meta.NeedsEndpoint)
-                            {
-                                <AppField Label="Endpoint URL">
-                                    <LabelAction><span class="field-status-pill @(meta.EndpointRequired ? "is-required" : "")">@(meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
-                                    <ChildContent><input class="field" value="@Selected.Endpoint" placeholder="https://..." @oninput="args => Selected.Endpoint = args.Value?.ToString() ?? string.Empty" /></ChildContent>
-                                </AppField>
-                            }
-                            @if (Selected.Type is "openai" or "claude")
-                            {
-                                <AppField Label="Project">
-                                    <ChildContent><input class="field" value="@Selected.ProjectId" @oninput="args => Selected.ProjectId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
-                                </AppField>
-                                <AppField Label="Account">
-                                    <ChildContent><input class="field" value="@Selected.AccountId" @oninput="args => Selected.AccountId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
-                                </AppField>
-                            }
-                            @if (Selected.Type == "grok")
-                            {
-                                <AppField Label="Team">
-                                    <ChildContent><input class="field" value="@Selected.TeamId" @oninput="args => Selected.TeamId = args.Value?.ToString() ?? string.Empty" /></ChildContent>
-                                </AppField>
-                            }
-                        </Section>
-
-                        <Section Title="Provider Widget" Hint="@ProviderWidgetHint(Selected)" Class="provider-section">
-                            <ChildContent>
-                                @if (!string.IsNullOrWhiteSpace(Selected.LastMetricsError))
-                                {
-                                    <div class="modal-error">@Selected.LastMetricsError</div>
-                                }
-                                @if (Selected.Metrics.Count == 0)
-                                {
-                                    <div class="providers-empty-state is-compact">
-                                        <FaIcon Name="chart-line" />
-                                        <strong>No widget details loaded</strong>
-                                        <span>Refresh the widget to load provider-specific status.</span>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="provider-metric-grid">
-                                        @foreach (var metric in Selected.Metrics)
-                                        {
-                                            <div @key="metric.Id" class="provider-metric-card" title="@metric.Detail">
-                                                <small>@metric.Label</small>
-                                                <strong>@metric.Value</strong>
-                                                @if (!string.IsNullOrWhiteSpace(metric.Detail))
-                                                {
-                                                    <span>@metric.Detail</span>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                                @if (Selected.Type == "huggingface")
-                                {
-                                    <div class="provider-endpoint-stack">
-                                        @foreach (var model in Selected.Models.Where(model => !string.IsNullOrWhiteSpace(model.Endpoint)))
-                                        {
-                                            <HuggingFaceEndpointWidget @key="model.Id" Provider="@Selected" Model="@model" />
-                                        }
-                                    </div>
-                                }
-                            </ChildContent>
-                        </Section>
+                        <ProviderConnectionEditor Provider="Selected" Meta="meta" />
+                        <ProviderWidgetPanel @key="Selected.Id" Provider="Selected" />
 
                         <Section Title="Models" Hint="Enable models for Chat, Image Gen, or Voice." Class="provider-section">
                             <ChildContent>
@@ -313,31 +224,31 @@
                 <div class="setup-grid">
                     <label class="setup-toggle-row">
                         <span><strong>Chat</strong><small>Text input and text output</small></span>
-                        <ToggleSwitch Value="@SetupChat" ValueChanged="value => SetupChat = value" Title="Toggle chat capability" />
+                        <ToggleSwitch Value="@SetupChat" ValueChanged="value => SetupChat = value" TooltipText="Toggle chat capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Image Gen</strong><small>Text prompt to image output</small></span>
-                        <ToggleSwitch Value="@SetupImage" ValueChanged="value => SetupImage = value" Title="Toggle image generation capability" />
+                        <ToggleSwitch Value="@SetupImage" ValueChanged="value => SetupImage = value" TooltipText="Toggle image generation capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Voice</strong><small>Text input to speech output</small></span>
-                        <ToggleSwitch Value="@SetupVoice" ValueChanged="value => SetupVoice = value" Title="Toggle voice capability" />
+                        <ToggleSwitch Value="@SetupVoice" ValueChanged="value => SetupVoice = value" TooltipText="Toggle voice capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Vision</strong><small>Accepts image input</small></span>
-                        <ToggleSwitch Value="@SetupVision" ValueChanged="value => SetupVision = value" Title="Toggle vision capability" />
+                        <ToggleSwitch Value="@SetupVision" ValueChanged="value => SetupVision = value" TooltipText="Toggle vision capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Structured</strong><small>Reliable JSON/schema output</small></span>
-                        <ToggleSwitch Value="@SetupStructured" ValueChanged="value => SetupStructured = value" Title="Toggle structured output capability" />
+                        <ToggleSwitch Value="@SetupStructured" ValueChanged="value => SetupStructured = value" TooltipText="Toggle structured output capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Streaming</strong><small>Can stream text responses</small></span>
-                        <ToggleSwitch Value="@SetupStreaming" ValueChanged="value => SetupStreaming = value" Title="Toggle streaming capability" />
+                        <ToggleSwitch Value="@SetupStreaming" ValueChanged="value => SetupStreaming = value" TooltipText="Toggle streaming capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Tools</strong><small>Can call tools/functions</small></span>
-                        <ToggleSwitch Value="@SetupTools" ValueChanged="value => SetupTools = value" Title="Toggle tool capability" />
+                        <ToggleSwitch Value="@SetupTools" ValueChanged="value => SetupTools = value" TooltipText="Toggle tool capability" />
                     </label>
                 </div>
             </Section>
@@ -368,7 +279,6 @@
     string? OnboardType;
     string OnboardApiKey = "";
     string OnboardEndpoint = "";
-    bool? TestOk;
     bool ConfirmDelete;
     bool ShowModelsNeedingSetup;
     AiProvider? SetupProvider;
@@ -398,8 +308,7 @@
     AiProvider? Selected => Providers.FirstOrDefault(provider => provider.Id == SelectedId);
     AiProviderMeta? OnboardMeta => OnboardType is null ? null : MetaFor(OnboardType);
     bool CanFetchModels => OnboardMeta is not null
-        && (!OnboardMeta.ApiKeyRequired || !string.IsNullOrWhiteSpace(OnboardApiKey))
-        && (!OnboardMeta.EndpointRequired || !string.IsNullOrWhiteSpace(OnboardEndpoint));
+        && ProviderConnectionValidation.Validate(OnboardMeta, ProviderConnectionDraft.FromProvider(BuildOnboardProvider())).IsValid;
     string? EndpointHint => OnboardType switch
     {
         "openai" => "Uses the default OpenAI /v1 base URL.",
@@ -421,7 +330,6 @@
     AiProviderMeta MetaFor(string type) => ProviderTypes.FirstOrDefault(provider => provider.Id == type) ?? ProviderTypes.Last();
     (int ChatCount, int ImageCount, int VoiceCount) Counts(AiProvider provider)
     {
-        CapabilityCatalog.ApplyResolvedCapabilities(provider);
         var enabled = provider.Models.Where(model => model.Enabled).ToList();
         return (
             enabled.Count(AiProviderModelSelectionRules.IsSelectedForChat),
@@ -433,7 +341,6 @@
     {
         SelectedId = id;
         OnboardStep = 0;
-        TestOk = null;
         ProviderError = "";
     }
 
@@ -479,7 +386,7 @@
         {
             var provider = BuildOnboardProvider();
             provider.Models = (await ProviderConnectionService.DiscoverModelsAsync(provider)).Select(CloneDisabled).ToList();
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
+            CapabilityPipeline.Normalize(provider);
             OnboardModels = ProviderModelListRules.SortModels(provider.Models).ToList();
             OnboardStep = 3;
         }
@@ -504,7 +411,6 @@
             Endpoint = OnboardMeta.NeedsEndpoint ? OnboardEndpoint : "",
             Models = ProviderModelListRules.SortModels(OnboardModels.Select(Clone)).ToList()
         };
-        AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
         await Session.Providers.AddAsync(provider);
         SelectedId = provider.Id;
         OnboardStep = 0;
@@ -512,25 +418,6 @@
     }
 
     Task OnOnboardModelChanged() => InvokeAsync(StateHasChanged);
-
-    async Task TestProvider()
-    {
-        TestOk = null;
-        ProviderError = "";
-        if (Selected is null)
-            return;
-
-        try
-        {
-            await ProviderConnectionService.TestProviderAsync(Selected);
-            TestOk = true;
-        }
-        catch (Exception exception)
-        {
-            TestOk = false;
-            ProviderError = UserFacingErrorMessageBuilder.Build($"Testing {Selected.Name} failed.", exception);
-        }
-    }
 
     async Task RefreshModels()
     {
@@ -542,7 +429,7 @@
         {
             var discovered = await ProviderConnectionService.DiscoverModelsAsync(Selected);
             MergeModels(Selected, discovered);
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
+            CapabilityPipeline.Normalize(Selected);
             Selected.Models = ProviderModelListRules.SortModels(Selected.Models).ToList();
             await Session.Providers.MarkChangedAsync();
             _ = AutoRefreshMissingVoicesAsync(Selected);
@@ -550,27 +437,6 @@
         catch (Exception exception)
         {
             ProviderError = UserFacingErrorMessageBuilder.Build($"Refreshing models for {Selected.Name} failed.", exception);
-        }
-    }
-
-    async Task RefreshWidget()
-    {
-        if (Selected is null)
-            return;
-
-        ProviderError = "";
-        try
-        {
-            Selected.Metrics = (await ProviderWidgetService.RefreshMetricsAsync(Selected)).ToList();
-            Selected.LastMetricsRefreshUtc = DateTime.UtcNow;
-            Selected.LastMetricsError = "";
-            await Session.Providers.MarkChangedAsync();
-        }
-        catch (Exception exception)
-        {
-            Selected.LastMetricsError = UserFacingErrorMessageBuilder.Build($"Refreshing widget details for {Selected.Name} failed.", exception);
-            ProviderError = Selected.LastMetricsError;
-            await Session.Providers.MarkChangedAsync();
         }
     }
 
@@ -626,21 +492,8 @@
         await Session.Providers.MarkChangedAsync();
     }
 
-    async Task SaveSelectedClick(MouseEventArgs args)
-    {
-        if (Selected is not null)
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
-
-        await Session.Providers.MarkChangedAsync();
-        if (Selected is not null)
-            _ = AutoRefreshMissingVoicesAsync(Selected);
-    }
-
     async Task SaveSelected()
     {
-        if (Selected is not null)
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
-
         await Session.Providers.MarkChangedAsync();
         if (Selected is not null)
             _ = AutoRefreshMissingVoicesAsync(Selected);
@@ -669,7 +522,6 @@
                 current.Endpoint = string.IsNullOrWhiteSpace(model.Endpoint) ? current.Endpoint : model.Endpoint;
                 current.Repository = string.IsNullOrWhiteSpace(model.Repository) ? current.Repository : model.Repository;
                 current.CreatedUnix = model.CreatedUnix ?? current.CreatedUnix;
-                AiProviderModelSelectionRules.SynchronizeEnabled(current);
             }
             else
             {
@@ -732,7 +584,6 @@
         CapabilityCatalog.SaveUserCapabilities(SetupProvider.Type, SetupModel.Id, capabilities);
         SetupModel.Capabilities = CapabilityCatalog.Resolve(SetupProvider, SetupModel);
         AiProviderModelSelectionRules.SelectAvailableRoles(SetupModel);
-        AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(SetupProvider, CapabilityCatalog);
         if (Providers.Any(provider => provider.Id == SetupProvider.Id))
         {
             await Session.Providers.MarkChangedAsync();
@@ -744,16 +595,6 @@
 
     static TuningSupport ParseSupport(string value) =>
         Enum.TryParse<TuningSupport>(value, out var parsed) ? parsed : TuningSupport.Unsupported;
-
-    static string ProviderWidgetHint(AiProvider provider) => provider.Type switch
-    {
-        "openai" => "Shows connection, model inventory, and usage guidance.",
-        "grok" => "Shows xAI billing status when a team id is configured.",
-        "claude" => "Shows Anthropic usage status when an admin key is configured.",
-        "huggingface" => "Shows managed endpoint runtime and controls.",
-        "elevenlabs" => "Shows connection, model inventory, and cached voice status.",
-        _ => "Shows provider-specific connection details."
-    };
 
     static RenderFragment TuningOptions() => builder =>
     {
@@ -800,9 +641,6 @@
 
     static bool CanRefreshVoices(AiProvider provider) =>
         provider.Models.Any(AiProviderModelSelectionRules.IsSelectedForVoice);
-
-    static string DisplayName(AiProviderModel model) =>
-        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 
     public void Dispose()
     {

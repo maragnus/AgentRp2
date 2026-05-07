@@ -41,7 +41,7 @@
                             @foreach (var placeholder in PromptLibraryService.GetPlaceholders(Active))
                             {
                                 var copied = CopiedToken == placeholder.Token;
-                                <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" Title="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
+                                <SelectableButton @key="placeholder.Token" Class="@($"placeholder-token {(copied ? "is-copied" : "")}")" TooltipText="@placeholder.Description" OnClick="@(_ => CopyToken(placeholder.Token))">
                                     <code>@placeholder.Token</code>
                                     <FaIcon Name="@(copied ? "check" : "copy")" />
                                 </SelectableButton>
@@ -78,7 +78,7 @@
                                 <div @key="shape.Id" class="turn-shape-row">
                                     <div>
                                         <code class="@(dirty ? "is-dirty" : "")">@shape.Label</code>
-                                        <IconButton Icon="refresh" Title="Reset" Disabled="@(!dirty)" OnClick="@(_ => ResetTurnShape(shape.Id))" />
+                                        <AppButton Icon="refresh" TooltipText="Reset" Disabled="@(!dirty)" OnClick="@(_ => ResetTurnShape(shape.Id))" />
                                     </div>
                                     <textarea class="field mono" rows="2" value="@shape.Value" @onchange="@((ChangeEventArgs args) => UpdateTurnShape(shape.Id, args.Value?.ToString() ?? ""))"></textarea>
                                 </div>

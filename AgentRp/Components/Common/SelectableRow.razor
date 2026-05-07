@@ -2,8 +2,8 @@
     <AppButton Bare
                Class="@CheckClass"
                Disabled="@Disabled"
-               Title="@SelectionTitle"
-               AriaLabel="@SelectionTitle"
+               TooltipText="@SelectionTooltipText"
+               AriaLabel="@SelectionTooltipText"
                OnClick="@OnToggle">
         @if (Selected)
         {
@@ -27,7 +27,7 @@
     [Parameter] public bool Limited { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Title { get; set; }
-    [Parameter] public string? SelectionTitle { get; set; }
+    [Parameter] public string? SelectionTooltipText { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnToggle { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }

@@ -6,23 +6,11 @@
            Size="@Size"
            Class="@CssClass"
            Disabled="@Disabled"
-           Title="@Title"
-           AriaLabel="@Title"
+           Icon="@ButtonIcon"
+           Text="@ButtonText"
+           TooltipText="@TooltipText"
            OnClick="Click"
-           StopPropagation>
-    @if (Loading)
-    {
-        <span class="spinner" aria-hidden="true"></span>
-    }
-    else
-    {
-        <FaIcon Name="@Icon" />
-    }
-    @if (!IconOnly)
-    {
-        <span>@Label</span>
-    }
-</AppButton>
+           StopPropagation />
 
 @code {
     bool Loading;
@@ -34,7 +22,7 @@
     [Parameter] public string PreviewUrl { get; set; } = "";
     [Parameter] public string Text { get; set; } = "";
     [Parameter] public string Variant { get; set; } = "secondary";
-    [Parameter] public string Size { get; set; } = "icon";
+    [Parameter] public string Size { get; set; } = "sm";
     [Parameter] public string? Class { get; set; }
     [Parameter] public bool IconOnly { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
@@ -48,8 +36,10 @@
     bool HasPreviewUrl => PreviewUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
         || PreviewUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
     string Icon => Playing ? "circle-stop" : "circle-play";
+    string ButtonIcon => Loading ? "spinner" : Icon;
+    string? ButtonText => IconOnly ? null : Label;
     string Label => Playing ? "Stop" : "Play";
-    string Title
+    string TooltipText
     {
         get
         {
@@ -70,6 +60,7 @@
     string CssClass => string.Join(" ", new[]
     {
         "tts-sample-button",
+        Loading ? "is-loading" : null,
         Playing ? "is-playing" : null,
         !string.IsNullOrWhiteSpace(Error) ? "has-error" : null,
         Class

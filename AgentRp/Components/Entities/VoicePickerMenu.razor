@@ -5,14 +5,13 @@
                  CloseOnContentClick="false">
     <Trigger Context="picker">
         <AppButton Variant="secondary"
-                   Size="@(Compact ? "icon" : "md")"
+                   Size="@(Compact ? "sm" : "md")"
                    Class="@($"voice-picker-selected-button {(picker.IsOpen ? "is-open" : "")}")"
                    Disabled="@(ActiveVoiceModel is null || ActiveVoiceModel.Model.Voices.Count == 0)"
-                   Title="@VoicePickerTitle"
-                   AriaLabel="@VoicePickerTitle"
+                   Text="@SelectedVoiceName"
+                   TrailingIcon="chevron-down"
+                   TooltipText="@VoicePickerTitle"
                    OnClick="@(_ => picker.Toggle())">
-            @SelectedVoiceName
-            <FaIcon Name="chevron-down" />
         </AppButton>
     </Trigger>
     <Content Context="picker">

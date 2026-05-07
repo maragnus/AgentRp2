@@ -4,7 +4,7 @@
         {
             var selected = MultiValues?.Contains(item.Id) ?? Selected == item.Id;
             var disabled = MultiValues is not null && Max.HasValue && !selected && MultiValues.Count >= Max.Value;
-            <SelectableButton @key="item.Id" Title="@item.Hover" Disabled="@disabled" Class="@($"character-option-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
+            <SelectableButton @key="item.Id" TooltipText="@item.Hover" Disabled="@disabled" Class="@($"character-option-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
                 <span class="character-option-dot">
                     @if (selected)
                     {

@@ -22,6 +22,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 builder.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
+builder.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
 builder.Services.AddSingleton<IModelClientFactory, ModelClientFactory>();
 builder.Services.AddSingleton<IModelGenerationClient, OpenAiModelGenerationClient>();
 builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionService>();

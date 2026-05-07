@@ -88,6 +88,8 @@ public sealed class TranscriptStore(
         var actor = requestedNarrator
             ? null
             : requestedActor ?? Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId);
+        SelectRegenerationParent(original.ParentTurnId);
+        await NotifyChangedAsync();
         await GenerateTurnCoreAsync(
             parentTurnId: original.ParentTurnId,
             guidance: string.IsNullOrWhiteSpace(guidance) ? original.Guidance : guidance,
@@ -395,7 +397,7 @@ public sealed class TranscriptStore(
         }
         catch (TranscriptGenerationException exception)
         {
-            PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, exception.Trace);
+            PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, exception.Trace);
             CaptureBackgroundError(exception);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
@@ -403,7 +405,14 @@ public sealed class TranscriptStore(
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
-            await NotifyChangedAsync();
+            if (mode == "regenerated")
+            {
+                PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, BuildUnhandledFailureTrace(exception));
+                await SaveTranscriptAsync();
+            }
+            else
+                await NotifyChangedAsync();
+
             await ClearActiveTraceAsync();
         }
     }
@@ -420,7 +429,35 @@ public sealed class TranscriptStore(
         await NotifyChangedAsync();
     }
 
-    void PersistFailedTurn(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string mode, RpTurnTrace trace)
+    RpTurnTrace BuildUnhandledFailureTrace(Exception exception)
+    {
+        var now = DateTime.UtcNow;
+        var trace = ActiveTrace is null
+            ? new RpTurnTrace { StartedUtc = now }
+            : SessionCloner.Clone(ActiveTrace);
+        if (trace.StartedUtc == default)
+            trace.StartedUtc = now;
+
+        trace.Status = "failed";
+        trace.CompletedUtc = now;
+        trace.DurationSeconds = (trace.CompletedUtc - trace.StartedUtc).TotalSeconds;
+        trace.Data["error"] = exception.Message;
+        var step = trace.Steps.FirstOrDefault(step => step.Status is "running" or "pending");
+        if (step is null)
+        {
+            step = new() { Id = "generation", Label = "Generation", StartedUtc = trace.StartedUtc };
+            trace.Steps.Add(step);
+        }
+
+        step.Status = "failed";
+        step.CompletedUtc = now;
+        step.DurationSeconds = (step.CompletedUtc - step.StartedUtc).TotalSeconds;
+        step.Error = exception.Message;
+        trace.Summary = $"Failed · {string.Join(" -> ", trace.Steps.Select(step => step.Label))}";
+        return trace;
+    }
+
+    void PersistFailedTurn(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string mode, string turnShape, RpTurnTrace trace)
     {
         if (Document is null)
             return;
@@ -441,10 +478,28 @@ public sealed class TranscriptStore(
             ActorCharacterId = actorId,
             ActorName = actorName,
             Guidance = guidance.Trim(),
+            Plan = new() { TurnShape = turnShape },
             Scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(Document.Transcript)),
             Trace = SessionCloner.Clone(trace)
         };
         CommitTurn(turn, now);
+    }
+
+    void SelectRegenerationParent(string parentTurnId)
+    {
+        if (Document is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(parentTurnId))
+        {
+            Document.Transcript.ActiveLeafTurnId = "";
+            Document.Transcript.BranchSelections.Remove(TranscriptGraph.RootBranchKey);
+            TranscriptProjector.Apply(Document);
+            return;
+        }
+
+        TranscriptGraph.SelectLeaf(Document.Transcript, parentTurnId);
+        TranscriptProjector.Apply(Document);
     }
 
     void CommitTurn(RpTranscriptTurn turn, DateTime now)

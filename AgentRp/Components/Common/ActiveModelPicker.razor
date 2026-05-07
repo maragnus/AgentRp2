@@ -1,5 +1,3 @@
-@inject IModelCapabilityCatalog CapabilityCatalog
-
 <AnchoredPopover Placement="@Placement"
                  Class="@PopoverClass"
                  AnchorClass="@AnchorClass"
@@ -43,26 +41,14 @@
                     @foreach (var model in group.Models)
                     {
                         var selected = ActiveModel?.Provider.Id == group.Provider.Id && ActiveModel.Model.Id == model.Id;
-                        <BusyButton @key="model.Id"
-                                    Variant="ghost"
-                                    Size="sm"
-                                    Class="@($"sidebar-picker-option sidebar-model-option {(selected ? "is-selected" : "")}")"
-                                    Disabled="@selected"
-                                    Title="@($"Use {DisplayName(model)}")"
-                                    AriaLabel="@($"Use {DisplayName(model)}")"
-                                    OnClick="@(() => SelectModel(picker, group.Provider.Id, model.Id))">
-                            <span class="sidebar-picker-option-copy">
-                                <strong>@DisplayName(model)</strong>
-                                @if (ShowModelId(model))
-                                {
-                                    <small>@model.Id</small>
-                                }
-                            </span>
-                            @if (selected)
-                            {
-                                <FaIcon Name="check" />
-                            }
-                        </BusyButton>
+                        <PickerOptionButton @key="model.Id"
+                                            Title="@DisplayName(model)"
+                                            Subtitle="@(ShowModelId(model) ? model.Id : null)"
+                                            Selected="@selected"
+                                            Disabled="@selected"
+                                            TooltipText="@($"Use {DisplayName(model)}")"
+                                            AriaLabel="@($"Use {DisplayName(model)}")"
+                                            OnClick="@(() => SelectModel(picker, group.Provider.Id, model.Id))" />
                     }
                 </div>
             }
@@ -89,15 +75,10 @@
     IReadOnlyList<ModelGroup> Groups => BuildGroups();
     OverlayLayer EffectiveLayer => Layer ?? AmbientLayer;
 
-    ActiveModelSelection? ResolveActiveModel()
-    {
-        ApplyProviderCapabilities();
-        return Session.Chat.ModelSelection.Resolve(Role);
-    }
+    ActiveModelSelection? ResolveActiveModel() => Session.Chat.ModelSelection.Resolve(Role);
 
     IReadOnlyList<ModelGroup> BuildGroups()
     {
-        ApplyProviderCapabilities();
         return Session.Providers.Items
             .Where(provider => provider.Enabled)
             .Select(provider => new ModelGroup(
@@ -107,15 +88,6 @@
                     .ToList()))
             .Where(group => group.Models.Count > 0)
             .ToList();
-    }
-
-    void ApplyProviderCapabilities()
-    {
-        foreach (var provider in Session.Providers.Items)
-        {
-            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
-            CapabilityCatalog.ApplyResolvedCapabilities(provider);
-        }
     }
 
     async Task SelectModel(AnchoredPopoverContext picker, string providerId, string modelId)

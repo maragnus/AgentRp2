@@ -29,7 +29,7 @@
                       ItemBodyClass="modal-form-stack">
         <ListHeader>
             <span>@ActiveTypeLabel</span>
-            <IconButton Icon="plus" Title="Add entity" OnClick="@(_ => AddEntity())" />
+            <AppButton Icon="plus" TooltipText="Add entity" OnClick="@(_ => AddEntity())" />
         </ListHeader>
         <ListItemTemplate Context="row">
             <SidebarListRow Title="@row.Item.Title"
@@ -65,7 +65,7 @@
                     @if (HasToggle && !row.Item.IsNarrator)
                     {
                         <span class="entity-row-action" @onclick:stopPropagation="true">
-                            <IconButton Icon="@(Type == "locations" ? "map-pin" : "eye")" Title="Toggle active" Active="@row.Item.Active" OnClick="@(_ => ToggleActive(row.Item.Id))" />
+                            <AppButton Icon="@(Type == "locations" ? "map-pin" : "eye")" TooltipText="Toggle active" Active="@row.Item.Active" OnClick="@(_ => ToggleActive(row.Item.Id))" />
                         </span>
                     }
                 </TrailingContent>

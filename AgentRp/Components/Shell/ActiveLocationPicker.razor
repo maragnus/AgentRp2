@@ -37,27 +37,18 @@
             @foreach (var location in Locations)
             {
                 var selected = location.IsActive;
-                <BusyButton @key="location.Id"
-                            Variant="ghost"
-                            Size="sm"
-                            Class="@($"sidebar-picker-option sidebar-location-option {(selected ? "is-selected" : "")}")"
-                            Disabled="@selected"
-                            Title="@($"Use {location.Name}")"
-                            AriaLabel="@($"Use {location.Name}")"
-                            OnClick="@(() => SelectLocation(picker, location))">
-                    <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" Size="24" />
-                    <span class="sidebar-picker-option-copy">
-                        <strong>@location.Name</strong>
-                        @if (!string.IsNullOrWhiteSpace(location.Summary))
-                        {
-                            <small>@location.Summary</small>
-                        }
-                    </span>
-                    @if (selected)
-                    {
-                        <FaIcon Name="check" />
-                    }
-                </BusyButton>
+                <PickerOptionButton @key="location.Id"
+                                    Title="@location.Name"
+                                    Subtitle="@location.Summary"
+                                    Selected="@selected"
+                                    Disabled="@selected"
+                                    TooltipText="@($"Use {location.Name}")"
+                                    AriaLabel="@($"Use {location.Name}")"
+                                    OnClick="@(() => SelectLocation(picker, location))">
+                    <LeadingContent>
+                        <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" Size="24" />
+                    </LeadingContent>
+                </PickerOptionButton>
             }
         }
     </Content>

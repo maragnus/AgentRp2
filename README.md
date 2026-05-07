@@ -82,6 +82,11 @@ If you want to study the repo as a design example, pay attention to the explicit
 
 It is also worth looking at how the app handles structured responses for entity drafting, snapshots, planning, and appearance resolution. A big part of the design is using application architecture to compensate for weaker models instead of treating the model as the entire system.
 
+## Design Notes
+
+- [Modal Layouts](Docs/ModalLayouts.md) documents the shared modal layout primitives.
+- [AppButton](Docs/AppButton.md) documents the planned button primitive refactor and marks `IconButton` obsolete for new work.
+
 ## Current status
 
 This system is still actively being designed and refined, and the current architecture is intentionally willing to change when a better foundation becomes clear. The product name in this README is **AgentRp**, while the current repo and project names are still `AgentRp`, `AgentRp.AppHost`, and `AgentRp.ServiceDefaults`.

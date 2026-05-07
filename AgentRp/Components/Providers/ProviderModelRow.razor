@@ -2,7 +2,7 @@
                Selected="@AnyEnabled"
                Disabled="@(!HasAnyRole || ProviderManagedVoiceEndpoint)"
                Limited="@(!HasAnyRole)"
-               SelectionTitle="@RowTitle"
+               SelectionTooltipText="@RowTitle"
                OnToggle="@(_ => ToggleModel())">
     <ChildContent>
         <span class="provider-model-title">
@@ -18,14 +18,14 @@
         {
             <CapabilityPill Tone="text"
                             Active="@ChatActive"
-                            Title="@ChatTitle"
+                            TooltipText="@ChatTitle"
                             OnClick="@(_ => ToggleChat())">Chat</CapabilityPill>
         }
         @if (CanImage)
         {
             <CapabilityPill Tone="image"
                             Active="@ImageActive"
-                            Title="@ImageTitle"
+                            TooltipText="@ImageTitle"
                             OnClick="@(_ => ToggleImage())">Image Gen</CapabilityPill>
         }
         @if (CanVoice)
@@ -38,7 +38,7 @@
             {
                 <CapabilityPill Tone="voice"
                                 Active="@VoiceActive"
-                                Title="@VoiceTitle"
+                                TooltipText="@VoiceTitle"
                                 OnClick="@(_ => ToggleVoice())">Voice</CapabilityPill>
             }
             @if (VoiceActive)
@@ -52,7 +52,7 @@
         }
         @if (NeedsSetup)
         {
-            <AppButton Variant="secondary" Size="xs" Class="model-setup-button" Title="@NeedsSetupTitle" OnClick="@(_ => OnSetup.InvokeAsync(Model))">
+            <AppButton Variant="secondary" Size="xs" Class="model-setup-button" TooltipText="@NeedsSetupTitle" OnClick="@(_ => OnSetup.InvokeAsync(Model))">
                 <FaIcon Name="wrench" />Set up
             </AppButton>
         }

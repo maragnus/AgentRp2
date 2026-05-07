@@ -1,55 +1,50 @@
-<div class="character-editor">
-    <section class="character-summary-card">
-        <div class="character-summary-top">
-            <div>
-                <SectionHeader Title="Summary" />
-                <p>@SummaryText</p>
-            </div>
-        </div>
+<div class="entity-form-editor entity-profile-editor">
+    <Section Title="Summary" Class="entity-profile-summary">
+        <p>@SummaryText</p>
+    </Section>
 
-        <div class="character-summary-grid">
-            <Section Title="Voice" Class="profile-block profile-block-wide">
-                <dl class="summary-definition-list">
-                    <div>
-                        <dt>Preset</dt>
-                        <dd>@NarratorProfileService.VoiceLabel(Profile.VoicePreset)</dd>
-                    </div>
-                    <div>
-                        <dt>Guidance</dt>
-                        <dd>@CustomGuidanceText</dd>
-                    </div>
-                </dl>
-            </Section>
-            <Section Title="Scene" Class="profile-block profile-block-wide">
-                <dl class="summary-definition-list">
-                    <div>
-                        <dt>Setup</dt>
-                        <dd>@LevelLabel(Profile.SetupDepth)</dd>
-                    </div>
-                    <div>
-                        <dt>Visuals</dt>
-                        <dd>@LevelLabel(Profile.VisualDetail)</dd>
-                    </div>
-                </dl>
-            </Section>
-            <Section Title="Motion" Class="profile-block profile-block-wide">
-                <dl class="summary-definition-list">
-                    <div>
-                        <dt>Transitions</dt>
-                        <dd>@LevelLabel(Profile.TransitionContext)</dd>
-                    </div>
-                    <div>
-                        <dt>Foreshadowing</dt>
-                        <dd>@LevelLabel(Profile.Foreshadowing)</dd>
-                    </div>
-                    <div>
-                        <dt>Direction</dt>
-                        <dd>@LevelLabel(Profile.DirectionStrength)</dd>
-                    </div>
-                </dl>
-            </Section>
-        </div>
-    </section>
+    <div class="entity-profile-grid">
+        <Section Title="Voice" Class="entity-profile-section entity-profile-section-wide">
+            <dl class="summary-definition-list">
+                <div>
+                    <dt>Preset</dt>
+                    <dd>@NarratorProfileService.VoiceLabel(Profile.VoicePreset)</dd>
+                </div>
+                <div>
+                    <dt>Guidance</dt>
+                    <dd>@CustomGuidanceText</dd>
+                </div>
+            </dl>
+        </Section>
+        <Section Title="Scene" Class="entity-profile-section entity-profile-section-wide">
+            <dl class="summary-definition-list">
+                <div>
+                    <dt>Setup</dt>
+                    <dd>@LevelLabel(Profile.SetupDepth)</dd>
+                </div>
+                <div>
+                    <dt>Visuals</dt>
+                    <dd>@LevelLabel(Profile.VisualDetail)</dd>
+                </div>
+            </dl>
+        </Section>
+        <Section Title="Motion" Class="entity-profile-section entity-profile-section-wide">
+            <dl class="summary-definition-list">
+                <div>
+                    <dt>Transitions</dt>
+                    <dd>@LevelLabel(Profile.TransitionContext)</dd>
+                </div>
+                <div>
+                    <dt>Foreshadowing</dt>
+                    <dd>@LevelLabel(Profile.Foreshadowing)</dd>
+                </div>
+                <div>
+                    <dt>Direction</dt>
+                    <dd>@LevelLabel(Profile.DirectionStrength)</dd>
+                </div>
+            </dl>
+        </Section>
+    </div>
 </div>
 
 @code {

@@ -16,13 +16,13 @@
         {
             <span class="provider-model-filter">
                 <span>Show setup</span>
-                <ToggleSwitch Value="@ShowNeedsSetup" ValueChanged="SetShowNeedsSetup" Title="Show models needing setup" />
+                <ToggleSwitch Value="@ShowNeedsSetup" ValueChanged="SetShowNeedsSetup" TooltipText="Show models needing setup" />
             </span>
         }
         <AppButton Variant="secondary"
                    Size="xs"
                    Disabled="@(!HasSelectedModels)"
-                   Title="Clear selected models"
+                   TooltipText="Clear selected models"
                    OnClick="@(_ => ClearModels())">
             <FaIcon Name="x" />Clear
         </AppButton>

@@ -1,6 +1,6 @@
 <Section Title="@Label">
     <RightContent>
-        <AppButton Variant="ghost" Size="xs" Disabled="@(!IsDirty)" Title="Reset to default" OnClick="@(_ => OnReset.InvokeAsync())">
+        <AppButton Variant="ghost" Size="xs" Disabled="@(!IsDirty)" TooltipText="Reset to default" OnClick="@(_ => OnReset.InvokeAsync())">
             <FaIcon Name="refresh" /> Reset
         </AppButton>
     </RightContent>

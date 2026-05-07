@@ -4,11 +4,11 @@
            value="@Value"
            placeholder="@Placeholder"
            @oninput="HandleInput" />
-    <IconButton Icon="eye"
-                Title="@(Show ? "Hide key" : "Show key")"
-                Active="@Show"
-                Class="key-input-toggle"
-                OnClick="@(_ => Show = !Show)" />
+    <AppButton Icon="eye"
+               TooltipText="@(Show ? "Hide key" : "Show key")"
+               Active="@Show"
+               Class="key-input-toggle"
+               OnClick="@(_ => Show = !Show)" />
 </div>
 
 @code {

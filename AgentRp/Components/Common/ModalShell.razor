@@ -17,9 +17,9 @@
                     <div class="modal-window-actions">
                         @if (ShowExpandButton)
                         {
-                            <IconButton Icon="@ExpandIcon" Title="@ExpandTitle" OnClick="@ToggleExpanded" />
+                            <AppButton Icon="@ExpandIcon" TooltipText="@ExpandTitle" OnClick="@ToggleExpanded" />
                         }
-                        <IconButton Icon="x" Title="Close" OnClick="@CloseClick" />
+                        <AppButton Icon="x" TooltipText="Close" OnClick="@CloseClick" />
                     </div>
                 </header>
                 <div class="modal-body @BodyClass">

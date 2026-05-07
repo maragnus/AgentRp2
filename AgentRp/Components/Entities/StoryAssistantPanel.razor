@@ -1,5 +1,4 @@
 @implements IDisposable
-@inject IModelCapabilityCatalog CapabilityCatalog
 
 <div class="story-assistant">
     <div class="story-assistant-toolbar">
@@ -7,7 +6,7 @@
             <FaIcon Name="sparkles" />
             <span>@ModelStatus</span>
         </div>
-        <AppSelect Value="@Session.Chat.StoryAssistant.State.ReviewMode.ToString()" ValueChanged="SetReviewMode" Class="story-assistant-review">
+        <AppSelect Size="sm" Value="@Session.Chat.StoryAssistant.State.ReviewMode.ToString()" ValueChanged="SetReviewMode" Class="story-assistant-review">
             <option value="@StoryAssistantReviewMode.ReviewAll">Every change</option>
             <option value="@StoryAssistantReviewMode.ReviewMajor">Major changes</option>
             <option value="@StoryAssistantReviewMode.AutoApprove">Apply automatically</option>
@@ -153,7 +152,7 @@
             @if (Session.Chat.StoryAssistant.IsBusy)
             {
                 <span class="composer-busy-status"><span class="spinner"></span>@Session.Chat.StoryAssistant.BusyMessage</span>
-                <BusyButton Variant="secondary" OnClick="Stop" Title="Stop assistant run" AriaLabel="Stop assistant run">
+                <BusyButton Variant="secondary" OnClick="Stop" TooltipText="Stop assistant run" AriaLabel="Stop assistant run">
                     <FaIcon Name="square" /> Stop
                 </BusyButton>
             }
@@ -183,16 +182,7 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    ActiveModelSelection? ActiveModel
-    {
-        get
-        {
-            foreach (var provider in Session.Providers.Items)
-                CapabilityCatalog.ApplyResolvedCapabilities(provider);
-
-            return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
-        }
-    }
+    ActiveModelSelection? ActiveModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
 
     bool CanRun => ActiveModel is { Capabilities.CanGenerateStreamingText: true, Capabilities.Tools: true };
     string ModelStatus => ActiveModel is null

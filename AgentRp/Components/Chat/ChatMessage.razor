@@ -53,9 +53,9 @@
             @if (SiblingCount > 1)
             {
                 <div class="branch-nav">
-                    <IconButton Icon="chevron-left" Title="Previous branch" Disabled="@(TranscriptBusy || !CanSelectPreviousSibling)" OnClick="@(_ => SelectPreviousSibling())" />
+                    <AppButton Icon="chevron-left" TooltipText="Previous branch" Disabled="@(TranscriptBusy || !CanSelectPreviousSibling)" OnClick="@(_ => SelectPreviousSibling())" />
                     <code>@BranchLabel</code>
-                    <IconButton Icon="chevron-right" Title="Next branch" Disabled="@(TranscriptBusy || !CanSelectNextSibling)" OnClick="@(_ => SelectNextSibling())" />
+                    <AppButton Icon="chevron-right" TooltipText="Next branch" Disabled="@(TranscriptBusy || !CanSelectNextSibling)" OnClick="@(_ => SelectNextSibling())" />
                 </div>
             }
             else
@@ -66,7 +66,7 @@
             <div class="action-cluster">
                 <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover">
                     <Trigger Context="author">
-                        <IconButton Icon="users" Title="Change author" Active="@author.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => author.Toggle())" />
+                        <AppButton Icon="users" TooltipText="Change author" Active="@author.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => author.Toggle())" />
                     </Trigger>
                     <Content>
                         <div class="popover-label">Change Author</div>
@@ -78,33 +78,30 @@
                         }
                     </Content>
                 </AnchoredPopover>
-                <IconButton Icon="edit" Title="Edit message" Disabled="@TranscriptBusy" OnClick="@(_ => OpenEditBody())" />
+                <AppButton Icon="edit" TooltipText="Edit message" Disabled="@TranscriptBusy" OnClick="@(_ => OpenEditBody())" />
                 <span class="v-divider"></span>
                 <div class="regen-group">
-                    <IconButton Icon="refresh" Title="Regenerate from saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => Regenerate())" />
+                    <AppButton Icon="refresh" TooltipText="Regenerate from saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => Regenerate())" />
                     <span class="regen-divider" aria-hidden="true"></span>
                     <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover shape-popover">
                         <Trigger Context="shapeMenu">
-                            <AppButton Variant="ghost" Size="icon" Active="@shapeMenu.IsOpen" Disabled="@TranscriptBusy" Title="Change turn shape & regenerate" OnClick="@(_ => shapeMenu.Toggle())"><FaIcon Name="layers" /><FaIcon Name="chevron-down" /></AppButton>
+                            <AppButton Variant="ghost" Size="sm" Icon="layers" TrailingIcon="chevron-down" Active="@shapeMenu.IsOpen" Disabled="@TranscriptBusy" TooltipText="Change turn shape & regenerate" OnClick="@(_ => shapeMenu.Toggle())" />
                         </Trigger>
                         <Content>
                             <div class="popover-label">Turn Shape</div>
-                            @foreach (var shape in TurnShapePickerOptions.All)
-                            {
-                                <SelectableButton @key="shape" Class="@($"select-row {(SelectedTurnShape == shape ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (SelectedTurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
-                            }
+                            <TurnShapeOptionList SelectedShape="@SelectedTurnShape" Disabled="@TranscriptBusy" ShapeSelected="PickShapeAndRegenerate" />
                         </Content>
                     </AnchoredPopover>
                     <span class="regen-divider" aria-hidden="true"></span>
-                    <IconButton Icon="sliders" Title="Edit saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => OpenPlanEditor())" />
+                    <AppButton Icon="sliders" TooltipText="Edit saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => OpenPlanEditor())" />
                 </div>
                 <span class="v-divider"></span>
                 @if (CanUseStructuredFeatures)
                 {
-                    <IconButton Icon="flag" Title="Create snapshot here" Disabled="@TranscriptBusy" OnClick="@(_ => CreateSnapshot())" />
+                    <AppButton Icon="flag" TooltipText="Create snapshot here" Disabled="@TranscriptBusy" OnClick="@(_ => CreateSnapshot())" />
                 }
-                <IconButton Icon="copy" Title="Copy message" OnClick="@CopyMessage" />
-                <IconButton Icon="trash" Title="Delete message" Disabled="@TranscriptBusy" OnClick="@(_ => ConfirmDelete = true)" />
+                <AppButton Icon="copy" TooltipText="Copy message" OnClick="@CopyMessage" />
+                <AppButton Icon="trash" TooltipText="Delete message" Disabled="@TranscriptBusy" OnClick="@(_ => ConfirmDelete = true)" />
             </div>
         </div>
     </div>
@@ -182,9 +179,9 @@
                             }
                             else if (ActivePlanTab == "plan")
                             {
-                                <Section Title="Turn Length" Hint="Regeneration target" Class="edit-plan-section">
-                                    <div class="turn-shape-chip-grid" role="group" aria-label="Turn Length">
-                                        @foreach (var shape in TurnShapePickerOptions.All)
+                                <Section Title="Turn Shape" Hint="Regeneration target" Class="edit-plan-section">
+                                    <div class="turn-shape-chip-grid" role="group" aria-label="Turn Shape">
+                                        @foreach (var shape in TurnShapePickerOptions.Explicit)
                                         {
                                             <button @key="shape" type="button" class="turn-shape-chip @(PlanShape == shape ? "is-selected" : "")" @onclick="@(() => PlanShape = shape)">
                                                 @shape
@@ -278,7 +275,6 @@
     [Parameter] public bool TranscriptBusy { get; set; }
     [Parameter] public int SubsequentCount { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;
-    [Inject] IModelCapabilityCatalog CapabilityCatalog { get; set; } = default!;
 
     bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
     string ProseClass => IsNarrator ? "is-narrator" : "is-character";
@@ -317,7 +313,7 @@
 
     protected override void OnParametersSet()
     {
-        SelectedTurnShape = TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
+        SelectedTurnShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
     }
 
     async Task DeleteSingle()
@@ -347,7 +343,7 @@
     void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
 
     bool IsPlanDirty() =>
-        PlanShape != TurnShapePickerOptions.Normalize(Message.Plan.TurnShape) ||
+        PlanShape != TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape) ||
         Beat != Message.Plan.Beat ||
         ChangeIntroduced != Message.Plan.ChangeIntroduced ||
         Intent != Message.Plan.Intent ||
@@ -364,20 +360,23 @@
 
     async Task CreateSnapshot() => await Session.Chat.Transcript.CreateSnapshotAsync(Message.Id);
 
-    void PickShape(string shape)
+    async Task PickShapeAndRegenerate(string shape)
     {
-        SelectedTurnShape = shape;
+        SelectedTurnShape = TurnShapePickerOptions.NormalizeExplicit(shape);
+        await Regenerate(SelectedTurnShape);
     }
 
-    async Task Regenerate()
+    async Task Regenerate(string? requestedShape = null)
     {
         var actor = Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId);
-        await Session.Chat.Transcript.RegenerateAsync(Message.Id, Message.Guidance, actor, SelectedTurnShape);
+        var turnShape = TurnShapePickerOptions.NormalizeExplicit(requestedShape ?? SelectedTurnShape);
+        SelectedTurnShape = turnShape;
+        await Session.Chat.Transcript.RegenerateAsync(Message.Id, Message.Guidance, actor, turnShape);
     }
 
     void OpenPlanEditor()
     {
-        PlanShape = TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
+        PlanShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
         Beat = Message.Plan.Beat;
         Intent = Message.Plan.Intent;
         ImmediateGoal = Message.Plan.ImmediateGoal;
@@ -405,7 +404,7 @@
     {
         var plan = new RpTurnPlan
         {
-            TurnShape = PlanShape,
+            TurnShape = TurnShapePickerOptions.NormalizeExplicit(PlanShape),
             Beat = Beat,
             Intent = Intent,
             ImmediateGoal = ImmediateGoal,
@@ -422,11 +421,5 @@
         await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
     }
 
-    ActiveModelSelection? ResolveActiveTextModel()
-    {
-        foreach (var provider in Session.Providers.Items)
-            CapabilityCatalog.ApplyResolvedCapabilities(provider);
-
-        return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
-    }
+    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
 }

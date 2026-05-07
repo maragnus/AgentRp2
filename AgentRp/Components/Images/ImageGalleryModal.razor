@@ -53,8 +53,8 @@
                     </ItemTemplate>
                     <ActionTemplate Context="image">
                         <span class="tiled-select-actions">
-                            <IconButton Icon="eye" Title="View image" StopPropagation OnClick="@(_ => View(image))" />
-                            <IconButton Icon="trash" Variant="danger" Title="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
+                            <AppButton Icon="eye" TooltipText="View image" StopPropagation OnClick="@(_ => View(image))" />
+                            <AppButton Icon="trash" Variant="danger" TooltipText="Delete image" StopPropagation OnClick="@(_ => Delete(image))" />
                         </span>
                     </ActionTemplate>
                 </TiledSelectList>

@@ -32,15 +32,15 @@
             <div class="hf-endpoint-actions">
                 @if (Status.CanStart)
                 {
-                    <BusyButton Variant="secondary" Size="xs" Title="@($"Start {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Start))"><FaIcon Name="play" /></BusyButton>
+                    <BusyButton Variant="secondary" Size="xs" TooltipText="@($"Start {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Start))"><FaIcon Name="play" /></BusyButton>
                 }
                 @if (Status.CanPause)
                 {
-                    <BusyButton Variant="secondary" Size="xs" Title="@($"Pause {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Pause))"><FaIcon Name="pause" /></BusyButton>
+                    <BusyButton Variant="secondary" Size="xs" TooltipText="@($"Pause {DisplayName}")" OnClick="@(() => Manage(ManagedEndpointAction.Pause))"><FaIcon Name="pause" /></BusyButton>
                 }
                 @if (Status.CanScaleToZero)
                 {
-                    <BusyButton Variant="danger" Size="xs" Title="@($"Scale {DisplayName} to zero")" OnClick="@(() => Manage(ManagedEndpointAction.ScaleToZero))"><FaIcon Name="power-off" /></BusyButton>
+                    <BusyButton Variant="danger" Size="xs" TooltipText="@($"Scale {DisplayName} to zero")" OnClick="@(() => Manage(ManagedEndpointAction.ScaleToZero))"><FaIcon Name="power-off" /></BusyButton>
                 }
             </div>
         }

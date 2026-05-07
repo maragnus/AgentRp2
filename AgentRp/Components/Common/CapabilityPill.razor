@@ -1,10 +1,10 @@
-<AppButton Bare Class="@CssClass" Disabled="@Disabled" Title="@Title" OnClick="@OnClick">
+<AppButton Bare Class="@CssClass" Disabled="@Disabled" TooltipText="@TooltipText" OnClick="@OnClick">
     @ChildContent
 </AppButton>
 
 @code {
     [Parameter] public string Tone { get; set; } = "text";
-    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? TooltipText { get; set; }
     [Parameter] public bool Active { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }

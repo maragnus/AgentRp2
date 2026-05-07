@@ -82,7 +82,7 @@
                                     @foreach (var role in SceneRoles)
                                     {
                                         var selected = Character.SceneRoles.Contains(role.Id);
-                                        <SelectableButton @key="role.Id" Title="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= CharacterProfileRules.MaxSceneRoles)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, CharacterProfileRules.MaxSceneRoles))">
+                                        <SelectableButton @key="role.Id" TooltipText="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= CharacterProfileRules.MaxSceneRoles)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, CharacterProfileRules.MaxSceneRoles))">
                                             @role.Label
                                         </SelectableButton>
                                     }
@@ -105,7 +105,7 @@
                                         @foreach (var trait in group.Items)
                                         {
                                             var selected = Character.Traits.Contains(trait.Id);
-                                            <SelectableButton @key="trait.Id" Title="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= CharacterProfileRules.MaxTraits)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, CharacterProfileRules.MaxTraits))">
+                                            <SelectableButton @key="trait.Id" TooltipText="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= CharacterProfileRules.MaxTraits)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, CharacterProfileRules.MaxTraits))">
                                                 @trait.Label
                                             </SelectableButton>
                                         }

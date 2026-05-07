@@ -117,8 +117,7 @@ public sealed class UiCompositionPolicyTests
         {
             Id = "text-capable-but-not-chat-selected",
             Enabled = true,
-            Text = false,
-            Image = true,
+            Roles = [AiModelRole.Image],
             Capabilities = new() { TextInput = true, TextOutput = true, ImageOutput = true }
         });
 
@@ -128,7 +127,7 @@ public sealed class UiCompositionPolicyTests
             .Add(item => item.OnOpenEntities, _ => Task.CompletedTask));
         var overlays = context.Render<OverlayHost>();
 
-        component.Find(".sidebar-model-summary-button").Click();
+        component.Find(".sidebar-model-panel .sidebar-row").Click();
 
         Assert.Contains("Chat Models", overlays.Markup, StringComparison.Ordinal);
         Assert.Contains("Grok / xAI", overlays.Markup, StringComparison.Ordinal);
@@ -156,13 +155,13 @@ public sealed class UiCompositionPolicyTests
             .Add(item => item.OnOpenModal, _ => Task.CompletedTask)
             .Add(item => item.OnOpenEntities, _ => Task.CompletedTask));
         var overlays = context.Render<OverlayHost>();
-        component.Find(".sidebar-model-summary-button").Click();
+        component.Find(".sidebar-model-panel .sidebar-row").Click();
         var option = overlays.FindAll(".sidebar-model-option")
             .First(button => button.TextContent.Contains("grok-4-0709", StringComparison.Ordinal));
 
         await option.ClickAsync(new());
 
-        var active = TextModelTuningCatalog.TryResolveActiveTextModel(session.Providers.Items);
+        var active = session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
         Assert.Equal("grok-4-0709", active?.Model.Id);
     }
 
@@ -205,7 +204,7 @@ public sealed class UiCompositionPolicyTests
                 Id = "selected-image",
                 CreatedUnix = 10,
                 Enabled = true,
-                Image = true,
+                Roles = [AiModelRole.Image],
                 Capabilities = new() { TextInput = true, TextOutput = false, ImageOutput = true }
             },
             new()
@@ -213,7 +212,7 @@ public sealed class UiCompositionPolicyTests
                 Id = "selected-chat",
                 CreatedUnix = 5,
                 Enabled = true,
-                Text = true,
+                Roles = [AiModelRole.Chat],
                 Capabilities = new() { TextInput = true, TextOutput = true }
             }
         };
@@ -275,6 +274,7 @@ public sealed class UiCompositionPolicyTests
     public async Task EntityManagerShowsFixedNarratorRowWithoutCountingItAsCharacter()
     {
         using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
@@ -296,6 +296,7 @@ public sealed class UiCompositionPolicyTests
     public async Task EntityManagerWrapsSelectedHeaderInModalPaneChrome()
     {
         using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
@@ -343,7 +344,9 @@ public sealed class UiCompositionPolicyTests
         context.Services.AddSingleton<IJSRuntime, TestJsRuntime>();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        context.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
+        context.Services.AddSingleton<IAiProviderVoiceInventoryService, TestProviderVoiceInventoryService>();
         context.Services.AddScoped<IAiProviderConnectionService, TestProviderConnectionService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
@@ -429,5 +432,15 @@ public sealed class UiCompositionPolicyTests
 
         public Task<List<AiProviderModel>> DiscoverModelsAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
             Task.FromResult(new List<AiProviderModel>());
+    }
+
+    sealed class TestProviderVoiceInventoryService : IAiProviderVoiceInventoryService
+    {
+        public bool IsRefreshing(AiProvider provider, AiProviderModel model) => false;
+
+        public bool NeedsInitialRefresh(AiProviderModel model) => false;
+
+        public Task<AiProviderVoiceRefreshResult> RefreshModelAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AiProviderVoiceRefreshResult(model.Id, model.Id, true, ""));
     }
 }

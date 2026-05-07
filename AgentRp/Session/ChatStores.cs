@@ -823,14 +823,8 @@ public sealed class ChatModelSelectionStore(ActiveChatContext activeChat, ChatRe
     protected override RoleplayStoreArea Area => RoleplayStoreArea.ModelSelection;
     public ActiveModelSelectionsState State => Document?.ActiveModelSelections ?? ActiveModelSelectionsState.CreateDefault();
 
-    public ActiveModelSelection? Resolve(AiModelRole role)
-    {
-        foreach (var provider in providers.Items)
-            foreach (var model in provider.Models)
-                AiProviderModelSelectionRules.SynchronizeEnabled(model);
-
-        return TextModelTuningCatalog.TryResolveActiveModel(providers.Items, role, State);
-    }
+    public ActiveModelSelection? Resolve(AiModelRole role) =>
+        TextModelTuningCatalog.TryResolveActiveModel(providers.Items, role, State);
 
     public async Task SetActiveModelAsync(AiModelRole role, string providerId, string modelId)
     {

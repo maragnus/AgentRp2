@@ -1,0 +1,157 @@
+@inject IAiProviderConnectionService ProviderConnectionService
+
+<Section Title="Connection" Class="provider-section">
+    <AppField Label="Display Name">
+        <input class="field" value="@Draft.Name" @oninput="args => SetName(args.Value?.ToString() ?? string.Empty)" />
+    </AppField>
+    <AppField Label="@Meta.KeyLabel" Hint="Stored locally, never sent to our servers.">
+        <LabelAction>
+            @if (!string.IsNullOrWhiteSpace(Meta.KeyLink))
+            {
+                <a href="@Meta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
+            }
+        </LabelAction>
+        <ChildContent><KeyInput Value="@Draft.ApiKey" ValueChanged="SetApiKey" /></ChildContent>
+    </AppField>
+    @if (Provider.Type is "grok" or "claude")
+    {
+        <AppField Label="Admin / Management Key" Hint="Used only for provider usage, billing, or management widgets.">
+            <ChildContent><KeyInput Value="@Draft.ManagementApiKey" ValueChanged="SetManagementApiKey" /></ChildContent>
+        </AppField>
+    }
+    @if (Meta.NeedsEndpoint)
+    {
+        <AppField Label="Endpoint URL">
+            <LabelAction><span class="field-status-pill @(Meta.EndpointRequired ? "is-required" : "")">@(Meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
+            <ChildContent><input class="field" value="@Draft.Endpoint" placeholder="https://..." @oninput="args => SetEndpoint(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+        </AppField>
+    }
+    @if (Provider.Type is "openai" or "claude")
+    {
+        <AppField Label="Project">
+            <ChildContent><input class="field" value="@Draft.ProjectId" @oninput="args => SetProjectId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+        </AppField>
+        <AppField Label="Account">
+            <ChildContent><input class="field" value="@Draft.AccountId" @oninput="args => SetAccountId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+        </AppField>
+    }
+    @if (Provider.Type == "grok")
+    {
+        <AppField Label="Team">
+            <ChildContent><input class="field" value="@Draft.TeamId" @oninput="args => SetTeamId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+        </AppField>
+    }
+
+    @if (!Validation.IsValid && HasChanges)
+    {
+        <div class="modal-error">@Validation.Message</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <span class="provider-connected"><FaIcon Name="check" />@StatusMessage</span>
+    }
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="modal-error">@ErrorMessage</div>
+    }
+
+    <div class="provider-section-actions">
+        <BusyButton Variant="primary" Size="sm" Disabled="@(!CanSave)" OnClick="Save">
+            <FaIcon Name="check" />Save
+        </BusyButton>
+        <BusyButton Variant="secondary" Size="sm" Disabled="@(!Validation.IsValid)" OnClick="Test">
+            <FaIcon Name="zap" />Test connection
+        </BusyButton>
+    </div>
+</Section>
+
+@code {
+    ProviderConnectionDraft Draft = new();
+    string? DraftProviderId;
+    string ErrorMessage = "";
+    string StatusMessage = "";
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public AiProvider Provider { get; set; } = new();
+    [Parameter] public AiProviderMeta Meta { get; set; } = new();
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    ProviderConnectionValidation Validation => ProviderConnectionValidation.Validate(Meta, Draft);
+    bool HasChanges => !Draft.Matches(Provider);
+    bool CanSave => HasChanges && Validation.IsValid;
+
+    protected override void OnParametersSet()
+    {
+        if (DraftProviderId == Provider.Id)
+            return;
+
+        Draft = ProviderConnectionDraft.FromProvider(Provider);
+        DraftProviderId = Provider.Id;
+        ErrorMessage = "";
+        StatusMessage = "";
+    }
+
+    async Task Save()
+    {
+        ErrorMessage = "";
+        StatusMessage = "";
+        if (!CanSave)
+            return;
+
+        try
+        {
+            Draft.ApplyTo(Provider);
+            await Session.Providers.MarkChangedAsync();
+            Draft = ProviderConnectionDraft.FromProvider(Provider);
+            StatusMessage = "Saved";
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Saving {Provider.Name} connection failed.", exception);
+        }
+    }
+
+    async Task Test()
+    {
+        ErrorMessage = "";
+        StatusMessage = "";
+        if (!Validation.IsValid)
+            return;
+
+        try
+        {
+            await ProviderConnectionService.TestProviderAsync(Draft.CloneProvider(Provider));
+            StatusMessage = "Connected";
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Testing {Draft.Name} failed.", exception);
+        }
+    }
+
+    void SetName(string value) => UpdateDraft(() => Draft.Name = value);
+    Task SetApiKey(string value)
+    {
+        UpdateDraft(() => Draft.ApiKey = value);
+        return Task.CompletedTask;
+    }
+
+    Task SetManagementApiKey(string value)
+    {
+        UpdateDraft(() => Draft.ManagementApiKey = value);
+        return Task.CompletedTask;
+    }
+
+    void SetEndpoint(string value) => UpdateDraft(() => Draft.Endpoint = value);
+    void SetAccountId(string value) => UpdateDraft(() => Draft.AccountId = value);
+    void SetProjectId(string value) => UpdateDraft(() => Draft.ProjectId = value);
+    void SetTeamId(string value) => UpdateDraft(() => Draft.TeamId = value);
+
+    void UpdateDraft(Action update)
+    {
+        update();
+        ErrorMessage = "";
+        StatusMessage = "";
+    }
+}

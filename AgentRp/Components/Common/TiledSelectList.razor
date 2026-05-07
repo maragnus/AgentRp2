@@ -36,7 +36,7 @@
             {
                 <SelectableButton @key="id"
                                   Class="@CardClass(selected)"
-                                  Title="@Title?.Invoke(item)"
+                                  TooltipText="@Title?.Invoke(item)"
                                   OnClick="@(_ => OnToggle.InvokeAsync(id))">
                     @ItemTemplate(item)
                     @if (BadgeTemplate is not null)

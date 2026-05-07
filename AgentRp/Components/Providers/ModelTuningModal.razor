@@ -1,5 +1,4 @@
 @inject IJSRuntime JS
-@inject IModelCapabilityCatalog CapabilityCatalog
 @implements IDisposable
 
 <ModalShell Title="Model Tuning" MaxWidth="780px" BodyClass="is-flush" OnClose="OnClose">
@@ -187,13 +186,7 @@
         Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
     }
 
-    ActiveModelSelection? ResolveActiveTextModel()
-    {
-        foreach (var provider in Session.Providers.Items)
-            CapabilityCatalog.ApplyResolvedCapabilities(provider);
-
-        return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
-    }
+    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 

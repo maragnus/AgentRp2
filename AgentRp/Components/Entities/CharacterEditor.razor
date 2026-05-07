@@ -1,49 +1,44 @@
-<div class="character-editor">
-    <section class="character-summary-card">
-        <div class="character-summary-top">
-            <div>
-                <SectionHeader Title="Summary" />
-                <p>@SummaryText</p>
-            </div>
-        </div>
+<div class="entity-form-editor entity-profile-editor">
+    <Section Title="Summary" Class="entity-profile-summary">
+        <p>@SummaryText</p>
+    </Section>
 
-        <div class="character-summary-grid">
-            <Section Title="Scene Roles" Class="profile-block">
-                <div class="pill-list">@BadgeList(Character.SceneRoles, "blue")</div>
-            </Section>
-            <Section Title="Traits" Class="profile-block">
-                <div class="pill-list">@BadgeList(Character.Traits, "violet")</div>
-            </Section>
-            <Section Title="Soft Spots" Class="profile-block">
-                <div class="pill-list">@BadgeList(Character.SoftSpots, "emerald")</div>
-            </Section>
-            <Section Title="Inner Engine" Class="profile-block profile-block-wide">
-                <dl class="summary-definition-list">
-                    @foreach (var row in CoreRows)
-                    {
-                        <div @key="row.Label">
-                            <dt>@row.Label</dt>
-                            <dd>@DisplayLabel(row.Value)</dd>
-                        </div>
-                    }
-                </dl>
-            </Section>
-            <Section Title="Voice & Behavior" Class="profile-block profile-block-wide">
-                <dl class="summary-definition-list">
-                    @foreach (var row in VoiceRows)
-                    {
-                        <div @key="row.Label">
-                            <dt>@row.Label</dt>
-                            <dd>@DisplayLabel(row.Value)</dd>
-                        </div>
-                    }
-                </dl>
-            </Section>
-            <Section Title="Avoid Patterns" Class="profile-block profile-block-wide">
-                <div class="pill-list">@BadgeList(Character.AvoidPatterns, "amber")</div>
-            </Section>
-        </div>
-    </section>
+    <div class="entity-profile-grid">
+        <Section Title="Scene Roles" Class="entity-profile-section">
+            <div class="pill-list">@BadgeList(Character.SceneRoles, "blue")</div>
+        </Section>
+        <Section Title="Traits" Class="entity-profile-section">
+            <div class="pill-list">@BadgeList(Character.Traits, "violet")</div>
+        </Section>
+        <Section Title="Soft Spots" Class="entity-profile-section">
+            <div class="pill-list">@BadgeList(Character.SoftSpots, "emerald")</div>
+        </Section>
+        <Section Title="Inner Engine" Class="entity-profile-section entity-profile-section-wide">
+            <dl class="summary-definition-list">
+                @foreach (var row in CoreRows)
+                {
+                    <div @key="row.Label">
+                        <dt>@row.Label</dt>
+                        <dd>@DisplayLabel(row.Value)</dd>
+                    </div>
+                }
+            </dl>
+        </Section>
+        <Section Title="Voice & Behavior" Class="entity-profile-section entity-profile-section-wide">
+            <dl class="summary-definition-list">
+                @foreach (var row in VoiceRows)
+                {
+                    <div @key="row.Label">
+                        <dt>@row.Label</dt>
+                        <dd>@DisplayLabel(row.Value)</dd>
+                    </div>
+                }
+            </dl>
+        </Section>
+        <Section Title="Avoid Patterns" Class="entity-profile-section entity-profile-section-wide">
+            <div class="pill-list">@BadgeList(Character.AvoidPatterns, "amber")</div>
+        </Section>
+    </div>
 </div>
 
 @code {

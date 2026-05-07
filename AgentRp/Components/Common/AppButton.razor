@@ -1,12 +1,30 @@
 <button type="@Type"
         @ref="Element"
         class="@CssClass"
-        title="@Title"
+        title="@TooltipText"
         disabled="@Disabled"
-        aria-label="@AriaLabel"
+        aria-label="@EffectiveAriaLabel"
         @onclick="OnClick"
         @onclick:stopPropagation="StopPropagation">
-    @ChildContent
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <FaIcon Name="@Icon" />
+        }
+        @if (!string.IsNullOrWhiteSpace(Text))
+        {
+            <span>@Text</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(TrailingIcon))
+        {
+            <FaIcon Name="@TrailingIcon" />
+        }
+    }
 </button>
 
 @code {
@@ -20,10 +38,16 @@
     [Parameter] public bool Bare { get; set; }
     [Parameter] public bool StopPropagation { get; set; }
     [Parameter] public string? Class { get; set; }
-    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? TooltipText { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public string? TrailingIcon { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string? EffectiveAriaLabel => AriaLabel
+        ?? (string.IsNullOrWhiteSpace(Text) ? TooltipText : null);
 
     string CssClass => Bare
         ? string.Join(" ", new[] { Class, Active ? "is-active" : null }.Where(value => !string.IsNullOrWhiteSpace(value)))

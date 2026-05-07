@@ -3,9 +3,7 @@
 <div class="theme-toggle" aria-label="Theme">
     @foreach (var option in Options)
     {
-        <AppButton @key="option.Key" Size="icon" Active="@(Theme == option.Key)" Title="@option.Title" OnClick="@(_ => Pick(option.Key))">
-            <FaIcon Name="@option.Icon" />
-        </AppButton>
+        <AppButton @key="option.Key" Size="sm" Icon="@option.Icon" Active="@(Theme == option.Key)" TooltipText="@option.Title" OnClick="@(_ => Pick(option.Key))" />
     }
 </div>
 

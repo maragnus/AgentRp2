@@ -1,0 +1,104 @@
+<Section Title="Provider Widget" Hint="@ProviderWidgetHint(Provider)" Class="provider-section">
+    <RightContent>
+        <BusyButton Variant="secondary" Size="xs" OnClick="Refresh">
+            <FaIcon Name="refresh" />Refresh
+        </BusyButton>
+    </RightContent>
+    <ChildContent>
+        @if (Loading)
+        {
+            <div class="providers-empty-state is-compact">
+                <span class="spinner" aria-hidden="true"></span>
+                <strong>Loading widget details</strong>
+            </div>
+        }
+        else
+        {
+            @if (!string.IsNullOrWhiteSpace(Provider.LastMetricsError))
+            {
+                <div class="modal-error">@Provider.LastMetricsError</div>
+            }
+            @if (Provider.Metrics.Count == 0)
+            {
+                <div class="providers-empty-state is-compact">
+                    <FaIcon Name="chart-line" />
+                    <strong>No widget details loaded</strong>
+                    <span>Refresh the widget to load provider-specific status.</span>
+                </div>
+            }
+            else
+            {
+                <div class="provider-metric-grid">
+                    @foreach (var metric in Provider.Metrics)
+                    {
+                        <div @key="metric.Id" class="provider-metric-card" title="@metric.Detail">
+                            <small>@metric.Label</small>
+                            <strong>@metric.Value</strong>
+                            @if (!string.IsNullOrWhiteSpace(metric.Detail))
+                            {
+                                <span>@metric.Detail</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (Provider.Type == "huggingface")
+            {
+                <div class="provider-endpoint-stack">
+                    @foreach (var model in Provider.Models.Where(model => !string.IsNullOrWhiteSpace(model.Endpoint)))
+                    {
+                        <HuggingFaceEndpointWidget @key="model.Id" Provider="@Provider" Model="@model" />
+                    }
+                </div>
+            }
+        }
+    </ChildContent>
+</Section>
+
+@code {
+    bool Loading;
+    string? LoadingProviderId;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public AiProvider Provider { get; set; } = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (LoadingProviderId == Provider.Id)
+            return;
+
+        LoadingProviderId = Provider.Id;
+        Loading = true;
+        try
+        {
+            await Session.Providers.EnsureWidgetLoadedAsync(Provider.Id);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    async Task Refresh()
+    {
+        Loading = true;
+        try
+        {
+            await Session.Providers.RefreshWidgetAsync(Provider.Id);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    static string ProviderWidgetHint(AiProvider provider) => provider.Type switch
+    {
+        "openai" => "Shows connection, model inventory, and usage guidance.",
+        "grok" => "Shows xAI billing status when a team id is configured.",
+        "claude" => "Shows Anthropic usage status when an admin key is configured.",
+        "huggingface" => "Shows managed endpoint runtime and controls.",
+        "elevenlabs" => "Shows connection, model inventory, and cached voice status.",
+        _ => "Shows provider-specific connection details."
+    };
+}

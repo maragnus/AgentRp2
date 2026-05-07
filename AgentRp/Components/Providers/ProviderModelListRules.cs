@@ -42,9 +42,6 @@ internal static class ProviderModelListRules
     public static void ClearSelectedRoles(AiProviderModel model) =>
         AiProviderModelSelectionRules.ClearSelectedRoles(model);
 
-    public static void SynchronizeSelectedRoles(AiProviderModel model) =>
-        AiProviderModelSelectionRules.SynchronizeEnabled(model);
-
     public static bool IsSelectedForAnyRole(AiProviderModel model) =>
         AiProviderModelSelectionRules.IsSelectedForAnyRole(model);
 }

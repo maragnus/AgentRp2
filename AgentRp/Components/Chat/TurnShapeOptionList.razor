@@ -1,0 +1,12 @@
+@foreach (var shape in TurnShapePickerOptions.Explicit)
+{
+    var selected = SelectedShape == shape;
+    <SelectableButton @key="shape" Class="@($"select-row {(selected ? "is-active" : "")}")" Disabled="@Disabled" OnClick="@(_ => ShapeSelected.InvokeAsync(shape))"><span>@shape</span>@if (selected) { <FaIcon Name="check" /> }</SelectableButton>
+}
+
+@code {
+    [Parameter] public string SelectedShape { get; set; } = TurnShapePickerOptions.Default;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> ShapeSelected { get; set; }
+}
+

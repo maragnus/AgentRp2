@@ -13,7 +13,7 @@
         </div>
         <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Class="menu-popover" CloseOnContentClick="false">
             <Trigger Context="menu">
-                <IconButton Icon="more-h" Title="Chat menu" Active="@menu.IsOpen" OnClick="@(_ => menu.Toggle())" />
+                <AppButton Icon="more-h" TooltipText="Chat menu" Active="@menu.IsOpen" OnClick="@(_ => menu.Toggle())" />
             </Trigger>
             <Content>
                     <div class="popover-label">Audio Tags</div>
@@ -101,7 +101,7 @@
 
                     <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
                         <Trigger Context="shape">
-                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button turn-shape-button" Active="@shape.IsOpen" Disabled="@TranscriptBusy" Title="Select Turn Shape" OnClick="@(_ => shape.Toggle())">
+                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button turn-shape-button" Active="@shape.IsOpen" Disabled="@TranscriptBusy" TooltipText="Select Turn Shape" OnClick="@(_ => shape.Toggle())">
                                 <FaIcon Name="layers" />
                                 <span>@TurnShape</span>
                                 <FaIcon Name="chevron-down" />
@@ -123,10 +123,10 @@
                         <span class="composer-busy-status"><span class="spinner" aria-hidden="true"></span>@TranscriptBusyMessage</span>
                     }
                     <span class="shortcut">Ctrl+↵</span>
-                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" Title="@GenerateTitle" OnClick="@GenerateTurn">
+                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" TooltipText="@GenerateTitle" OnClick="@GenerateTurn">
                         <FaIcon Name="sparkle" /> Generate
                     </AppButton>
-                    <IconButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || Draft.Trim().Length == 0)" Title="Post manual turn" OnClick="@(_ => PostManual())" />
+                    <AppButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || Draft.Trim().Length == 0)" TooltipText="Post manual turn" OnClick="@(_ => PostManual())" />
                 </div>
             </div>
         </div>
@@ -202,8 +202,10 @@
             return;
 
         var text = Draft.Trim();
+        var isGuided = text.Length > 0;
+        var speaker = Session.SpeakingAs;
         Draft = "";
-        await Session.Chat.Transcript.GenerateAsync(text, null, false, IsGuided ? "guided" : "automatic", TurnShape);
+        await Session.Chat.Transcript.GenerateAsync(text, speaker, speaker is null, isGuided ? "guided" : "automatic", TurnShape);
     }
 
     async Task PostManual()

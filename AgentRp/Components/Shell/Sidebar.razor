@@ -7,21 +7,21 @@
             <span>AgentRp</span>
         </div>
         <div>
-            <IconButton Icon="image" Title="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-            <IconButton Icon="feather" Title="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+            <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
+            <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
         </div>
     </div>
 
     <div class="sidebar-action-row">
         <AppButton Variant="primary" Size="md" Class="sidebar-new-chat" OnClick="@(_ => AddChat())">New Chat <FaIcon Name="plus" /></AppButton>
-        <IconButton Icon="download" Title="Import" Class="sidebar-import-button" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
+        <AppButton Icon="download" TooltipText="Import" Class="sidebar-import-button" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
     </div>
 
     <div class="sidebar-scroll">
         <Section Title="AI Model" Compact="true">
             <RightContent>
-                <IconButton Icon="wrench" Title="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
-                <IconButton Icon="settings" Title="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
+                <AppButton Icon="wrench" TooltipText="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
+                <AppButton Icon="settings" TooltipText="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
             </RightContent>
         </Section>
         <SidebarModelPanel OnOpenProviders="@(() => OnOpenModal.InvokeAsync("aiProviders"))" />
@@ -30,7 +30,7 @@
 
         <Section Title="Location" Compact="true">
             <RightContent>
-            <IconButton Icon="edit" Title="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
+            <AppButton Icon="edit" TooltipText="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
             </RightContent>
         </Section>
         <ActiveLocationPicker />
@@ -39,12 +39,12 @@
 
         <Section Title="Characters" Compact="true">
             <RightContent>
-            <IconButton Icon="edit" Title="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
+            <AppButton Icon="edit" TooltipText="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
             </RightContent>
         </Section>
         <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" SpeakTitle="Speak as Narrator" OnSpeak="@(_ => SetSpeakingAs(null))">
             <Actions>
-                <IconButton Icon="edit" Title="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
+                <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
             </Actions>
         </SidebarSpeakerRow>
         @foreach (var character in Characters)
@@ -55,8 +55,8 @@
                                InScene="@character.InScene"
                                OnSpeak="@(_ => SetSpeakingAs(character))">
                 <Actions>
-                <IconButton Icon="eye" Title="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
-                <IconButton Icon="edit" Title="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
+                <AppButton Icon="eye" TooltipText="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
+                <AppButton Icon="edit" TooltipText="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
                 </Actions>
             </SidebarSpeakerRow>
         }
@@ -65,7 +65,7 @@
 
         <Section Title="Items" Compact="true">
             <RightContent>
-            <IconButton Icon="edit" Title="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
+            <AppButton Icon="edit" TooltipText="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
             </RightContent>
         </Section>
         @foreach (var item in Items)
