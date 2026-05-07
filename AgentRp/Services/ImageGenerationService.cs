@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using AgentRp.Data;
 using AgentRp.Models;
@@ -12,6 +14,13 @@ public sealed record ImageModelOption(string Key, string Label, string ProviderI
 
 public sealed record ImageArtStyleOption(string Key, string Label, string PromptInstruction);
 
+public sealed record StoryImageEntitySelection(string EntityType, string EntityId);
+
+public sealed record ImageGenerationSettingsDocument(string ModelKey, string Size, string Quality, string ReferenceDetail, string ArtStyleKey)
+{
+    public static ImageGenerationSettingsDocument Default { get; } = new("", StoryImagePromptBuilder.SquareSize, "auto", "low", "none");
+}
+
 public sealed record GenerateImageRequest(
     string ModelKey,
     string Prompt,
@@ -19,13 +28,13 @@ public sealed record GenerateImageRequest(
     string Size,
     string Quality,
     string ReferenceDetail,
-    IReadOnlyCollection<string> CharacterIds,
+    IReadOnlyCollection<StoryImageEntitySelection> Entities,
     IReadOnlyCollection<string> ReferenceImageIds,
     string? TargetEntityName,
     string? TargetEntityType,
     string? TargetEntityId = null);
 
-public sealed record GeneratedImageResult(GalleryImage Image, string FinalPrompt, string ProviderName, string ModelId, string RevisedPrompt = "");
+public sealed record GeneratedImageResult(GalleryImage Image, string FinalPrompt, string ProviderName, string ModelId, string RevisedPrompt = "", string Rationale = "");
 
 public sealed record ImageGenerationStreamingUpdate(string? PreviewImageDataUrl = null, GeneratedImageResult? Result = null, bool Completed = false);
 
@@ -33,6 +42,8 @@ public interface IImageGenerationService
 {
     IReadOnlyList<ImageArtStyleOption> GetArtStyleOptions();
     IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null);
+    Task<ImageGenerationSettingsDocument> GetSettingsAsync(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null, CancellationToken cancellationToken = default);
+    Task SaveSettingsAsync(ImageGenerationSettingsDocument settings, CancellationToken cancellationToken = default);
     Task<GeneratedImageResult> GenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateImageRequest request, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ImageGenerationStreamingUpdate> GenerateStreamingAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateImageRequest request, CancellationToken cancellationToken = default);
 }
@@ -40,9 +51,11 @@ public interface IImageGenerationService
 public sealed class ImageGenerationService(
     IDbContextFactory<RpDbContext> dbContextFactory,
     IModelGenerationClient generationClient,
-    IModelCapabilityCatalog capabilityCatalog) : IImageGenerationService
+    IModelCapabilityCatalog capabilityCatalog,
+    IAppSettingsService? appSettingsService = null) : IImageGenerationService
 {
     const int MaxImageBytes = 10 * 1024 * 1024;
+    const string ImageSettingsKey = "image-generation-defaults";
     static readonly IReadOnlyList<ImageArtStyleOption> ArtStyleOptions =
     [
         new("none", "None", ""),
@@ -67,6 +80,43 @@ public sealed class ImageGenerationService(
     };
 
     public IReadOnlyList<ImageArtStyleOption> GetArtStyleOptions() => ArtStyleOptions;
+
+    public async Task<ImageGenerationSettingsDocument> GetSettingsAsync(
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState? selections = null,
+        CancellationToken cancellationToken = default)
+    {
+        var saved = appSettingsService is null
+            ? ImageGenerationSettingsDocument.Default
+            : await appSettingsService.GetAsync(ImageSettingsKey, ImageGenerationSettingsDocument.Default, cancellationToken);
+        var models = GetEnabledImageModels(providers, selections);
+        var modelKey = models.Any(model => model.Key == saved.ModelKey)
+            ? saved.ModelKey
+            : models.FirstOrDefault()?.Key ?? "";
+
+        return new(
+            modelKey,
+            NormalizeSize(saved.Size),
+            NormalizeQuality(saved.Quality),
+            NormalizeReferenceDetail(saved.ReferenceDetail),
+            ResolveArtStyle(saved.ArtStyleKey)?.Key ?? "none");
+    }
+
+    public async Task SaveSettingsAsync(ImageGenerationSettingsDocument settings, CancellationToken cancellationToken = default)
+    {
+        if (appSettingsService is null)
+            return;
+
+        await appSettingsService.SaveAsync(
+            ImageSettingsKey,
+            new ImageGenerationSettingsDocument(
+                settings.ModelKey.Trim(),
+                NormalizeSize(settings.Size),
+                NormalizeQuality(settings.Quality),
+                NormalizeReferenceDetail(settings.ReferenceDetail),
+                ResolveArtStyle(settings.ArtStyleKey)?.Key ?? "none"),
+            cancellationToken);
+    }
 
     public IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null)
     {
@@ -119,8 +169,8 @@ public sealed class ImageGenerationService(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var model = ResolveModels(document, providers, request.ModelKey, request.ReferenceImageIds.Count > 0);
-        var finalPrompt = BuildPrompt(document, request);
-        if (string.IsNullOrWhiteSpace(finalPrompt))
+        var prompt = await ComposePromptAsync(document, providers, request, cancellationToken);
+        if (string.IsNullOrWhiteSpace(prompt.FinalPrompt))
             throw new InvalidOperationException("Generating an image failed because the prompt was empty.");
 
         var size = NormalizeSize(request.Size);
@@ -135,7 +185,7 @@ public sealed class ImageGenerationService(
             model.HostCapabilities,
             model.ImageModel,
             model.ImageCapabilities,
-            finalPrompt,
+            prompt.FinalPrompt,
             size,
             quality,
             referenceDetail,
@@ -160,7 +210,7 @@ public sealed class ImageGenerationService(
         if (finalImage is null)
             throw new InvalidOperationException($"{model.ImageProvider.Name} did not return image bytes through Responses image output.");
 
-        var result = await SaveGeneratedImageAsync(document, model, request, finalPrompt, size, quality, referenceDetail, finalImage, finalUpdate, cancellationToken);
+        var result = await SaveGeneratedImageAsync(document, model, request, prompt, size, quality, referenceDetail, finalImage, finalUpdate, cancellationToken);
         yield return new(Result: result, Completed: true);
     }
 
@@ -168,7 +218,7 @@ public sealed class ImageGenerationService(
         RpChatDocument document,
         ResponseImageModelSelection model,
         GenerateImageRequest request,
-        string finalPrompt,
+        ComposedImagePrompt prompt,
         string size,
         string quality,
         string referenceDetail,
@@ -180,9 +230,9 @@ public sealed class ImageGenerationService(
         var revisedPrompt = finalUpdate?.RevisedPrompt ?? "";
         var dimensions = StoryImageDimensions.TryRead(generated.Bytes, generated.ContentType);
         var imageId = $"img-{Guid.NewGuid():N}";
-        var title = BuildTitle(request, finalPrompt);
+        var title = BuildTitle(request, prompt.FinalPrompt);
         var now = DateTime.UtcNow;
-        var metadata = BuildGenerationMetadata(document, request, size, quality, referenceDetail, revisedPrompt, finalUpdate);
+        var metadata = BuildGenerationMetadata(document, request, size, quality, referenceDetail, prompt.Rationale, revisedPrompt, finalUpdate);
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         dbContext.ImageAssets.Add(new ImageAssetRow
@@ -196,7 +246,7 @@ public sealed class ImageGenerationService(
             Width = dimensions?.Width,
             Height = dimensions?.Height,
             UserPrompt = request.Prompt.Trim(),
-            FinalPrompt = finalPrompt,
+            FinalPrompt = prompt.FinalPrompt,
             GenerationMetadataJson = JsonSerializer.Serialize(metadata, AppJsonSerializerOptions.Web),
             ProviderId = model.ImageProvider.Id,
             ProviderName = model.ImageProvider.Name,
@@ -216,7 +266,7 @@ public sealed class ImageGenerationService(
             Url = BuildImageUrl(imageId)
         };
 
-        return new(galleryImage, finalPrompt, model.ImageProvider.Name, model.ImageModel.Id, revisedPrompt);
+        return new(galleryImage, prompt.FinalPrompt, model.ImageProvider.Name, model.ImageModel.Id, revisedPrompt, prompt.Rationale);
     }
 
     ResponseImageModelSelection ResolveModels(RpChatDocument document, IReadOnlyList<AiProvider> providers, string modelKey, bool needsImageInput)
@@ -307,6 +357,7 @@ public sealed class ImageGenerationService(
         string size,
         string quality,
         string referenceDetail,
+        string rationale,
         string revisedPrompt,
         ResponseImageStreamingUpdate? finalUpdate)
     {
@@ -318,6 +369,7 @@ public sealed class ImageGenerationService(
             ReferenceDetail = referenceDetail,
             ArtStyleKey = request.ArtStyleKey,
             ArtStyleLabel = artStyle?.Label ?? "",
+            Rationale = rationale,
             RevisedPrompt = revisedPrompt,
             ResponseId = finalUpdate?.ResponseId ?? "",
             InputTokens = finalUpdate?.InputTokens ?? 0,
@@ -347,15 +399,19 @@ public sealed class ImageGenerationService(
                 EntityType = GalleryEntityType(request.TargetEntityType)
             });
 
-        foreach (var character in document.Characters.Where(character => request.CharacterIds.Contains(character.Id)))
+        foreach (var entity in NormalizeEntitySelections(request.Entities))
         {
+            var view = ResolveEntityView(document, entity);
+            if (view is null)
+                continue;
+
             Add(new()
             {
                 Kind = "entity",
-                Id = character.Id,
-                Name = character.Name,
-                EntityType = "character",
-                ImageUrl = ImageUrlFor(document, character.ImageId)
+                Id = view.Id,
+                Name = view.Name,
+                EntityType = view.EntityType,
+                ImageUrl = ImageUrlFor(document, view.ImageId)
             });
         }
 
@@ -379,6 +435,43 @@ public sealed class ImageGenerationService(
             ? ""
             : document.Images.FirstOrDefault(image => image.Id == imageId)?.Url ?? BuildImageUrl(imageId);
 
+    async Task<ComposedImagePrompt> ComposePromptAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        GenerateImageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var fallback = BuildPrompt(document, request);
+        var selection = TryResolveStructuredTextModel(providers, document.ActiveModelSelections);
+        if (selection is null)
+            return new(fallback, "Composed the prompt from the user request and selected story context.");
+
+        try
+        {
+            var completion = await generationClient.GenerateStructuredAsync<ImagePromptResponse>(
+                new(
+                    selection.Provider,
+                    selection.Model,
+                    selection.Model.Capabilities,
+                    new(),
+                    "You turn roleplaying story context into concise, vivid image generation prompts. Return typed structured output only.",
+                    BuildPromptComposerUserPrompt(document, request),
+                    "Composing image generation prompt"),
+                cancellationToken);
+            var finalPrompt = string.IsNullOrWhiteSpace(completion.Value.FinalPrompt)
+                ? fallback
+                : completion.Value.FinalPrompt.Trim();
+            var rationale = string.IsNullOrWhiteSpace(completion.Value.Rationale)
+                ? "Composed the prompt from the user request and selected story context."
+                : completion.Value.Rationale.Trim();
+            return new(finalPrompt, rationale);
+        }
+        catch (Exception) when (!string.IsNullOrWhiteSpace(fallback))
+        {
+            return new(fallback, "Used deterministic prompt composition because typed prompt generation was unavailable.");
+        }
+    }
+
     static string BuildPrompt(RpChatDocument document, GenerateImageRequest request)
     {
         var parts = new List<string>();
@@ -392,17 +485,17 @@ public sealed class ImageGenerationService(
         if (!string.IsNullOrWhiteSpace(request.TargetEntityName))
             parts.Add($"Target subject: {request.TargetEntityName.Trim()}.");
 
-        var selectedCharacters = document.Characters
-            .Where(character => request.CharacterIds.Contains(character.Id))
+        var selectedEntities = NormalizeEntitySelections(request.Entities)
+            .Select(entity => ResolveEntityView(document, entity))
+            .OfType<EntityContextView>()
             .ToList();
-        if (selectedCharacters.Count > 0)
+        if (selectedEntities.Count > 0)
         {
-            parts.Add("Character context:");
-            foreach (var character in selectedCharacters)
+            parts.Add("Story entity context:");
+            foreach (var entity in selectedEntities)
             {
-                var pronouns = CharacterProfileRules.FormatPronouns(character.Pronouns);
-                var details = string.Join(" ", new[] { PronounText(pronouns), character.Summary, character.Appearance, character.Personality, character.Notes }.Where(value => !string.IsNullOrWhiteSpace(value)));
-                parts.Add($"- {character.Name}: {details}".Trim());
+                var details = string.Join(" ", entity.Details.Where(value => !string.IsNullOrWhiteSpace(value)));
+                parts.Add($"- {entity.Label}: {details}".Trim());
             }
         }
 
@@ -413,11 +506,86 @@ public sealed class ImageGenerationService(
         return string.Join("\n", parts.Where(part => !string.IsNullOrWhiteSpace(part))).Trim();
     }
 
+    static string BuildPromptComposerUserPrompt(RpChatDocument document, GenerateImageRequest request)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("User request:");
+        builder.AppendLine(string.IsNullOrWhiteSpace(request.Prompt) ? "(none)" : request.Prompt.Trim());
+        builder.AppendLine();
+
+        var artStyle = ResolveArtStyle(request.ArtStyleKey);
+        if (!string.IsNullOrWhiteSpace(artStyle?.PromptInstruction))
+        {
+            builder.AppendLine("Art style:");
+            builder.AppendLine(artStyle.PromptInstruction);
+            builder.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TargetEntityName))
+        {
+            builder.AppendLine("Target entity:");
+            builder.AppendLine($"{GalleryEntityType(request.TargetEntityType)}: {request.TargetEntityName.Trim()}");
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("Selected story entities:");
+        var selected = NormalizeEntitySelections(request.Entities)
+            .Select(entity => ResolveEntityView(document, entity))
+            .OfType<EntityContextView>()
+            .ToList();
+        if (selected.Count == 0)
+        {
+            builder.AppendLine("No story entities selected.");
+        }
+        else
+        {
+            foreach (var entity in selected)
+            {
+                builder.AppendLine(entity.Label);
+                foreach (var detail in entity.Details.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    builder.AppendLine(detail.Trim());
+                builder.AppendLine();
+            }
+        }
+
+        var activeLocation = document.Locations.FirstOrDefault(location => location.IsActive);
+        if (activeLocation is not null)
+        {
+            builder.AppendLine("Active location:");
+            builder.AppendLine($"{activeLocation.Name}. {activeLocation.Summary} {activeLocation.Description}".Trim());
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("Write a final image prompt that preserves the user's intent and incorporates the selected entity details. Avoid prose explanations inside the final prompt.");
+        return builder.ToString().Trim();
+    }
+
     static ImageArtStyleOption? ResolveArtStyle(string key) =>
         ArtStyleOptions.FirstOrDefault(style => string.Equals(style.Key, key, StringComparison.Ordinal));
 
     static string PronounText(string pronouns) =>
         string.IsNullOrWhiteSpace(pronouns) ? "" : $"Pronouns: {pronouns}.";
+
+    ActiveModelSelection? TryResolveStructuredTextModel(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections)
+    {
+        foreach (var provider in providers)
+            capabilityCatalog.ApplyResolvedCapabilities(provider);
+
+        var active = TextModelTuningCatalog.TryResolveActiveTextModel(providers, selections);
+        if (active is not null && active.Model.Capabilities.CanGenerateStructuredText)
+            return active;
+
+        foreach (var provider in providers.Where(provider => provider.Enabled))
+        {
+            foreach (var model in provider.Models.Where(AiProviderModelSelectionRules.IsSelectedForChat))
+            {
+                if (model.Capabilities.CanGenerateStructuredText)
+                    return new ActiveModelSelection(provider, model, model.Capabilities, AiModelRole.Chat);
+            }
+        }
+
+        return null;
+    }
 
     static string BuildTitle(GenerateImageRequest request, string finalPrompt)
     {
@@ -470,10 +638,73 @@ public sealed class ImageGenerationService(
     static string GalleryEntityType(string? targetEntityType) => targetEntityType switch
     {
         "characters" => "character",
+        "character" => "character",
         "locations" => "location",
+        "location" => "location",
         "items" => "item",
+        "item" => "item",
         _ => "scene"
     };
+
+    static IReadOnlyList<StoryImageEntitySelection> NormalizeEntitySelections(IReadOnlyCollection<StoryImageEntitySelection> entities)
+    {
+        var result = new List<StoryImageEntitySelection>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entity in entities)
+        {
+            var type = GalleryEntityType(entity.EntityType);
+            if (type == "scene" || string.IsNullOrWhiteSpace(entity.EntityId))
+                continue;
+
+            var id = entity.EntityId.Trim();
+            if (seen.Add($"{type}:{id}"))
+                result.Add(new(type, id));
+        }
+
+        return result;
+    }
+
+    static EntityContextView? ResolveEntityView(RpChatDocument document, StoryImageEntitySelection entity) =>
+        entity.EntityType switch
+        {
+            "character" => document.Characters
+                .Where(character => character.Id == entity.EntityId)
+                .Select(character => new EntityContextView(
+                    character.Id,
+                    character.Name,
+                    "character",
+                    character.ImageId,
+                    $"Character: {character.Name}",
+                    [
+                        PronounText(CharacterProfileRules.FormatPronouns(character.Pronouns)),
+                        character.Summary,
+                        CharacterAppearanceFormatter.FormatBase(character, document.CharacterTraitLibrary),
+                        character.Personality,
+                        character.Notes
+                    ]))
+                .FirstOrDefault(),
+            "location" => document.Locations
+                .Where(location => location.Id == entity.EntityId)
+                .Select(location => new EntityContextView(
+                    location.Id,
+                    location.Name,
+                    "location",
+                    location.ImageId,
+                    $"Location: {location.Name}",
+                    [location.Summary, location.Description, location.Atmosphere, location.Features]))
+                .FirstOrDefault(),
+            "item" => document.Items
+                .Where(item => item.Id == entity.EntityId)
+                .Select(item => new EntityContextView(
+                    item.Id,
+                    item.Name,
+                    "item",
+                    item.ImageId,
+                    $"Item: {item.Name}",
+                    [item.Summary, item.Description, item.History, item.Properties]))
+                .FirstOrDefault(),
+            _ => null
+        };
 
     public static string BuildModelKey(string providerId, string modelId) => $"{providerId}::{modelId}";
 
@@ -494,4 +725,17 @@ public sealed class ImageGenerationService(
         ModelGenerationCapabilities HostCapabilities);
 
     sealed record GeneratedImage(byte[] Bytes, string ContentType, string FileName);
+
+    sealed record ComposedImagePrompt(string FinalPrompt, string Rationale);
+
+    sealed record EntityContextView(string Id, string Name, string EntityType, string ImageId, string Label, IReadOnlyList<string> Details);
+
+    sealed record ImagePromptResponse
+    {
+        [Description("The final image generation prompt.")]
+        public string FinalPrompt { get; init; } = "";
+
+        [Description("One short sentence explaining how the entity context was incorporated.")]
+        public string Rationale { get; init; } = "";
+    }
 }

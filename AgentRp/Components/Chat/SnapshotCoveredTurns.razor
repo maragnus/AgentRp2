@@ -1,0 +1,25 @@
+@using AgentRp.Models
+
+@if (Turns.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="message-sq" />
+        <strong>No covered turns</strong>
+        <span>The draft did not include transcript turns.</span>
+    </div>
+}
+else
+{
+    <div class="snapshot-covered-list">
+        @foreach (var turn in Turns)
+        {
+            <Section @key="turn.Id" Title="@turn.SpeakerName" Hint="@RelativeDateFormatter.FormatDate(turn.CreatedUtc)" Class="snapshot-review-section snapshot-covered-turn-section">
+                <TranscriptBody Body="@turn.Body" Class="snapshot-covered-body" />
+            </Section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<RpSnapshotDraftTurn> Turns { get; set; } = [];
+}

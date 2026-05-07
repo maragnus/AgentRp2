@@ -1,0 +1,226 @@
+@using AgentRp.Models
+
+<ModalShell Title="Snapshot Draft" Icon="flag" MaxWidth="900px" BodyClass="is-flush" CloseDisabled="@CloseDisabled" OnClose="Close">
+    @if (IsLoading || Draft is null)
+    {
+        <ModalStackLayout BodyClass="modal-form-stack snapshot-loading-pane">
+            <ChildContent>
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="modal-error">@ErrorMessage</div>
+                }
+                @if (IsLoading)
+                {
+                    <LoadingState Title="Your snapshot is generating"
+                                  Message="AgentRp is summarizing the new transcript range, preserving the latest private intents and appearance blocks, and drafting timeline items for you to review before anything is saved."
+                                  Class="snapshot-generation-state">
+                        <div class="loading-state-stat-grid">
+                            <Badge Tone="blue">@CoveredTurnPreview</Badge>
+                            <Badge Tone="violet">Continuity preserved</Badge>
+                            <Badge Tone="amber">Timeline draft</Badge>
+                        </div>
+                        <p class="loading-state-note">@SnapshotBenefitText</p>
+                    </LoadingState>
+                }
+                else
+                {
+                    <div class="providers-empty-state is-compact">
+                        <FaIcon Name="flag" />
+                        <strong>No snapshot draft</strong>
+                        <span>Choose a transcript turn to create one.</span>
+                    </div>
+                }
+            </ChildContent>
+            <Footer>
+                <span class="modal-action-spacer"></span>
+                <AppButton Variant="secondary" Disabled="@CloseDisabled" OnClick="@(_ => Close())">Discard</AppButton>
+            </Footer>
+        </ModalStackLayout>
+    }
+    else
+    {
+        <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="600px" RailWidth="164px" Class="snapshot-draft-tabs">
+            <ChildContent>
+                <ModalTab Id="summary" Title="Summary" Summary="Required" Dirty="@SummaryChanged">
+                    <LeadingContent><FaIcon Name="align-left" /></LeadingContent>
+                </ModalTab>
+                <ModalTab Id="timeline" Title="Timeline" Summary="@TimelineSummary" Dirty="@TimelineEntries.Any(entry => !string.IsNullOrWhiteSpace(entry.Title))">
+                    <LeadingContent><FaIcon Name="clock" /></LeadingContent>
+                    <TrailingContent><Badge Tone="amber">@TimelineEntries.Count</Badge></TrailingContent>
+                </ModalTab>
+                <ModalTab Id="continuity" Title="Continuity" Summary="@ContinuitySummary">
+                    <LeadingContent><FaIcon Name="eye" /></LeadingContent>
+                    <TrailingContent><Badge Tone="violet">@ContinuityCount</Badge></TrailingContent>
+                </ModalTab>
+                <ModalTab Id="turns" Title="Covered Turns" Summary="@CoveredTurnsSummary">
+                    <LeadingContent><FaIcon Name="message-sq" /></LeadingContent>
+                    <TrailingContent><Badge Tone="blue">@Draft.IncludedTurns.Count</Badge></TrailingContent>
+                </ModalTab>
+            </ChildContent>
+            <RailFooter>
+                <div class="prompt-rail-note">
+                    <div class="divider"></div>
+                    <p>Saving collapses the covered turns into one snapshot row.</p>
+                </div>
+            </RailFooter>
+            <MainContent>
+                <ModalStackLayout Class="modal-editor-main snapshot-draft-main" BodyClass="modal-form-stack snapshot-tab-body">
+                    <Header>
+                        <ModalPaneToolbar Class="tuning-toolbar">
+                            <strong>@ActiveTabTitle</strong>
+                            <span class="toolbar-spacer"></span>
+                            @if (ActiveTab == "summary")
+                            {
+                                <Badge Tone="amber">Required</Badge>
+                            }
+                            else if (ActiveTab == "timeline")
+                            {
+                                <Badge Tone="amber">@TimelineSummary</Badge>
+                                <AppButton Icon="plus" TooltipText="Add timeline item" OnClick="@(_ => AddTimelineEntry())" />
+                            }
+                            else if (ActiveTab == "continuity")
+                            {
+                                <Badge Tone="violet">@ContinuitySummary</Badge>
+                            }
+                            else
+                            {
+                                <Badge Tone="blue">@CoveredTurnsSummary</Badge>
+                            }
+                        </ModalPaneToolbar>
+                    </Header>
+                    <ChildContent>
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <div class="modal-error">@ErrorMessage</div>
+                        }
+                        @if (ActiveTab == "summary")
+                        {
+                            <SnapshotSummaryEditor Draft="@Draft" Summary="@Summary" SummaryChanged="SetSummary" />
+                        }
+                        else if (ActiveTab == "timeline")
+                        {
+                            <SnapshotTimelineEditor Entries="@TimelineEntries" OnChanged="Refresh" />
+                        }
+                        else if (ActiveTab == "continuity")
+                        {
+                            <SnapshotContinuityReview Draft="@Draft" Characters="@Session.Chat.Characters.Items" />
+                        }
+                        else
+                        {
+                            <SnapshotCoveredTurns Turns="@Draft.IncludedTurns" />
+                        }
+                    </ChildContent>
+                    <Footer>
+                        <span class="modal-action-spacer"></span>
+                        <span class="modal-action-group">
+                            <AppButton Variant="secondary" Disabled="@CloseDisabled" OnClick="@(_ => Close())">Discard</AppButton>
+                            <BusyButton Variant="primary" Disabled="@(!CanSave)" OnClick="Save">Save Snapshot</BusyButton>
+                        </span>
+                    </Footer>
+                </ModalStackLayout>
+            </MainContent>
+        </ModalTabGroup>
+    }
+</ModalShell>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptSnapshotDraft? Draft { get; set; }
+    [Parameter] public RpTranscriptSnapshotDraftPreview? Preview { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool IsSaving { get; set; }
+    [Parameter] public bool CloseDisabled { get; set; }
+    [Parameter] public string ErrorMessage { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<RpTranscriptSnapshotDraft> OnSave { get; set; }
+
+    readonly List<SnapshotDraftTimelineEntryEditor> TimelineEntries = [];
+    RpTranscriptSnapshotDraft? LoadedDraft;
+    string Summary = "";
+    string ActiveTab = "summary";
+
+    bool CanSave => !IsLoading && !IsSaving && Draft is not null && !string.IsNullOrWhiteSpace(Summary);
+    bool SummaryChanged => Draft is not null && !string.Equals(Summary, Draft.Summary, StringComparison.Ordinal);
+    int ContinuityCount => Draft is null ? 0 : Draft.PrivateIntentByCharacterId.Keys.Concat(Draft.CharacterAppearances.Keys).Distinct(StringComparer.Ordinal).Count();
+    string TimelineSummary => $"{TimelineEntries.Count} item{(TimelineEntries.Count == 1 ? "" : "s")}";
+    string ContinuitySummary => $"{ContinuityCount} character{(ContinuityCount == 1 ? "" : "s")}";
+    string CoveredTurnsSummary => Draft is null ? "0 turns" : $"{Draft.IncludedTurns.Count} turn{(Draft.IncludedTurns.Count == 1 ? "" : "s")}";
+    string CoveredTurnPreview => Preview is null || Preview.CoveredTurnCount == 0
+        ? "Transcript range"
+        : $"{Preview.CoveredTurnCount} turn{(Preview.CoveredTurnCount == 1 ? "" : "s")} compacted";
+    string SnapshotBenefitText => Preview is null || Preview.CoveredTurnCount == 0
+        ? "A snapshot lets later generations use a compact continuity record instead of rereading the full covered transcript."
+        : $"This will collapse the range from {Preview.FirstSpeakerName} through {Preview.LastSpeakerName} into one reviewable snapshot row.";
+    string ActiveTabTitle => ActiveTab switch
+    {
+        "timeline" => "Timeline Items",
+        "continuity" => "Continuity",
+        "turns" => "Covered Turns",
+        _ => "Summary"
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Draft is null)
+        {
+            LoadedDraft = null;
+            Summary = "";
+            TimelineEntries.Clear();
+            return;
+        }
+
+        if (ReferenceEquals(LoadedDraft, Draft))
+            return;
+
+        LoadedDraft = Draft;
+        ActiveTab = "summary";
+        Summary = Draft.Summary;
+        TimelineEntries.Clear();
+        TimelineEntries.AddRange(Draft.TimelineEntries.Select(SnapshotDraftTimelineEntryEditor.From));
+    }
+
+    async Task Close()
+    {
+        if (CloseDisabled)
+            return;
+
+        await OnClose.InvokeAsync();
+    }
+
+    async Task Save()
+    {
+        if (!CanSave || Draft is null)
+            return;
+
+        var saved = new RpTranscriptSnapshotDraft
+        {
+            TurnId = Draft.TurnId,
+            CreatedUtc = Draft.CreatedUtc,
+            Summary = Summary,
+            CoveredTurnIds = [.. Draft.CoveredTurnIds],
+            IncludedTurns = [.. Draft.IncludedTurns],
+            PrivateIntentByCharacterId = Draft.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            CharacterAppearances = Draft.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            TimelineEntries = TimelineEntries.Select(entry => entry.ToModel()).ToList(),
+            Scene = SessionCloner.Clone(Draft.Scene),
+            Trace = Draft.Trace is null ? null : SessionCloner.Clone(Draft.Trace)
+        };
+        await OnSave.InvokeAsync(saved);
+    }
+
+    Task SetActiveTab(string? id)
+    {
+        ActiveTab = string.IsNullOrWhiteSpace(id) ? ActiveTab : id;
+        return Task.CompletedTask;
+    }
+
+    Task SetSummary(string value)
+    {
+        Summary = value;
+        return Task.CompletedTask;
+    }
+
+    Task Refresh() => InvokeAsync(StateHasChanged);
+
+    void AddTimelineEntry() => TimelineEntries.Add(new());
+}

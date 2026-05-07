@@ -3,7 +3,7 @@ using AgentRp.Services;
 
 namespace AgentRp.Session;
 
-public sealed class TranscriptStore(
+public sealed partial class TranscriptStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
@@ -241,54 +241,6 @@ public sealed class TranscriptStore(
         await SaveTranscriptAsync();
     });
 
-    public async Task CreateSnapshotAsync(string turnId) => await RunExclusiveAsync("Creating snapshot...", async () =>
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        try
-        {
-            var result = await textGenerationService.GenerateSnapshotAsync(
-                Document,
-                providers.Items.ToList(),
-                new(turnId));
-            var snapshot = TranscriptGraph.FindSnapshotByTurn(Document.Transcript, turnId) ?? new RpTranscriptSnapshot { Id = NextSnapshotId(), TurnId = turnId };
-            RemoveSnapshotTimelineEntries(snapshot);
-            snapshot.CreatedUtc = DateTime.UtcNow;
-            snapshot.Summary = result.Summary;
-            snapshot.EarlierPrivateIntentContinuity = result.EarlierPrivateIntentContinuity;
-            snapshot.Facts = result.Facts.Select(CloneSnapshotFact).ToList();
-            snapshot.TimelineEntries = result.TimelineEntries.Select(CloneSnapshotTimelineEntry).ToList();
-            AddSnapshotTimelineEntries(snapshot);
-            snapshot.CharacterAppearances = CloneMap(result.CharacterAppearances);
-            snapshot.Scene = SessionCloner.Clone(result.Scene);
-            snapshot.Trace = SessionCloner.Clone(result.Trace);
-            if (Document.Transcript.Snapshots.All(existing => existing.Id != snapshot.Id))
-                Document.Transcript.Snapshots.Add(snapshot);
-
-            var turn = TranscriptGraph.FindTurn(Document.Transcript, turnId);
-            if (turn is not null)
-            {
-                turn.SnapshotId = snapshot.Id;
-                turn.UpdatedUtc = DateTime.UtcNow;
-            }
-
-            TranscriptProjector.Apply(Document);
-            await SaveTranscriptAndTimelineAsync();
-        }
-        catch (TranscriptGenerationException exception)
-        {
-            CaptureBackgroundError(exception);
-            await NotifyChangedAsync();
-        }
-        catch (Exception exception)
-        {
-            CaptureBackgroundError(exception);
-            await NotifyChangedAsync();
-        }
-    });
-
     public async Task SelectSiblingAsync(string turnId) => await RunExclusiveAsync("Switching branch...", async () =>
     {
         if (Document is null)
@@ -317,7 +269,7 @@ public sealed class TranscriptStore(
         foreach (var child in children)
             child.ParentTurnId = turn.ParentTurnId;
 
-        Document.Transcript.Snapshots.RemoveAll(snapshot => snapshot.TurnId == id);
+        await RemoveSnapshotsForTurnsAsync([id]);
         Document.Transcript.Turns.RemoveAll(existing => existing.Id == id);
         if (Document.Transcript.ActiveLeafTurnId == id)
             Document.Transcript.ActiveLeafTurnId = children.LastOrDefault()?.Id ?? turn.ParentTurnId;
@@ -338,7 +290,7 @@ public sealed class TranscriptStore(
             return;
 
         var parentId = TranscriptGraph.FindTurn(Document.Transcript, id)?.ParentTurnId ?? "";
-        Document.Transcript.Snapshots.RemoveAll(snapshot => toDelete.Contains(snapshot.TurnId));
+        await RemoveSnapshotsForTurnsAsync(toDelete);
         Document.Transcript.Turns.RemoveAll(turn => toDelete.Contains(turn.Id));
         if (toDelete.Contains(Document.Transcript.ActiveLeafTurnId))
             Document.Transcript.ActiveLeafTurnId = TranscriptGraph.GetChildren(Document.Transcript, parentId).LastOrDefault()?.Id ?? parentId;
@@ -696,72 +648,6 @@ public sealed class TranscriptStore(
         }
 
         turn.Speech = new();
-    }
-
-    void RemoveSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)
-    {
-        if (Document is null || snapshot.TimelineEntries.Count == 0)
-            return;
-
-        var ids = snapshot.TimelineEntries
-            .Select(entry => entry.TimelineEntryId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.Ordinal);
-        Document.Timeline.RemoveAll(entry => ids.Contains(entry.Id));
-    }
-
-    void AddSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)
-    {
-        if (Document is null)
-            return;
-
-        foreach (var entry in snapshot.TimelineEntries)
-        {
-            var timelineEntry = new RpTimelineEntry
-            {
-                Id = NextTimelineId(),
-                Title = entry.Title,
-                Date = string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText,
-                Description = BuildSnapshotTimelineDescription(entry),
-                Characters = [.. entry.CharacterNames],
-                Significance = "Generated from snapshot."
-            };
-            entry.TimelineEntryId = timelineEntry.Id;
-            Document.Timeline.Add(timelineEntry);
-        }
-    }
-
-    static RpTranscriptSnapshotFact CloneSnapshotFact(RpTranscriptSnapshotFact value) => new()
-    {
-        Title = value.Title,
-        Summary = value.Summary,
-        Details = value.Details,
-        CharacterNames = [.. value.CharacterNames],
-        LocationNames = [.. value.LocationNames],
-        ItemNames = [.. value.ItemNames]
-    };
-
-    static RpTranscriptSnapshotTimelineEntry CloneSnapshotTimelineEntry(RpTranscriptSnapshotTimelineEntry value) => new()
-    {
-        TimelineEntryId = value.TimelineEntryId,
-        WhenText = value.WhenText,
-        Title = value.Title,
-        Summary = value.Summary,
-        Details = value.Details,
-        CharacterNames = [.. value.CharacterNames],
-        LocationNames = [.. value.LocationNames],
-        ItemNames = [.. value.ItemNames]
-    };
-
-    static string BuildSnapshotTimelineDescription(RpTranscriptSnapshotTimelineEntry entry)
-    {
-        if (string.IsNullOrWhiteSpace(entry.Details))
-            return entry.Summary;
-
-        if (string.IsNullOrWhiteSpace(entry.Summary))
-            return entry.Details;
-
-        return $"{entry.Summary}\n\n{entry.Details}";
     }
 
     HashSet<string> CollectSubtreeIds(string rootId)

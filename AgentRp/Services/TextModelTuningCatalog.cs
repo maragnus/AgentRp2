@@ -77,7 +77,7 @@ public static class TextModelTuningCatalog
     public static ActiveModelSelection? TryResolveActiveReasoningModel(
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState? selections = null) =>
-        TryResolveActiveModel(providers, AiModelRole.Reasoning, selections);
+        TryResolveExplicitActiveModel(providers, AiModelRole.Reasoning, selections);
 
     public static ActiveModelSelection? TryResolveActiveModel(
         IReadOnlyList<AiProvider> providers,
@@ -102,6 +102,26 @@ public static class TextModelTuningCatalog
         }
 
         return null;
+    }
+
+    static ActiveModelSelection? TryResolveExplicitActiveModel(
+        IReadOnlyList<AiProvider> providers,
+        AiModelRole role,
+        ActiveModelSelectionsState? selections)
+    {
+        var enabled = providers.Where(provider => provider.Enabled).ToList();
+        if (selections is null || !selections.Values.TryGetValue(role, out var selected))
+            return null;
+
+        if (string.IsNullOrWhiteSpace(selected.ProviderId) || string.IsNullOrWhiteSpace(selected.ModelId))
+            return null;
+
+        var provider = enabled.FirstOrDefault(provider => provider.Id == selected.ProviderId);
+        var model = provider?.Models.FirstOrDefault(model => model.Id == selected.ModelId);
+        if (provider is null || model is null || !AiProviderModelSelectionRules.IsSelectedForRole(model, role))
+            return null;
+
+        return new(provider, model, model.Capabilities, role);
     }
 
     public static ResponseTuningOptions Filter(ModelTuningStepState tuning, ModelGenerationCapabilities capabilities) => new(

@@ -70,18 +70,27 @@
             {
                 <StatusRow Icon="warning" Tone="danger" Class="appearance-row chat-error-row">@Session.Chat.Transcript.LastBackgroundError.Message</StatusRow>
             }
-            @for (var i = 0; i < Messages.Count; i++)
+            @foreach (var item in DisplayItems)
             {
-                var message = Messages[i];
-                var subsequentCount = Messages.Count - i - 1;
-                <ChatMessage @key="message.Id"
-                             Message="message"
-                             Characters="Characters"
-                             ShowAppearance="Options.ShowAppearanceBlocks"
-                             ShowProcess="Options.ShowProcessTraces"
-                             TranscriptBusy="TranscriptBusy"
-                             SubsequentCount="subsequentCount"
-                             OnOpenEntities="OnOpenEntities" />
+                @if (item.Snapshot is not null)
+                {
+                    <SnapshotTranscriptRow @key="item.Snapshot.Id"
+                                           Snapshot="item.Snapshot"
+                                           TranscriptBusy="TranscriptBusy"
+                                           OnOpenEntities="OnOpenEntities" />
+                }
+                else if (item.Message is not null)
+                {
+                    <ChatMessage @key="item.Message.Id"
+                                 Message="item.Message"
+                                 Characters="Characters"
+                                 ShowAppearance="Options.ShowAppearanceBlocks"
+                                 ShowProcess="Options.ShowProcessTraces"
+                                 TranscriptBusy="TranscriptBusy"
+                                 SubsequentCount="item.SubsequentCount"
+                                 OnOpenEntities="OnOpenEntities"
+                                 OnCreateSnapshot="OpenSnapshotDraft" />
+                }
             }
             @if (ActiveDraftTurn is not null)
             {
@@ -111,7 +120,7 @@
                                 }
                                 else
                                 {
-                                    <Avatar Name="@Session.SpeakingAs.Name" Size="14" />
+                                    <EntityImage EntityType="character" EntityId="@CurrentSpeaker?.Id" Name="@SpeakerName" Image="@ImageFor(CurrentSpeaker?.ImageId ?? "")" Size="14" />
                                 }
                                 <span>@SpeakerName</span>
                                 <FaIcon Name="chevron-down" />
@@ -121,7 +130,7 @@
                             <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
                             @foreach (var character in Characters)
                             {
-                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span></SelectableButton>
+                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="20" /><span>@character.Name</span></SelectableButton>
                             }
                         </Content>
                     </AnchoredPopover>
@@ -162,11 +171,29 @@
     </section>
 </main>
 
+@if (SnapshotModalOpen)
+{
+    <SnapshotDraftModal Draft="SnapshotDraft"
+                        Preview="SnapshotDraftPreview"
+                        IsLoading="SnapshotDraftLoading"
+                        IsSaving="SnapshotSaving"
+                        CloseDisabled="@(SnapshotDraftLoading || SnapshotSaving)"
+                        ErrorMessage="@SnapshotError"
+                        OnClose="CloseSnapshotDraft"
+                        OnSave="SaveSnapshotDraft" />
+}
+
 @code {
     string Draft = "";
     string TurnShape = TurnShapePickerOptions.Default;
     string ActiveChatId = "";
     string PendingAutoSpeakTurnId = "";
+    bool SnapshotModalOpen;
+    bool SnapshotDraftLoading;
+    bool SnapshotSaving;
+    string SnapshotError = "";
+    RpTranscriptSnapshotDraft? SnapshotDraft;
+    RpTranscriptSnapshotDraftPreview? SnapshotDraftPreview;
     HashSet<string> KnownMessageIds = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -180,9 +207,13 @@
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
     RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
+    IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();
 
     bool IsGuided => Draft.Trim().Length > 0;
-    string SpeakerName => Session.SpeakingAs?.Name ?? "Narrator";
+    RpCharacter? CurrentSpeaker => Session.SpeakingAs is null
+        ? null
+        : Characters.FirstOrDefault(character => character.Id == Session.SpeakingAs.Id) ?? Session.SpeakingAs;
+    string SpeakerName => CurrentSpeaker?.Name ?? "Narrator";
     string GenerateTitle => TranscriptBusy ? TranscriptBusyMessage : "Generate next turn (Ctrl+Enter)";
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
@@ -194,13 +225,45 @@
         Options.HideAudioTags ? "hide-audio-tags" : null
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
+    IReadOnlyList<TranscriptDisplayItem> BuildDisplayItems()
+    {
+        var messages = Messages;
+        var indexById = messages
+            .Select((message, index) => (message.Id, index))
+            .ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
+        var snapshots = Session.Chat.Transcript.SnapshotsForActivePath()
+            .Where(snapshot => indexById.ContainsKey(snapshot.TurnId))
+            .OrderBy(snapshot => indexById[snapshot.TurnId])
+            .ToList();
+        var items = new List<TranscriptDisplayItem>();
+        var nextIndex = 0;
+        foreach (var snapshot in snapshots)
+        {
+            var snapshotIndex = indexById[snapshot.TurnId];
+            if (snapshotIndex < nextIndex)
+                continue;
+
+            items.Add(new($"snapshot:{snapshot.Id}", null, snapshot, messages.Count - snapshotIndex - 1));
+            nextIndex = snapshotIndex + 1;
+        }
+
+        for (var index = nextIndex; index < messages.Count; index++)
+            items.Add(new($"turn:{messages[index].Id}", messages[index], null, messages.Count - index - 1));
+
+        return items;
+    }
+
+    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+
     protected override void OnInitialized()
     {
         ActiveChatId = Chat.Id;
         KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
         Session.Changed += OnSessionChanged;
         Session.Chats.Changed += OnSessionChanged;
+        Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Transcript.Changed += OnSessionChanged;
+        Session.Chat.ModelSelection.Changed += OnSessionChanged;
         Session.Chat.Characters.Changed += OnSessionChanged;
         Session.Chat.Locations.Changed += OnSessionChanged;
     }
@@ -263,6 +326,66 @@
 
     async Task ToggleSpeakActionsInNarratorVoice() =>
         await Session.Chat.Transcript.SetSpeakActionsInNarratorVoiceAsync(!Options.SpeakActionsInNarratorVoice);
+
+    async Task OpenSnapshotDraft(string turnId)
+    {
+        SnapshotModalOpen = true;
+        SnapshotDraftLoading = true;
+        SnapshotSaving = false;
+        SnapshotDraft = null;
+        SnapshotDraftPreview = Session.Chat.Transcript.PreviewSnapshotDraft(turnId);
+        SnapshotError = "";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            SnapshotDraft = await Session.Chat.Transcript.CreateSnapshotDraftAsync(turnId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Creating snapshot draft failed for chat {ChatId}.", Chat.Id);
+            SnapshotError = UserFacingErrorMessageBuilder.Build("Creating the snapshot draft failed.", exception);
+        }
+        finally
+        {
+            SnapshotDraftLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    Task CloseSnapshotDraft()
+    {
+        if (SnapshotDraftLoading || SnapshotSaving)
+            return Task.CompletedTask;
+
+        SnapshotModalOpen = false;
+        SnapshotDraft = null;
+        SnapshotDraftPreview = null;
+        SnapshotError = "";
+        return Task.CompletedTask;
+    }
+
+    async Task SaveSnapshotDraft(RpTranscriptSnapshotDraft draft)
+    {
+        SnapshotSaving = true;
+        SnapshotError = "";
+        try
+        {
+            await Session.Chat.Transcript.CommitSnapshotDraftAsync(draft);
+            SnapshotModalOpen = false;
+            SnapshotDraft = null;
+            SnapshotDraftPreview = null;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Saving snapshot failed for chat {ChatId}.", Chat.Id);
+            SnapshotError = UserFacingErrorMessageBuilder.Build("Saving the snapshot failed.", exception);
+        }
+        finally
+        {
+            SnapshotSaving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     async Task AutoSpeak(string turnId)
     {
@@ -339,8 +462,16 @@
     {
         Session.Changed -= OnSessionChanged;
         Session.Chats.Changed -= OnSessionChanged;
+        Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Transcript.Changed -= OnSessionChanged;
+        Session.Chat.ModelSelection.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;
         Session.Chat.Locations.Changed -= OnSessionChanged;
     }
+
+    sealed record TranscriptDisplayItem(
+        string Key,
+        RpTranscriptTurn? Message,
+        RpTranscriptSnapshot? Snapshot,
+        int SubsequentCount);
 }

@@ -103,6 +103,10 @@
                     }
                     else if (Step == 1)
                     {
+                        <CharacterAppearanceEditor Character="Character" Library="TraitLibrary" />
+                    }
+                    else if (Step == 2)
+                    {
                         <div class="character-wizard-personality-intro">
                             <p>Pick @CharacterProfileRules.RecommendedMinTraits to @CharacterProfileRules.MaxTraits total. Hover any trait for a description.</p>
                             <span class="character-wizard-count-pill @(Character.Traits.Count >= CharacterProfileRules.RecommendedMinTraits ? "is-ready" : "")">@Character.Traits.Count / @CharacterProfileRules.MaxTraits</span>
@@ -125,7 +129,7 @@
                             }
                         </div>
                     }
-                    else if (Step == 2)
+                    else if (Step == 3)
                     {
                         <p class="character-wizard-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
                         <div class="character-wizard-step-stack is-roomy">
@@ -135,7 +139,7 @@
                             <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Character.HiddenTruth" OnSelect="@(id => SetSingle(nameof(Character.HiddenTruth), id))" />
                         </div>
                     }
-                    else if (Step == 3)
+                    else if (Step == 4)
                     {
                         <p class="character-wizard-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
                         <div class="character-wizard-step-stack is-roomy">
@@ -146,7 +150,7 @@
                             <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Character.StressPattern" OnSelect="@(id => SetSingle(nameof(Character.StressPattern), id))" />
                         </div>
                     }
-                    else if (Step == 4)
+                    else if (Step == 5)
                     {
                         <div class="character-wizard-step-stack is-roomy">
                             <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
@@ -294,6 +298,7 @@
     static readonly WizardStep[] Steps =
     [
         new("concept", "Concept", "Name & pronouns"),
+        new("appearance", "Appearance", "How they look"),
         new("personality", "Personality", "Baseline traits"),
         new("engine", "Inner Engine", "Drives & fears"),
         new("voice", "Voice", "How they speak"),
@@ -309,10 +314,11 @@
     bool StepDone(int step) => step switch
     {
         0 => !string.IsNullOrWhiteSpace(Character.Name),
-        1 => Character.Traits.Count >= 1,
-        2 => !string.IsNullOrWhiteSpace(Character.CoreDrive) || !string.IsNullOrWhiteSpace(Character.CoreFear) || !string.IsNullOrWhiteSpace(Character.SurfaceMask) || !string.IsNullOrWhiteSpace(Character.HiddenTruth),
-        3 => !string.IsNullOrWhiteSpace(Character.SentenceStyle) || !string.IsNullOrWhiteSpace(Character.StressPattern),
-        4 => Character.SoftSpots.Count > 0 || Character.AvoidPatterns.Count > 0,
+        1 => CharacterAppearanceFormatter.HasStructuredAppearance(Character.AppearanceProfile) || !string.IsNullOrWhiteSpace(Character.Appearance),
+        2 => Character.Traits.Count >= 1,
+        3 => !string.IsNullOrWhiteSpace(Character.CoreDrive) || !string.IsNullOrWhiteSpace(Character.CoreFear) || !string.IsNullOrWhiteSpace(Character.SurfaceMask) || !string.IsNullOrWhiteSpace(Character.HiddenTruth),
+        4 => !string.IsNullOrWhiteSpace(Character.SentenceStyle) || !string.IsNullOrWhiteSpace(Character.StressPattern),
+        5 => Character.SoftSpots.Count > 0 || Character.AvoidPatterns.Count > 0,
         _ => true
     };
 

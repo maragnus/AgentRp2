@@ -65,28 +65,16 @@ public sealed class RpTranscriptSnapshot
     public string TurnId { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public string Summary { get; set; } = "";
-    public string EarlierPrivateIntentContinuity { get; set; } = "";
-    public List<RpTranscriptSnapshotFact> Facts { get; set; } = [];
-    public List<RpTranscriptSnapshotTimelineEntry> TimelineEntries { get; set; } = [];
+    public RpMessageSpeechState Speech { get; set; } = new();
+    public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
     public JsonObject Data { get; set; } = new();
 }
 
-public sealed class RpTranscriptSnapshotFact
-{
-    public string Title { get; set; } = "";
-    public string Summary { get; set; } = "";
-    public string Details { get; set; } = "";
-    public List<string> CharacterNames { get; set; } = [];
-    public List<string> LocationNames { get; set; } = [];
-    public List<string> ItemNames { get; set; } = [];
-}
-
 public sealed class RpTranscriptSnapshotTimelineEntry
 {
-    public string TimelineEntryId { get; set; } = "";
     public string WhenText { get; set; } = "";
     public string Title { get; set; } = "";
     public string Summary { get; set; } = "";
@@ -94,6 +82,37 @@ public sealed class RpTranscriptSnapshotTimelineEntry
     public List<string> CharacterNames { get; set; } = [];
     public List<string> LocationNames { get; set; } = [];
     public List<string> ItemNames { get; set; } = [];
+}
+
+public sealed class RpTranscriptSnapshotDraft
+{
+    public string TurnId { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public string Summary { get; set; } = "";
+    public List<string> CoveredTurnIds { get; set; } = [];
+    public List<RpSnapshotDraftTurn> IncludedTurns { get; set; } = [];
+    public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
+    public Dictionary<string, string> CharacterAppearances { get; set; } = [];
+    public List<RpTranscriptSnapshotTimelineEntry> TimelineEntries { get; set; } = [];
+    public RpSceneFrame Scene { get; set; } = new();
+    public RpTurnTrace? Trace { get; set; }
+}
+
+public sealed class RpTranscriptSnapshotDraftPreview
+{
+    public string TurnId { get; set; } = "";
+    public int CoveredTurnCount { get; set; }
+    public string FirstSpeakerName { get; set; } = "";
+    public string LastSpeakerName { get; set; } = "";
+    public DateTime? LatestSnapshotUtc { get; set; }
+}
+
+public sealed class RpSnapshotDraftTurn
+{
+    public string Id { get; set; } = "";
+    public string SpeakerName { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public string Body { get; set; } = "";
 }
 
 public sealed class RpSceneFrame

@@ -20,7 +20,7 @@ public sealed class PromptLibraryServiceTests
         AssertPromptEqual(
             PromptLibraryService.WithProseFormatReminder(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseUserPromptTemplate")),
             defaults.Prompts[PromptLibraryStageIds.Prose].User);
-        AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryChatSnapshotService.cs"), "BuildSnapshotSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
+        AssertPromptEqual(ExpectedSnapshotSystemPrompt, defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
         AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
     }
 
@@ -232,9 +232,17 @@ public sealed class PromptLibraryServiceTests
 
         Return:
         1. A narrative summary of what has happened so far in this included range.
-        2. Proposed facts that should be canonized.
-        3. Proposed timeline entries that should be added.
+        2. Proposed timeline entries that should be added.
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
+        """;
+
+    const string ExpectedSnapshotSystemPrompt =
+        """
+        You create structured story snapshots from a selected branch transcript.
+        Summarize only what is supported by the included messages and supplied story state.
+        Return a concise narrative summary, then propose timeline entries that should be saved.
+        Prefer durable developments over throwaway phrasing.
+        Do not invent names, references, or events that are not grounded in the provided material.
         """;
 
     const string ExpectedPlanningTurnShapeDefinitions =

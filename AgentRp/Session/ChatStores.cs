@@ -3,7 +3,7 @@ using AgentRp.Services;
 
 namespace AgentRp.Session;
 
-public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry registry, IEntityNotifier entityNotifier) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Characters;
     public List<RpCharacter> Items => Document?.Characters ?? [];
@@ -33,14 +33,19 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
             }
 
             foreach (var snapshot in Document.Transcript.Snapshots)
+            {
                 snapshot.CharacterAppearances.Remove(id);
+                snapshot.PrivateIntentByCharacterId.Remove(id);
+            }
 
             TranscriptProjector.Apply(Document);
             await SaveCatalogAndTranscriptAsync();
+            await entityNotifier.PublishAsync(new(EntityTypes.Character, id, EntityChangeKinds.Deleted, ChatId: Document.Chat.Id));
             return;
         }
 
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Character, id, EntityChangeKinds.Deleted));
     }
 
     public async Task ToggleInSceneAsync(string id)
@@ -60,9 +65,15 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
     {
         Items.First(character => character.Id == id).ImageId = imageId;
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Character, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
+    public async Task MarkChangedAsync()
+    {
+        await SaveActiveDocumentAsync();
+        foreach (var character in Items)
+            await entityNotifier.PublishAsync(new(EntityTypes.Character, character.Id, EntityChangeKinds.Profile, character.ImageId, Document?.Chat.Id ?? ""));
+    }
 
     async Task SaveCatalogAndTranscriptAsync()
     {
@@ -99,7 +110,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
     }
 }
 
-public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry registry, IEntityNotifier entityNotifier) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Locations;
     public List<RpLocation> Items => Document?.Locations ?? [];
@@ -131,10 +142,12 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
 
             TranscriptProjector.Apply(Document);
             await SaveCatalogAndTranscriptAsync();
+            await entityNotifier.PublishAsync(new(EntityTypes.Location, id, EntityChangeKinds.Deleted, ChatId: Document.Chat.Id));
             return;
         }
 
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Location, id, EntityChangeKinds.Deleted));
     }
 
     public async Task SetActiveAsync(string id)
@@ -154,9 +167,15 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
     {
         Items.First(location => location.Id == id).ImageId = imageId;
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Location, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
+    public async Task MarkChangedAsync()
+    {
+        await SaveActiveDocumentAsync();
+        foreach (var location in Items)
+            await entityNotifier.PublishAsync(new(EntityTypes.Location, location.Id, EntityChangeKinds.Profile, location.ImageId, Document?.Chat.Id ?? ""));
+    }
 
     async Task SaveCatalogAndTranscriptAsync()
     {
@@ -199,7 +218,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
     }
 }
 
-public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registry, IEntityNotifier entityNotifier) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Items;
     public List<RpItem> Items => Document?.Items ?? [];
@@ -229,10 +248,12 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
 
             TranscriptProjector.Apply(Document);
             await SaveCatalogAndTranscriptAsync();
+            await entityNotifier.PublishAsync(new(EntityTypes.Item, id, EntityChangeKinds.Deleted, ChatId: Document.Chat.Id));
             return;
         }
 
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Item, id, EntityChangeKinds.Deleted));
     }
 
     public async Task ToggleInSceneAsync(string id)
@@ -252,9 +273,15 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
     {
         Items.First(item => item.Id == id).ImageId = imageId;
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(EntityTypes.Item, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
+    public async Task MarkChangedAsync()
+    {
+        await SaveActiveDocumentAsync();
+        foreach (var item in Items)
+            await entityNotifier.PublishAsync(new(EntityTypes.Item, item.Id, EntityChangeKinds.Profile, item.ImageId, Document?.Chat.Id ?? ""));
+    }
 
     async Task SaveCatalogAndTranscriptAsync()
     {
@@ -321,7 +348,7 @@ public sealed class TimelineStore(ActiveChatContext activeChat, ChatRegistry reg
     }
 }
 
-public sealed class ImageStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+public sealed class ImageStore(ActiveChatContext activeChat, ChatRegistry registry, IEntityNotifier entityNotifier) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Images;
     public List<GalleryImage> Items => Document?.Images ?? [];
@@ -336,6 +363,37 @@ public sealed class ImageStore(ActiveChatContext activeChat, ChatRegistry regist
     {
         Items.RemoveAll(image => image.Id == id);
         await SaveActiveDocumentAsync();
+    }
+
+    public async Task SetCropAsync(string id, ImageAvatarCropView crop)
+    {
+        var image = Items.FirstOrDefault(image => image.Id == id);
+        if (image is null)
+            return;
+
+        image.AvatarFocusXPercent = crop.FocusXPercent;
+        image.AvatarFocusYPercent = crop.FocusYPercent;
+        image.AvatarZoomPercent = crop.ZoomPercent;
+        await SaveActiveDocumentAsync();
+        foreach (var notification in BuildCropNotifications(id))
+            await entityNotifier.PublishAsync(notification);
+    }
+
+    IReadOnlyList<EntityChangeNotification> BuildCropNotifications(string imageId)
+    {
+        if (Document is null)
+            return [];
+
+        return Document.Characters
+            .Where(character => character.ImageId == imageId)
+            .Select(character => new EntityChangeNotification(EntityTypes.Character, character.Id, EntityChangeKinds.ImageCrop, imageId, Document.Chat.Id))
+            .Concat(Document.Locations
+                .Where(location => location.ImageId == imageId)
+                .Select(location => new EntityChangeNotification(EntityTypes.Location, location.Id, EntityChangeKinds.ImageCrop, imageId, Document.Chat.Id)))
+            .Concat(Document.Items
+                .Where(item => item.ImageId == imageId)
+                .Select(item => new EntityChangeNotification(EntityTypes.Item, item.Id, EntityChangeKinds.ImageCrop, imageId, Document.Chat.Id)))
+            .ToList();
     }
 
     public string NextGalleryImageId()
@@ -383,8 +441,19 @@ public sealed class StoryAssistantStore(
         if (Document is null)
             return;
 
+        ClearBackgroundError();
+        try
+        {
+            if (storyAssistantService is not null)
+                await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            CaptureBackgroundError(exception);
+        }
+
         State.Items.Clear();
-        State.ConversationId = "";
+        StoryAssistantService.ClearResponseChain(State);
         CancelPendingInteractions();
         _pendingReviews.Clear();
         _pendingQuestions.Clear();
@@ -432,6 +501,14 @@ public sealed class StoryAssistantStore(
             MarkPendingInteractionsStopped();
             CancelPendingInteractions();
             MarkStopped();
+            await SaveAssistantStateAsync(CancellationToken.None);
+        }
+        catch (ModelAssistantThreadLostException exception)
+        {
+            CaptureBackgroundError(exception);
+            State.RemoteThreadLost = true;
+            State.RemoteThreadError = UserFacingErrorMessageBuilder.Build("Story Assistant needs a fresh thread.", exception);
+            FailCurrentAssistantMessage(State.RemoteThreadError);
             await SaveAssistantStateAsync(CancellationToken.None);
         }
         catch (Exception exception)
@@ -824,7 +901,9 @@ public sealed class ChatModelSelectionStore(ActiveChatContext activeChat, ChatRe
     public ActiveModelSelectionsState State => Document?.ActiveModelSelections ?? ActiveModelSelectionsState.CreateDefault();
 
     public ActiveModelSelection? Resolve(AiModelRole role) =>
-        TextModelTuningCatalog.TryResolveActiveModel(providers.Items, role, State);
+        role == AiModelRole.Reasoning
+            ? TextModelTuningCatalog.TryResolveActiveReasoningModel(providers.Items, State)
+            : TextModelTuningCatalog.TryResolveActiveModel(providers.Items, role, State);
 
     public async Task SetActiveModelAsync(AiModelRole role, string providerId, string modelId)
     {

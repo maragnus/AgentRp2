@@ -1,0 +1,109 @@
+@inject IServiceProvider Services
+@inject ILogger<SnapshotSpeechButton> Logger
+@inject DialogHelper Dialogs
+
+@if (Availability.CanDisplay)
+{
+    <div class="message-speech-actions">
+        <AudioPlaybackButton AudioKey="@AudioKey"
+                             ResolveUrlAsync="ResolveUrl"
+                             Disabled="@Disabled"
+                             PlayTooltip="@PlayTooltip"
+                             StopTooltip="Stop snapshot read-aloud"
+                             LoadingTooltip="@LoadingTooltip"
+                             ErrorFallback="Reading this snapshot aloud failed."
+                             OnError="HandlePlaybackError" />
+        @if (HasSpeech)
+        {
+            <AppButton Icon="refresh"
+                       TooltipText="Regenerate and play snapshot"
+                       Disabled="@Disabled"
+                       OnClick="Regenerate"
+                       StopPropagation />
+        }
+    </div>
+}
+
+@code {
+    MessageSpeechAvailability Availability = new(MessageSpeechAvailabilityKind.NoVoiceModel);
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+
+    IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
+    ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
+    bool HasSpeech => !string.IsNullOrWhiteSpace(Snapshot.Speech.VoiceMessageId);
+    string AudioKey => AgentRp.Services.MessageSpeechService.SnapshotPlaybackKey(Snapshot);
+    string PlayTooltip => HasSpeech ? "Play snapshot read-aloud" : "Generate and play snapshot read-aloud";
+    string LoadingTooltip => HasSpeech ? "Loading snapshot read-aloud" : "Generating snapshot read-aloud";
+
+    protected override void OnParametersSet()
+    {
+        var document = Session.ActiveChat.Current;
+        Availability = document is null || SpeechService is null || Playback is null
+            ? new(MessageSpeechAvailabilityKind.NoVoiceModel)
+            : SpeechService.ResolveSnapshotAvailability(document, Session.Providers.Items, Snapshot);
+    }
+
+    async Task<string> ResolveUrl(MouseEventArgs args)
+    {
+        if (!Availability.CanGenerate)
+        {
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, Availability, OnOpenEntities);
+            return "";
+        }
+
+        try
+        {
+            var playback = await Session.Chat.Transcript.GetOrGenerateSnapshotSpeechAsync(Snapshot.Id, false);
+            return playback?.Url ?? "";
+        }
+        catch (MessageSpeechMissingVoiceException exception)
+        {
+            Logger.LogWarning(exception, "Reading snapshot {SnapshotId} aloud needs a selected voice.", Snapshot.Id);
+            Availability = exception.Availability;
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, exception.Availability, OnOpenEntities);
+            return "";
+        }
+    }
+
+    async Task Regenerate(MouseEventArgs args)
+    {
+        if (!Availability.CanGenerate)
+        {
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, Availability, OnOpenEntities);
+            return;
+        }
+
+        try
+        {
+            var playback = await Session.Chat.Transcript.GetOrGenerateSnapshotSpeechAsync(Snapshot.Id, true);
+            if (playback is not null && Playback is not null)
+                await Playback.PlayUrlAsync(playback.Key, playback.Url);
+        }
+        catch (MessageSpeechMissingVoiceException exception)
+        {
+            Logger.LogWarning(exception, "Regenerating read-aloud for snapshot {SnapshotId} needs a selected voice.", Snapshot.Id);
+            Availability = exception.Availability;
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, exception.Availability, OnOpenEntities);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Regenerating read-aloud for snapshot {SnapshotId} failed.", Snapshot.Id);
+            await Dialogs.DisplayErrorAsync(
+                "Regenerating read-aloud failed",
+                UserFacingErrorMessageBuilder.Build("Regenerating the snapshot read-aloud failed.", exception),
+                UserFacingErrorMessageBuilder.BuildDetails(exception));
+        }
+    }
+
+    async Task HandlePlaybackError(Exception exception)
+    {
+        await Dialogs.DisplayErrorAsync(
+            "Reading aloud failed",
+            UserFacingErrorMessageBuilder.Build("Reading this snapshot aloud failed.", exception),
+            UserFacingErrorMessageBuilder.BuildDetails(exception));
+    }
+}

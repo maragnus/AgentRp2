@@ -24,6 +24,7 @@ public sealed record ImageDetailsView(
     string Quality,
     string ReferenceDetail,
     string ArtStyle,
+    string Rationale,
     IReadOnlyList<ImageDetailsReferenceView> References,
     bool HasGenerationMetadata);
 
@@ -66,6 +67,7 @@ public sealed class ImageDetailsService(IDbContextFactory<RpDbContext> dbContext
             metadata?.Quality ?? "",
             metadata?.ReferenceDetail ?? "",
             metadata?.ArtStyleLabel ?? "",
+            metadata?.Rationale ?? "",
             BuildReferenceViews(document, metadata),
             metadata is not null);
     }
@@ -77,6 +79,7 @@ public sealed class ImageDetailsService(IDbContextFactory<RpDbContext> dbContext
         image?.Entity ?? "",
         image?.EntityType ?? "",
         image?.Date ?? "",
+        "",
         "",
         "",
         "",

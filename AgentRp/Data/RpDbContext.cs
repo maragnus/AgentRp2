@@ -11,6 +11,7 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
     public DbSet<AiProviderMetricRow> AiProviderMetrics => Set<AiProviderMetricRow>();
     public DbSet<ElevenLabsVoiceCatalogRow> ElevenLabsVoiceCatalog => Set<ElevenLabsVoiceCatalogRow>();
     public DbSet<ElevenLabsVoiceCatalogStateRow> ElevenLabsVoiceCatalogStates => Set<ElevenLabsVoiceCatalogStateRow>();
+    public DbSet<AppSettingRow> AppSettings => Set<AppSettingRow>();
     public DbSet<ImageAssetRow> ImageAssets => Set<ImageAssetRow>();
     public DbSet<SpeechAssetRow> SpeechAssets => Set<SpeechAssetRow>();
 
@@ -129,6 +130,13 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.LastRefreshError).HasMaxLength(1000);
         });
 
+        modelBuilder.Entity<AppSettingRow>(builder =>
+        {
+            builder.HasKey(x => x.Key);
+            builder.Property(x => x.Key).HasMaxLength(200);
+            builder.Property(x => x.JsonValue).HasColumnType("nvarchar(max)");
+        });
+
         modelBuilder.Entity<ImageAssetRow>(builder =>
         {
             builder.HasKey(x => x.Id);
@@ -137,6 +145,9 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.ContentType).HasMaxLength(100);
             builder.Property(x => x.FileName).HasMaxLength(500);
             builder.Property(x => x.Title).HasMaxLength(500);
+            builder.Property(x => x.AvatarFocusXPercent);
+            builder.Property(x => x.AvatarFocusYPercent);
+            builder.Property(x => x.AvatarZoomPercent);
             builder.Property(x => x.UserPrompt).HasColumnType("nvarchar(max)");
             builder.Property(x => x.FinalPrompt).HasColumnType("nvarchar(max)");
             builder.Property(x => x.GenerationMetadataJson).HasColumnType("nvarchar(max)").HasDefaultValue("");
@@ -290,6 +301,14 @@ public sealed class ElevenLabsVoiceCatalogStateRow
     public int CachedCount { get; set; }
 }
 
+public sealed class AppSettingRow
+{
+    public string Key { get; set; } = "";
+    public string JsonValue { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
+}
+
 public sealed class ImageAssetRow
 {
     public string Id { get; set; } = "";
@@ -300,6 +319,9 @@ public sealed class ImageAssetRow
     public string Title { get; set; } = "";
     public int? Width { get; set; }
     public int? Height { get; set; }
+    public int? AvatarFocusXPercent { get; set; }
+    public int? AvatarFocusYPercent { get; set; }
+    public int? AvatarZoomPercent { get; set; }
     public string UserPrompt { get; set; } = "";
     public string FinalPrompt { get; set; } = "";
     public string GenerationMetadataJson { get; set; } = "";

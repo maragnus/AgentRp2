@@ -7,6 +7,7 @@ public sealed class ImageAssetGenerationMetadata
     public string ReferenceDetail { get; init; } = "";
     public string ArtStyleKey { get; init; } = "";
     public string ArtStyleLabel { get; init; } = "";
+    public string Rationale { get; init; } = "";
     public string RevisedPrompt { get; init; } = "";
     public string ResponseId { get; init; } = "";
     public int InputTokens { get; init; }

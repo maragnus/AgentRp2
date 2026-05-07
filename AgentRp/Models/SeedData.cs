@@ -85,6 +85,7 @@ public static class SeedData
                 ["c3"] = "Seated at the dining table. Posture rigid, arms crossed. Wearing grey sweats. Expression: tense and guarded."
             },
             PrivateIntentByCharacterId = new() { ["c1"] = "Take in the tension before choosing how to intervene." },
+            SnapshotId = "snap-1",
             Trace = GuidedNarratorTrace(started),
             Scene = SessionCloner.Clone(rootScene)
         };
@@ -166,7 +167,10 @@ public static class SeedData
             TurnId = "turn-2",
             CreatedUtc = turn2Time,
             Summary = "Bella has entered the apartment, crossed to the table, and physically bridged Jake and Gemma without taking sides, shifting the scene from a standoff to a tense triangle.",
-            EarlierPrivateIntentContinuity = "Bella wants to ground both of them without forcing the conflict into the open.",
+            PrivateIntentByCharacterId = new()
+            {
+                ["c1"] = "Bella wants to ground both of them without forcing the conflict into the open."
+            },
             CharacterAppearances = new()
             {
                 ["c1"] = turn2.AppearanceByCharacterId["c1"],

@@ -55,6 +55,13 @@
                              OnClose="CloseModal" />
                 break;
         }
+
+        @if (CropImage is not null)
+        {
+            <ImageCropModal Image="CropImage"
+                            OnSaved="HandleCropSavedAsync"
+                            OnClose="CloseCropAsync" />
+        }
     </div>
 }
 
@@ -66,6 +73,7 @@
     string? EntityId;
     string? PendingEntityType;
     string? PendingEntityId;
+    GalleryImage? CropImage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,6 +158,7 @@
     async Task UseSelectedEntityImage(GalleryImage image)
     {
         await ApplyPendingEntityImage(image.Id);
+        CropImage = image;
         Modal = "entities";
     }
 
@@ -158,8 +167,21 @@
         if (PendingEntityId is not null)
         {
             await ApplyPendingEntityImage(image.Id);
+            CropImage = image;
             Modal = "entities";
         }
+    }
+
+    async Task HandleCropSavedAsync(ImageCropSavedResult result)
+    {
+        await Session.Chat.Images.SetCropAsync(result.ImageId, result.Crop);
+        CropImage = null;
+    }
+
+    Task CloseCropAsync()
+    {
+        CropImage = null;
+        return Task.CompletedTask;
     }
 
     Task ApplyPendingEntityImage(string imageId) => PendingEntityType switch

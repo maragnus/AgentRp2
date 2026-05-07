@@ -56,10 +56,22 @@ public interface IMessageSpeechService
         IReadOnlyList<AiProvider> providers,
         RpTranscriptTurn turn);
 
+    MessageSpeechAvailability ResolveSnapshotAvailability(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        RpTranscriptSnapshot snapshot);
+
     Task<MessageSpeechPlayback> GetOrGenerateAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         RpTranscriptTurn turn,
+        bool regenerate,
+        CancellationToken cancellationToken = default);
+
+    Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        RpTranscriptSnapshot snapshot,
         bool regenerate,
         CancellationToken cancellationToken = default);
 
@@ -68,6 +80,8 @@ public interface IMessageSpeechService
         CancellationToken cancellationToken = default);
 
     Task DiscardTurnSpeechAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default);
+
+    Task DiscardSnapshotSpeechAsync(RpTranscriptSnapshot snapshot, CancellationToken cancellationToken = default);
 }
 
 public sealed class MessageSpeechService(
@@ -81,15 +95,29 @@ public sealed class MessageSpeechService(
     public MessageSpeechAvailability ResolveAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        RpTranscriptTurn turn)
+        RpTranscriptTurn turn) =>
+        ResolveAvailability(document, providers, turn.Body, turn.AuthorCharacterId, turn.AuthorName);
+
+    public MessageSpeechAvailability ResolveSnapshotAvailability(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        RpTranscriptSnapshot snapshot) =>
+        ResolveAvailability(document, providers, snapshot.Summary, "", "Snapshot");
+
+    MessageSpeechAvailability ResolveAvailability(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        string text,
+        string authorCharacterId,
+        string authorName)
     {
         var voiceModel = ResolveVoiceModel(document, providers);
-        if (voiceModel is null || !HasSpeechContent(NormalizeSpeechText(turn.Body)))
+        if (voiceModel is null || !HasSpeechContent(NormalizeSpeechText(text)))
             return new(MessageSpeechAvailabilityKind.NoVoiceModel);
 
-        return BuildPlan(document, providers, turn) is not null
+        return BuildPlan(document, providers, text, authorCharacterId, authorName) is not null
             ? new(MessageSpeechAvailabilityKind.Ready)
-            : MissingVoiceAvailability(document, voiceModel, turn);
+            : MissingVoiceAvailability(document, voiceModel, authorCharacterId, authorName);
     }
 
     public async Task<MessageSpeechPlayback> GetOrGenerateAsync(
@@ -97,17 +125,64 @@ public sealed class MessageSpeechService(
         IReadOnlyList<AiProvider> providers,
         RpTranscriptTurn turn,
         bool regenerate,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await GetOrGenerateCoreAsync(
+            document,
+            providers,
+            turn.Id,
+            PlaybackKey(turn),
+            turn.Speech,
+            (speech, generatedUtc) =>
+            {
+                turn.Speech = speech;
+                turn.UpdatedUtc = generatedUtc;
+            },
+            turn.Body,
+            turn.AuthorCharacterId,
+            turn.AuthorName,
+            regenerate,
+            cancellationToken);
+
+    public async Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        RpTranscriptSnapshot snapshot,
+        bool regenerate,
+        CancellationToken cancellationToken = default) =>
+        await GetOrGenerateCoreAsync(
+            document,
+            providers,
+            snapshot.Id,
+            SnapshotPlaybackKey(snapshot),
+            snapshot.Speech,
+            (speech, _) => snapshot.Speech = speech,
+            snapshot.Summary,
+            "",
+            "Snapshot",
+            regenerate,
+            cancellationToken);
+
+    async Task<MessageSpeechPlayback> GetOrGenerateCoreAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        string ownerId,
+        string key,
+        RpMessageSpeechState speech,
+        Action<RpMessageSpeechState, DateTime> setSpeech,
+        string text,
+        string authorCharacterId,
+        string authorName,
+        bool regenerate,
+        CancellationToken cancellationToken)
     {
-        var plan = BuildPlan(document, providers, turn)
-            ?? throw new MessageSpeechMissingVoiceException(ResolveAvailability(document, providers, turn));
-        var key = PlaybackKey(turn);
+        var plan = BuildPlan(document, providers, text, authorCharacterId, authorName)
+            ?? throw new MessageSpeechMissingVoiceException(ResolveAvailability(document, providers, text, authorCharacterId, authorName));
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         if (!regenerate
-            && !string.IsNullOrWhiteSpace(turn.Speech.VoiceMessageId)
-            && string.Equals(turn.Speech.SourceHash, plan.SourceHash, StringComparison.Ordinal)
-            && await CanReuseVoiceMessageAsync(dbContext, turn.Speech.VoiceMessageId, cancellationToken))
-            return new(key, BuildAudioUrl(turn.Speech.VoiceMessageId), false);
+            && !string.IsNullOrWhiteSpace(speech.VoiceMessageId)
+            && string.Equals(speech.SourceHash, plan.SourceHash, StringComparison.Ordinal)
+            && await CanReuseVoiceMessageAsync(dbContext, speech.VoiceMessageId, cancellationToken))
+            return new(key, BuildAudioUrl(speech.VoiceMessageId), false);
 
         var now = DateTime.UtcNow;
         var voiceMessageId = $"speech-{Guid.NewGuid():N}";
@@ -116,11 +191,11 @@ public sealed class MessageSpeechService(
         {
             Id = voiceMessageId,
             ChatId = document.Chat.Id,
-            TurnId = turn.Id,
+            TurnId = ownerId,
             Status = SpeechAssetStatus.Pending,
             Bytes = [],
             ContentType = "audio/mpeg",
-            FileName = $"{turn.Id}-{voiceMessageId}.mp3",
+            FileName = $"{ownerId}-{voiceMessageId}.mp3",
             ProviderId = plan.VoiceModel.Provider.Id,
             ProviderName = plan.VoiceModel.Provider.Name,
             ProviderType = plan.VoiceModel.Provider.Type,
@@ -132,18 +207,19 @@ public sealed class MessageSpeechService(
         });
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        turn.Speech = new()
-        {
-            VoiceMessageId = voiceMessageId,
-            GeneratedUtc = now,
-            SourceHash = plan.SourceHash,
-            ProviderId = plan.VoiceModel.Provider.Id,
-            ProviderName = plan.VoiceModel.Provider.Name,
-            ProviderType = plan.VoiceModel.Provider.Type,
-            ModelId = plan.VoiceModel.Model.Id,
-            VoiceIds = plan.VoiceIds.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
-        };
-        turn.UpdatedUtc = now;
+        setSpeech(
+            new()
+            {
+                VoiceMessageId = voiceMessageId,
+                GeneratedUtc = now,
+                SourceHash = plan.SourceHash,
+                ProviderId = plan.VoiceModel.Provider.Id,
+                ProviderName = plan.VoiceModel.Provider.Name,
+                ProviderType = plan.VoiceModel.Provider.Type,
+                ModelId = plan.VoiceModel.Model.Id,
+                VoiceIds = plan.VoiceIds.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            },
+            now);
 
         streamCoordinator.Start(new(
             voiceMessageId,
@@ -191,28 +267,39 @@ public sealed class MessageSpeechService(
                 && asset.Status != SpeechAssetStatus.Failed,
                 cancellationToken);
 
-    public async Task DiscardTurnSpeechAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default)
+    public async Task DiscardTurnSpeechAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default) =>
+        await DiscardSpeechAsync(turn.Speech, speech => turn.Speech = speech, cancellationToken);
+
+    public async Task DiscardSnapshotSpeechAsync(RpTranscriptSnapshot snapshot, CancellationToken cancellationToken = default) =>
+        await DiscardSpeechAsync(snapshot.Speech, speech => snapshot.Speech = speech, cancellationToken);
+
+    async Task DiscardSpeechAsync(
+        RpMessageSpeechState speech,
+        Action<RpMessageSpeechState> setSpeech,
+        CancellationToken cancellationToken)
     {
-        var voiceMessageId = turn.Speech.VoiceMessageId;
+        var voiceMessageId = speech.VoiceMessageId;
         if (!string.IsNullOrWhiteSpace(voiceMessageId))
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
             await dbContext.SpeechAssets.Where(asset => asset.Id == voiceMessageId).ExecuteDeleteAsync(cancellationToken);
         }
 
-        turn.Speech = new();
+        setSpeech(new());
     }
 
     MessageSpeechPlan? BuildPlan(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        RpTranscriptTurn turn)
+        string body,
+        string authorCharacterId,
+        string authorName)
     {
         var voiceModel = ResolveVoiceModel(document, providers);
         if (voiceModel is null)
             return null;
 
-        var text = NormalizeSpeechText(turn.Body);
+        var text = NormalizeSpeechText(body);
         if (string.IsNullOrWhiteSpace(text))
             return null;
 
@@ -223,7 +310,7 @@ public sealed class MessageSpeechService(
         if (!HasSpeechContent(text))
             return null;
 
-        if (IsNarrator(turn))
+        if (IsNarrator(authorCharacterId))
         {
             if (string.IsNullOrWhiteSpace(narratorVoiceId))
                 return null;
@@ -235,14 +322,14 @@ public sealed class MessageSpeechService(
             return BuildSingleVoicePlan(voiceModel, text, narratorVoiceId, voiceIds);
         }
 
-        var character = document.Characters.FirstOrDefault(character => character.Id == turn.AuthorCharacterId);
+        var character = document.Characters.FirstOrDefault(character => character.Id == authorCharacterId);
         var characterVoiceId = character is null ? "" : ResolveVoiceId(character.VoiceSelections, voiceModel.Key);
-        var canUseNarratorActions = CanUseNarratorActions(document, voiceModel, turn, characterVoiceId, narratorVoiceId);
+        var canUseNarratorActions = CanUseNarratorActions(document, voiceModel, authorCharacterId, characterVoiceId, narratorVoiceId);
         if (canUseNarratorActions)
         {
             var voiceIds = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                [turn.AuthorCharacterId] = characterVoiceId,
+                [authorCharacterId] = characterVoiceId,
                 [NarratorVoiceKey] = narratorVoiceId
             };
             var inputs = BuildDialogueInputs(text, characterVoiceId, narratorVoiceId);
@@ -258,7 +345,7 @@ public sealed class MessageSpeechService(
 
         var fallbackVoiceIds = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [string.IsNullOrWhiteSpace(characterVoiceId) ? NarratorVoiceKey : turn.AuthorCharacterId] = fallbackVoiceId
+            [string.IsNullOrWhiteSpace(characterVoiceId) ? NarratorVoiceKey : authorCharacterId] = fallbackVoiceId
         };
         return BuildSingleVoicePlan(voiceModel, text, fallbackVoiceId, fallbackVoiceIds, true);
     }
@@ -266,24 +353,23 @@ public sealed class MessageSpeechService(
     MessageSpeechAvailability MissingVoiceAvailability(
         RpChatDocument document,
         ActiveModelSelection voiceModel,
-        RpTranscriptTurn turn)
+        string authorCharacterId,
+        string authorName)
     {
         var narratorVoiceId = ResolveVoiceId(document.NarratorProfile.VoiceSelections, voiceModel.Key);
-        if (IsNarrator(turn))
+        if (IsNarrator(authorCharacterId))
             return new(MessageSpeechAvailabilityKind.MissingVoice, NarratorVoiceKey, "Narrator", true);
 
-        var character = document.Characters.FirstOrDefault(character => character.Id == turn.AuthorCharacterId);
+        var character = document.Characters.FirstOrDefault(character => character.Id == authorCharacterId);
         var characterVoiceId = character is null ? "" : ResolveVoiceId(character.VoiceSelections, voiceModel.Key);
-        var needsNarratorActions = IsElevenLabs(voiceModel.Provider)
-            && document.Transcript.Options.SpeakActionsInNarratorVoice;
 
         if (!string.IsNullOrWhiteSpace(characterVoiceId))
-            return new(MessageSpeechAvailabilityKind.MissingVoice, turn.AuthorCharacterId, turn.AuthorName);
+            return new(MessageSpeechAvailabilityKind.MissingVoice, authorCharacterId, authorName);
 
         if (!string.IsNullOrWhiteSpace(narratorVoiceId))
             return new(MessageSpeechAvailabilityKind.MissingVoice, NarratorVoiceKey, "Narrator", true);
 
-        return new(MessageSpeechAvailabilityKind.MissingVoice, turn.AuthorCharacterId, turn.AuthorName);
+        return new(MessageSpeechAvailabilityKind.MissingVoice, authorCharacterId, authorName);
     }
 
     ActiveModelSelection? ResolveVoiceModel(RpChatDocument document, IReadOnlyList<AiProvider> providers)
@@ -347,10 +433,10 @@ public sealed class MessageSpeechService(
     static bool CanUseNarratorActions(
         RpChatDocument document,
         ActiveModelSelection voiceModel,
-        RpTranscriptTurn turn,
+        string authorCharacterId,
         string characterVoiceId,
         string narratorVoiceId) =>
-        !IsNarrator(turn)
+        !IsNarrator(authorCharacterId)
         && document.Transcript.Options.SpeakActionsInNarratorVoice
         && IsElevenLabs(voiceModel.Provider)
         && !string.IsNullOrWhiteSpace(characterVoiceId)
@@ -564,8 +650,8 @@ public sealed class MessageSpeechService(
     static string Truncate(string text) =>
         text.Length <= MaxSpeechCharacters ? text : text[..MaxSpeechCharacters];
 
-    static bool IsNarrator(RpTranscriptTurn turn) =>
-        string.IsNullOrWhiteSpace(turn.AuthorCharacterId);
+    static bool IsNarrator(string authorCharacterId) =>
+        string.IsNullOrWhiteSpace(authorCharacterId);
 
     static bool IsElevenLabs(AiProvider provider) =>
         string.Equals(provider.Type.Trim(), "elevenlabs", StringComparison.OrdinalIgnoreCase);
@@ -575,6 +661,8 @@ public sealed class MessageSpeechService(
         && string.Equals(voiceModel.Model.Id.Trim(), "eleven_v3", StringComparison.OrdinalIgnoreCase);
 
     public static string PlaybackKey(RpTranscriptTurn turn) => $"message-speech::{turn.Id}";
+
+    public static string SnapshotPlaybackKey(RpTranscriptSnapshot snapshot) => $"snapshot-speech::{snapshot.Id}";
 
     static AiProvider SnapshotProvider(AiProvider provider) => new()
     {

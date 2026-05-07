@@ -78,17 +78,71 @@ public sealed class StoryAssistantStoreTests
         Assert.Equal("Stopped.", document.StoryAssistant.Items.Last().Text);
     }
 
+    [Fact]
+    public async Task SendMarksRemoteThreadLostWhenProviderDropsStoredResponse()
+    {
+        var document = CreateDocument();
+        var store = CreateStore(document, (_, _) =>
+            throw new ModelAssistantThreadLostException(
+                "Grok / xAI",
+                "grok-4.3",
+                "resp-old",
+                new InvalidOperationException("The requested resource was not found.")));
+
+        await store.SendAsync("Keep going.");
+
+        Assert.True(document.StoryAssistant.RemoteThreadLost);
+        Assert.Contains("fresh thread", document.StoryAssistant.RemoteThreadError, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(StoryAssistantItemStatus.Failed, document.StoryAssistant.Items.Last().Status);
+        Assert.Contains("fresh thread", document.StoryAssistant.Items.Last().Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ClearResetsLocalStateAfterRemoteCleanup()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.LastResponseId = "resp-2";
+        document.StoryAssistant.ResponseIds.Add("resp-1");
+        document.StoryAssistant.ResponseIds.Add("resp-2");
+        document.StoryAssistant.ResponseProviderId = "provider-1";
+        document.StoryAssistant.ResponseModelId = "model-1";
+        document.StoryAssistant.RemoteThreadLost = true;
+        document.StoryAssistant.RemoteThreadError = "Needs restart.";
+        document.StoryAssistant.Items.Add(ReadTool());
+        var cleanupCalled = false;
+        var store = CreateStore(
+            document,
+            (_, _) => Task.CompletedTask,
+            (cleanupDocument, _, _) =>
+            {
+                cleanupCalled = ReferenceEquals(document, cleanupDocument);
+                return Task.CompletedTask;
+            });
+
+        await store.ClearAsync();
+
+        Assert.True(cleanupCalled);
+        Assert.Empty(document.StoryAssistant.Items);
+        Assert.Equal("", document.StoryAssistant.LastResponseId);
+        Assert.Empty(document.StoryAssistant.ResponseIds);
+        Assert.False(document.StoryAssistant.RemoteThreadLost);
+        Assert.Equal("", document.StoryAssistant.RemoteThreadError);
+    }
+
     static StoryAssistantStore CreateStore(RpChatDocument document, Func<IStoryAssistantCallbacks, Task> script) =>
         CreateStore(document, (callbacks, _) => script(callbacks));
 
-    static StoryAssistantStore CreateStore(RpChatDocument document, Func<IStoryAssistantCallbacks, CancellationToken, Task> script)
+    static StoryAssistantStore CreateStore(
+        RpChatDocument document,
+        Func<IStoryAssistantCallbacks, CancellationToken, Task> script,
+        Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript = null)
     {
         var activeChat = new ActiveChatContext();
         activeChat.SetAsync(document).GetAwaiter().GetResult();
         var liveStore = new TestLiveRoleplayStore(document);
         var registry = new ChatRegistry(Guid.NewGuid(), liveStore, activeChat);
         var providers = new ProviderStore(Guid.NewGuid(), liveStore);
-        return new(activeChat, registry, providers, new ScriptedStoryAssistantService(script));
+        return new(activeChat, registry, providers, new ScriptedStoryAssistantService(script, clearScript));
     }
 
     static RpChatDocument CreateDocument() => new()
@@ -106,7 +160,9 @@ public sealed class StoryAssistantStoreTests
         ToolCallId = "call-1"
     };
 
-    sealed class ScriptedStoryAssistantService(Func<IStoryAssistantCallbacks, CancellationToken, Task> script) : IStoryAssistantService
+    sealed class ScriptedStoryAssistantService(
+        Func<IStoryAssistantCallbacks, CancellationToken, Task> script,
+        Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript) : IStoryAssistantService
     {
         public Task RunTurnAsync(
             RpChatDocument document,
@@ -114,6 +170,12 @@ public sealed class StoryAssistantStoreTests
             StoryAssistantTurnRequest request,
             IStoryAssistantCallbacks callbacks,
             CancellationToken cancellationToken = default) => script(callbacks, cancellationToken);
+
+        public Task ClearRemoteStateAsync(
+            RpChatDocument document,
+            IReadOnlyList<AiProvider> providers,
+            CancellationToken cancellationToken = default) =>
+            clearScript?.Invoke(document, providers, cancellationToken) ?? Task.CompletedTask;
     }
 
     sealed class TestLiveRoleplayStore(RpChatDocument document) : ILiveRoleplayStore

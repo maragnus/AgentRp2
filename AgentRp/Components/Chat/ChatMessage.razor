@@ -1,5 +1,7 @@
 @using AgentRp.Services
+@implements IDisposable
 @inject IServiceProvider Services
+@inject IEntityNotifier EntityNotifier
 
 <article class="narrative-message">
     @if (ShowProcess && Message.Trace is not null)
@@ -16,9 +18,9 @@
                 }
                 else
                 {
-                    <Avatar Name="@Message.AuthorName" Size="26" />
+                    <EntityImage EntityType="character" EntityId="@Message.AuthorCharacterId" Name="@DisplayAuthorName" Image="@ImageFor(AuthorCharacter?.ImageId ?? "")" Size="26" />
                 }
-                <span>@Message.AuthorName</span>
+                <span>@DisplayAuthorName</span>
             </div>
             <span class="message-date">@RelativeDateFormatter.FormatDate(Message.CreatedUtc)</span>
             <span class="mode-badge @ModeClass">@ModeLabel</span>
@@ -34,14 +36,6 @@
             <StatusRow Icon="eye" Class="appearance-row">
                 <ChildContent>@AppearanceSummary</ChildContent>
                 <BadgeContent><Badge Tone="blue">@Message.AppearanceByCharacterId.Count chars</Badge></BadgeContent>
-            </StatusRow>
-        }
-
-        @if (Snapshot is not null)
-        {
-            <StatusRow Icon="flag" Class="appearance-row">
-                <ChildContent>@Snapshot.Summary</ChildContent>
-                <BadgeContent><Badge Tone="amber">Snapshot</Badge></BadgeContent>
             </StatusRow>
         }
 
@@ -78,7 +72,7 @@
                         @foreach (var character in Characters)
                         {
                             var current = Message.AuthorCharacterId == character.Id;
-                            <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(character))"><Avatar Name="@character.Name" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
+                            <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(character))"><EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
                         }
                     </Content>
                 </AnchoredPopover>
@@ -129,7 +123,7 @@
 
 @if (EditPlan)
 {
-    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{Message.AuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
+    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
         <ChildContent>
             <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
                 <ChildContent>
@@ -282,7 +276,7 @@
 
 @if (EditBody)
 {
-    <ModalShell Title="Edit Message" Subtitle="@($"{Message.AuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
+    <ModalShell Title="Edit Message" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
         <ChildContent>
             <Section Title="Body">
                 <textarea class="field plan-field" rows="8" @bind="BodyDraft"></textarea>
@@ -323,10 +317,13 @@
     [Parameter] public bool TranscriptBusy { get; set; }
     [Parameter] public int SubsequentCount { get; set; }
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+    [Parameter] public EventCallback<string> OnCreateSnapshot { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;
 
     IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
     bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
+    RpCharacter? AuthorCharacter => IsNarrator ? null : Characters.FirstOrDefault(character => character.Id == Message.AuthorCharacterId);
+    string DisplayAuthorName => AuthorCharacter?.Name ?? Message.AuthorName;
     string ProseClass => IsNarrator ? "is-narrator" : "is-character";
     string ModeClass => Message.Mode switch
     {
@@ -346,8 +343,7 @@
         _ => "Manual"
     };
 
-    RpTranscriptSnapshot? Snapshot => Session.Chat.Transcript.SnapshotFor(Message.Id);
-    bool CanUseStructuredFeatures => ResolveActiveTextModel()?.Capabilities.CanGenerateStructuredText != false;
+    bool CanUseStructuredFeatures => ResolveActiveTextModel()?.Capabilities.CanGenerateStructuredText == true;
     IReadOnlyList<RpTranscriptTurn> Siblings => Session.Chat.Transcript.SiblingsFor(Message.Id);
     int SiblingIndex => Math.Max(0, Siblings.ToList().FindIndex(turn => turn.Id == Message.Id));
     int SiblingCount => Siblings.Count;
@@ -372,6 +368,24 @@
     protected override void OnParametersSet()
     {
         SelectedTurnShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
+    }
+
+    protected override void OnInitialized()
+    {
+        EntityNotifier.Changed += OnEntityChanged;
+    }
+
+    Task OnEntityChanged(EntityChangeNotification notification)
+    {
+        if (IsNarrator
+            || !string.Equals(notification.EntityType, EntityTypes.Character, StringComparison.Ordinal)
+            || !string.Equals(notification.EntityId, Message.AuthorCharacterId, StringComparison.Ordinal)
+            || notification.ChangeKind is not EntityChangeKinds.Profile and not EntityChangeKinds.Deleted)
+        {
+            return Task.CompletedTask;
+        }
+
+        return InvokeAsync(StateHasChanged);
     }
 
     async Task DeleteSingle()
@@ -416,7 +430,7 @@
 
     async Task CopyMessage(MouseEventArgs args) => await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Body);
 
-    async Task CreateSnapshot() => await Session.Chat.Transcript.CreateSnapshotAsync(Message.Id);
+    async Task CreateSnapshot() => await OnCreateSnapshot.InvokeAsync(Message.Id);
 
     async Task PickShapeAndRegenerate(string shape)
     {
@@ -482,8 +496,6 @@
         await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
     }
 
-    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
-
     async Task LoadSpeechInputSnapshot()
     {
         SpeechInputSnapshot = null;
@@ -514,4 +526,13 @@
 
     static string SpeechInputKey(SpeechGenerationInput input, int index) =>
         $"{index}:{input.VoiceId}:{input.Text.Length}";
+
+    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Reasoning);
+
+    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+
+    public void Dispose()
+    {
+        EntityNotifier.Changed -= OnEntityChanged;
+    }
 }

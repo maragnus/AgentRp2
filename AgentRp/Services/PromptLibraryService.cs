@@ -500,7 +500,7 @@ public sealed partial class PromptLibraryService
         """
         You create structured story snapshots from a selected branch transcript.
         Summarize only what is supported by the included messages and supplied story state.
-        Return a concise narrative summary, then propose canonical facts and timeline entries that should be saved.
+        Return a concise narrative summary, then propose timeline entries that should be saved.
         Prefer durable developments over throwaway phrasing.
         Do not invent names, references, or events that are not grounded in the provided material.
         """;
@@ -519,8 +519,7 @@ public sealed partial class PromptLibraryService
 
         Return:
         1. A narrative summary of what has happened so far in this included range.
-        2. Proposed facts that should be canonized.
-        3. Proposed timeline entries that should be added.
+        2. Proposed timeline entries that should be added.
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
         """;
 
@@ -742,7 +741,7 @@ public sealed partial class PromptLibraryService
         CRITICAL STEPS: {prose.turnShapeUser}
         - Stop
 
-        Format reminder: Always wrap actions in *asterisks* and speech in "quotes". Every action must include an explicit subject pronoun or character name, such as *She trembles* or *Bella looks away*. Do not write bare action fragments like *trembles* or *eyes pleading*. Never output unwrapped output.
+        Format reminder: Always wrap actions in *asterisks* and speech in "quotes". Every action must include an explicit subject pronoun or character name when potentially ambiguous, such as *She trembles* or *Bella looks away*. Do not write bare action fragments like *trembles* or *eyes pleading*. Never output unwrapped output.
         """;
 
     static string RemoveProseFormatReminderLine(string prompt, string line)

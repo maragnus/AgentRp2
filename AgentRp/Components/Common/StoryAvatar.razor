@@ -1,0 +1,23 @@
+@if (!string.IsNullOrWhiteSpace(ImageUrl))
+{
+    <span class="@BuildWrapperClass()" style="@BuildImageStyle()" title="@Name"></span>
+}
+else
+{
+    <span class="@($"{Class} app-story-avatar-initials")" title="@Name">@Initial</span>
+}
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public ImageAvatarCropView Crop { get; set; } = ImageAvatarCropView.Default;
+    [Parameter] public string Class { get; set; } = "app-story-avatar";
+
+    string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
+    string BuildWrapperClass() => $"{Class} app-story-avatar-frame";
+    string BuildImageStyle() =>
+        $"background-image: url(\"{EscapeCssString(ImageUrl!)}\"); background-position: {Crop.FocusXPercent}% {Crop.FocusYPercent}%; background-size: {Crop.ZoomPercent}%;";
+
+    static string EscapeCssString(string value) =>
+        value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+}

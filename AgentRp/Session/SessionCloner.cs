@@ -33,6 +33,7 @@ static class SessionCloner
         Summary = value.Summary,
         Personality = value.Personality,
         Appearance = value.Appearance,
+        AppearanceProfile = Clone(value.AppearanceProfile),
         Relationships = value.Relationships,
         Backstory = value.Backstory,
         Voice = value.Voice,
@@ -55,6 +56,21 @@ static class SessionCloner
         AvoidPatterns = [.. value.AvoidPatterns],
         ProfileRelationships = value.ProfileRelationships.Select(Clone).ToList(),
         VoiceSelections = value.VoiceSelections.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal)
+    };
+
+    static CharacterAppearanceState Clone(CharacterAppearanceState value) => new()
+    {
+        HairColor = value.HairColor,
+        HairStyles = [.. value.HairStyles],
+        EyeColor = value.EyeColor,
+        FaceShape = value.FaceShape,
+        SkinTone = value.SkinTone,
+        Complexion = [.. value.Complexion],
+        Height = value.Height,
+        Build = value.Build,
+        BodyProportions = [.. value.BodyProportions],
+        Presentation = [.. value.Presentation],
+        Attractiveness = value.Attractiveness
     };
 
     static CharacterVoiceSelection Clone(CharacterVoiceSelection value) => new()
@@ -101,6 +117,7 @@ static class SessionCloner
     public static RpTimelineEntry Clone(RpTimelineEntry value) => new()
     {
         Id = value.Id,
+        SnapshotId = value.SnapshotId,
         Title = value.Title,
         Date = value.Date,
         Description = value.Description,
@@ -116,7 +133,10 @@ static class SessionCloner
         EntityType = value.EntityType,
         Date = value.Date,
         Hue = value.Hue,
-        Url = value.Url
+        Url = value.Url,
+        AvatarFocusXPercent = value.AvatarFocusXPercent,
+        AvatarFocusYPercent = value.AvatarFocusYPercent,
+        AvatarZoomPercent = value.AvatarZoomPercent
     };
 
     public static AiProvider Clone(AiProvider value) => new()
@@ -221,7 +241,12 @@ static class SessionCloner
     {
         SchemaVersion = value.SchemaVersion,
         ReviewMode = value.ReviewMode,
-        ConversationId = value.ConversationId,
+        LastResponseId = value.LastResponseId,
+        ResponseIds = value.ResponseIds.ToList(),
+        ResponseProviderId = value.ResponseProviderId,
+        ResponseModelId = value.ResponseModelId,
+        RemoteThreadLost = value.RemoteThreadLost,
+        RemoteThreadError = value.RemoteThreadError,
         Items = value.Items.Select(Clone).ToList()
     };
 
@@ -334,28 +359,16 @@ static class SessionCloner
         TurnId = value.TurnId,
         CreatedUtc = value.CreatedUtc,
         Summary = value.Summary,
-        EarlierPrivateIntentContinuity = value.EarlierPrivateIntentContinuity,
-        Facts = value.Facts.Select(Clone).ToList(),
-        TimelineEntries = value.TimelineEntries.Select(Clone).ToList(),
+        Speech = Clone(value.Speech),
+        PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         CharacterAppearances = value.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
         Data = Clone(value.Data)
     };
 
-    static RpTranscriptSnapshotFact Clone(RpTranscriptSnapshotFact value) => new()
-    {
-        Title = value.Title,
-        Summary = value.Summary,
-        Details = value.Details,
-        CharacterNames = [.. value.CharacterNames],
-        LocationNames = [.. value.LocationNames],
-        ItemNames = [.. value.ItemNames]
-    };
-
     static RpTranscriptSnapshotTimelineEntry Clone(RpTranscriptSnapshotTimelineEntry value) => new()
     {
-        TimelineEntryId = value.TimelineEntryId,
         WhenText = value.WhenText,
         Title = value.Title,
         Summary = value.Summary,
@@ -456,6 +469,17 @@ static class SessionCloner
         StressPatterns = value.StressPatterns.Select(Clone).ToList(),
         SoftSpots = value.SoftSpots.Select(Clone).ToList(),
         AvoidPatterns = value.AvoidPatterns.Select(Clone).ToList(),
+        HairColors = value.HairColors.Select(Clone).ToList(),
+        HairStyles = value.HairStyles.Select(Clone).ToList(),
+        EyeColors = value.EyeColors.Select(Clone).ToList(),
+        FaceShapes = value.FaceShapes.Select(Clone).ToList(),
+        SkinTones = value.SkinTones.Select(Clone).ToList(),
+        Complexions = value.Complexions.Select(Clone).ToList(),
+        Heights = value.Heights.Select(Clone).ToList(),
+        Builds = value.Builds.Select(Clone).ToList(),
+        BodyProportions = value.BodyProportions.Select(Clone).ToList(),
+        Presentations = value.Presentations.Select(Clone).ToList(),
+        AttractivenessLevels = value.AttractivenessLevels.Select(Clone).ToList(),
         BondTypes = [.. value.BondTypes],
         Dynamics = [.. value.Dynamics]
     };

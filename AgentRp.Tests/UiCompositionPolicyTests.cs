@@ -24,6 +24,7 @@ public sealed class UiCompositionPolicyTests
         Normalize("AgentRp/Components/Common/ModalSplitLayout.razor"),
         Normalize("AgentRp/Components/Common/ProgressBar.razor"),
         Normalize("AgentRp/Components/Common/RangeSlider.razor"),
+        Normalize("AgentRp/Components/Common/StoryAvatar.razor"),
         Normalize("AgentRp/Components/Common/TiledSelectList.razor")
     };
 
@@ -84,6 +85,7 @@ public sealed class UiCompositionPolicyTests
     {
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -108,6 +110,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -144,6 +147,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -276,6 +280,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
@@ -299,6 +304,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);

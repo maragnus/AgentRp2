@@ -27,6 +27,11 @@ public interface IStoryAssistantService
         StoryAssistantTurnRequest request,
         IStoryAssistantCallbacks callbacks,
         CancellationToken cancellationToken = default);
+
+    Task ClearRemoteStateAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class StoryAssistantService(
@@ -47,12 +52,15 @@ public sealed class StoryAssistantService(
         if (!selection.Capabilities.CanGenerateText || !selection.Capabilities.Tools)
             throw new InvalidOperationException($"Starting the Story Assistant failed because reasoning model '{selection.Model.Id}' must support text and tools.");
 
-        if (string.IsNullOrWhiteSpace(document.StoryAssistant.ConversationId))
+        if (!ResponseChainMatches(document.StoryAssistant, selection))
         {
-            document.StoryAssistant.ConversationId = await generationClient.CreateAssistantConversationAsync(selection.Provider, selection.Model, cancellationToken);
+            await ClearRemoteStateAsync(document, providers, cancellationToken);
+            ClearResponseChain(document.StoryAssistant);
             await callbacks.SaveAssistantStateAsync(cancellationToken);
         }
 
+        document.StoryAssistant.RemoteThreadLost = false;
+        document.StoryAssistant.RemoteThreadError = "";
         var inputs = new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.UserMessage.Trim()) };
         for (var pass = 0; pass < 16; pass++)
         {
@@ -63,7 +71,7 @@ public sealed class StoryAssistantService(
                 selection.Capabilities,
                 new(),
                 Instructions(),
-                document.StoryAssistant.ConversationId,
+                document.StoryAssistant.LastResponseId,
                 inputs,
                 BuildTools(document),
                 "Running Story Assistant"), cancellationToken))
@@ -78,11 +86,10 @@ public sealed class StoryAssistantService(
                 }
                 else if (update.Kind == ModelAssistantStreamingUpdateKind.Completed)
                 {
-                    if (!string.IsNullOrWhiteSpace(update.ConversationId) && update.ConversationId != document.StoryAssistant.ConversationId)
-                    {
-                        document.StoryAssistant.ConversationId = update.ConversationId;
-                        await callbacks.SaveAssistantStateAsync(cancellationToken);
-                    }
+                    if (!string.IsNullOrWhiteSpace(update.ResponseId))
+                        RecordResponse(document.StoryAssistant, selection, update.ResponseId);
+
+                    await callbacks.SaveAssistantStateAsync(cancellationToken);
                 }
             }
 
@@ -95,10 +102,58 @@ public sealed class StoryAssistantService(
         throw new InvalidOperationException("Running the Story Assistant stopped because too many tool rounds were requested in one turn.");
     }
 
+    public async Task ClearRemoteStateAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var responseIds = document.StoryAssistant.ResponseIds
+            .Append(document.StoryAssistant.LastResponseId)
+            .Where(responseId => !string.IsNullOrWhiteSpace(responseId))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (responseIds.Count == 0)
+            return;
+
+        var provider = providers.FirstOrDefault(provider => provider.Id == document.StoryAssistant.ResponseProviderId);
+        var model = provider?.Models.FirstOrDefault(model => model.Id == document.StoryAssistant.ResponseModelId);
+        if (provider is null || model is null)
+            return;
+
+        await generationClient.DeleteAssistantResponsesAsync(provider, model, responseIds, cancellationToken);
+    }
+
     void ApplyCapabilities(IReadOnlyList<AiProvider> providers)
     {
         foreach (var provider in providers)
             capabilityCatalog.ApplyResolvedCapabilities(provider);
+    }
+
+    static bool ResponseChainMatches(StoryAssistantState state, ActiveModelSelection selection) =>
+        string.IsNullOrWhiteSpace(state.LastResponseId)
+        || (string.Equals(state.ResponseProviderId, selection.Provider.Id, StringComparison.Ordinal)
+            && string.Equals(state.ResponseModelId, selection.Model.Id, StringComparison.Ordinal));
+
+    static void RecordResponse(StoryAssistantState state, ActiveModelSelection selection, string responseId)
+    {
+        state.LastResponseId = responseId;
+        state.ResponseProviderId = selection.Provider.Id;
+        state.ResponseModelId = selection.Model.Id;
+        state.RemoteThreadLost = false;
+        state.RemoteThreadError = "";
+        if (!state.ResponseIds.Contains(responseId, StringComparer.Ordinal))
+            state.ResponseIds.Add(responseId);
+    }
+
+    public static void ClearResponseChain(StoryAssistantState state)
+    {
+        state.LastResponseId = "";
+        state.ResponseIds.Clear();
+        state.ResponseProviderId = "";
+        state.ResponseModelId = "";
+        state.RemoteThreadLost = false;
+        state.RemoteThreadError = "";
     }
 
     static string Instructions() => """
@@ -339,29 +394,33 @@ public sealed class StoryEntityPatchService
         return item.ResultJson;
     }
 
-    static object BuildEntities(RpChatDocument document) => new
+    static object BuildEntities(RpChatDocument document)
     {
-        characters = document.Characters.Select(CharacterShape),
-        locations = document.Locations.Select(LocationShape),
-        items = document.Items.Select(ItemShape),
-        timeline = document.Timeline.Select(TimelineShape),
-        characterTraitLibrary = CharacterProfileRules.Context(document.CharacterTraitLibrary),
-        relationships = document.Characters.Select(character => new
+        var library = CharacterTraitLibraryService.NormalizeState(document.CharacterTraitLibrary);
+        return new
         {
-            character.Id,
-            character.Name,
-            relationships = character.ProfileRelationships.Select(relationship => new
+            characters = document.Characters.Select(character => CharacterShape(character, library)),
+            locations = document.Locations.Select(LocationShape),
+            items = document.Items.Select(ItemShape),
+            timeline = document.Timeline.Select(TimelineShape),
+            characterTraitLibrary = CharacterProfileRules.Context(library),
+            relationships = document.Characters.Select(character => new
             {
-                sourceCharacterId = character.Id,
-                targetCharacterId = relationship.CharacterId,
-                howSourceSeesTarget = relationship.NoteAtoB,
-                howTargetSeesSource = relationship.NoteBtoA,
-                publicDynamic = relationship.NoteExternal,
-                relationship.Bonds,
-                relationship.Dynamics
+                character.Id,
+                character.Name,
+                relationships = character.ProfileRelationships.Select(relationship => new
+                {
+                    sourceCharacterId = character.Id,
+                    targetCharacterId = relationship.CharacterId,
+                    howSourceSeesTarget = relationship.NoteAtoB,
+                    howTargetSeesSource = relationship.NoteBtoA,
+                    publicDynamic = relationship.NoteExternal,
+                    relationship.Bonds,
+                    relationship.Dynamics
+                })
             })
-        })
-    };
+        };
+    }
 
     static object BuildTranscript(RpChatDocument document) =>
         TranscriptGraph.GetActivePath(document.Transcript).Select(turn => new
@@ -375,7 +434,7 @@ public sealed class StoryEntityPatchService
             turn.CreatedUtc
         });
 
-    static object CharacterShape(RpCharacter character) => new
+    static object CharacterShape(RpCharacter character, CharacterTraitLibraryState library) => new
     {
         character.Id,
         character.Name,
@@ -383,6 +442,8 @@ public sealed class StoryEntityPatchService
         character.Summary,
         character.Personality,
         character.Appearance,
+        character.AppearanceProfile,
+        AppearanceSummary = CharacterAppearanceFormatter.FormatBase(character, library),
         character.Backstory,
         character.Voice,
         character.Notes,
@@ -473,7 +534,7 @@ public sealed class StoryEntityPatchService
         var updates = Updates(json.RootElement);
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(character, updates);
-        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {character.Name}", "character", character.Id, character.Name, args, new(), CharacterJsonObject(character), StoryAssistantChangeRisk.Low);
+        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {character.Name}", "character", character.Id, character.Name, args, new(), CharacterJsonObject(character, document.CharacterTraitLibrary), StoryAssistantChangeRisk.Low);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => document.Characters.Insert(0, character), new(), token);
     }
 
@@ -488,8 +549,8 @@ public sealed class StoryEntityPatchService
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(after, updates);
         var risk = updates.TryGetProperty("name", out _) || updates.TryGetProperty("backstory", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
-        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "character", id, after.Name, args, CharacterJsonObject(before), CharacterJsonObject(after), risk);
-        return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, existing), CharacterJsonObject(existing), token);
+        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "character", id, after.Name, args, CharacterJsonObject(before, document.CharacterTraitLibrary), CharacterJsonObject(after, document.CharacterTraitLibrary), risk);
+        return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, existing), CharacterJsonObject(existing, document.CharacterTraitLibrary), token);
     }
 
     async Task<string> CreateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
@@ -708,6 +769,7 @@ public sealed class StoryEntityPatchService
         Set(updates, "summary", value => target.Summary = value);
         Set(updates, "personality", value => target.Personality = value);
         Set(updates, "appearance", value => target.Appearance = value);
+        SetAppearanceProfile(updates, target.AppearanceProfile);
         Set(updates, "backstory", value => target.Backstory = value);
         Set(updates, "voice", value => target.Voice = value);
         Set(updates, "notes", value => target.Notes = value);
@@ -727,6 +789,24 @@ public sealed class StoryEntityPatchService
         SetList(updates, "limits", value => target.Limits = value);
         SetList(updates, "softSpots", value => target.SoftSpots = value);
         SetList(updates, "avoidPatterns", value => target.AvoidPatterns = value);
+    }
+
+    static void SetAppearanceProfile(JsonElement root, CharacterAppearanceState target)
+    {
+        if (!root.TryGetProperty("appearanceProfile", out var value) || value.ValueKind != JsonValueKind.Object)
+            return;
+
+        Set(value, "hairColor", text => target.HairColor = text);
+        SetList(value, "hairStyles", list => target.HairStyles = list);
+        Set(value, "eyeColor", text => target.EyeColor = text);
+        Set(value, "faceShape", text => target.FaceShape = text);
+        Set(value, "skinTone", text => target.SkinTone = text);
+        SetList(value, "complexion", list => target.Complexion = list);
+        Set(value, "height", text => target.Height = text);
+        Set(value, "build", text => target.Build = text);
+        SetList(value, "bodyProportions", list => target.BodyProportions = list);
+        SetList(value, "presentation", list => target.Presentation = list);
+        Set(value, "attractiveness", text => target.Attractiveness = text);
     }
 
     static void ApplyLocation(RpLocation target, JsonElement updates)
@@ -859,7 +939,7 @@ public sealed class StoryEntityPatchService
     static JsonObject ToJsonObject<T>(T value) =>
         JsonSerializer.SerializeToNode(value, AppJsonSerializerOptions.Web)?.AsObject() ?? new();
 
-    static JsonObject CharacterJsonObject(RpCharacter character) => ToJsonObject(CharacterShape(character));
+    static JsonObject CharacterJsonObject(RpCharacter character, CharacterTraitLibraryState library) => ToJsonObject(CharacterShape(character, CharacterTraitLibraryService.NormalizeState(library)));
     static JsonObject RelationshipJsonObject(RpCharacter character) => ToJsonObject(new
     {
         character.Id,

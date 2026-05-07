@@ -333,11 +333,12 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
-    public async Task SnapshotGenerationReturnsAgentRp1SnapshotShape()
+    public async Task SnapshotGenerationReturnsSummaryAndTimelineEntries()
     {
         var client = new FakeModelGenerationClient();
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
+        document.ActiveModelSelections.Values[AiModelRole.Reasoning] = new() { ProviderId = "provider", ModelId = "test-model" };
 
         var result = await service.GenerateSnapshotAsync(
             document,
@@ -346,15 +347,27 @@ public sealed class TextGenerationServiceTests
 
         var snapshotRequest = client.GenerationRequests.First(request => request.OperationName == "Generating snapshot");
 
-        Assert.Contains("Return a concise narrative summary, then propose canonical facts and timeline entries", snapshotRequest.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Return a concise narrative summary, then propose timeline entries", snapshotRequest.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Thread title: Devonshire Games", snapshotRequest.UserPrompt, StringComparison.Ordinal);
         Assert.Equal("Test snapshot narrative", result.Summary);
-        var fact = Assert.Single(result.Facts);
-        Assert.Equal("Test fact", fact.Title);
         var timelineEntry = Assert.Single(result.TimelineEntries);
         Assert.Equal("Test event", timelineEntry.Title);
-        Assert.NotEmpty(result.CharacterAppearances);
         Assert.Equal("completed", result.Trace.Status);
+    }
+
+    [Fact]
+    public async Task SnapshotGenerationRequiresReasoningModelSelection()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateSnapshotAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3")));
+
+        Assert.Contains("reasoning model", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -483,6 +496,7 @@ public sealed class TextGenerationServiceTests
     {
         var service = new TextGenerationService(new FakeModelGenerationClient(), new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
+        document.ActiveModelSelections.Values[AiModelRole.Reasoning] = new() { ProviderId = "provider", ModelId = "test-model" };
 
         var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateSnapshotAsync(
             document,
@@ -615,14 +629,14 @@ public sealed class TextGenerationServiceTests
             yield break;
         }
 
-        public Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default) =>
-            Task.FromResult("conv-test");
-
         public async IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield break;
         }
+
+        public Task DeleteAssistantResponsesAsync(AiProvider provider, AiProviderModel model, IReadOnlyCollection<string> responseIds, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
 
         static T CreateStructuredValue<T>()
         {
@@ -649,18 +663,6 @@ public sealed class TextGenerationServiceTests
             SetProperty(type, value, "PrivateIntent", "Test private intent");
             SetProperty(type, value, "NarrativeSummary", "Test snapshot narrative");
             SetProperty(type, value, "Summary", "Test snapshot");
-            SetProperty(type, value, "Facts", new List<TextGenerationService.SnapshotFactResponse>
-            {
-                new()
-                {
-                    Title = "Test fact",
-                    Summary = "Test fact summary",
-                    Details = "Test fact details",
-                    CharacterNames = ["Gemma"],
-                    LocationNames = ["Devonshire Apartment 822"],
-                    ItemNames = ["Tesla Model S Plaid"]
-                }
-            });
             SetProperty(type, value, "TimelineEntries", new List<TextGenerationService.SnapshotTimelineEntryResponse>
             {
                 new()

@@ -1,0 +1,496 @@
+using AgentRp.Models;
+using AgentRp.Services;
+
+namespace AgentRp.Session;
+
+public enum SnapshotDeleteMethod
+{
+    Unwrap,
+    DeleteCoveredMessages
+}
+
+public sealed record SnapshotDeleteImpact(
+    string SnapshotId,
+    int CoveredTurnCount,
+    int LinkedTimelineEntryCount,
+    bool IsOnActivePath,
+    bool IsLatestOnActivePath,
+    int LaterSnapshotCount,
+    int CoveredBranchCount)
+{
+    public bool CanUnwrap => IsOnActivePath && IsLatestOnActivePath;
+    public bool CanDeleteCoveredMessages => CoveredTurnCount > 0;
+    public string UnwrapDisabledReason => IsOnActivePath
+        ? "Only the latest snapshot can be unwrapped."
+        : "Only snapshots on the active branch can be unwrapped.";
+    public string DeleteCoveredMessagesDisabledReason => "This snapshot has no linked messages.";
+}
+
+public sealed partial class TranscriptStore
+{
+    public IReadOnlyList<RpTranscriptSnapshot> SnapshotsForActivePath()
+    {
+        if (Document is null)
+            return [];
+
+        var path = TranscriptGraph.GetActivePath(Document.Transcript);
+        return SnapshotPath.GetSnapshotsOnPath(Document.Transcript, path);
+    }
+
+    public int SnapshotTurnCount(string snapshotId) =>
+        Document is null
+            ? 0
+            : Document.Transcript.Turns.Count(turn => string.Equals(turn.SnapshotId, snapshotId, StringComparison.Ordinal));
+
+    public SnapshotDeleteImpact? GetSnapshotDeleteImpact(string snapshotId)
+    {
+        if (Document is null)
+            return null;
+
+        var snapshot = TranscriptGraph.FindSnapshot(Document.Transcript, snapshotId);
+        if (snapshot is null)
+            return null;
+
+        return BuildSnapshotDeleteImpact(snapshot);
+    }
+
+    public RpTranscriptSnapshotDraftPreview? PreviewSnapshotDraft(string turnId)
+    {
+        if (Document is null)
+            return null;
+
+        var context = SnapshotPath.Build(Document, turnId);
+        if (context.CoveredTurns.Count == 0)
+            return new() { TurnId = turnId };
+
+        return new()
+        {
+            TurnId = turnId,
+            CoveredTurnCount = context.CoveredTurns.Count,
+            FirstSpeakerName = ToDraftTurn(context.CoveredTurns.First()).SpeakerName,
+            LastSpeakerName = ToDraftTurn(context.CoveredTurns.Last()).SpeakerName,
+            LatestSnapshotUtc = context.LatestSnapshot?.CreatedUtc
+        };
+    }
+
+    public async Task<MessageSpeechPlayback?> GetOrGenerateSnapshotSpeechAsync(string snapshotId, bool regenerate, CancellationToken cancellationToken = default)
+    {
+        MessageSpeechPlayback? playback = null;
+        await RunExclusiveAsync(regenerate ? "Regenerating snapshot speech..." : "Generating snapshot speech...", async () =>
+        {
+            if (Document is null || messageSpeechService is null)
+                return;
+
+            ClearBackgroundError();
+            var snapshot = TranscriptGraph.FindSnapshot(Document.Transcript, snapshotId);
+            if (snapshot is null)
+                return;
+
+            playback = await messageSpeechService.GetOrGenerateSnapshotAsync(
+                Document,
+                providers.Items.ToList(),
+                snapshot,
+                regenerate,
+                cancellationToken);
+            await SaveTranscriptAsync();
+        });
+
+        return playback;
+    }
+
+    public async Task<RpTranscriptSnapshotDraft?> CreateSnapshotDraftAsync(string turnId, CancellationToken cancellationToken = default)
+    {
+        RpTranscriptSnapshotDraft? draft = null;
+        await RunExclusiveAsync("Creating snapshot draft...", async () =>
+        {
+            if (Document is null)
+                return;
+
+            ClearBackgroundError();
+            var context = SnapshotPath.Build(Document, turnId);
+            if (context.CoveredTurns.Count == 0)
+                throw new InvalidOperationException("Creating a snapshot draft failed because the selected turn is already covered by a snapshot.");
+
+            var result = await textGenerationService.GenerateSnapshotAsync(
+                Document,
+                providers.Items.ToList(),
+                new(turnId),
+                cancellationToken);
+            draft = new()
+            {
+                TurnId = turnId,
+                CreatedUtc = DateTime.UtcNow,
+                Summary = result.Summary,
+                CoveredTurnIds = context.CoveredTurns.Select(turn => turn.Id).ToList(),
+                IncludedTurns = context.CoveredTurns.Select(ToDraftTurn).ToList(),
+                PrivateIntentByCharacterId = BuildSnapshotPrivateIntents(context.LatestSnapshot, context.CoveredTurns),
+                CharacterAppearances = BuildSnapshotAppearances(context.LatestSnapshot, context.CoveredTurns),
+                TimelineEntries = result.TimelineEntries.Select(CloneSnapshotTimelineEntry).ToList(),
+                Scene = SessionCloner.Clone(context.TargetTurn.Scene),
+                Trace = SessionCloner.Clone(result.Trace)
+            };
+        });
+
+        return draft;
+    }
+
+    public async Task CommitSnapshotDraftAsync(RpTranscriptSnapshotDraft draft, CancellationToken cancellationToken = default) =>
+        await RunExclusiveAsync("Saving snapshot...", async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Document is null)
+                return;
+
+            ClearBackgroundError();
+            if (string.IsNullOrWhiteSpace(draft.Summary))
+                throw new InvalidOperationException("Saving the snapshot failed because the summary is empty.");
+            if (draft.CoveredTurnIds.Count == 0)
+                throw new InvalidOperationException("Saving the snapshot failed because no transcript turns were included.");
+
+            var context = SnapshotPath.Build(Document, draft.TurnId);
+            var includedIds = draft.CoveredTurnIds.ToHashSet(StringComparer.Ordinal);
+            if (!includedIds.SetEquals(context.CoveredTurns.Select(turn => turn.Id)))
+                throw new InvalidOperationException("Saving the snapshot failed because the transcript branch changed while the draft was open.");
+
+            var existing = TranscriptGraph.FindSnapshotByTurn(Document.Transcript, draft.TurnId);
+            if (existing is not null)
+            {
+                await DiscardSnapshotSpeechAsync(existing, cancellationToken);
+                RemoveSnapshotTimelineEntries(existing);
+                ClearSnapshotTurnLinks(existing);
+                Document.Transcript.Snapshots.Remove(existing);
+            }
+
+            var snapshot = new RpTranscriptSnapshot
+            {
+                Id = NextSnapshotId(),
+                TurnId = draft.TurnId,
+                CreatedUtc = DateTime.UtcNow,
+                Summary = draft.Summary.Trim(),
+                PrivateIntentByCharacterId = CloneMap(draft.PrivateIntentByCharacterId),
+                CharacterAppearances = CloneMap(draft.CharacterAppearances),
+                Scene = SessionCloner.Clone(draft.Scene),
+                Trace = draft.Trace is null ? null : SessionCloner.Clone(draft.Trace)
+            };
+            Document.Transcript.Snapshots.Add(snapshot);
+            LinkSnapshotTurns(snapshot, context.CoveredTurns);
+            AddSnapshotTimelineEntries(snapshot, draft.TimelineEntries);
+
+            await SaveTranscriptAndTimelineAsync();
+        });
+
+    public async Task DeleteSnapshotAsync(
+        string snapshotId,
+        SnapshotDeleteMethod method,
+        bool removeTimelineEntries,
+        CancellationToken cancellationToken = default) =>
+        await RunExclusiveAsync("Deleting snapshot...", async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Document is null)
+                return;
+
+            ClearBackgroundError();
+            var snapshot = TranscriptGraph.FindSnapshot(Document.Transcript, snapshotId);
+            if (snapshot is null)
+                return;
+
+            var impact = BuildSnapshotDeleteImpact(snapshot);
+            if (method == SnapshotDeleteMethod.Unwrap && !impact.CanUnwrap)
+                throw new InvalidOperationException("Unwrapping the snapshot failed because only the latest snapshot on the active branch can be unwrapped.");
+            if (method == SnapshotDeleteMethod.DeleteCoveredMessages && !impact.CanDeleteCoveredMessages)
+                throw new InvalidOperationException("Deleting the snapshot messages failed because this snapshot has no linked messages.");
+
+            await DiscardSnapshotSpeechAsync(snapshot, cancellationToken);
+            if (removeTimelineEntries)
+                RemoveSnapshotTimelineEntries(snapshot);
+            else
+                ClearSnapshotTimelineLinks(snapshot);
+
+            if (method == SnapshotDeleteMethod.Unwrap)
+                ClearSnapshotTurnLinks(snapshot);
+            else
+                RemoveSnapshotTurns(snapshot);
+
+            Document.Transcript.Snapshots.Remove(snapshot);
+
+            await SaveTranscriptAndTimelineAsync();
+        });
+
+    async Task RemoveSnapshotsForTurnsAsync(HashSet<string> turnIds)
+    {
+        if (Document is null)
+            return;
+
+        var affectedSnapshotIds = Document.Transcript.Turns
+            .Where(turn => turnIds.Contains(turn.Id) && !string.IsNullOrWhiteSpace(turn.SnapshotId))
+            .Select(turn => turn.SnapshotId)
+            .ToHashSet(StringComparer.Ordinal);
+        var snapshots = Document.Transcript.Snapshots
+            .Where(snapshot => turnIds.Contains(snapshot.TurnId) || affectedSnapshotIds.Contains(snapshot.Id))
+            .ToList();
+        foreach (var snapshot in snapshots)
+        {
+            await DiscardSnapshotSpeechAsync(snapshot);
+            ClearSnapshotTimelineLinks(snapshot);
+            ClearSnapshotTurnLinks(snapshot);
+        }
+
+        var snapshotIds = snapshots.Select(snapshot => snapshot.Id).ToHashSet(StringComparer.Ordinal);
+        Document.Transcript.Snapshots.RemoveAll(snapshot => snapshotIds.Contains(snapshot.Id));
+    }
+
+    async Task DiscardSnapshotSpeechAsync(RpTranscriptSnapshot snapshot, CancellationToken cancellationToken = default)
+    {
+        if (messageSpeechService is not null)
+        {
+            await messageSpeechService.DiscardSnapshotSpeechAsync(snapshot, cancellationToken);
+            return;
+        }
+
+        snapshot.Speech = new();
+    }
+
+    void RemoveSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return;
+
+        Document.Timeline.RemoveAll(entry => string.Equals(entry.SnapshotId, snapshot.Id, StringComparison.Ordinal));
+    }
+
+    void ClearSnapshotTimelineLinks(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return;
+
+        foreach (var entry in Document.Timeline.Where(entry => string.Equals(entry.SnapshotId, snapshot.Id, StringComparison.Ordinal)))
+            entry.SnapshotId = "";
+    }
+
+    void AddSnapshotTimelineEntries(RpTranscriptSnapshot snapshot, IEnumerable<RpTranscriptSnapshotTimelineEntry> entries)
+    {
+        if (Document is null)
+            return;
+
+        foreach (var entry in entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Title)))
+        {
+            var timelineEntry = new RpTimelineEntry
+            {
+                Id = NextTimelineId(),
+                SnapshotId = snapshot.Id,
+                Title = entry.Title.Trim(),
+                Date = string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText.Trim(),
+                Description = BuildSnapshotTimelineDescription(entry),
+                Characters = [.. entry.CharacterNames],
+                Significance = "Generated from snapshot."
+            };
+            Document.Timeline.Add(timelineEntry);
+        }
+    }
+
+    void LinkSnapshotTurns(RpTranscriptSnapshot snapshot, IEnumerable<RpTranscriptTurn> turns)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var turn in turns)
+        {
+            turn.SnapshotId = snapshot.Id;
+            turn.UpdatedUtc = now;
+        }
+    }
+
+    void ClearSnapshotTurnLinks(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return;
+
+        var now = DateTime.UtcNow;
+        foreach (var turn in Document.Transcript.Turns.Where(turn => string.Equals(turn.SnapshotId, snapshot.Id, StringComparison.Ordinal)))
+        {
+            turn.SnapshotId = "";
+            turn.UpdatedUtc = now;
+        }
+    }
+
+    void RemoveSnapshotTurns(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return;
+
+        var turnIds = Document.Transcript.Turns
+            .Where(turn => string.Equals(turn.SnapshotId, snapshot.Id, StringComparison.Ordinal))
+            .Select(turn => turn.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        if (turnIds.Count == 0)
+            return;
+
+        ReparentChildrenOfRemovedTurns(turnIds);
+        var activeLeafId = Document.Transcript.ActiveLeafTurnId;
+        var activeLeafFallback = turnIds.Contains(activeLeafId)
+            ? ResolveDeletedLeafFallback(activeLeafId, turnIds)
+            : "";
+        Document.Transcript.Turns.RemoveAll(turn => turnIds.Contains(turn.Id));
+        if (turnIds.Contains(activeLeafId))
+            Document.Transcript.ActiveLeafTurnId = activeLeafFallback;
+
+        TranscriptGraph.RepairSelections(Document.Transcript);
+    }
+
+    void ReparentChildrenOfRemovedTurns(HashSet<string> turnIds)
+    {
+        if (Document is null)
+            return;
+
+        foreach (var turn in Document.Transcript.Turns.Where(turn => !turnIds.Contains(turn.Id) && turnIds.Contains(turn.ParentTurnId)))
+            turn.ParentTurnId = ResolveNearestSurvivingParent(turn.ParentTurnId, turnIds);
+    }
+
+    string ResolveDeletedLeafFallback(string deletedLeafId, HashSet<string> turnIds)
+    {
+        if (Document is null)
+            return "";
+
+        var fallback = ResolveNearestSurvivingParent(deletedLeafId, turnIds);
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return fallback;
+
+        return Document.Transcript.Turns
+            .Where(turn => !turnIds.Contains(turn.Id))
+            .OrderByDescending(turn => turn.CreatedUtc)
+            .ThenByDescending(turn => turn.Id, StringComparer.Ordinal)
+            .FirstOrDefault()?.Id ?? "";
+    }
+
+    string ResolveNearestSurvivingParent(string turnId, HashSet<string> turnIds)
+    {
+        if (Document is null)
+            return "";
+
+        var byId = Document.Transcript.Turns.ToDictionary(turn => turn.Id, StringComparer.Ordinal);
+        var currentId = turnId;
+        while (!string.IsNullOrWhiteSpace(currentId) && byId.TryGetValue(currentId, out var turn))
+        {
+            if (!turnIds.Contains(currentId))
+                return currentId;
+
+            currentId = turn.ParentTurnId;
+        }
+
+        return "";
+    }
+
+    SnapshotDeleteImpact BuildSnapshotDeleteImpact(RpTranscriptSnapshot snapshot)
+    {
+        if (Document is null)
+            return new(snapshot.Id, 0, 0, false, false, 0, 0);
+
+        var activeSnapshots = SnapshotsForActivePath();
+        var snapshotIndex = activeSnapshots.ToList().FindIndex(candidate => string.Equals(candidate.Id, snapshot.Id, StringComparison.Ordinal));
+        var coveredTurnIds = Document.Transcript.Turns
+            .Where(turn => string.Equals(turn.SnapshotId, snapshot.Id, StringComparison.Ordinal))
+            .Select(turn => turn.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var coveredBranchCount = Document.Transcript.Turns
+            .Count(turn => coveredTurnIds.Contains(turn.ParentTurnId) && !coveredTurnIds.Contains(turn.Id));
+
+        return new(
+            snapshot.Id,
+            coveredTurnIds.Count,
+            Document.Timeline.Count(entry => string.Equals(entry.SnapshotId, snapshot.Id, StringComparison.Ordinal)),
+            snapshotIndex >= 0,
+            snapshotIndex >= 0 && snapshotIndex == activeSnapshots.Count - 1,
+            snapshotIndex >= 0 ? activeSnapshots.Count - snapshotIndex - 1 : 0,
+            coveredBranchCount);
+    }
+
+    static Dictionary<string, string> BuildSnapshotPrivateIntents(RpTranscriptSnapshot? latestSnapshot, IEnumerable<RpTranscriptTurn> coveredTurns)
+    {
+        var privateIntents = latestSnapshot?.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var turn in coveredTurns)
+        {
+            foreach (var pair in turn.PrivateIntentByCharacterId.Where(pair => !string.IsNullOrWhiteSpace(pair.Value)))
+                privateIntents[pair.Key] = pair.Value;
+        }
+
+        return privateIntents;
+    }
+
+    static Dictionary<string, string> BuildSnapshotAppearances(RpTranscriptSnapshot? latestSnapshot, IEnumerable<RpTranscriptTurn> coveredTurns)
+    {
+        var appearances = latestSnapshot?.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var turn in coveredTurns)
+        {
+            foreach (var pair in turn.AppearanceByCharacterId.Where(pair => !string.IsNullOrWhiteSpace(pair.Value)))
+                appearances[pair.Key] = pair.Value;
+        }
+
+        return appearances;
+    }
+
+    static RpSnapshotDraftTurn ToDraftTurn(RpTranscriptTurn turn) => new()
+    {
+        Id = turn.Id,
+        SpeakerName = string.IsNullOrWhiteSpace(turn.AuthorName) ? "Narrator" : turn.AuthorName,
+        CreatedUtc = turn.CreatedUtc,
+        Body = turn.Body
+    };
+
+    static RpTranscriptSnapshotTimelineEntry CloneSnapshotTimelineEntry(RpTranscriptSnapshotTimelineEntry value) => new()
+    {
+        WhenText = value.WhenText,
+        Title = value.Title,
+        Summary = value.Summary,
+        Details = value.Details,
+        CharacterNames = [.. value.CharacterNames],
+        LocationNames = [.. value.LocationNames],
+        ItemNames = [.. value.ItemNames]
+    };
+
+    static string BuildSnapshotTimelineDescription(RpTranscriptSnapshotTimelineEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Details))
+            return entry.Summary;
+
+        if (string.IsNullOrWhiteSpace(entry.Summary))
+            return entry.Details;
+
+        return $"{entry.Summary}\n\n{entry.Details}";
+    }
+}
+
+sealed record SnapshotPath(
+    IReadOnlyList<RpTranscriptTurn> ActivePath,
+    RpTranscriptTurn TargetTurn,
+    RpTranscriptSnapshot? LatestSnapshot,
+    IReadOnlyList<RpTranscriptTurn> CoveredTurns)
+{
+    public static SnapshotPath Build(RpChatDocument document, string turnId)
+    {
+        var activePath = TranscriptGraph.GetActivePath(document.Transcript);
+        var targetIndex = activePath.FindIndex(turn => turn.Id == turnId);
+        if (targetIndex < 0)
+            throw new InvalidOperationException("Creating a snapshot draft failed because the selected turn is not on the active branch.");
+
+        var pathThroughTarget = activePath.Take(targetIndex + 1).ToList();
+        var latestSnapshot = GetSnapshotsOnPath(document.Transcript, pathThroughTarget).LastOrDefault();
+        var latestSnapshotIndex = latestSnapshot is null
+            ? -1
+            : pathThroughTarget.FindIndex(turn => turn.Id == latestSnapshot.TurnId);
+        var coveredTurns = pathThroughTarget.Skip(latestSnapshotIndex + 1).ToList();
+        return new(activePath, pathThroughTarget[targetIndex], latestSnapshot, coveredTurns);
+    }
+
+    public static IReadOnlyList<RpTranscriptSnapshot> GetSnapshotsOnPath(RpTranscriptState transcript, IReadOnlyList<RpTranscriptTurn> path)
+    {
+        var pathIndexes = path
+            .Select((turn, index) => (turn.Id, index))
+            .ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
+        return transcript.Snapshots
+            .Where(snapshot => pathIndexes.ContainsKey(snapshot.TurnId))
+            .OrderBy(snapshot => pathIndexes[snapshot.TurnId])
+            .ThenBy(snapshot => snapshot.CreatedUtc)
+            .ToList();
+    }
+}

@@ -1,0 +1,25 @@
+<TiledSelectList TItem="GeneratedImageOption"
+                 Items="Generated"
+                 SelectedIds="SelectedIds"
+                 GetId="@(option => option.Id)"
+                 Title="@(option => option.Image.Name)"
+                 Layout="TiledSelectLayout.Horizontal"
+                 OnToggle="OnToggle">
+    <EmptyContent>Generate to add options</EmptyContent>
+    <ItemTemplate Context="option">
+        <img class="tiled-select-media image-asset" src="@option.Image.Url" alt="@option.Image.Name" />
+        <strong class="tiled-select-label">@option.Image.Name</strong>
+    </ItemTemplate>
+    <BadgeTemplate Context="option">
+        @if (option.IsSaved)
+        {
+            <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
+        }
+    </BadgeTemplate>
+</TiledSelectList>
+
+@code {
+    [Parameter] public IReadOnlyList<GeneratedImageOption> Generated { get; set; } = [];
+    [Parameter] public ISet<string> SelectedIds { get; set; } = new HashSet<string>();
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+}

@@ -52,16 +52,59 @@ public sealed class TranscriptFeatureTests
         await sessionB.InitializeAsync();
 
         var activeTurnId = sessionA.Chat.Transcript.Items.Last().Id;
-        await sessionA.Chat.Transcript.CreateSnapshotAsync(activeTurnId);
+        var draft = await sessionA.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        Assert.NotNull(draft);
+        Assert.Null(sessionB.Chat.Transcript.SnapshotFor(activeTurnId));
+        Assert.DoesNotContain(sessionB.Chat.Timeline.Items, entry => entry.Title == "Snapshot event");
+        await sessionA.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
 
         var snapshot = sessionB.Chat.Transcript.SnapshotFor(activeTurnId);
         Assert.NotNull(snapshot);
         Assert.Equal("Snapshot for turn-3", snapshot!.Summary);
-        var fact = Assert.Single(snapshot.Facts);
-        Assert.Equal("Snapshot fact", fact.Title);
-        var snapshotTimelineEntry = Assert.Single(snapshot.TimelineEntries);
+        Assert.All(sessionB.Chat.Transcript.Items.Where(turn => draft!.CoveredTurnIds.Contains(turn.Id)), turn => Assert.Equal(snapshot.Id, turn.SnapshotId));
+        Assert.Equal("Take Bella's affection while reminding Jake she noticed his silence.", snapshot.PrivateIntentByCharacterId["c2"]);
+        var snapshotTimelineEntry = Assert.Single(sessionB.Chat.Timeline.Items, entry => entry.SnapshotId == snapshot.Id);
         Assert.Equal("Snapshot event", snapshotTimelineEntry.Title);
-        Assert.Contains(sessionB.Chat.Timeline.Items, entry => entry.Id == snapshotTimelineEntry.TimelineEntryId && entry.Title == "Snapshot event");
+    }
+
+    [Fact]
+    public async Task UnwrappingSnapshotKeepsMessagesAndTimelineEntries()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+        var coveredTurnIds = draft!.CoveredTurnIds.ToHashSet(StringComparer.Ordinal);
+
+        await session.Chat.Transcript.DeleteSnapshotAsync(snapshot.Id, SnapshotDeleteMethod.Unwrap, false);
+
+        Assert.Null(session.Chat.Transcript.SnapshotFor(activeTurnId));
+        Assert.All(session.Chat.Transcript.Items.Where(turn => coveredTurnIds.Contains(turn.Id)), turn => Assert.Equal("", turn.SnapshotId));
+        Assert.Contains(session.Chat.Timeline.Items, entry => entry.Title == "Snapshot event" && entry.SnapshotId == "");
+    }
+
+    [Fact]
+    public async Task DeletingSnapshotMessagesKeepsTimelineEntriesByDefault()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+        var coveredTurnIds = draft!.CoveredTurnIds.ToHashSet(StringComparer.Ordinal);
+
+        await session.Chat.Transcript.DeleteSnapshotAsync(snapshot.Id, SnapshotDeleteMethod.DeleteCoveredMessages, false);
+
+        Assert.Null(session.Chat.Transcript.SnapshotFor(activeTurnId));
+        Assert.DoesNotContain(session.Chat.Transcript.Items, turn => coveredTurnIds.Contains(turn.Id));
+        Assert.Contains(session.Chat.Timeline.Items, entry => entry.Title == "Snapshot event" && entry.SnapshotId == "");
     }
 
     [Fact]
@@ -333,22 +376,9 @@ public sealed class TranscriptFeatureTests
             GenerateSnapshotRequest request,
             CancellationToken cancellationToken = default)
         {
-            var turn = document.Transcript.Turns.First(item => item.Id == request.TurnId);
             var now = DateTime.UtcNow;
             return Task.FromResult(new GeneratedSnapshotResult(
                 $"Snapshot for {request.TurnId}",
-                "Earlier continuity",
-                [
-                    new()
-                    {
-                        Title = "Snapshot fact",
-                        Summary = "Snapshot fact summary",
-                        Details = "Snapshot fact details",
-                        CharacterNames = ["Gemma"],
-                        LocationNames = ["Devonshire Apartment 822"],
-                        ItemNames = ["Tesla Model S Plaid"]
-                    }
-                ],
                 [
                     new()
                     {
@@ -361,8 +391,6 @@ public sealed class TranscriptFeatureTests
                         ItemNames = ["Tesla Model S Plaid"]
                     }
                 ],
-                turn.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
-                CloneScene(turn.Scene),
                 new RpTurnTrace
                 {
                     Summary = "Completed · Snapshot",

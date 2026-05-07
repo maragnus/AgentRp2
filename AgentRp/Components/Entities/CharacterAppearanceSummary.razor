@@ -1,0 +1,70 @@
+<Section Title="Appearance" Class="entity-profile-section entity-profile-section-wide character-appearance-summary">
+    @if (string.IsNullOrWhiteSpace(Summary))
+    {
+        <span class="summary-empty">Not set</span>
+    }
+    else
+    {
+        <p>@Summary</p>
+        @if (Rows.Count > 0)
+        {
+            <dl class="character-appearance-summary-list">
+                @foreach (var row in Rows)
+                {
+                    <div @key="row.Label">
+                        <dt>@row.Label</dt>
+                        <dd>@row.Value</dd>
+                    </div>
+                }
+            </dl>
+        }
+    }
+</Section>
+
+@code {
+    [Parameter] public RpCharacter Character { get; set; } = new();
+    [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+
+    CharacterTraitLibraryState Options => CharacterTraitLibraryService.NormalizeState(Library);
+    CharacterAppearanceState Profile => Character.AppearanceProfile;
+    string Summary => CharacterAppearanceFormatter.FormatBase(Character, Options);
+    List<(string Label, string Value)> Rows => BuildRows();
+
+    List<(string Label, string Value)> BuildRows()
+    {
+        var rows = new List<(string Label, string Value)>();
+        Add(rows, "Hair", Join(
+            CharacterAppearanceFormatter.Label(Profile.HairColor, Options.HairColors),
+            CharacterAppearanceFormatter.Labels(Profile.HairStyles, Options.HairStyles)));
+        Add(rows, "Eyes", CharacterAppearanceFormatter.Label(Profile.EyeColor, Options.EyeColors));
+        Add(rows, "Face", CharacterAppearanceFormatter.Label(Profile.FaceShape, Options.FaceShapes));
+        Add(rows, "Skin", Join(
+            CharacterAppearanceFormatter.Label(Profile.SkinTone, Options.SkinTones),
+            CharacterAppearanceFormatter.Labels(Profile.Complexion, Options.Complexions)));
+        Add(rows, "Body", Join(
+            CharacterAppearanceFormatter.Label(Profile.Height, Options.Heights),
+            CharacterAppearanceFormatter.Label(Profile.Build, Options.Builds),
+            CharacterAppearanceFormatter.Labels(Profile.BodyProportions, Options.BodyProportions)));
+        Add(rows, "Bearing", Join(CharacterAppearanceFormatter.Labels(Profile.Presentation, Options.Presentations)));
+        Add(rows, "Appeal", CharacterAppearanceFormatter.Label(Profile.Attractiveness, Options.AttractivenessLevels));
+        return rows;
+    }
+
+    static void Add(List<(string Label, string Value)> rows, string label, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            rows.Add((label, value));
+    }
+
+    static string Join(string value, IReadOnlyList<string> values) =>
+        Join(new[] { value }.Concat(values));
+
+    static string Join(string first, string second, IReadOnlyList<string> values) =>
+        Join(new[] { first, second }.Concat(values));
+
+    static string Join(IReadOnlyList<string> values) =>
+        Join(values.AsEnumerable());
+
+    static string Join(IEnumerable<string> values) =>
+        string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value)));
+}

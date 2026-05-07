@@ -204,6 +204,41 @@ public sealed class SessionTests
     }
 
     [Fact]
+    public async Task EntityNotifierPublishesImageCropAndProfileChangesWithChatScope()
+    {
+        var notifier = new RecordingEntityNotifier();
+        await using var liveStore = NewLiveStore();
+        var session = new RoleplaySession(liveStore, new TestModelCapabilityCatalog(), entityNotifier: notifier);
+        await session.InitializeAsync();
+        var chatId = session.Chats.Active?.Id ?? "";
+        var character = session.Chat.Characters.Items.First();
+        var image = session.Chat.Images.Items.First();
+
+        await session.Chat.Characters.SetImageAsync(character.Id, image.Id);
+        character.Name = "Renamed Character";
+        await session.Chat.Characters.MarkChangedAsync();
+        await session.Chat.Images.SetCropAsync(image.Id, new(42, 58, 136));
+
+        Assert.Contains(notifier.Notifications, notification =>
+            notification.EntityType == EntityTypes.Character
+            && notification.EntityId == character.Id
+            && notification.ChangeKind == EntityChangeKinds.Image
+            && notification.ImageId == image.Id
+            && notification.ChatId == chatId);
+        Assert.Contains(notifier.Notifications, notification =>
+            notification.EntityType == EntityTypes.Character
+            && notification.EntityId == character.Id
+            && notification.ChangeKind == EntityChangeKinds.Profile
+            && notification.ChatId == chatId);
+        Assert.Contains(notifier.Notifications, notification =>
+            notification.EntityType == EntityTypes.Character
+            && notification.EntityId == character.Id
+            && notification.ChangeKind == EntityChangeKinds.ImageCrop
+            && notification.ImageId == image.Id
+            && notification.ChatId == chatId);
+    }
+
+    [Fact]
     public async Task UnreferencedInactiveChatsCanUnloadAfterTtl()
     {
         await using var liveStore = NewLiveStore(TimeSpan.FromMilliseconds(10));
@@ -396,6 +431,7 @@ public sealed class SessionTests
     {
         context.Services.AddScoped<DialogHelper>();
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
     }
@@ -679,6 +715,20 @@ public sealed class SessionTests
         };
     }
 
+    sealed class RecordingEntityNotifier : IEntityNotifier
+    {
+        public List<EntityChangeNotification> Notifications { get; } = [];
+        public event Func<EntityChangeNotification, Task>? Changed;
+
+        public async Task PublishAsync(EntityChangeNotification notification)
+        {
+            Notifications.Add(notification);
+            var changed = Changed;
+            if (changed is not null)
+                await changed(notification);
+        }
+    }
+
     sealed class FailingTextGenerationService : ITextGenerationService
     {
         public const string PartialBody = "Failed partial streamed body.";
@@ -831,13 +881,22 @@ public sealed class SessionTests
         public MessageSpeechAvailability ResolveAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptTurn turn) =>
             new(MessageSpeechAvailabilityKind.NoVoiceModel);
 
+        public MessageSpeechAvailability ResolveSnapshotAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptSnapshot snapshot) =>
+            new(MessageSpeechAvailabilityKind.NoVoiceModel);
+
         public Task<MessageSpeechPlayback> GetOrGenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptTurn turn, bool regenerate, CancellationToken cancellationToken = default) =>
             Task.FromResult(new MessageSpeechPlayback(MessageSpeechService.PlaybackKey(turn), "", false));
+
+        public Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptSnapshot snapshot, bool regenerate, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new MessageSpeechPlayback(MessageSpeechService.SnapshotPlaybackKey(snapshot), "", false));
 
         public Task<MessageSpeechInputSnapshot?> LoadInputSnapshotAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default) =>
             Task.FromResult(snapshot);
 
         public Task DiscardTurnSpeechAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DiscardSnapshotSpeechAsync(RpTranscriptSnapshot snapshot, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 }

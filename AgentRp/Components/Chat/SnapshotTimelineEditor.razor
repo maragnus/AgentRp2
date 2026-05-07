@@ -1,0 +1,69 @@
+@using AgentRp.Models
+
+@if (Entries.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="clock" />
+        <strong>No timeline items</strong>
+        <span>The snapshot can still be saved with only a summary.</span>
+    </div>
+}
+else
+{
+    <div class="snapshot-timeline-list">
+        @for (var index = 0; index < Entries.Count; index++)
+        {
+            var entry = Entries[index];
+            <Section @key="entry.Id" Title="@EntryTitle(entry, index)" Hint="@EntryHint(entry)" Class="snapshot-review-section snapshot-timeline-entry">
+                <RightContent>
+                    <AppButton Icon="trash" TooltipText="Remove timeline item" OnClick="@(_ => Remove(entry.Id))" />
+                </RightContent>
+                <ChildContent>
+                    <div class="snapshot-timeline-grid">
+                        <FieldRow Label="When">
+                            <input class="field" value="@entry.WhenText" placeholder="Snapshot" @oninput="args => Update(value => entry.WhenText = value, args)" />
+                        </FieldRow>
+                        <FieldRow Label="Title">
+                            <input class="field" value="@entry.Title" placeholder="Timeline title" @oninput="args => Update(value => entry.Title = value, args)" />
+                        </FieldRow>
+                    </div>
+                    <FieldRow Label="Summary">
+                        <AppTextarea Rows="2" Value="@entry.Summary" ValueChanged="value => Update(updated => entry.Summary = updated, value)" />
+                    </FieldRow>
+                    <FieldRow Label="Details">
+                        <AppTextarea Rows="3" Value="@entry.Details" ValueChanged="value => Update(updated => entry.Details = updated, value)" />
+                    </FieldRow>
+                </ChildContent>
+            </Section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<SnapshotDraftTimelineEntryEditor> Entries { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    async Task Remove(string id)
+    {
+        Entries.RemoveAll(entry => entry.Id == id);
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Update(Action<string> setValue, ChangeEventArgs args)
+    {
+        setValue(args.Value?.ToString() ?? string.Empty);
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task Update(Action<string> setValue, string value)
+    {
+        setValue(value);
+        await OnChanged.InvokeAsync();
+    }
+
+    static string EntryTitle(SnapshotDraftTimelineEntryEditor entry, int index) =>
+        string.IsNullOrWhiteSpace(entry.Title) ? $"Item {index + 1}" : entry.Title;
+
+    static string EntryHint(SnapshotDraftTimelineEntryEditor entry) =>
+        string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText;
+}

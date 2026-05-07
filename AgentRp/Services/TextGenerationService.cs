@@ -41,11 +41,7 @@ public sealed record GeneratedTurnResult(
 
 public sealed record GeneratedSnapshotResult(
     string Summary,
-    string EarlierPrivateIntentContinuity,
-    List<RpTranscriptSnapshotFact> Facts,
     List<RpTranscriptSnapshotTimelineEntry> TimelineEntries,
-    Dictionary<string, string> CharacterAppearances,
-    RpSceneFrame Scene,
     RpTurnTrace Trace);
 
 public sealed record TranscriptProseUpdate(
@@ -234,7 +230,7 @@ public sealed class TextGenerationService(
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(document, providers);
+        var selection = ResolveSnapshotModel(document, providers);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -247,7 +243,7 @@ public sealed class TextGenerationService(
         try
         {
             if (!selection.Capabilities.CanGenerateStructuredText)
-                throw new InvalidOperationException("Creating a snapshot failed because the active model has structured output disabled.");
+                throw new InvalidOperationException("Creating a snapshot failed because the reasoning model has structured output disabled.");
 
             var context = promptContextBuilder.BuildSnapshotContext(document, request.TurnId);
             var tuning = ResolveTuning(document.ModelTuning, "snapshot");
@@ -268,19 +264,9 @@ public sealed class TextGenerationService(
                 JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
                 ""));
             FinalizeTrace(trace, "completed");
-            var activePath = TranscriptGraph.GetActivePath(document.Transcript);
-            var turnIndex = activePath.FindIndex(turn => turn.Id == request.TurnId);
-            if (turnIndex >= 0)
-                activePath = activePath.Take(turnIndex + 1).ToList();
-
-            var latestTurn = activePath.LastOrDefault();
             return new(
                 ResolveSnapshotSummary(result),
-                context.EarlierPrivateIntentContinuity,
-                NormalizeSnapshotFacts(result.Facts),
                 NormalizeSnapshotTimelineEntries(result.TimelineEntries),
-                BuildSnapshotAppearances(activePath),
-                SessionCloner.Clone(latestTurn?.Scene ?? document.Transcript.RootScene),
                 trace);
         }
         catch (Exception exception) when (exception is not TranscriptGenerationException)
@@ -804,6 +790,10 @@ public sealed class TextGenerationService(
         TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections)
         ?? throw new InvalidOperationException("Generating transcript text failed because no text-capable model is enabled.");
 
+    static ActiveModelSelection ResolveSnapshotModel(RpChatDocument document, IReadOnlyList<AiProvider> providers) =>
+        TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, document.ActiveModelSelections)
+        ?? throw new InvalidOperationException("Creating a snapshot failed because no reasoning model is enabled.");
+
     static string ResolveCharacterId(IEnumerable<RpCharacter> characters, string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -907,21 +897,6 @@ public sealed class TextGenerationService(
         return response.Summary.Trim();
     }
 
-    static List<RpTranscriptSnapshotFact> NormalizeSnapshotFacts(IReadOnlyList<SnapshotFactResponse>? facts) =>
-        facts?
-            .Where(fact => !string.IsNullOrWhiteSpace(fact.Title))
-            .Select(fact => new RpTranscriptSnapshotFact
-            {
-                Title = fact.Title.Trim(),
-                Summary = fact.Summary.Trim(),
-                Details = fact.Details.Trim(),
-                CharacterNames = NormalizeNames(fact.CharacterNames),
-                LocationNames = NormalizeNames(fact.LocationNames),
-                ItemNames = NormalizeNames(fact.ItemNames)
-            })
-            .ToList()
-        ?? [];
-
     static List<RpTranscriptSnapshotTimelineEntry> NormalizeSnapshotTimelineEntries(IReadOnlyList<SnapshotTimelineEntryResponse>? entries) =>
         entries?
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Title))
@@ -941,16 +916,6 @@ public sealed class TextGenerationService(
     static List<string> NormalizeNames(IReadOnlyList<string>? names) =>
         names?.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
 
-    public sealed class SnapshotFactResponse
-    {
-        public string Title { get; set; } = "";
-        public string Summary { get; set; } = "";
-        public string Details { get; set; } = "";
-        public IReadOnlyList<string>? CharacterNames { get; set; }
-        public IReadOnlyList<string>? LocationNames { get; set; }
-        public IReadOnlyList<string>? ItemNames { get; set; }
-    }
-
     public sealed class SnapshotTimelineEntryResponse
     {
         public string WhenText { get; set; } = "";
@@ -966,7 +931,6 @@ public sealed class TextGenerationService(
     {
         public string NarrativeSummary { get; set; } = "";
         public string Summary { get; set; } = "";
-        public IReadOnlyList<SnapshotFactResponse>? Facts { get; set; }
         public IReadOnlyList<SnapshotTimelineEntryResponse>? TimelineEntries { get; set; }
     }
 }

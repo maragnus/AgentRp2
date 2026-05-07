@@ -85,6 +85,17 @@ public sealed class CharacterTraitLibraryState
     public List<CharacterOption> StressPatterns { get; set; } = [];
     public List<CharacterOption> SoftSpots { get; set; } = [];
     public List<CharacterOption> AvoidPatterns { get; set; } = [];
+    public List<CharacterOption> HairColors { get; set; } = [];
+    public List<CharacterOption> HairStyles { get; set; } = [];
+    public List<CharacterOption> EyeColors { get; set; } = [];
+    public List<CharacterOption> FaceShapes { get; set; } = [];
+    public List<CharacterOption> SkinTones { get; set; } = [];
+    public List<CharacterOption> Complexions { get; set; } = [];
+    public List<CharacterOption> Heights { get; set; } = [];
+    public List<CharacterOption> Builds { get; set; } = [];
+    public List<CharacterOption> BodyProportions { get; set; } = [];
+    public List<CharacterOption> Presentations { get; set; } = [];
+    public List<CharacterOption> AttractivenessLevels { get; set; } = [];
     public List<string> BondTypes { get; set; } = [];
     public List<string> Dynamics { get; set; } = [];
 

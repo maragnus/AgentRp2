@@ -190,6 +190,27 @@ namespace AgentRp.Migrations
                     b.ToTable("AiProviders");
                 });
 
+            modelBuilder.Entity("AgentRp.Data.AppSettingRow", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("JsonValue")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("AppSettings");
+                });
+
             modelBuilder.Entity("AgentRp.Data.ElevenLabsVoiceCatalogRow", b =>
                 {
                     b.Property<string>("VoiceId")
@@ -325,6 +346,15 @@ namespace AgentRp.Migrations
                     b.Property<string>("Id")
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
+
+                    b.Property<int?>("AvatarFocusXPercent")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AvatarFocusYPercent")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AvatarZoomPercent")
+                        .HasColumnType("int");
 
                     b.Property<byte[]>("Bytes")
                         .IsRequired()

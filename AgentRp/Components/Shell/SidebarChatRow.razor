@@ -2,7 +2,7 @@
     <span class="sidebar-chat-avatars" aria-label="@AvatarSummary">
         @foreach (var character in VisibleSceneCharacters)
         {
-            <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" Size="22" Class="sidebar-chat-avatar" />
+            <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" EntityType="character" EntityId="@character.Id" ChatId="@Chat.Id" Size="22" Class="sidebar-chat-avatar" />
         }
     </span>
     <span class="sidebar-chat-copy">

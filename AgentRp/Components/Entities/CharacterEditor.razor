@@ -3,6 +3,8 @@
         <p>@SummaryText</p>
     </Section>
 
+    <CharacterAppearanceSummary Character="Character" Library="Library" />
+
     <Section Title="Pronouns" Class="entity-profile-pronouns">
         <div class="pill-list">@BadgeList(Character.Pronouns, "blue")</div>
     </Section>
@@ -47,6 +49,7 @@
 
 @code {
     [Parameter] public RpCharacter Character { get; set; } = new();
+    [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
 
     string SummaryText => string.IsNullOrWhiteSpace(Character.Summary)
         ? "No summary yet. Open the editor to define the character concept."

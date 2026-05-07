@@ -10,11 +10,13 @@ public sealed class RoleplaySession(
     IMessageSpeechService? messageSpeechService = null,
     IStoryAssistantService? storyAssistantService = null,
     IAiProviderCapabilityPipeline? capabilityPipeline = null,
-    IAiProviderWidgetService? providerWidgetService = null) : IAsyncDisposable
+    IAiProviderWidgetService? providerWidgetService = null,
+    IEntityNotifier? entityNotifier = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
     readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
     readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
+    readonly IEntityNotifier _entityNotifier = entityNotifier ?? NullEntityNotifier.Instance;
     bool _initialized;
     string? _activeChatId;
 
@@ -37,7 +39,7 @@ public sealed class RoleplaySession(
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
         Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
-        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, messageSpeechService, storyAssistantService);
+        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, messageSpeechService, storyAssistantService, _entityNotifier);
         liveStore.Changed += OnLiveStoreChanged;
 
         await Chats.LoadAsync();
@@ -156,13 +158,14 @@ public sealed class ChatWorkspace
         ProviderStore providers,
         ITextGenerationService textGenerationService,
         IMessageSpeechService? messageSpeechService,
-        IStoryAssistantService? storyAssistantService)
+        IStoryAssistantService? storyAssistantService,
+        IEntityNotifier entityNotifier)
     {
-        Characters = new(activeChat, registry);
-        Locations = new(activeChat, registry);
-        Items = new(activeChat, registry);
+        Characters = new(activeChat, registry, entityNotifier);
+        Locations = new(activeChat, registry, entityNotifier);
+        Items = new(activeChat, registry, entityNotifier);
         Timeline = new(activeChat, registry);
-        Images = new(activeChat, registry);
+        Images = new(activeChat, registry, entityNotifier);
         Transcript = new(activeChat, registry, providers, textGenerationService, messageSpeechService);
         StoryAssistant = new(activeChat, registry, providers, storyAssistantService);
         NarratorProfile = new(activeChat, registry);

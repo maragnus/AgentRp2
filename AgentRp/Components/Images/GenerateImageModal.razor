@@ -23,9 +23,29 @@
                         <div class="modal-error">@ErrorMessage</div>
                     }
                     <div class="field-row-grid cols-3">
-                        <FieldRow Label="Size"><AppSelect Value="@Size" ValueChanged="value => Size = value"><option>Landscape</option><option>Portrait</option><option>Square</option></AppSelect></FieldRow>
-                        <FieldRow Label="Quality"><AppSelect Value="@Quality" ValueChanged="value => Quality = value"><option>Auto</option><option>High</option><option>Medium</option><option>Low</option></AppSelect></FieldRow>
-                        <FieldRow Label="Reference Detail"><AppSelect Value="@ReferenceDetail" ValueChanged="value => ReferenceDetail = value"><option>Auto</option><option>High</option><option>Low</option></AppSelect></FieldRow>
+                        <FieldRow Label="Size">
+                            <AppSelect Value="@Size" ValueChanged="value => Size = value">
+                                <option value="@StoryImagePromptBuilder.LandscapeSize">Landscape</option>
+                                <option value="@StoryImagePromptBuilder.PortraitSize">Portrait</option>
+                                <option value="@StoryImagePromptBuilder.SquareSize">Square</option>
+                                <option value="auto">Auto</option>
+                            </AppSelect>
+                        </FieldRow>
+                        <FieldRow Label="Quality">
+                            <AppSelect Value="@Quality" ValueChanged="value => Quality = value">
+                                <option value="auto">Auto</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </AppSelect>
+                        </FieldRow>
+                        <FieldRow Label="Reference Detail">
+                            <AppSelect Value="@ReferenceDetail" ValueChanged="value => ReferenceDetail = value">
+                                <option value="auto">Auto</option>
+                                <option value="high">High</option>
+                                <option value="low">Low</option>
+                            </AppSelect>
+                        </FieldRow>
                     </div>
                     <FieldRow Label="Art Style">
                         <AppSelect Value="@ArtStyleKey" ValueChanged="value => ArtStyleKey = value">
@@ -36,52 +56,39 @@
                         </AppSelect>
                     </FieldRow>
                     <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
-                        <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
+                        <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate..."></textarea>
                     </FieldRow>
+                    @if (!string.IsNullOrWhiteSpace(LastFinalPrompt) || !string.IsNullOrWhiteSpace(LastRationale))
+                    {
+                        <div class="generate-review">
+                            <ImagePromptBlock Title="Prompt Sent to Image Model" Text="@LastFinalPrompt" />
+                            <ImagePromptBlock Title="Rationale" Text="@LastRationale" />
+                        </div>
+                    }
                 </Section>
 
                 <Section Title="Entity Context" Class="generate-block">
-                    @if (!string.IsNullOrWhiteSpace(TargetEntityName))
+                    @if (TargetEntity is not null)
                     {
-                        <div class="model-card generate-target-card"><strong>@TargetEntityName</strong></div>
+                        <div class="model-card generate-target-card">
+                            <EntityImage Name="@TargetEntity.Name" Image="@TargetEntity.Image" EntityType="@TargetEntity.EntityType" EntityId="@TargetEntity.EntityId" Size="28" />
+                            <strong>@TargetEntity.Name</strong>
+                            <small>@TargetEntity.EntityType</small>
+                        </div>
                     }
-                    <TiledSelectList TItem="RpCharacter"
-                                     Items="Characters"
-                                     SelectedIds="SelectedCharacters"
-                                     GetId="@(character => character.Id)"
-                                     Title="@(character => character.Name)"
-                                     Layout="TiledSelectLayout.Vertical"
-                                     Columns="3"
-                                     OnToggle="Toggle">
-                        <ItemTemplate Context="character">
-                            <span class="tiled-select-media">
-                                <Avatar Name="@character.Name" Size="22" />
-                            </span>
-                            <strong class="tiled-select-label">@character.Name</strong>
-                        </ItemTemplate>
-                    </TiledSelectList>
+                    <ImageEntityContextPicker Entities="EntityOptions"
+                                              SelectedIds="SelectedEntities"
+                                              OnToggle="ToggleEntity" />
                 </Section>
 
                 <Section Title="Reference Images" Class="generate-block">
-                    <TiledSelectList TItem="GalleryImage"
-                                     Items="Images"
-                                     SelectedIds="SelectedRefs"
-                                     GetId="@(image => image.Id)"
-                                     Title="@(image => image.Name)"
-                                     Layout="TiledSelectLayout.Horizontal"
-                                     OnToggle="ToggleRef">
-                        <ItemTemplate Context="image">
-                            @if (!string.IsNullOrWhiteSpace(image.Url))
-                            {
-                                <img class="tiled-select-media image-asset" src="@image.Url" alt="@image.Name" />
-                            }
-                            else
-                            {
-                                <ImagePlaceholder Label="@ShortLabel(image.Name)" Hue="@image.Hue" Class="tiled-select-media" />
-                            }
-                            <strong class="tiled-select-label">@image.Name</strong>
-                        </ItemTemplate>
-                    </TiledSelectList>
+                    <div class="generate-reference-toolbar">
+                        <ToggleSwitch Value="@ShowAllReferences" ValueChanged="value => ShowAllReferences = value" />
+                        <span>Show all</span>
+                    </div>
+                    <ImageReferencePicker Images="FilteredReferences"
+                                          SelectedIds="SelectedRefs"
+                                          OnToggle="ToggleRef" />
                 </Section>
             </RailContent>
 
@@ -92,25 +99,9 @@
                                            ImageAlt="@CurrentPreviewAlt"
                                            CanOpenDetails="@CanOpenSelectedDetails"
                                            OnOpenDetails="OpenSelectedDetails" />
-                    <TiledSelectList TItem="GeneratedImageOption"
-                                     Items="Generated"
-                                     SelectedIds="SelectedGeneratedIds"
-                                     GetId="@(option => option.Id)"
-                                     Title="@(option => option.Image.Name)"
-                                     Layout="TiledSelectLayout.Horizontal"
-                                     OnToggle="SelectGenerated">
-                        <EmptyContent>Generate to add options</EmptyContent>
-                        <ItemTemplate Context="option">
-                            <img class="tiled-select-media image-asset" src="@option.Image.Url" alt="@option.Image.Name" />
-                            <strong class="tiled-select-label">@option.Image.Name</strong>
-                        </ItemTemplate>
-                        <BadgeTemplate Context="option">
-                            @if (option.IsSaved)
-                            {
-                                <span class="tiled-select-badge is-saved" title="Saved to gallery"><FaIcon Name="save" /></span>
-                            }
-                        </BadgeTemplate>
-                    </TiledSelectList>
+                    <GeneratedImageStrip Generated="Generated"
+                                         SelectedIds="SelectedGeneratedIds"
+                                         OnToggle="SelectGenerated" />
                 </Section>
             </MainContent>
         </ModalSplitLayout>
@@ -145,18 +136,21 @@
 @code {
     bool Generating;
     bool ConfirmDiscard;
+    bool ShowAllReferences;
     string Prompt = "";
     string ModelKey = "";
     string ArtStyleKey = "none";
-    string Size = "Landscape";
-    string Quality = "Auto";
-    string ReferenceDetail = "Auto";
+    string Size = StoryImagePromptBuilder.SquareSize;
+    string Quality = "auto";
+    string ReferenceDetail = "low";
     string ErrorMessage = "";
     string PreviewImageDataUrl = "";
+    string LastFinalPrompt = "";
+    string LastRationale = "";
     string? DetailImageId;
     string? SelectedGeneratedId;
     CancellationTokenSource? GenerationCancellation;
-    HashSet<string> SelectedCharacters = [];
+    HashSet<string> SelectedEntities = [];
     HashSet<string> SelectedRefs = [];
     List<GeneratedImageOption> Generated = [];
 
@@ -168,35 +162,57 @@
     [Parameter] public EventCallback<GalleryImage> OnSaved { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
-    List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<GalleryImage> Images => Session.Chat.Images.Items;
     IReadOnlyList<ImageArtStyleOption> ArtStyleOptions => ImageGenerationService.GetArtStyleOptions();
     IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.Chat.ModelSelection.State);
+    IReadOnlyList<ImageEntityOption> EntityOptions => BuildEntityOptions();
+    ImageEntityOption? TargetEntity => EntityOptions.FirstOrDefault(entity => entity.EntityType == NormalizedTargetEntityType && entity.EntityId == TargetEntityId);
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
+    IReadOnlyList<GalleryImage> FilteredReferences => ShowAllReferences ? Images : Images.Where(ShouldShowReference).ToList();
     bool HasPrompt => !string.IsNullOrWhiteSpace(Prompt);
-    bool HasEntityContext => SelectedCharacters.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName);
+    bool HasEntityContext => SelectedEntities.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName);
     bool CanGenerate => !string.IsNullOrWhiteSpace(ModelKey) && (HasPrompt || HasEntityContext);
     bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
-    string GenerateButtonText => Generating ? "Generating…" : Generated.Count > 0 ? "Generate More" : "Generate";
+    string GenerateButtonText => Generating ? "Generating..." : Generated.Count > 0 ? "Generate More" : "Generate";
     string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
     string CurrentPreviewUrl => Generating && !string.IsNullOrWhiteSpace(PreviewImageDataUrl) ? PreviewImageDataUrl : SelectedGenerated?.Image.Url ?? "";
     string CurrentPreviewAlt => SelectedGenerated?.Image.Name ?? "Generated image preview";
     bool CanOpenSelectedDetails => !Generating && SelectedGenerated is not null;
+    string NormalizedTargetEntityType => StoryImagePromptBuilder.NormalizeEntityType(TargetEntityType);
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Session.Chat.Characters.Changed += OnStoreChanged;
+        Session.Chat.Locations.Changed += OnStoreChanged;
+        Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
         Session.Chat.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
-        ModelKey = ImageModels.FirstOrDefault()?.Key ?? "";
+        await LoadDefaultsAsync();
     }
 
     protected override void OnParametersSet()
     {
         if (string.IsNullOrWhiteSpace(ModelKey) || ImageModels.All(model => model.Key != ModelKey))
             ModelKey = ImageModels.FirstOrDefault()?.Key ?? "";
+    }
+
+    async Task LoadDefaultsAsync()
+    {
+        var settings = await ImageGenerationService.GetSettingsAsync(Session.Providers.Items, Session.Chat.ModelSelection.State);
+        ModelKey = settings.ModelKey;
+        ArtStyleKey = settings.ArtStyleKey;
+        Quality = settings.Quality;
+        ReferenceDetail = settings.ReferenceDetail;
+        Size = string.IsNullOrWhiteSpace(NormalizedTargetEntityType)
+            ? settings.Size
+            : StoryImagePromptBuilder.BuildReferenceSize(TargetEntityType);
+
+        if (!string.IsNullOrWhiteSpace(TargetEntityName))
+            Prompt = StoryImagePromptBuilder.BuildReferencePrompt(TargetEntityType, TargetEntityName);
+
+        PreselectTargetEntity();
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
@@ -209,10 +225,10 @@
             await Session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Image, selected.ProviderId, selected.ModelId);
     }
 
-    void Toggle(string id)
+    void ToggleEntity(string key)
     {
-        if (!SelectedCharacters.Add(id))
-            SelectedCharacters.Remove(id);
+        if (!SelectedEntities.Add(key))
+            SelectedEntities.Remove(key);
     }
 
     void ToggleRef(string id)
@@ -220,8 +236,6 @@
         if (!SelectedRefs.Add(id))
             SelectedRefs.Remove(id);
     }
-
-    static string ShortLabel(string value) => value.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? value;
 
     async Task Generate()
     {
@@ -231,12 +245,15 @@
         Generating = true;
         ErrorMessage = "";
         PreviewImageDataUrl = "";
+        LastFinalPrompt = "";
+        LastRationale = "";
         GenerationCancellation?.Cancel();
         GenerationCancellation?.Dispose();
         var generationCancellation = new CancellationTokenSource();
         GenerationCancellation = generationCancellation;
         try
         {
+            await ImageGenerationService.SaveSettingsAsync(new(ModelKey, Size, Quality, ReferenceDetail, ArtStyleKey), generationCancellation.Token);
             var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no chat is open.");
             await foreach (var update in ImageGenerationService.GenerateStreamingAsync(
                 document,
@@ -248,7 +265,7 @@
                     Size,
                     Quality,
                     ReferenceDetail,
-                    SelectedCharacters.ToList(),
+                    BuildSelectedEntitySelections(),
                     SelectedRefs.ToList(),
                     TargetEntityName,
                     TargetEntityType,
@@ -263,12 +280,16 @@
 
                 if (update.Result is not null)
                 {
+                    LastFinalPrompt = update.Result.FinalPrompt;
+                    LastRationale = update.Result.Rationale;
                     var option = new GeneratedImageOption
                     {
                         Id = update.Result.Image.Id,
                         Image = update.Result.Image,
                         ProviderName = update.Result.ProviderName,
-                        ModelId = update.Result.ModelId
+                        ModelId = update.Result.ModelId,
+                        FinalPrompt = update.Result.FinalPrompt,
+                        Rationale = update.Result.Rationale
                     };
                     Generated.Insert(0, option);
                     SelectedGeneratedId = option.Id;
@@ -334,20 +355,64 @@
         await OnClose.InvokeAsync();
     }
 
-    public sealed class GeneratedImageOption
+    IReadOnlyList<ImageEntityOption> BuildEntityOptions() =>
+        Session.Chat.Characters.Items.Select(character => BuildEntity("character", character.Id, character.Name, character.ImageId))
+            .Concat(Session.Chat.Locations.Items.Select(location => BuildEntity("location", location.Id, location.Name, location.ImageId)))
+            .Concat(Session.Chat.Items.Items.Select(item => BuildEntity("item", item.Id, item.Name, item.ImageId)))
+            .ToList();
+
+    ImageEntityOption BuildEntity(string entityType, string entityId, string name, string imageId) =>
+        new(BuildEntityKey(entityType, entityId), entityType, entityId, name, imageId, ImageFor(imageId));
+
+    List<StoryImageEntitySelection> BuildSelectedEntitySelections()
     {
-        public string Id { get; init; } = "";
-        public GalleryImage Image { get; init; } = new();
-        public string ProviderName { get; init; } = "";
-        public string ModelId { get; init; } = "";
-        public string? SavedImageId { get; set; }
-        public bool IsSaved => !string.IsNullOrWhiteSpace(SavedImageId);
+        var selections = EntityOptions
+            .Where(entity => SelectedEntities.Contains(entity.Key))
+            .Select(entity => entity.ToSelection())
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(NormalizedTargetEntityType)
+            && !string.IsNullOrWhiteSpace(TargetEntityId)
+            && selections.All(entity => entity.EntityType != NormalizedTargetEntityType || entity.EntityId != TargetEntityId))
+        {
+            selections.Add(new(NormalizedTargetEntityType, TargetEntityId));
+        }
+
+        return selections;
     }
+
+    void PreselectTargetEntity()
+    {
+        if (string.IsNullOrWhiteSpace(NormalizedTargetEntityType) || string.IsNullOrWhiteSpace(TargetEntityId))
+            return;
+
+        SelectedEntities.Add(BuildEntityKey(NormalizedTargetEntityType, TargetEntityId));
+    }
+
+    bool ShouldShowReference(GalleryImage image)
+    {
+        if (SelectedRefs.Contains(image.Id))
+            return true;
+
+        var selected = EntityOptions.Where(entity => SelectedEntities.Contains(entity.Key)).ToList();
+        if (selected.Count == 0)
+            return false;
+
+        return selected.Any(entity =>
+            image.Id == entity.ImageId
+            || (string.Equals(image.EntityType, entity.EntityType, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(image.Entity, entity.Name, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
+
+    static string BuildEntityKey(string entityType, string entityId) => $"{entityType}:{entityId}";
 
     public void Dispose()
     {
         CancelGeneration();
         Session.Chat.Characters.Changed -= OnStoreChanged;
+        Session.Chat.Locations.Changed -= OnStoreChanged;
+        Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
         Session.Chat.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;

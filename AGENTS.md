@@ -116,6 +116,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - Display simple representations of complex things but enable access to details through accordions, popups, and/or dedicated detail pages.
   Example: A task list may be a checklist where the active items display real-time status, but can be expanded to display more details. And a the task list itself should have a full detail page that examples all steps in full detail.
 - Dates should be displayed to users in shorthand with a duration "Mar 4, 2026 (25 days ago)", it can also user "(today)" or "(yesterday)" for very recent dates. Future dates are possible and should use "(in 10 days)" and "(tomorrow)".
+- Helper text and supporting copy must provide concrete user value. Do not add filler text that only restates implementation details, wastes space, or creates confusion.
 
 ## Blazor Render Isolation
 - Timers, polling, subscriptions, busy state, edit state, and modal state must live in the smallest component that owns the UI they affect. A parent page or shell must not call `StateHasChanged()` for a passive refresh when only one small panel needs new data.

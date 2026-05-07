@@ -13,6 +13,10 @@ public static class CharacterProfileRules
     public const int MaxPronouns = 4;
     public const int MaxSoftSpots = 3;
     public const int MaxAvoidPatterns = 5;
+    public const int MaxHairStyles = 4;
+    public const int MaxComplexion = 4;
+    public const int MaxBodyProportions = 5;
+    public const int MaxPresentation = 5;
 
     public static readonly CharacterOption[] PronounOptions =
     [
@@ -38,6 +42,7 @@ public static class CharacterProfileRules
         "stressPattern",
         "softSpots",
         "avoidPatterns",
+        "appearanceProfile",
         "relationshipType",
         "privateTension"
     ];
@@ -52,6 +57,7 @@ public static class CharacterProfileRules
             ["summary"] = StringField("One-sentence character summary."),
             ["personality"] = StringField("Freeform personality notes."),
             ["appearance"] = StringField("Freeform appearance notes."),
+            ["appearanceProfile"] = AppearanceProfileSchema(),
             ["backstory"] = StringField("Freeform backstory."),
             ["voice"] = StringField("Freeform voice notes."),
             ["notes"] = StringField("Freeform private or extra notes."),
@@ -142,7 +148,11 @@ public static class CharacterProfileRules
         maxTraits = MaxTraits,
         maxPronouns = MaxPronouns,
         maxSoftSpots = MaxSoftSpots,
-        maxAvoidPatterns = MaxAvoidPatterns
+        maxAvoidPatterns = MaxAvoidPatterns,
+        maxHairStyles = MaxHairStyles,
+        maxComplexion = MaxComplexion,
+        maxBodyProportions = MaxBodyProportions,
+        maxPresentation = MaxPresentation
     };
 
     public static void ValidateCharacterPatch(JsonElement updates, CharacterTraitLibraryState library)
@@ -162,6 +172,7 @@ public static class CharacterProfileRules
         ValidateOption(updates, "stressPattern", "stress pattern", normalized.StressPatterns);
         ValidateOptionArray(updates, "softSpots", "soft spots", normalized.SoftSpots, MaxSoftSpots);
         ValidateOptionArray(updates, "avoidPatterns", "avoid patterns", normalized.AvoidPatterns, MaxAvoidPatterns);
+        ValidateAppearanceProfile(updates, normalized);
     }
 
     public static void ValidateRelationshipPatch(JsonElement root, CharacterTraitLibraryState library)
@@ -175,6 +186,27 @@ public static class CharacterProfileRules
     {
         ["type"] = "string",
         ["description"] = description
+    };
+
+    static JsonObject AppearanceProfileSchema() => new()
+    {
+        ["type"] = "object",
+        ["description"] = "Optional structured appearance selections. Use get_character_profile_options with fields ['appearanceProfile'] before setting. Omit unchanged fields.",
+        ["properties"] = new JsonObject
+        {
+            ["hairColor"] = ControlledString("Hair color id; empty string clears it."),
+            ["hairStyles"] = ControlledArray("Hair style or length ids.", MaxHairStyles),
+            ["eyeColor"] = ControlledString("Eye color id; empty string clears it."),
+            ["faceShape"] = ControlledString("Face shape id; empty string clears it."),
+            ["skinTone"] = ControlledString("Skin tone id; empty string clears it."),
+            ["complexion"] = ControlledArray("Complexion ids.", MaxComplexion),
+            ["height"] = ControlledString("Height id; empty string clears it."),
+            ["build"] = ControlledString("Build id; empty string clears it."),
+            ["bodyProportions"] = ControlledArray("Body proportion ids.", MaxBodyProportions),
+            ["presentation"] = ControlledArray("Presentation and bearing ids.", MaxPresentation),
+            ["attractiveness"] = ControlledString("Attractiveness id; empty string clears it.")
+        },
+        ["additionalProperties"] = false
     };
 
     static IReadOnlyList<CharacterOption> TraitOptions(CharacterTraitLibraryState library) =>
@@ -243,6 +275,27 @@ public static class CharacterProfileRules
             throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} contains invalid value '{text}'. Controlled relationship fields must use valid values.");
     }
 
+    static void ValidateAppearanceProfile(JsonElement root, CharacterTraitLibraryState library)
+    {
+        if (!root.TryGetProperty("appearanceProfile", out var value))
+            return;
+
+        if (value.ValueKind != JsonValueKind.Object)
+            throw CharacterProfileValidationException.ForField("appearanceProfile", "The character patch failed because appearanceProfile must be an object.");
+
+        ValidateOption(value, "hairColor", "hair color", library.HairColors);
+        ValidateOptionArray(value, "hairStyles", "hair styles", library.HairStyles, MaxHairStyles);
+        ValidateOption(value, "eyeColor", "eye color", library.EyeColors);
+        ValidateOption(value, "faceShape", "face shape", library.FaceShapes);
+        ValidateOption(value, "skinTone", "skin tone", library.SkinTones);
+        ValidateOptionArray(value, "complexion", "complexion", library.Complexions, MaxComplexion);
+        ValidateOption(value, "height", "height", library.Heights);
+        ValidateOption(value, "build", "build", library.Builds);
+        ValidateOptionArray(value, "bodyProportions", "body proportions", library.BodyProportions, MaxBodyProportions);
+        ValidateOptionArray(value, "presentation", "presentation", library.Presentations, MaxPresentation);
+        ValidateOption(value, "attractiveness", "attractiveness", library.AttractivenessLevels);
+    }
+
     static List<string> ReadArray(JsonElement array, string field, string label)
     {
         var values = new List<string>();
@@ -299,6 +352,23 @@ public static class CharacterProfileRules
         "stressPattern" => new { options = Options(library.StressPatterns), allowsEmpty = true },
         "softSpots" => new { maxItems = MaxSoftSpots, options = Options(library.SoftSpots) },
         "avoidPatterns" => new { maxItems = MaxAvoidPatterns, options = Options(library.AvoidPatterns) },
+        "appearanceProfile" => new
+        {
+            fields = new
+            {
+                hairColor = new { options = Options(library.HairColors), allowsEmpty = true },
+                hairStyles = new { maxItems = MaxHairStyles, options = Options(library.HairStyles) },
+                eyeColor = new { options = Options(library.EyeColors), allowsEmpty = true },
+                faceShape = new { options = Options(library.FaceShapes), allowsEmpty = true },
+                skinTone = new { options = Options(library.SkinTones), allowsEmpty = true },
+                complexion = new { maxItems = MaxComplexion, options = Options(library.Complexions) },
+                height = new { options = Options(library.Heights), allowsEmpty = true },
+                build = new { options = Options(library.Builds), allowsEmpty = true },
+                bodyProportions = new { maxItems = MaxBodyProportions, options = Options(library.BodyProportions) },
+                presentation = new { maxItems = MaxPresentation, options = Options(library.Presentations) },
+                attractiveness = new { options = Options(library.AttractivenessLevels), allowsEmpty = true }
+            }
+        },
         "relationshipType" => new { options = library.BondTypes },
         "privateTension" => new { options = library.Dynamics },
         _ => throw CharacterProfileValidationException.ForField(field, $"Reading character profile options failed because '{field}' is not a supported controlled profile field.")
@@ -318,6 +388,7 @@ public sealed class CharacterProfileValidationException(string message, IReadOnl
         "traits" => "traits",
         "soft spots" => "softSpots",
         "avoid patterns" => "avoidPatterns",
+        "appearance profile" => "appearanceProfile",
         "relationship type" => "relationshipType",
         "relationship dynamic" => "privateTension",
         _ => field

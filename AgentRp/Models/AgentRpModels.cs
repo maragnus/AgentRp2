@@ -11,6 +11,7 @@ public sealed class RpCharacter
     public string Summary { get; set; } = "";
     public string Personality { get; set; } = "";
     public string Appearance { get; set; } = "";
+    public CharacterAppearanceState AppearanceProfile { get; set; } = new();
     public string Relationships { get; set; } = "";
     public string Backstory { get; set; } = "";
     public string Voice { get; set; } = "";
@@ -33,6 +34,21 @@ public sealed class RpCharacter
     public List<string> AvoidPatterns { get; set; } = [];
     public List<RpRelationship> ProfileRelationships { get; set; } = [];
     public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
+}
+
+public sealed class CharacterAppearanceState
+{
+    public string HairColor { get; set; } = "";
+    public List<string> HairStyles { get; set; } = [];
+    public string EyeColor { get; set; } = "";
+    public string FaceShape { get; set; } = "";
+    public string SkinTone { get; set; } = "";
+    public List<string> Complexion { get; set; } = [];
+    public string Height { get; set; } = "";
+    public string Build { get; set; } = "";
+    public List<string> BodyProportions { get; set; } = [];
+    public List<string> Presentation { get; set; } = [];
+    public string Attractiveness { get; set; } = "";
 }
 
 public sealed class CharacterVoiceSelection
@@ -79,6 +95,7 @@ public sealed class RpItem
 public sealed class RpTimelineEntry
 {
     public string Id { get; set; } = "";
+    public string SnapshotId { get; set; } = "";
     public string Title { get; set; } = "";
     public string Date { get; set; } = "";
     public string Description { get; set; } = "";
@@ -114,6 +131,9 @@ public sealed class GalleryImage
     public string Date { get; set; } = "";
     public int Hue { get; set; }
     public string Url { get; set; } = "";
+    public int AvatarFocusXPercent { get; set; } = 50;
+    public int AvatarFocusYPercent { get; set; } = 50;
+    public int AvatarZoomPercent { get; set; } = 100;
 }
 
 public enum ImageGalleryMode

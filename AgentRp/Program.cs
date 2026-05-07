@@ -18,7 +18,9 @@ builder.Services.AddDbContextFactory<RpDbContext>((serviceProvider, options) =>
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddTransient<ExternalApiLoggingHandler>();
 builder.Services.AddHttpClient();
+builder.Services.ConfigureHttpClientDefaults(http => http.AddHttpMessageHandler<ExternalApiLoggingHandler>());
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
 builder.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
@@ -35,8 +37,11 @@ builder.Services.AddScoped<ITtsAudioPlaybackService, TtsAudioPlaybackService>();
 builder.Services.AddScoped<IMessageSpeechService, MessageSpeechService>();
 builder.Services.AddSingleton<IVoiceMessageStreamCoordinator, VoiceMessageStreamCoordinator>();
 builder.Services.AddSingleton<IAudioTagGuideService, AudioTagGuideService>();
+builder.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
 builder.Services.AddScoped<IImageDetailsService, ImageDetailsService>();
+builder.Services.AddScoped<IImageCropService, ImageCropService>();
 builder.Services.AddScoped<DialogHelper>();
 builder.Services.AddScoped<OverlayService>();
 builder.Services.AddScoped<TranscriptPromptContextBuilder>();

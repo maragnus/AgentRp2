@@ -1,6 +1,7 @@
 #pragma warning disable OPENAI001
 
 using System.ClientModel;
+using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Runtime.CompilerServices;
@@ -68,7 +69,7 @@ public sealed record ModelAssistantRequest(
     ModelGenerationCapabilities Capabilities,
     ModelTuningStepState Tuning,
     string Instructions,
-    string ConversationId,
+    string PreviousResponseId,
     IReadOnlyList<ModelAssistantInput> Inputs,
     IReadOnlyList<ModelAssistantTool> Tools,
     string OperationName);
@@ -80,9 +81,16 @@ public sealed record ModelAssistantStreamingUpdate(
     string ToolName = "",
     string ToolArgumentsJson = "",
     string ResponseId = "",
-    string ConversationId = "",
     int InputTokens = 0,
     int OutputTokens = 0);
+
+public sealed class ModelAssistantThreadLostException(
+    string providerName,
+    string modelId,
+    string previousResponseId,
+    Exception innerException) : InvalidOperationException(
+        $"Story Assistant needs a fresh thread because {providerName} no longer has the saved response '{previousResponseId}' for '{modelId}'. Clear and restart the Story Assistant; your story entities and chat are unchanged.",
+        innerException);
 
 public interface IModelGenerationClient
 {
@@ -90,12 +98,14 @@ public interface IModelGenerationClient
     Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ModelTextStreamingUpdate> GenerateStreamingTextUpdatesAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
-    Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, CancellationToken cancellationToken = default);
+    Task DeleteAssistantResponsesAsync(AiProvider provider, AiProviderModel model, IReadOnlyCollection<string> responseIds, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, CancellationToken cancellationToken = default);
 }
 
-public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactory) : IModelGenerationClient
+public sealed class OpenAiModelGenerationClient(
+    IModelClientFactory clientFactory,
+    ILogger<OpenAiModelGenerationClient> logger) : IModelGenerationClient
 {
     public async Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default)
     {
@@ -116,8 +126,9 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
                 ToInt(usage?.OutputTokenCount),
                 response.ResponseId ?? "");
         }
-        catch (Exception exception) when (exception is not InvalidOperationException)
+        catch (Exception exception) when (exception is not InvalidOperationException && !cancellationToken.IsCancellationRequested)
         {
+            LogFailure(exception, request, "typed structured output");
             throw new InvalidOperationException($"{request.OperationName} failed while requesting typed structured output from {request.Provider.Name} with '{request.Model.Id}': {exception.Message}", exception);
         }
     }
@@ -127,11 +138,19 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         if (!request.Capabilities.CanGenerateText)
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not support text input and output.");
 
-        var response = await clientFactory.GetChatClient(request.Provider, request.Model).GetResponseAsync(
-            BuildMessages(request),
-            BuildChatOptions(request),
-            cancellationToken);
-        return ToCompletion(response);
+        try
+        {
+            var response = await clientFactory.GetChatClient(request.Provider, request.Model).GetResponseAsync(
+                BuildMessages(request),
+                BuildChatOptions(request),
+                cancellationToken);
+            return ToCompletion(response);
+        }
+        catch (Exception exception) when (exception is not InvalidOperationException && !cancellationToken.IsCancellationRequested)
+        {
+            LogFailure(exception, request, "text output");
+            throw;
+        }
     }
 
     public async Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
@@ -162,9 +181,13 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not support text input and output.");
 
         var updates = new List<ChatResponseUpdate>();
-        await foreach (var update in clientFactory.GetChatClient(request.Provider, request.Model).GetStreamingResponseAsync(
+        var source = clientFactory.GetChatClient(request.Provider, request.Model).GetStreamingResponseAsync(
             BuildMessages(request),
             BuildChatOptions(request),
+            cancellationToken);
+        await foreach (var update in LogStreamingFailuresAsync(
+            source,
+            new(request.OperationName, request.Provider.Name, request.Model.Id, EndpointFor(request.Provider)),
             cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -177,15 +200,6 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         yield return new(InputTokens: completion.InputTokens, OutputTokens: completion.OutputTokens, ResponseId: completion.ResponseId, Completed: true);
     }
 
-    public async Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default)
-    {
-        var result = await clientFactory.GetConversationClient(provider, model).CreateConversationAsync(
-            BinaryContent.Create(BinaryData.FromString("{}")),
-            null);
-        var json = JsonNode.Parse(result.GetRawResponse().Content.ToString());
-        return json?["id"]?.GetValue<string>() ?? "";
-    }
-
     public async IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(
         ModelAssistantRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -193,7 +207,12 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         if (!request.Capabilities.CanGenerateText || !request.Capabilities.Tools)
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' must support text and tools.");
 
-        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildAssistantOptions(request), cancellationToken))
+        var source = clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildAssistantOptions(request), cancellationToken);
+        await foreach (var update in LogStreamingFailuresAsync(
+            source,
+            new(request.OperationName, request.Provider.Name, request.Model.Id, EndpointFor(request.Provider)),
+            cancellationToken,
+            exception => ToThreadLostException(exception, request)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (update is StreamingResponseOutputTextDeltaUpdate text)
@@ -214,17 +233,65 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
                 yield return new(
                     ModelAssistantStreamingUpdateKind.Completed,
                     ResponseId: completed.Response.Id,
-                    ConversationId: completed.Response.ConversationOptions?.ConversationId ?? request.ConversationId,
                     InputTokens: usage?.InputTokenCount ?? 0,
                     OutputTokens: usage?.OutputTokenCount ?? 0);
             }
             else if (update is StreamingResponseFailedUpdate failed)
             {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses assistant stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}");
+                var exception = LoggedStreamFailure(
+                    $"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses assistant stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}",
+                    new(request.OperationName, request.Provider.Name, request.Model.Id, EndpointFor(request.Provider)));
+                throw ToThreadLostException(exception, request) ?? exception;
             }
             else if (update is StreamingResponseErrorUpdate error)
             {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a Responses assistant stream error: {error.Message}");
+                var exception = LoggedStreamFailure(
+                    $"{request.OperationName} failed because {request.Provider.Name} returned a Responses assistant stream error: {error.Message}",
+                    new(request.OperationName, request.Provider.Name, request.Model.Id, EndpointFor(request.Provider)));
+                throw ToThreadLostException(exception, request) ?? exception;
+            }
+        }
+    }
+
+    public async Task DeleteAssistantResponsesAsync(
+        AiProvider provider,
+        AiProviderModel model,
+        IReadOnlyCollection<string> responseIds,
+        CancellationToken cancellationToken = default)
+    {
+        var uniqueResponseIds = responseIds
+            .Where(responseId => !string.IsNullOrWhiteSpace(responseId))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (uniqueResponseIds.Count == 0)
+            return;
+
+        var client = clientFactory.GetResponsesClient(provider, model);
+        foreach (var responseId in uniqueResponseIds)
+        {
+            try
+            {
+                await client.DeleteResponseAsync(responseId, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ClientResultException exception) when (exception.Status == (int)HttpStatusCode.NotFound)
+            {
+                logger.LogInformation(
+                    exception,
+                    "Stored assistant response was already unavailable during cleanup. Provider: {Provider}; Model: {Model}; ResponseId: {ResponseId}",
+                    provider.Name,
+                    model.Id,
+                    responseId);
+            }
+            catch (Exception exception)
+            {
+                ExternalApiFailureLogger.LogModelFailure(
+                    logger,
+                    exception,
+                    new($"Deleting stored assistant response {responseId}", provider.Name, model.Id, EndpointFor(provider)));
             }
         }
     }
@@ -239,7 +306,11 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         if (!request.ImageCapabilities.CanGenerateImage)
             throw new InvalidOperationException($"{request.OperationName} failed because '{request.ImageModel.Id}' does not have Responses image output enabled.");
 
-        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.HostModel).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken))
+        var source = clientFactory.GetResponsesClient(request.Provider, request.HostModel).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken);
+        await foreach (var update in LogStreamingFailuresAsync(
+            source,
+            new(request.OperationName, request.Provider.Name, request.HostModel.Id, EndpointFor(request.Provider)),
+            cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (update is StreamingResponseImageGenerationCallPartialImageUpdate partial && partial.PartialImageBytes is not null)
@@ -261,14 +332,96 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
             }
             else if (update is StreamingResponseFailedUpdate failed)
             {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses image stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}");
+                throw LoggedStreamFailure(
+                    $"{request.OperationName} failed because {request.Provider.Name} returned a failed Responses image stream: {failed.Response?.Error?.Message ?? "No failure detail was provided."}",
+                    new(request.OperationName, request.Provider.Name, request.HostModel.Id, EndpointFor(request.Provider)));
             }
             else if (update is StreamingResponseErrorUpdate error)
             {
-                throw new InvalidOperationException($"{request.OperationName} failed because {request.Provider.Name} returned a Responses image stream error: {error.Message}");
+                throw LoggedStreamFailure(
+                    $"{request.OperationName} failed because {request.Provider.Name} returned a Responses image stream error: {error.Message}",
+                    new(request.OperationName, request.Provider.Name, request.HostModel.Id, EndpointFor(request.Provider)));
             }
         }
     }
+
+    async IAsyncEnumerable<T> LogStreamingFailuresAsync<T>(
+        IAsyncEnumerable<T> source,
+        ExternalApiCallLogContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken,
+        Func<Exception, Exception?>? mapException = null)
+    {
+        await using var enumerator = source.GetAsyncEnumerator(cancellationToken);
+        while (true)
+        {
+            T current;
+            try
+            {
+                if (!await enumerator.MoveNextAsync())
+                    yield break;
+
+                current = enumerator.Current;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ExternalApiFailureLogger.LogModelFailure(logger, exception, context);
+                var mapped = mapException?.Invoke(exception);
+                if (mapped is not null)
+                    throw mapped;
+
+                throw;
+            }
+
+            yield return current;
+        }
+    }
+
+    InvalidOperationException LoggedStreamFailure(string message, ExternalApiCallLogContext context)
+    {
+        var exception = new InvalidOperationException(message);
+        ExternalApiFailureLogger.LogModelFailure(logger, exception, context);
+        return exception;
+    }
+
+    void LogFailure(Exception exception, ModelGenerationRequest request, string outputKind) =>
+        ExternalApiFailureLogger.LogModelFailure(
+            logger,
+            exception,
+            new($"{request.OperationName} requesting {outputKind}", request.Provider.Name, request.Model.Id, EndpointFor(request.Provider)));
+
+    static ModelAssistantThreadLostException? ToThreadLostException(Exception exception, ModelAssistantRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.PreviousResponseId) || !IsRemoteThreadNotFound(exception))
+            return null;
+
+        return new(request.Provider.Name, request.Model.Id, request.PreviousResponseId, exception);
+    }
+
+    static bool IsRemoteThreadNotFound(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is ClientResultException { Status: (int)HttpStatusCode.NotFound })
+                return true;
+
+            if (current is ExternalServiceFailureException { StatusCode: HttpStatusCode.NotFound })
+                return true;
+
+            if (current.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    static string EndpointFor(AiProvider provider) =>
+        string.IsNullOrWhiteSpace(provider.Endpoint)
+            ? AiProviderEndpointRules.DefaultEndpoint(provider.Type)
+            : provider.Endpoint;
 
     static IReadOnlyList<ChatMessage> BuildMessages(ModelGenerationRequest request) =>
     [
@@ -331,11 +484,12 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
     static CreateResponseOptions BuildAssistantOptions(ModelAssistantRequest request)
     {
         var tuning = TextModelTuningCatalog.Filter(request.Tuning, request.Capabilities);
+        var previousResponseId = string.IsNullOrWhiteSpace(request.PreviousResponseId) ? null : request.PreviousResponseId;
         var options = new CreateResponseOptions
         {
             Model = request.Model.Id,
-            Instructions = request.Instructions,
-            ConversationOptions = string.IsNullOrWhiteSpace(request.ConversationId) ? null : new(request.ConversationId),
+            Instructions = previousResponseId is null ? request.Instructions : null,
+            PreviousResponseId = previousResponseId,
             StoredOutputEnabled = true,
             StreamingEnabled = true,
             ParallelToolCallsEnabled = false,

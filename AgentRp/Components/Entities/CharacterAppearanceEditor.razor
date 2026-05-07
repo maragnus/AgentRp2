@@ -1,0 +1,187 @@
+<div class="character-appearance-editor">
+    <Section Title="Hair" Count="HairCount">
+        <div class="character-appearance-group">
+            <div class="character-appearance-field">
+                <span>Color</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.HairColors)
+                    {
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.HairColor == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.HairColor), option.Id))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+            <div class="character-appearance-field">
+                <span>Style / length</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.HairStyles)
+                    {
+                        var selected = Profile.HairStyles.Contains(option.Id);
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(selected)" Disabled="@(!selected && Profile.HairStyles.Count >= CharacterProfileRules.MaxHairStyles)" OnClick="@(_ => ToggleLimited(Profile.HairStyles, option.Id, CharacterProfileRules.MaxHairStyles))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+        </div>
+    </Section>
+
+    <div class="character-appearance-two-col">
+        <Section Title="Eyes" Count="@(string.IsNullOrWhiteSpace(Profile.EyeColor) ? 0 : 1)">
+            <div class="character-wizard-chip-list">
+                @foreach (var option in Options.EyeColors)
+                {
+                    <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.EyeColor == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.EyeColor), option.Id))">@option.Label</SelectableButton>
+                }
+            </div>
+        </Section>
+        <Section Title="Face" Count="@(string.IsNullOrWhiteSpace(Profile.FaceShape) ? 0 : 1)">
+            <div class="character-wizard-chip-list">
+                @foreach (var option in Options.FaceShapes)
+                {
+                    <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.FaceShape == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.FaceShape), option.Id))">@option.Label</SelectableButton>
+                }
+            </div>
+        </Section>
+    </div>
+
+    <Section Title="Skin" Count="SkinCount">
+        <div class="character-appearance-group">
+            <div class="character-appearance-field">
+                <span>Tone</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.SkinTones)
+                    {
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.SkinTone == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.SkinTone), option.Id))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+            <div class="character-appearance-field">
+                <span>Complexion</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.Complexions)
+                    {
+                        var selected = Profile.Complexion.Contains(option.Id);
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(selected)" Disabled="@(!selected && Profile.Complexion.Count >= CharacterProfileRules.MaxComplexion)" OnClick="@(_ => ToggleLimited(Profile.Complexion, option.Id, CharacterProfileRules.MaxComplexion))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+        </div>
+    </Section>
+
+    <Section Title="Height & Build" Count="HeightBuildCount">
+        <div class="character-appearance-two-col is-tight">
+            <div class="character-appearance-field">
+                <span>Height</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.Heights)
+                    {
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.Height == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.Height), option.Id))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+            <div class="character-appearance-field">
+                <span>Build</span>
+                <div class="character-wizard-chip-list">
+                    @foreach (var option in Options.Builds)
+                    {
+                        <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.Build == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.Build), option.Id))">@option.Label</SelectableButton>
+                    }
+                </div>
+            </div>
+        </div>
+    </Section>
+
+    <Section Title="Body Proportions" Count="Profile.BodyProportions.Count" MaxCount="CharacterProfileRules.MaxBodyProportions">
+        <div class="character-wizard-chip-list">
+            @foreach (var option in Options.BodyProportions)
+            {
+                var selected = Profile.BodyProportions.Contains(option.Id);
+                <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(selected)" Disabled="@(!selected && Profile.BodyProportions.Count >= CharacterProfileRules.MaxBodyProportions)" OnClick="@(_ => ToggleLimited(Profile.BodyProportions, option.Id, CharacterProfileRules.MaxBodyProportions))">@option.Label</SelectableButton>
+            }
+        </div>
+    </Section>
+
+    <Section Title="Presentation & Bearing" Count="Profile.Presentation.Count" MaxCount="CharacterProfileRules.MaxPresentation">
+        <div class="character-wizard-chip-list">
+            @foreach (var option in Options.Presentations)
+            {
+                var selected = Profile.Presentation.Contains(option.Id);
+                <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(selected)" Disabled="@(!selected && Profile.Presentation.Count >= CharacterProfileRules.MaxPresentation)" OnClick="@(_ => ToggleLimited(Profile.Presentation, option.Id, CharacterProfileRules.MaxPresentation))">@option.Label</SelectableButton>
+            }
+        </div>
+    </Section>
+
+    <Section Title="Attractiveness" Count="@(string.IsNullOrWhiteSpace(Profile.Attractiveness) ? 0 : 1)">
+        <div class="character-wizard-chip-list">
+            @foreach (var option in Options.AttractivenessLevels)
+            {
+                <SelectableButton @key="option.Id" TooltipText="@option.Hover" Class="@ChipClass(Profile.Attractiveness == option.Id)" OnClick="@(_ => SetSingle(nameof(Profile.Attractiveness), option.Id))">@option.Label</SelectableButton>
+            }
+        </div>
+    </Section>
+
+    <Section Title="Custom Appearance Text">
+        <textarea class="character-wizard-textarea" rows="3" placeholder="Specific details, clothing defaults, unusual traits, or anything the structured fields miss." @bind="Character.Appearance" @bind:event="oninput"></textarea>
+    </Section>
+</div>
+
+@code {
+    [Parameter] public RpCharacter Character { get; set; } = new();
+    [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+
+    CharacterAppearanceState Profile => Character.AppearanceProfile;
+    CharacterTraitLibraryState Options => CharacterTraitLibraryService.NormalizeState(Library);
+    int HairCount => (string.IsNullOrWhiteSpace(Profile.HairColor) ? 0 : 1) + Profile.HairStyles.Count;
+    int SkinCount => (string.IsNullOrWhiteSpace(Profile.SkinTone) ? 0 : 1) + Profile.Complexion.Count;
+    int HeightBuildCount => (string.IsNullOrWhiteSpace(Profile.Height) ? 0 : 1) + (string.IsNullOrWhiteSpace(Profile.Build) ? 0 : 1);
+
+    void ToggleLimited(List<string> values, string value, int max)
+    {
+        if (values.Remove(value))
+            return;
+
+        if (values.Count < max)
+            values.Add(value);
+    }
+
+    void SetSingle(string property, string value)
+    {
+        var current = property switch
+        {
+            nameof(Profile.HairColor) => Profile.HairColor,
+            nameof(Profile.EyeColor) => Profile.EyeColor,
+            nameof(Profile.FaceShape) => Profile.FaceShape,
+            nameof(Profile.SkinTone) => Profile.SkinTone,
+            nameof(Profile.Height) => Profile.Height,
+            nameof(Profile.Build) => Profile.Build,
+            nameof(Profile.Attractiveness) => Profile.Attractiveness,
+            _ => ""
+        };
+        var next = current == value ? "" : value;
+
+        switch (property)
+        {
+            case nameof(Profile.HairColor):
+                Profile.HairColor = next;
+                break;
+            case nameof(Profile.EyeColor):
+                Profile.EyeColor = next;
+                break;
+            case nameof(Profile.FaceShape):
+                Profile.FaceShape = next;
+                break;
+            case nameof(Profile.SkinTone):
+                Profile.SkinTone = next;
+                break;
+            case nameof(Profile.Height):
+                Profile.Height = next;
+                break;
+            case nameof(Profile.Build):
+                Profile.Build = next;
+                break;
+            case nameof(Profile.Attractiveness):
+                Profile.Attractiveness = next;
+                break;
+        }
+    }
+
+    static string ChipClass(bool selected) => $"character-wizard-mini-chip {(selected ? "is-selected" : "")}";
+}

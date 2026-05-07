@@ -1,0 +1,211 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+@inject IImageCropService ImageCropService
+@inject ILogger<ImageCropModal> Logger
+
+<ModalShell Title="@Title"
+            MaxWidth="760px"
+            Height="min(760px, 92vh)"
+            BodyClass="is-flush"
+            CloseDisabled="@Saving"
+            OnClose="CloseAsync">
+    <ChildContent>
+        <ModalStackLayout BodyClass="image-crop-modal-body">
+            <ChildContent>
+                @if (Loading)
+                {
+                    <div class="empty-preview"><span class="spinner"></span><span>Loading crop...</span></div>
+                }
+                else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="modal-error">@ErrorMessage</div>
+                }
+                else if (CropImage is not null && !string.IsNullOrWhiteSpace(CropImage.ImageUrl))
+                {
+                    <div class="image-crop-content">
+                        <div class="app-image-crop-workspace"
+                             @ref="WorkspaceElement"
+                             tabindex="0"
+                             aria-label="@($"Crop {CropImage.Title}")">
+                            <img src="@CropImage.ImageUrl" class="app-image-crop-image" alt="@CropImage.Title" @onload="InitializeCropAsync" />
+                            <div class="app-image-crop-snap-guide app-image-crop-snap-guide-x"></div>
+                            <div class="app-image-crop-snap-guide app-image-crop-snap-guide-y"></div>
+                            <div class="app-image-crop-circle" @ref="CircleElement">
+                                <span class="app-image-crop-handle app-image-crop-handle-nw" data-crop-handle="nw" aria-hidden="true"></span>
+                                <span class="app-image-crop-handle app-image-crop-handle-ne" data-crop-handle="ne" aria-hidden="true"></span>
+                                <span class="app-image-crop-handle app-image-crop-handle-se" data-crop-handle="se" aria-hidden="true"></span>
+                                <span class="app-image-crop-handle app-image-crop-handle-sw" data-crop-handle="sw" aria-hidden="true"></span>
+                            </div>
+                        </div>
+                        <p class="empty-note">Drag the circle to choose the avatar focus. Resize from a corner to zoom.</p>
+                    </div>
+                }
+                else if (Image is not null)
+                {
+                    <div class="providers-empty-state is-compact">
+                        <ImagePlaceholder Label="@Image.Name" Hue="@Image.Hue" />
+                        <strong>No image file to crop</strong>
+                        <span>This gallery item uses a placeholder, so the default centered crop will be used.</span>
+                    </div>
+                }
+            </ChildContent>
+        </ModalStackLayout>
+    </ChildContent>
+    <Footer>
+        <span class="modal-action-spacer"></span>
+        <AppButton Variant="secondary" Disabled="@Saving" OnClick="@(_ => CloseAsync())">Cancel</AppButton>
+        <AppButton Variant="secondary" Disabled="@(Saving || CropImage is null || string.IsNullOrWhiteSpace(CropImage.ImageUrl))" OnClick="ClearCropAsync"><FaIcon Name="rotate-left" />Clear Crop</AppButton>
+        <BusyButton Variant="primary" Disabled="@(CropImage is null || string.IsNullOrWhiteSpace(CropImage.ImageUrl))" OnClick="SaveAsync"><FaIcon Name="save" />Save Crop</BusyButton>
+    </Footer>
+</ModalShell>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public EventCallback<ImageCropSavedResult> OnSaved { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    ElementReference WorkspaceElement;
+    ElementReference CircleElement;
+    IJSObjectReference? Module;
+    DotNetObjectReference<ImageCropModal>? DotNetReference;
+    string? LoadedImageId;
+    ImageCropView? CropImage;
+    bool Loading;
+    bool Saving;
+    string ErrorMessage = "";
+    int FocusXPercent = ImageAvatarCropView.Default.FocusXPercent;
+    int FocusYPercent = ImageAvatarCropView.Default.FocusYPercent;
+    int ZoomPercent = ImageAvatarCropView.Default.ZoomPercent;
+
+    string Title => Image is null ? "Crop Image" : $"Crop {Image.Name}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Image is null)
+        {
+            LoadedImageId = null;
+            CropImage = null;
+            await DisposeCropAsync();
+            return;
+        }
+
+        if (LoadedImageId == Image.Id)
+            return;
+
+        LoadedImageId = Image.Id;
+        Loading = true;
+        ErrorMessage = "";
+        await DisposeCropAsync();
+        try
+        {
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading the crop editor failed because no chat is open.");
+            CropImage = await ImageCropService.GetAsync(document, Image.Id);
+            SetDraftCrop(CropImage.Crop);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Loading image crop failed for image {ImageId}.", Image.Id);
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Loading the crop for '{Image.Name}' failed.", exception);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CropImage is not null && !string.IsNullOrWhiteSpace(CropImage.ImageUrl))
+            await InitializeCropAsync();
+    }
+
+    async Task InitializeCropAsync()
+    {
+        if (CropImage is null || string.IsNullOrWhiteSpace(CropImage.ImageUrl))
+            return;
+
+        Module ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Components/Images/ImageCropModal.razor.js");
+        DotNetReference ??= DotNetObjectReference.Create(this);
+        await Module.InvokeVoidAsync(
+            "initialize",
+            WorkspaceElement,
+            CircleElement,
+            DotNetReference,
+            FocusXPercent,
+            FocusYPercent,
+            ZoomPercent);
+    }
+
+    async Task ClearCropAsync(MouseEventArgs args)
+    {
+        SetDraftCrop(ImageAvatarCropView.Default);
+        await ApplyDraftToJsAsync();
+    }
+
+    async Task SaveAsync()
+    {
+        if (Image is null)
+            return;
+
+        Saving = true;
+        ErrorMessage = "";
+        try
+        {
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Saving the crop failed because no chat is open.");
+            var crop = await ImageCropService.UpdateAsync(
+                new(document.Chat.Id, Image.Id, FocusXPercent, FocusYPercent, ZoomPercent),
+                CancellationToken.None);
+            if (OnSaved.HasDelegate)
+                await OnSaved.InvokeAsync(new(Image.Id, crop));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Saving image crop failed for image {ImageId}.", Image.Id);
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Saving the crop for '{Image.Name}' failed.", exception);
+        }
+        finally
+        {
+            Saving = false;
+        }
+    }
+
+    Task CloseAsync() => Saving ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    [JSInvokable]
+    public void UpdateDraftCrop(int focusXPercent, int focusYPercent, int zoomPercent)
+    {
+        FocusXPercent = Math.Clamp(focusXPercent, 0, 100);
+        FocusYPercent = Math.Clamp(focusYPercent, 0, 100);
+        ZoomPercent = Math.Clamp(zoomPercent, 100, 300);
+    }
+
+    void SetDraftCrop(ImageAvatarCropView crop)
+    {
+        FocusXPercent = crop.FocusXPercent;
+        FocusYPercent = crop.FocusYPercent;
+        ZoomPercent = crop.ZoomPercent;
+    }
+
+    async Task ApplyDraftToJsAsync()
+    {
+        if (Module is null)
+            return;
+
+        await Module.InvokeVoidAsync("setCrop", WorkspaceElement, FocusXPercent, FocusYPercent, ZoomPercent);
+    }
+
+    async Task DisposeCropAsync()
+    {
+        if (Module is not null)
+            await Module.InvokeVoidAsync("dispose", WorkspaceElement);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeCropAsync();
+        DotNetReference?.Dispose();
+        if (Module is not null)
+            await Module.DisposeAsync();
+    }
+}

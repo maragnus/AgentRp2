@@ -13,6 +13,16 @@ public sealed class ImageGenerationServiceTests
 {
     static readonly byte[] PngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=");
 
+    [Theory]
+    [InlineData("characters", "Gemma", "Create a vivid roleplaying reference profile image for Gemma.", "1024x1536")]
+    [InlineData("locations", "Apartment", "Create a vivid roleplaying reference scene for Apartment.", "1536x1024")]
+    [InlineData("items", "Silver Ring", "Create a vivid roleplaying reference image for Silver Ring.", "1536x1024")]
+    public void StoryImagePromptBuilderBuildsEntityDefaults(string entityType, string entityName, string expectedPrompt, string expectedSize)
+    {
+        Assert.Equal(expectedPrompt, StoryImagePromptBuilder.BuildReferencePrompt(entityType, entityName));
+        Assert.Equal(expectedSize, StoryImagePromptBuilder.BuildReferenceSize(entityType));
+    }
+
     [Fact]
     public async Task ImageOnlyModelUsesSameProviderResponsesHost()
     {
@@ -178,7 +188,7 @@ public sealed class ImageGenerationServiceTests
                 "Portrait",
                 "Low",
                 "High",
-                ["c1"],
+                [new("character", "c1"), new("location", "l1"), new("item", "i1"), new("item", "i1")],
                 ["ref-1"],
                 "Silver Ring",
                 "items",
@@ -200,8 +210,10 @@ public sealed class ImageGenerationServiceTests
         Assert.Equal("high", metadata.ReferenceDetail);
         Assert.Contains(metadata.References, reference => reference.Kind == "entity" && reference.Id == "i1" && reference.Name == "Silver Ring");
         Assert.Contains(metadata.References, reference => reference.Kind == "entity" && reference.Id == "c1" && reference.Name == "Gemma");
+        Assert.Contains(metadata.References, reference => reference.Kind == "entity" && reference.Id == "l1" && reference.Name == "Ambient Location");
         Assert.Contains(metadata.References, reference => reference.Kind == "image" && reference.Id == "ref-1" && reference.Name == "Reference Pose");
-        Assert.DoesNotContain(metadata.References, reference => reference.Id == "l1" || reference.Name == "Ambient Location");
+        Assert.Equal(metadata.References.Select(reference => $"{reference.Kind}:{reference.EntityType}:{reference.Id}:{reference.Name}").Distinct().Count(), metadata.References.Count);
+        Assert.Equal("Composed the prompt from the user request and selected story context.", metadata.Rationale);
     }
 
     [Fact]
@@ -282,7 +294,7 @@ public sealed class ImageGenerationServiceTests
                 "Square",
                 "Medium",
                 "Low",
-                ["c1"],
+                [new("character", "c1")],
                 ["ref-1"],
                 "Gemma",
                 "characters",
@@ -294,6 +306,63 @@ public sealed class ImageGenerationServiceTests
         Assert.Contains(details.References, reference => reference.Kind == "entity" && reference.Name == "Gemma");
         Assert.Contains(details.References, reference => reference.Kind == "image" && reference.Name == "Reference Pose");
         Assert.DoesNotContain(details.References, reference => reference.Name == "Ambient Location");
+        Assert.False(string.IsNullOrWhiteSpace(details.Rationale));
+    }
+
+    [Fact]
+    public async Task StructuredTextModelComposesFinalPromptAndRationale()
+    {
+        var dbFactory = new TestDbContextFactory();
+        var client = new FakeModelGenerationClient
+        {
+            StructuredPrompt = new("Composed portrait prompt.", "Used Gemma's appearance.")
+        };
+        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var document = new RpChatDocument
+        {
+            Chat = new() { Id = "chat-1", Title = "Test chat" },
+            Characters =
+            [
+                new() { Id = "c1", Name = "Gemma", Appearance = "Tall blonde." }
+            ],
+            ActiveModelSelections = new()
+            {
+                Values =
+                {
+                    [AiModelRole.Chat] = new() { ProviderId = "openai", ModelId = "gpt-5.5" }
+                }
+            }
+        };
+        var provider = BuildImageProvider();
+        provider.Models.Add(new()
+        {
+            Id = "gpt-5.5",
+            Enabled = true,
+            Roles = [AiModelRole.Chat],
+            Capabilities = new() { TextInput = true, TextOutput = true, StructuredOutput = true }
+        });
+
+        var result = await service.GenerateAsync(
+            document,
+            [provider],
+            new(
+                ImageGenerationService.BuildModelKey("openai", "gpt-image-1"),
+                "A portrait.",
+                "none",
+                "Portrait",
+                "Auto",
+                "Low",
+                [new("character", "c1")],
+                [],
+                "Gemma",
+                "characters",
+                "c1"));
+
+        Assert.NotNull(client.StructuredRequest);
+        Assert.NotNull(client.ImageRequest);
+        Assert.Equal("Composed portrait prompt.", client.ImageRequest.Prompt);
+        Assert.Equal("Composed portrait prompt.", result.FinalPrompt);
+        Assert.Equal("Used Gemma's appearance.", result.Rationale);
     }
 
     static AiProvider BuildImageProvider() => new()
@@ -317,10 +386,22 @@ public sealed class ImageGenerationServiceTests
     sealed class FakeModelGenerationClient : IModelGenerationClient
     {
         public ResponseImageGenerationRequest? ImageRequest { get; private set; }
+        public ModelGenerationRequest? StructuredRequest { get; private set; }
+        public ImagePromptResult? StructuredPrompt { get; init; }
         public bool EmitPartialPreview { get; init; }
 
-        public Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+        public Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default)
+        {
+            StructuredRequest = request;
+            if (StructuredPrompt is null)
+                throw new NotSupportedException();
+
+            var value = Activator.CreateInstance<T>()
+                ?? throw new InvalidOperationException("Could not create structured response.");
+            typeof(T).GetProperty("FinalPrompt")?.SetValue(value, StructuredPrompt.FinalPrompt);
+            typeof(T).GetProperty("Rationale")?.SetValue(value, StructuredPrompt.Rationale);
+            return Task.FromResult(new ModelStructuredCompletion<T>(value, "", 1, 1, "structured-response-id"));
+        }
 
         public Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
@@ -334,14 +415,14 @@ public sealed class ImageGenerationServiceTests
             yield break;
         }
 
-        public Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
         public async IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield break;
         }
+
+        public Task DeleteAssistantResponsesAsync(AiProvider provider, AiProviderModel model, IReadOnlyCollection<string> responseIds, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
 
         public async IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -353,6 +434,8 @@ public sealed class ImageGenerationServiceTests
             yield return new(PngBytes, "image/png", "Revised image prompt.", 1, 1, "response-id", true);
         }
     }
+
+    public sealed record ImagePromptResult(string FinalPrompt, string Rationale);
 
     static async Task SeedReferenceImageAsync(TestDbContextFactory dbFactory, string chatId, string imageId)
     {

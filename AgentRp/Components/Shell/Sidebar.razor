@@ -54,6 +54,9 @@
                                Active="@(Session.SpeakingAs?.Id == character.Id)"
                                InScene="@character.InScene"
                                OnSpeak="@(_ => SetSpeakingAs(character))">
+                <AvatarContent>
+                    <EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="24" />
+                </AvatarContent>
                 <Actions>
                 <AppButton Icon="eye" TooltipText="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
                 <AppButton Icon="edit" TooltipText="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
@@ -99,6 +102,8 @@
     IReadOnlyList<RpChat> Chats => Session.Chats.Items;
     RpChat? ActiveChat => Session.Chats.Active;
     RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.FirstOrDefault() ?? new() { Name = "No location" };
+
+    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 
     protected override void OnInitialized()
     {

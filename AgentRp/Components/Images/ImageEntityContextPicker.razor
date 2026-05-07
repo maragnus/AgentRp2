@@ -1,0 +1,25 @@
+<TiledSelectList TItem="ImageEntityOption"
+                 Items="Entities"
+                 SelectedIds="SelectedIds"
+                 GetId="@(entity => entity.Key)"
+                 Title="@(entity => entity.Name)"
+                 Layout="TiledSelectLayout.Vertical"
+                 Columns="2"
+                 OnToggle="OnToggle">
+    <EmptyContent>No story entities are available</EmptyContent>
+    <ItemTemplate Context="entity">
+        <span class="tiled-select-media">
+            <EntityImage Name="@entity.Name" Image="@entity.Image" EntityType="@entity.EntityType" EntityId="@entity.EntityId" Size="22" />
+        </span>
+        <span class="tiled-select-caption">
+            <strong class="tiled-select-label">@entity.Name</strong>
+            <small>@entity.EntityType</small>
+        </span>
+    </ItemTemplate>
+</TiledSelectList>
+
+@code {
+    [Parameter] public IReadOnlyList<ImageEntityOption> Entities { get; set; } = [];
+    [Parameter] public ISet<string> SelectedIds { get; set; } = new HashSet<string>();
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+}

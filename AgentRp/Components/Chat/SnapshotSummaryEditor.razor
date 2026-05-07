@@ -1,0 +1,28 @@
+@using AgentRp.Models
+
+<Section Title="Summary" Hint="Required before saving" Class="snapshot-review-section">
+    <AppTextarea Rows="9" Class="snapshot-summary-field" Value="@Summary" ValueChanged="SummaryChanged" />
+</Section>
+
+<Section Title="Snapshot Range" Count="@Draft.IncludedTurns.Count" Class="snapshot-review-section">
+    <div class="snapshot-range-grid">
+        <StatusRow Icon="flag" Class="snapshot-range-status">
+            <ChildContent>@RangeLabel</ChildContent>
+            <BadgeContent><Badge Tone="amber">@Draft.IncludedTurns.Count turn@(Draft.IncludedTurns.Count == 1 ? "" : "s")</Badge></BadgeContent>
+        </StatusRow>
+        <StatusRow Icon="clock" Class="snapshot-range-status">
+            <ChildContent>@RelativeDateFormatter.FormatDate(Draft.CreatedUtc)</ChildContent>
+            <BadgeContent><Badge Tone="blue">Draft</Badge></BadgeContent>
+        </StatusRow>
+    </div>
+</Section>
+
+@code {
+    [Parameter] public RpTranscriptSnapshotDraft Draft { get; set; } = new();
+    [Parameter] public string Summary { get; set; } = "";
+    [Parameter] public EventCallback<string> SummaryChanged { get; set; }
+
+    string RangeLabel => Draft.IncludedTurns.Count == 0
+        ? "No turns included"
+        : $"{Draft.IncludedTurns.First().SpeakerName} to {Draft.IncludedTurns.Last().SpeakerName}";
+}

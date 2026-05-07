@@ -1,0 +1,46 @@
+@using AgentRp.Models
+
+@if (CharacterIds.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="eye" />
+        <strong>No continuity state</strong>
+        <span>This snapshot has no private intents or appearance blocks.</span>
+    </div>
+}
+else
+{
+    <div class="snapshot-continuity-list">
+        @foreach (var characterId in CharacterIds)
+        {
+            <Section @key="characterId" Title="@CharacterName(characterId)" Class="snapshot-review-section">
+                @if (Draft.PrivateIntentByCharacterId.TryGetValue(characterId, out var intent) && !string.IsNullOrWhiteSpace(intent))
+                {
+                    <FieldRow Label="Private Intent">
+                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@intent"></textarea>
+                    </FieldRow>
+                }
+                @if (Draft.CharacterAppearances.TryGetValue(characterId, out var appearance) && !string.IsNullOrWhiteSpace(appearance))
+                {
+                    <FieldRow Label="Appearance">
+                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@appearance"></textarea>
+                    </FieldRow>
+                }
+            </Section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public RpTranscriptSnapshotDraft Draft { get; set; } = new();
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+
+    List<string> CharacterIds => Draft.PrivateIntentByCharacterId.Keys
+        .Concat(Draft.CharacterAppearances.Keys)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(CharacterName)
+        .ToList();
+
+    string CharacterName(string id) =>
+        Characters.FirstOrDefault(character => character.Id == id)?.Name ?? id;
+}

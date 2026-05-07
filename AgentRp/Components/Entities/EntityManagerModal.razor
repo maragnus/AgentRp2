@@ -45,7 +45,7 @@
                         }
                         else if (Type == "characters")
                         {
-                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" Size="34" />
+                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="character" EntityId="@row.Item.Id" Size="34" />
                         }
                         else if (Type == "timeline")
                         {
@@ -53,7 +53,7 @@
                         }
                         else
                         {
-                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" Size="34" />
+                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="@EntityTypeForCurrentTab" EntityId="@row.Item.Id" Size="34" />
                         }
                         @if (row.Item.Active)
                         {
@@ -87,7 +87,7 @@
             }
             else if (Type == "characters" && SelectedCharacter is not null)
             {
-                <EntityHeader Name="@SelectedCharacter.Name" Subtitle="Guided profile" Image="@ImageFor(SelectedCharacter.ImageId)" ImageSize="40" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                <EntityHeader Name="@SelectedCharacter.Name" Subtitle="Guided profile" Image="@ImageFor(SelectedCharacter.ImageId)" EntityType="character" EntityId="@SelectedCharacter.Id" ImageSize="40" Editable OnImagePickerRequested="SelectSelectedEntityImage">
                     <Actions>
                         <VoicePicker VoiceSelections="SelectedCharacter.VoiceSelections"
                                      ActiveVoiceModel="ActiveVoiceModel"
@@ -101,7 +101,7 @@
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
-                <EntityHeader Name="@SelectedLocation.Name" Subtitle="Location profile" Image="@ImageFor(SelectedLocation.ImageId)" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                <EntityHeader Name="@SelectedLocation.Name" Subtitle="Location profile" Image="@ImageFor(SelectedLocation.ImageId)" EntityType="location" EntityId="@SelectedLocation.Id" Editable OnImagePickerRequested="SelectSelectedEntityImage">
                     <Actions>
                         <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
                     </Actions>
@@ -109,7 +109,7 @@
             }
             else if (Type == "items" && SelectedItem is not null)
             {
-                <EntityHeader Name="@SelectedItem.Name" Subtitle="Item profile" Image="@ImageFor(SelectedItem.ImageId)" Editable OnImagePickerRequested="SelectSelectedEntityImage">
+                <EntityHeader Name="@SelectedItem.Name" Subtitle="Item profile" Image="@ImageFor(SelectedItem.ImageId)" EntityType="item" EntityId="@SelectedItem.Id" Editable OnImagePickerRequested="SelectSelectedEntityImage">
                     <Actions>
                         <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
                     </Actions>
@@ -131,7 +131,7 @@
             }
             else if (Type == "characters" && SelectedCharacter is not null)
             {
-                <CharacterEditor Character="SelectedCharacter" />
+                <CharacterEditor Character="SelectedCharacter" Library="Session.Chat.CharacterTraitLibrary.State" />
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
@@ -211,6 +211,13 @@
     ActiveModelSelection? ActiveVoiceModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Voice);
 
     bool HasToggle => Type is "characters" or "locations" or "items";
+    string EntityTypeForCurrentTab => Type switch
+    {
+        "characters" => "character",
+        "locations" => "location",
+        "items" => "item",
+        _ => ""
+    };
     string ActiveSingular => ActiveTypeLabel.TrimEnd('s');
     string DeleteDialogTitle => Type switch
     {

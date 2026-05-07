@@ -1,0 +1,75 @@
+@using AgentRp.Models
+@using AgentRp.Services
+@inject IJSRuntime JS
+@inject ILogger<SnapshotTranscriptRow> Logger
+@inject DialogHelper Dialogs
+
+<article class="narrative-message snapshot-message">
+    <div class="narrative-card snapshot-card">
+        <div class="narrative-head">
+            <div class="message-author transcript-speaker">
+                <span class="narrator-avatar snapshot-avatar"><FaIcon Name="flag" /></span>
+                <span>Snapshot</span>
+            </div>
+            <span class="message-date">@RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)</span>
+            <span class="mode-badge is-snapshot">@IncludedCountText</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Snapshot.Summary))
+        {
+            <TranscriptBody Body="@Snapshot.Summary" Class="narrative-body is-narrator snapshot-body" />
+        }
+
+        <div class="narrative-actions snapshot-actions">
+            <div></div>
+            <div class="action-cluster">
+                <SnapshotSpeechButton Snapshot="Snapshot"
+                                      Disabled="@TranscriptBusy"
+                                      OnOpenEntities="OnOpenEntities" />
+                <AppButton Icon="copy" TooltipText="Copy snapshot" OnClick="CopySnapshot" />
+                <AppButton Icon="trash" TooltipText="Delete snapshot" Disabled="@TranscriptBusy" OnClick="@(_ => DeleteModalOpen = true)" />
+            </div>
+        </div>
+    </div>
+</article>
+
+@if (DeleteModalOpen)
+{
+    <SnapshotDeleteModal Snapshot="Snapshot" OnClose="CloseDeleteModal" />
+}
+
+@code {
+    bool DeleteModalOpen;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
+    [Parameter] public bool TranscriptBusy { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+
+    int IncludedTurnCount => Session.Chat.Transcript.SnapshotTurnCount(Snapshot.Id);
+    string IncludedCountText => IncludedTurnCount == 1
+        ? "1 turn"
+        : $"{IncludedTurnCount} turns";
+
+    async Task CopySnapshot(MouseEventArgs args)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Snapshot.Summary);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Copying snapshot {SnapshotId} failed.", Snapshot.Id);
+            await Dialogs.DisplayErrorAsync(
+                "Copying snapshot failed",
+                UserFacingErrorMessageBuilder.Build("Copying this snapshot failed.", exception),
+                UserFacingErrorMessageBuilder.BuildDetails(exception));
+        }
+    }
+
+    Task CloseDeleteModal()
+    {
+        DeleteModalOpen = false;
+        return Task.CompletedTask;
+    }
+}

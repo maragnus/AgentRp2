@@ -1,5 +1,11 @@
 <div class="entity-form-head">
-    <EntityImage Name="@Name" Image="Image" Size="@ImageSize" Editable="@Editable" OnClick="OnImagePickerRequested" />
+    <EntityImage Name="@Name"
+                 Image="Image"
+                 EntityType="@EntityType"
+                 EntityId="@EntityId"
+                 Size="@ImageSize"
+                 Editable="@Editable"
+                 OnClick="OnImagePickerRequested" />
     <div class="entity-header-copy">
         <strong>@Name</strong>
         @if (!string.IsNullOrWhiteSpace(Subtitle))
@@ -17,6 +23,8 @@
     [Parameter] public string Name { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public string? EntityType { get; set; }
+    [Parameter] public string? EntityId { get; set; }
     [Parameter] public int ImageSize { get; set; } = 44;
     [Parameter] public bool Editable { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnImagePickerRequested { get; set; }

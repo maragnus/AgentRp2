@@ -60,7 +60,12 @@ public sealed class StoryAssistantState
 {
     public int SchemaVersion { get; set; } = 1;
     public StoryAssistantReviewMode ReviewMode { get; set; } = StoryAssistantReviewMode.ReviewAll;
-    public string ConversationId { get; set; } = "";
+    public string LastResponseId { get; set; } = "";
+    public List<string> ResponseIds { get; set; } = [];
+    public string ResponseProviderId { get; set; } = "";
+    public string ResponseModelId { get; set; } = "";
+    public bool RemoteThreadLost { get; set; }
+    public string RemoteThreadError { get; set; } = "";
     public List<StoryAssistantTranscriptItem> Items { get; set; } = [];
 }
 

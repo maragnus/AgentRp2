@@ -1,0 +1,29 @@
+<TiledSelectList TItem="GalleryImage"
+                 Items="Images"
+                 SelectedIds="SelectedIds"
+                 GetId="@(image => image.Id)"
+                 Title="@(image => image.Name)"
+                 Layout="TiledSelectLayout.Horizontal"
+                 OnToggle="OnToggle">
+    <EmptyContent>No reference images match the selected context</EmptyContent>
+    <ItemTemplate Context="image">
+        @if (!string.IsNullOrWhiteSpace(image.Url))
+        {
+            <img class="tiled-select-media image-asset" src="@image.Url" alt="@image.Name" />
+        }
+        else
+        {
+            <ImagePlaceholder Label="@image.Name" Hue="@image.Hue" Class="tiled-select-media" />
+        }
+        <span class="tiled-select-caption">
+            <strong class="tiled-select-label">@image.Name</strong>
+            <small>@image.EntityType</small>
+        </span>
+    </ItemTemplate>
+</TiledSelectList>
+
+@code {
+    [Parameter] public IReadOnlyList<GalleryImage> Images { get; set; } = [];
+    [Parameter] public ISet<string> SelectedIds { get; set; } = new HashSet<string>();
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+}

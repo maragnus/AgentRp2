@@ -14,7 +14,7 @@
                 }
                 else
                 {
-                    <EntityImage Name="@ActiveLocation.Name" Image="@ImageFor(ActiveLocation.ImageId)" Size="24" />
+                    <EntityImage Name="@ActiveLocation.Name" Image="@ImageFor(ActiveLocation.ImageId)" EntityType="location" EntityId="@ActiveLocation.Id" Size="24" />
                 }
             </LeadingContent>
             <TrailingContent>
@@ -46,7 +46,7 @@
                                     AriaLabel="@($"Use {location.Name}")"
                                     OnClick="@(() => SelectLocation(picker, location))">
                     <LeadingContent>
-                        <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" Size="24" />
+                        <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" EntityType="location" EntityId="@location.Id" Size="24" />
                     </LeadingContent>
                 </PickerOptionButton>
             }

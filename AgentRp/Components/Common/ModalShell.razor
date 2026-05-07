@@ -1,5 +1,5 @@
 <CascadingValue Name="OverlayLayer" Value="ModalOverlayLayer" IsFixed="true">
-    <ModalEscapeBoundary OnClose="OnClose">
+    <ModalEscapeBoundary OnClose="CloseRequest">
         <div class="@BackdropCssClass" @onclick="BackdropClick">
             <section class="@ModalCssClass" style="@Style" @onclick:stopPropagation="true">
                 <header class="modal-header">
@@ -19,7 +19,7 @@
                         {
                             <AppButton Icon="@ExpandIcon" TooltipText="@ExpandTitle" OnClick="@ToggleExpanded" />
                         }
-                        <AppButton Icon="x" TooltipText="Close" OnClick="@CloseClick" />
+                        <AppButton Icon="x" TooltipText="Close" Disabled="@CloseDisabled" OnClick="@CloseClick" />
                     </div>
                 </header>
                 <div class="modal-body @BodyClass">
@@ -44,6 +44,7 @@
     [Parameter] public string? Height { get; set; } = "max(680px, 60vh)";
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? BodyClass { get; set; }
+    [Parameter] public bool CloseDisabled { get; set; }
     [Parameter] public bool CloseOnBackdropClick { get; set; }
     [Parameter] public bool ShowExpandButton { get; set; } = true;
     [Parameter] public EventCallback OnClose { get; set; }
@@ -59,12 +60,14 @@
         ? $"--modal-max-width:{MaxWidth};"
         : $"--modal-max-width:{MaxWidth};--modal-height:{Height};";
 
-    Task BackdropClick(MouseEventArgs args) => CloseOnBackdropClick ? OnClose.InvokeAsync() : Task.CompletedTask;
+    Task BackdropClick(MouseEventArgs args) => CloseOnBackdropClick ? CloseRequest() : Task.CompletedTask;
     Task ToggleExpanded(MouseEventArgs args)
     {
         IsExpanded = !IsExpanded;
         return Task.CompletedTask;
     }
 
-    Task CloseClick(MouseEventArgs args) => OnClose.InvokeAsync();
+    Task CloseClick(MouseEventArgs args) => CloseRequest();
+
+    Task CloseRequest() => CloseDisabled ? Task.CompletedTask : OnClose.InvokeAsync();
 }

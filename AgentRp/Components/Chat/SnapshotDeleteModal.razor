@@ -1,0 +1,270 @@
+@inject ILogger<SnapshotDeleteModal> Logger
+
+<ModalShell Title="Delete Snapshot"
+            Subtitle="@Subtitle"
+            Icon="trash"
+            MaxWidth="860px"
+            Height="560px"
+            BodyClass="is-flush"
+            CloseDisabled="@IsDeleting"
+            OnClose="Close">
+    @if (Impact is null)
+    {
+        <ModalStackLayout BodyClass="modal-form-stack">
+            <ChildContent>
+                <div class="providers-empty-state is-compact">
+                    <FaIcon Name="flag" />
+                    <strong>Snapshot unavailable</strong>
+                    <span>This snapshot is no longer in the active chat.</span>
+                </div>
+            </ChildContent>
+            <Footer>
+                <span class="modal-action-spacer"></span>
+                <AppButton Variant="secondary" Disabled="@IsDeleting" OnClick="@(_ => Close())">Close</AppButton>
+            </Footer>
+        </ModalStackLayout>
+    }
+    else
+    {
+        <ModalSplitLayout Class="snapshot-delete-layout" RailClass="snapshot-delete-rail" RailWidth="260px" RailAtEnd>
+            <MainContent>
+                <ModalStackLayout BodyClass="modal-form-stack snapshot-delete-main">
+                    <ChildContent>
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <div class="modal-error">@ErrorMessage</div>
+                        }
+
+                        <Section Title="Delete Method" Class="snapshot-delete-section">
+                            <div class="decision-option-list">
+                                <DecisionOptionCard Icon="box-open"
+                                                    Title="Unwrap snapshot"
+                                                    BadgeText="Latest only"
+                                                    BadgeTone="blue"
+                                                    Active="@(Method == SnapshotDeleteMethod.Unwrap)"
+                                                    Disabled="@(!Impact.CanUnwrap || IsDeleting)"
+                                                    DisabledReason="@Impact.UnwrapDisabledReason"
+                                                    Description="@($"Restore {CoveredTurnText} to the chat log and remove only the snapshot row.")"
+                                                    Guidance="Choose this when the summarized scene should become readable transcript again."
+                                                    OnClick="@(_ => SelectMethod(SnapshotDeleteMethod.Unwrap))" />
+
+                                <DecisionOptionCard Icon="trash"
+                                                    Title="Delete snapshot and messages"
+                                                    BadgeText="Destructive"
+                                                    BadgeTone="rose"
+                                                    Active="@(Method == SnapshotDeleteMethod.DeleteCoveredMessages)"
+                                                    Disabled="@(!Impact.CanDeleteCoveredMessages || IsDeleting)"
+                                                    DisabledReason="@Impact.DeleteCoveredMessagesDisabledReason"
+                                                    Description="@($"Remove the snapshot and {CoveredTurnText} it represents.")"
+                                                    Guidance="Choose this when that part of the scene should leave the transcript."
+                                                    OnClick="@(_ => SelectMethod(SnapshotDeleteMethod.DeleteCoveredMessages))" />
+                            </div>
+                        </Section>
+
+                        <Section Title="Advanced" Hint="optional" Class="snapshot-delete-section">
+                            @if (Impact.LinkedTimelineEntryCount == 0)
+                            {
+                                <InlineNote Tone="muted">No linked timeline entries.</InlineNote>
+                            }
+                            else
+                            {
+                                <SelectableRow Selected="@RemoveTimelineEntries"
+                                               Disabled="@IsDeleting"
+                                               SelectionTooltipText="Toggle timeline entry removal"
+                                               OnToggle="@(_ => ToggleTimelineRemoval())"
+                                               Class="snapshot-delete-toggle">
+                                    <ChildContent>
+                                        <div class="snapshot-delete-toggle-copy">
+                                            <strong>Remove linked timeline entries</strong>
+                                            <small>Usually keep these. They may still be useful story history after the snapshot is gone.</small>
+                                        </div>
+                                    </ChildContent>
+                                    <Actions>
+                                        <Badge Tone="rose">@TimelineEntryText</Badge>
+                                    </Actions>
+                                </SelectableRow>
+
+                                @if (RemoveTimelineEntries)
+                                {
+                                    <SelectableRow Selected="@TimelineRemovalConfirmed"
+                                                   Disabled="@IsDeleting"
+                                                   SelectionTooltipText="Confirm timeline entry removal"
+                                                   OnToggle="@(_ => TimelineRemovalConfirmed = !TimelineRemovalConfirmed)"
+                                                   Class="snapshot-delete-toggle is-confirm">
+                                        <div class="snapshot-delete-toggle-copy">
+                                            <strong>Confirm timeline removal</strong>
+                                            <small>The linked timeline entries will be deleted instead of kept in History.</small>
+                                        </div>
+                                    </SelectableRow>
+                                }
+                            }
+                        </Section>
+                    </ChildContent>
+                    <Footer>
+                        <span class="modal-action-spacer"></span>
+                        <span class="modal-action-group">
+                            <AppButton Variant="secondary" Disabled="@IsDeleting" OnClick="@(_ => Close())">Cancel</AppButton>
+                            <BusyButton Variant="@ConfirmVariant" Disabled="@(!CanConfirm)" OnClick="Confirm">@ConfirmText</BusyButton>
+                        </span>
+                    </Footer>
+                </ModalStackLayout>
+            </MainContent>
+            <RailContent>
+                <Section Title="Impact" Class="snapshot-delete-impact" BodyClass="snapshot-delete-impact-body">
+                    <div class="snapshot-delete-subject">
+                        <span class="narrator-avatar snapshot-avatar"><FaIcon Name="flag" /></span>
+                        <span>
+                            <strong>Snapshot</strong>
+                            <small>@RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)</small>
+                        </span>
+                    </div>
+
+                    <div class="snapshot-delete-impact-list">
+                        <div>
+                            <FaIcon Name="message-sq" />
+                            <span><strong>@CoveredTurnText</strong><small>@MessageImpactText</small></span>
+                        </div>
+                        <div>
+                            <FaIcon Name="clock" />
+                            <span><strong>@TimelineEntryText</strong><small>@TimelineImpactText</small></span>
+                        </div>
+                        @if (Impact.LaterSnapshotCount > 0)
+                        {
+                            <div>
+                                <FaIcon Name="flag" />
+                                <span><strong>@LaterSnapshotText</strong><small>Later snapshots stay in place.</small></span>
+                            </div>
+                        }
+                        @if (Impact.CoveredBranchCount > 0)
+                        {
+                            <div>
+                                <FaIcon Name="branch" />
+                                <span><strong>@BranchText</strong><small>Later visible messages are reattached to the previous transcript point.</small></span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="divider"></div>
+                    <div class="snapshot-delete-summary">
+                        <FaIcon Name="@ImpactSummaryIcon" />
+                        <span>@ImpactSummary</span>
+                    </div>
+                </Section>
+            </RailContent>
+        </ModalSplitLayout>
+    }
+</ModalShell>
+
+@code {
+    SnapshotDeleteImpact? Impact;
+    SnapshotDeleteMethod Method;
+    bool InitializedMethod;
+    bool RemoveTimelineEntries;
+    bool TimelineRemovalConfirmed;
+    bool IsDeleting;
+    string ErrorMessage = "";
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string Subtitle => $"{RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)} · {CoveredTurnText}";
+    string CoveredTurnText => CountText(Impact?.CoveredTurnCount ?? 0, "message");
+    string TimelineEntryText => CountText(Impact?.LinkedTimelineEntryCount ?? 0, "timeline entry", "timeline entries");
+    string LaterSnapshotText => CountText(Impact?.LaterSnapshotCount ?? 0, "later snapshot");
+    string BranchText => CountText(Impact?.CoveredBranchCount ?? 0, "linked continuation");
+    string MessageImpactText => Method == SnapshotDeleteMethod.Unwrap
+        ? "Returned to the chat log"
+        : "Removed from the transcript";
+    string TimelineImpactText => Impact?.LinkedTimelineEntryCount == 0
+        ? "No timeline changes"
+        : RemoveTimelineEntries
+            ? "Removed from History"
+            : "Kept in History";
+    string ImpactSummary => Method == SnapshotDeleteMethod.Unwrap
+        ? "The snapshot row disappears and its messages become visible again."
+        : "The snapshot row and its covered messages are removed.";
+    string ImpactSummaryIcon => Method == SnapshotDeleteMethod.Unwrap ? "box-open" : "trash";
+    string ConfirmText => Method == SnapshotDeleteMethod.Unwrap
+        ? "Unwrap Snapshot"
+        : $"Delete {CoveredTurnText}";
+    string ConfirmVariant => Method == SnapshotDeleteMethod.Unwrap ? "primary" : "rose";
+    bool NeedsTimelineConfirmation => RemoveTimelineEntries && (Impact?.LinkedTimelineEntryCount ?? 0) > 0 && !TimelineRemovalConfirmed;
+    bool CanConfirm => !IsDeleting
+        && Impact is not null
+        && MethodAllowed
+        && !NeedsTimelineConfirmation;
+    bool MethodAllowed => Impact is not null
+        && (Method == SnapshotDeleteMethod.Unwrap
+            ? Impact.CanUnwrap
+            : Impact.CanDeleteCoveredMessages);
+
+    protected override void OnParametersSet()
+    {
+        Impact = Session.Chat.Transcript.GetSnapshotDeleteImpact(Snapshot.Id);
+        if (InitializedMethod || Impact is null)
+            return;
+
+        Method = Impact.CanUnwrap
+            ? SnapshotDeleteMethod.Unwrap
+            : SnapshotDeleteMethod.DeleteCoveredMessages;
+        InitializedMethod = true;
+    }
+
+    Task Close() => IsDeleting ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    void SelectMethod(SnapshotDeleteMethod method)
+    {
+        if (IsDeleting)
+            return;
+        if (Impact is null)
+            return;
+        if (method == SnapshotDeleteMethod.Unwrap && !Impact.CanUnwrap)
+            return;
+        if (method == SnapshotDeleteMethod.DeleteCoveredMessages && !Impact.CanDeleteCoveredMessages)
+            return;
+
+        Method = method;
+    }
+
+    void ToggleTimelineRemoval()
+    {
+        if (IsDeleting || Impact is null || Impact.LinkedTimelineEntryCount == 0)
+            return;
+
+        RemoveTimelineEntries = !RemoveTimelineEntries;
+        if (!RemoveTimelineEntries)
+            TimelineRemovalConfirmed = false;
+    }
+
+    async Task Confirm()
+    {
+        if (!CanConfirm)
+            return;
+
+        IsDeleting = true;
+        ErrorMessage = "";
+        try
+        {
+            await Session.Chat.Transcript.DeleteSnapshotAsync(Snapshot.Id, Method, RemoveTimelineEntries);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Deleting snapshot {SnapshotId} failed.", Snapshot.Id);
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Deleting this snapshot failed.", exception);
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
+    }
+
+    static string CountText(int count, string singular, string? plural = null)
+    {
+        if (count == 1)
+            return $"1 {singular}";
+
+        return $"{count} {plural ?? $"{singular}s"}";
+    }
+}

@@ -1,18 +1,24 @@
+@implements IDisposable
+@inject IEntityNotifier EntityNotifier
+
 <span class="@CssClass" style="@SizeStyle" title="@Title" @onclick="Click">
-    @if (Image is not null)
+    @if (CurrentImage is not null)
     {
-        @if (!string.IsNullOrWhiteSpace(Image.Url))
+        @if (!string.IsNullOrWhiteSpace(CurrentImage.Url))
         {
-            <img class="entity-image-thumb entity-image-asset" src="@Image.Url" alt="@Image.Name" />
+            <StoryAvatar Name="@CurrentName"
+                         ImageUrl="@CurrentImage.Url"
+                         Crop="@ImageAvatarCropView.From(CurrentImage)"
+                         Class="entity-image-thumb entity-image-asset" />
         }
         else
         {
-            <ImagePlaceholder Label="@Label" Hue="@Image.Hue" Class="entity-image-thumb" />
+            <ImagePlaceholder Label="@Label" Hue="@CurrentImage.Hue" Class="entity-image-thumb" />
         }
     }
     else
     {
-        <Avatar Name="@Name" Size="@Size" />
+        <Avatar Name="@CurrentName" Size="@Size" />
     }
     @if (Editable)
     {
@@ -25,16 +31,120 @@
 @code {
     [Parameter] public string Name { get; set; } = "?";
     [Parameter] public GalleryImage? Image { get; set; }
+    [Parameter] public string? EntityType { get; set; }
+    [Parameter] public string? EntityId { get; set; }
+    [Parameter] public string? ChatId { get; set; }
     [Parameter] public int Size { get; set; } = 34;
     [Parameter] public bool Editable { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [CascadingParameter] public RoleplaySession? Session { get; set; }
+
+    GalleryImage? CurrentImage;
+    string CurrentName = "?";
 
     string CssClass => string.Join(" ", new[] { "entity-image", Editable ? "is-editable" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
     string SizeStyle => $"--entity-image-size:{Size}px;";
-    string Title => Editable ? $"Change image for {Name}" : Name;
-    string Label => Image?.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? Initial;
-    string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
+    string Title => Editable ? $"Change image for {CurrentName}" : CurrentName;
+    string Label => CurrentImage?.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? Initial;
+    string Initial => string.IsNullOrWhiteSpace(CurrentName) ? "?" : CurrentName[..1].ToUpperInvariant();
+
+    protected override void OnInitialized()
+    {
+        EntityNotifier.Changed += OnEntityChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        CurrentName = Name;
+        CurrentImage = Image;
+    }
 
     Task Click(MouseEventArgs args) => Editable ? OnClick.InvokeAsync(args) : Task.CompletedTask;
+
+    async Task OnEntityChanged(EntityChangeNotification notification)
+    {
+        if (!ShouldHandle(notification))
+            return;
+
+        ResolveCurrentEntityState(notification);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    bool ShouldHandle(EntityChangeNotification notification)
+    {
+        if (!string.IsNullOrWhiteSpace(ChatId)
+            && !string.Equals(notification.ChatId, ChatId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var normalizedType = EntityTypes.Normalize(EntityType);
+        if (!string.IsNullOrWhiteSpace(normalizedType)
+            && string.Equals(notification.EntityType, normalizedType, StringComparison.Ordinal)
+            && string.Equals(notification.EntityId, EntityId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(notification.ImageId)
+            && string.Equals(notification.ImageId, CurrentImage?.Id, StringComparison.Ordinal);
+    }
+
+    void ResolveCurrentEntityState(EntityChangeNotification notification)
+    {
+        var document = Session?.ActiveChat.Current;
+        if (document is null)
+            return;
+        if (!string.IsNullOrWhiteSpace(ChatId)
+            && !string.Equals(document.Chat.Id, ChatId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var normalizedType = EntityTypes.Normalize(EntityType);
+        if (string.IsNullOrWhiteSpace(normalizedType) || string.IsNullOrWhiteSpace(EntityId))
+        {
+            CurrentImage = ResolveImage(document, CurrentImage?.Id);
+            return;
+        }
+
+        var entity = ResolveEntity(document, normalizedType, EntityId);
+        if (entity is null)
+        {
+            CurrentImage = null;
+            return;
+        }
+
+        CurrentName = entity.Value.Name;
+        CurrentImage = ResolveImage(document, entity.Value.ImageId);
+    }
+
+    static GalleryImage? ResolveImage(RpChatDocument document, string? imageId) =>
+        string.IsNullOrWhiteSpace(imageId)
+            ? null
+            : document.Images.FirstOrDefault(image => image.Id == imageId);
+
+    static (string Name, string ImageId)? ResolveEntity(RpChatDocument document, string entityType, string entityId) =>
+        entityType switch
+        {
+            EntityTypes.Character => document.Characters
+                .Where(character => character.Id == entityId)
+                .Select(character => ((string Name, string ImageId)?)(character.Name, character.ImageId))
+                .FirstOrDefault(),
+            EntityTypes.Location => document.Locations
+                .Where(location => location.Id == entityId)
+                .Select(location => ((string Name, string ImageId)?)(location.Name, location.ImageId))
+                .FirstOrDefault(),
+            EntityTypes.Item => document.Items
+                .Where(item => item.Id == entityId)
+                .Select(item => ((string Name, string ImageId)?)(item.Name, item.ImageId))
+                .FirstOrDefault(),
+            _ => null
+        };
+
+    public void Dispose()
+    {
+        EntityNotifier.Changed -= OnEntityChanged;
+    }
 }
