@@ -1,0 +1,73 @@
+<div class="@CssClass">
+    <div class="voice-catalog-row-main">
+        <div class="voice-catalog-row-head">
+            <span class="voice-catalog-title">
+                <strong title="@Voice.VoiceId">@Voice.Name</strong>
+                @if (!Voice.IsAvailable)
+                {
+                    <small>Unavailable</small>
+                }
+            </span>
+            <span class="voice-catalog-actions">
+                <TtsSampleButton Provider="@Provider"
+                                 Model="@PreviewModel"
+                                 Voice="@ProviderVoice"
+                                 PreviewUrl="@Voice.PreviewUrl" />
+                <BusyButton Variant="secondary"
+                            Size="sm"
+                            Class="voice-catalog-bookmark"
+                            TooltipText="@BookmarkTooltip"
+                            AriaLabel="@BookmarkTooltip"
+                            OnClick="ToggleBookmark">
+                    <FaIcon Name="star" />
+                </BusyButton>
+            </span>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Voice.Description))
+        {
+            <p>@Voice.Description</p>
+        }
+        <div class="voice-catalog-chip-list">
+            @foreach (var chip in Chips)
+            {
+                <span @key="@($"{Voice.VoiceId}:{chip}")" class="provider-voice-label">@chip</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public AiProvider Provider { get; set; } = new();
+    [Parameter] public AiProviderModel PreviewModel { get; set; } = new();
+    [Parameter] public ElevenLabsVoiceCatalogEntry Voice { get; set; } = new();
+    [Parameter] public EventCallback<(string VoiceId, bool Bookmarked)> OnBookmarkChanged { get; set; }
+
+    AiProviderVoice ProviderVoice => ElevenLabsVoiceCatalogService.ToProviderVoice(Voice);
+    string BookmarkTooltip => Voice.IsBookmarked ? $"Remove {Voice.Name} bookmark" : $"Bookmark {Voice.Name}";
+    string CssClass => $"voice-catalog-row {(Voice.IsBookmarked ? "is-bookmarked" : "")} {(!Voice.IsAvailable ? "is-unavailable" : "")}";
+    IReadOnlyList<string> Chips => BuildChips();
+
+    Task ToggleBookmark() => OnBookmarkChanged.InvokeAsync((Voice.VoiceId, !Voice.IsBookmarked));
+
+    IReadOnlyList<string> BuildChips()
+    {
+        var chips = new List<string>();
+        if (Voice.Featured)
+            chips.Add("Featured");
+        Add(chips, Voice.Accent);
+        Add(chips, Voice.Gender);
+        Add(chips, Voice.Age);
+        Add(chips, Voice.UseCase);
+        Add(chips, Voice.Category);
+        return chips;
+    }
+
+    static void Add(List<string> chips, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            chips.Add(DisplayLabel(value));
+    }
+
+    static string DisplayLabel(string value) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.Replace('_', ' ').Replace('-', ' '));
+}

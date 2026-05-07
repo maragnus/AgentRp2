@@ -32,16 +32,17 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
     public bool TextOutput { get; init; } = true;
     public bool ImageOutput { get; init; }
     public bool SpeechOutput { get; init; }
-    public bool Streaming { get; init; }
+    public bool Streaming { get; init; } = true;
     public bool StructuredOutput { get; init; }
     public bool Tools { get; init; }
     public string ImageGenerationModel { get; init; } = "";
+    public bool ImageInputFidelity { get; init; } = true;
     public string Source { get; init; } = "fallback";
     public IReadOnlyList<string> Aliases { get; init; } = [];
 
     public bool CanGenerateText => TextInput && TextOutput;
     public bool CanGenerateStructuredText => CanGenerateText && StructuredOutput;
-    public bool CanGenerateStreamingText => CanGenerateText && Streaming;
+    public bool CanGenerateStreamingText => CanGenerateText;
     public bool CanGenerateImage => TextInput && ImageOutput;
     public bool CanGenerateSpeech => TextInput && SpeechOutput;
 
@@ -52,7 +53,7 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
         Streaming = true,
         StructuredOutput = true,
         Source = "fallback",
-        Guidance = "No capability record was found. AgentRp assumes roleplay-ready text, streaming, and structured output support unless the user disables them."
+        Guidance = "No capability record was found. AgentRp assumes roleplay-ready text, streaming, and structured output support unless the user disables structured output."
     };
 }
 
@@ -72,6 +73,11 @@ public static class TextModelTuningCatalog
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState? selections = null) =>
         TryResolveActiveModel(providers, AiModelRole.Chat, selections);
+
+    public static ActiveModelSelection? TryResolveActiveReasoningModel(
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState? selections = null) =>
+        TryResolveActiveModel(providers, AiModelRole.Reasoning, selections);
 
     public static ActiveModelSelection? TryResolveActiveModel(
         IReadOnlyList<AiProvider> providers,

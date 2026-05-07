@@ -1,4 +1,5 @@
 @using AgentRp.Services
+@inject IServiceProvider Services
 
 <article class="narrative-message">
     @if (ShowProcess && Message.Trace is not null)
@@ -64,6 +65,9 @@
             }
 
             <div class="action-cluster">
+                <MessageSpeechButton Message="Message"
+                                     Disabled="@TranscriptBusy"
+                                     OnOpenEntities="OnOpenEntities" />
                 <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover">
                     <Trigger Context="author">
                         <AppButton Icon="users" TooltipText="Change author" Active="@author.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => author.Toggle())" />
@@ -132,6 +136,7 @@
                     <ModalTab Id="appearance" Title="Appearance" Summary="@($"{Characters.Count} characters")" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
                     <ModalTab Id="plan" Title="Plan" Summary="@PlanShape" Dirty="@IsPlanDirty()" />
                     <ModalTab Id="private" Title="Private Intent" Summary="@($"{Characters.Count} characters")" Dirty="@PrivateIntents.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
+                    <ModalTab Id="speech" Title="Speech" Summary="@SpeechSummary" />
                 </ChildContent>
                 <RailFooter>
                     <div class="prompt-rail-note">
@@ -161,9 +166,16 @@
                             else
                             {
                                 <ModalPaneToolbar Class="tuning-toolbar">
-                                    <strong>Private Intent</strong>
+                                    <strong>@(ActivePlanTab == "speech" ? "TTS Input" : "Private Intent")</strong>
                                     <span class="toolbar-spacer"></span>
-                                    <Badge Tone="violet">@Characters.Count</Badge>
+                                    @if (ActivePlanTab == "speech")
+                                    {
+                                        <Badge Tone="emerald">@SpeechSummary</Badge>
+                                    }
+                                    else
+                                    {
+                                        <Badge Tone="violet">@Characters.Count</Badge>
+                                    }
                                 </ModalPaneToolbar>
                             }
                         </Header>
@@ -214,7 +226,7 @@
                                     </FieldRow>
                                 </Section>
                             }
-                            else
+                            else if (ActivePlanTab == "private")
                             {
                                 @foreach (var character in Characters)
                                 {
@@ -222,6 +234,39 @@
                                         <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {character.Name} carrying?")" value="@GetPrivateIntent(character.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(character.Id, args.Value?.ToString() ?? ""))"></textarea>
                                     </Section>
                                 }
+                            }
+                            else
+                            {
+                                <Section Title="TTS Input" Hint="@SpeechInputHint" Class="edit-plan-section">
+                                    @if (SpeechInputLoading)
+                                    {
+                                        <StatusRow Icon="spinner">Loading speech input...</StatusRow>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(SpeechInputError))
+                                    {
+                                        <StatusRow Icon="warning" Tone="danger">@SpeechInputError</StatusRow>
+                                    }
+                                    else if (SpeechInputSnapshot is null || SpeechInputSnapshot.Inputs.Count == 0)
+                                    {
+                                        <p class="empty-note">Generate read-aloud to capture the TTS input for this message.</p>
+                                    }
+                                    else if (SpeechInputSnapshot.Inputs.Count == 1)
+                                    {
+                                        <textarea class="field plan-field speech-input-field" rows="8" readonly value="@SpeechInputSnapshot.Inputs[0].Text"></textarea>
+                                    }
+                                    else
+                                    {
+                                        <div class="speech-input-list">
+                                            @for (var i = 0; i < SpeechInputSnapshot.Inputs.Count; i++)
+                                            {
+                                                var input = SpeechInputSnapshot.Inputs[i];
+                                                <FieldRow @key="SpeechInputKey(input, i)" Label="@SpeechInputLabel(input, i)">
+                                                    <textarea class="field plan-field speech-input-field" rows="4" readonly value="@input.Text"></textarea>
+                                                </FieldRow>
+                                            }
+                                        </div>
+                                    }
+                                </Section>
                             }
                         </ChildContent>
                         <Footer>
@@ -254,6 +299,7 @@
     bool ConfirmDelete;
     bool EditPlan;
     bool EditBody;
+    bool SpeechInputLoading;
     string ActivePlanTab = "appearance";
     string SelectedTurnShape = "";
     string BodyDraft = "";
@@ -264,6 +310,8 @@
     string WhyNow = "";
     string ChangeIntroduced = "";
     string Guardrails = "";
+    string SpeechInputError = "";
+    MessageSpeechInputSnapshot? SpeechInputSnapshot;
     Dictionary<string, string> Appearances = [];
     Dictionary<string, string> PrivateIntents = [];
 
@@ -274,8 +322,10 @@
     [Parameter] public bool ShowProcess { get; set; }
     [Parameter] public bool TranscriptBusy { get; set; }
     [Parameter] public int SubsequentCount { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;
 
+    IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
     bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
     string ProseClass => IsNarrator ? "is-narrator" : "is-character";
     string ModeClass => Message.Mode switch
@@ -310,6 +360,14 @@
     string FailureMessage => Message.Trace?.Status == "failed" && Message.Trace?.Data.TryGetPropertyValue("error", out var errorNode) == true
         ? errorNode?.GetValue<string>() ?? ""
         : "";
+    string SpeechSummary => SpeechInputSnapshot is null
+        ? "No input"
+        : SpeechInputSnapshot.Inputs.Count == 1
+            ? "1 input"
+            : $"{SpeechInputSnapshot.Inputs.Count} inputs";
+    string SpeechInputHint => SpeechInputSnapshot is null
+        ? "Captured after read-aloud generation"
+        : $"{SpeechInputSnapshot.ProviderName} · {SpeechInputSnapshot.ModelId} · {SpeechInputSnapshot.Status}";
 
     protected override void OnParametersSet()
     {
@@ -369,12 +427,14 @@
     async Task Regenerate(string? requestedShape = null)
     {
         var actor = Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId);
-        var turnShape = TurnShapePickerOptions.NormalizeExplicit(requestedShape ?? SelectedTurnShape);
-        SelectedTurnShape = turnShape;
+        var turnShape = string.IsNullOrWhiteSpace(requestedShape) ? "" : TurnShapePickerOptions.NormalizeExplicit(requestedShape);
+        if (!string.IsNullOrWhiteSpace(turnShape))
+            SelectedTurnShape = turnShape;
+
         await Session.Chat.Transcript.RegenerateAsync(Message.Id, Message.Guidance, actor, turnShape);
     }
 
-    void OpenPlanEditor()
+    async Task OpenPlanEditor()
     {
         PlanShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
         Beat = Message.Plan.Beat;
@@ -386,6 +446,7 @@
         Appearances = Message.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         PrivateIntents = Message.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         EditPlan = true;
+        await LoadSpeechInputSnapshot();
     }
 
     void OpenEditBody()
@@ -422,4 +483,35 @@
     }
 
     ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+
+    async Task LoadSpeechInputSnapshot()
+    {
+        SpeechInputSnapshot = null;
+        SpeechInputError = "";
+        if (SpeechService is null || string.IsNullOrWhiteSpace(Message.Speech.VoiceMessageId))
+            return;
+
+        SpeechInputLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            SpeechInputSnapshot = await SpeechService.LoadInputSnapshotAsync(Message);
+        }
+        catch (Exception exception)
+        {
+            SpeechInputError = UserFacingErrorMessageBuilder.Build("Loading TTS input failed.", exception);
+        }
+        finally
+        {
+            SpeechInputLoading = false;
+        }
+    }
+
+    static string SpeechInputLabel(SpeechGenerationInput input, int index) =>
+        string.IsNullOrWhiteSpace(input.VoiceId)
+            ? $"Input {index + 1}"
+            : $"Input {index + 1} · {input.VoiceId}";
+
+    static string SpeechInputKey(SpeechGenerationInput input, int index) =>
+        $"{index}:{input.VoiceId}:{input.Text.Length}";
 }

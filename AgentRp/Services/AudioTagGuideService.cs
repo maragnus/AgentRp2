@@ -22,7 +22,10 @@ public sealed class AudioTagGuideService : IAudioTagGuideService
             return AudioTagPromptGuide.Empty;
 
         var selection = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Voice, document.ActiveModelSelections);
-        return selection?.Provider.Type.Trim().ToLowerInvariant() switch
+        if (selection is null || !AudioTagTransportRules.SupportsAudioTags(selection))
+            return AudioTagPromptGuide.Empty;
+
+        return selection.Provider.Type.Trim().ToLowerInvariant() switch
         {
             "elevenlabs" => ElevenLabsGuide,
             "grok" => XAiGuide,
@@ -43,7 +46,6 @@ public sealed class AudioTagGuideService : IAudioTagGuideService
         - Pacing and hesitation examples: [pause], [short pause], [long pause], [hesitates], [stammers], [drawn out], [trails off], [interrupts], [overlapping], [beat].
         - Accent and voice color examples: [British accent], [Southern accent], [French accent], [Irish accent], [New York accent], [tired], [hoarse], [warmly], [coldly].
         - Sound effect examples: [door creaks], [phone buzzes], [footsteps approach], [rain patters], [glass clinks], [distant thunder], [chair scrapes], [keys jingle].
-        - Do not combine tags into a single block. Use separate tags for each. For example, use [rushed, breathless] pick the best one.
         - Strong examples:
           [whispers] "Don't move."
           [sighs] "I thought we were past this."
@@ -52,10 +54,12 @@ public sealed class AudioTagGuideService : IAudioTagGuideService
           [long pause] "Fine. Tell me the truth."
           [French accent] "You make this sound so simple."
           [door creaks] She turns toward the hall. [softly] "Someone's here."
+        - NEVER invent new tags, only what is above is supported.
+        - NEVER combine tags. One [tag] is fine, but [tag1][tag2] or [tag1, tag2] is not supported.
         """,
         """
         Audio tag reminder:
-        Audio tags are enabled. Inject ElevenLabs-style square-bracket tags directly into the prose where they improve emotion, delivery, pacing, reactions, accents, or sound. Keep them inline and do not explain them.
+        Audio tags are enabled. Inject supported ElevenLabs-style square-bracket tags directly into the prose where they improve emotion, delivery, pacing, reactions, accents, or sound. Keep them inline and do not explain them.
         """);
 
     static readonly AudioTagPromptGuide XAiGuide = new(
@@ -82,9 +86,10 @@ public sealed class AudioTagGuideService : IAudioTagGuideService
           [long-pause] "Fine. Tell me the truth."
           <build-intensity>"No. No, you do not get to walk away from this."</build-intensity>
           [inhale] <soft>"Someone's here."</soft>
+        - NEVER combine tags. One [tag] is fine, but [tag1][tag2] or [tag1, tag2] is not supported.
         """,
         """
         Audio tag reminder:
-        Audio tags are enabled. Inject xAI-compatible speech tags directly into the prose: supported bracket tags like [pause], [laugh], [sigh], [inhale], or [long-pause] for point cues, and supported wrapping tags like <whisper>...</whisper>, <soft>...</soft>, <loud>...</loud>, <slow>...</slow>, <build-intensity>...</build-intensity>, or <emphasis>...</emphasis> for sustained delivery. Do not explain them.
+        Audio tags are enabled. Inject supported xAI-compatible speech tags directly into the prose: supported bracket tags like [pause], [laugh], [sigh], [inhale], or [long-pause] for point cues, and supported wrapping tags like <whisper>...</whisper>, <soft>...</soft>, <loud>...</loud>, <slow>...</slow>, <build-intensity>...</build-intensity>, or <emphasis>...</emphasis> for sustained delivery. Do not explain them.
         """);
 }

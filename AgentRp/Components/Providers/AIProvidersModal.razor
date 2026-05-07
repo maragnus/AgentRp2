@@ -169,6 +169,10 @@
                         <ModalPaneActionBar Class="provider-action-bar">
                             <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" Disabled="@(!CanRefreshVoices(Selected))" OnClick="RefreshVoices"><FaIcon Name="waveform-lines" />Refresh voices</BusyButton>
+                            @if (IsElevenLabs(Selected))
+                            {
+                                <AppButton Variant="secondary" Size="sm" OnClick="@(_ => VoiceCatalogOpen = true)"><FaIcon Name="book-open" />Voice Catalog</AppButton>
+                            }
                             <span class="modal-action-spacer"></span>
                             <AppButton Variant="danger" Size="sm" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" />Delete</AppButton>
                         </ModalPaneActionBar>
@@ -273,6 +277,14 @@
     </ModalShell>
 }
 
+@if (VoiceCatalogOpen && Selected is not null)
+{
+    <ElevenLabsVoiceCatalogModal Provider="@Selected"
+                                 PreviewModel="@PreviewVoiceModel(Selected)"
+                                 OnChanged="OnVoiceCatalogChanged"
+                                 OnClose="@(() => VoiceCatalogOpen = false)" />
+}
+
 @code {
     string? SelectedId;
     int OnboardStep;
@@ -280,6 +292,7 @@
     string OnboardApiKey = "";
     string OnboardEndpoint = "";
     bool ConfirmDelete;
+    bool VoiceCatalogOpen;
     bool ShowModelsNeedingSetup;
     AiProvider? SetupProvider;
     AiProviderModel? SetupModel;
@@ -641,6 +654,16 @@
 
     static bool CanRefreshVoices(AiProvider provider) =>
         provider.Models.Any(AiProviderModelSelectionRules.IsSelectedForVoice);
+
+    static bool IsElevenLabs(AiProvider provider) =>
+        string.Equals(provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
+
+    static AiProviderModel PreviewVoiceModel(AiProvider provider) =>
+        provider.Models.FirstOrDefault(AiProviderModelSelectionRules.IsSelectedForVoice)
+        ?? provider.Models.FirstOrDefault()
+        ?? new();
+
+    Task OnVoiceCatalogChanged() => InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {

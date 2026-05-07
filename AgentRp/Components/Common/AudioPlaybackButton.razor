@@ -1,0 +1,103 @@
+@implements IDisposable
+@inject ITtsAudioPlaybackService Playback
+@inject ILogger<AudioPlaybackButton> Logger
+
+<AppButton Variant="@Variant"
+           Size="@Size"
+           Class="@CssClass"
+           Disabled="@(Disabled || Loading)"
+           Icon="@ButtonIcon"
+           Text="@ButtonText"
+           TooltipText="@EffectiveTooltip"
+           OnClick="Click"
+           StopPropagation="@StopPropagation" />
+
+@code {
+    bool Loading;
+    string Error = "";
+
+    [Parameter] public string AudioKey { get; set; } = "";
+    [Parameter] public Func<MouseEventArgs, Task<string>> ResolveUrlAsync { get; set; } = _ => Task.FromResult("");
+    [Parameter] public string Variant { get; set; } = "secondary";
+    [Parameter] public string Size { get; set; } = "sm";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool IconOnly { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool StopPropagation { get; set; } = true;
+    [Parameter] public string PlayTooltip { get; set; } = "Play";
+    [Parameter] public string StopTooltip { get; set; } = "Stop";
+    [Parameter] public string LoadingTooltip { get; set; } = "Loading";
+    [Parameter] public string ErrorFallback { get; set; } = "Playing audio failed.";
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    bool Playing => Playback.IsPlaying(AudioKey);
+    string ButtonIcon => Loading ? "spinner" : Playing ? "circle-stop" : "circle-play";
+    string? ButtonText => IconOnly ? null : Playing ? "Stop" : "Play";
+    string EffectiveTooltip => !string.IsNullOrWhiteSpace(Error)
+        ? Error
+        : Loading ? LoadingTooltip : Playing ? StopTooltip : PlayTooltip;
+    string CssClass => string.Join(" ", new[]
+    {
+        "audio-playback-button",
+        Loading ? "is-loading" : null,
+        Playing ? "is-playing" : null,
+        !string.IsNullOrWhiteSpace(Error) ? "has-error" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    protected override void OnInitialized()
+    {
+        Playback.Changed += OnPlaybackChanged;
+        Playback.Failed += OnPlaybackFailed;
+    }
+
+    async Task Click(MouseEventArgs args)
+    {
+        Error = "";
+        if (Playing)
+        {
+            await Playback.StopAsync();
+            return;
+        }
+
+        try
+        {
+            Loading = true;
+            var url = await ResolveUrlAsync(args);
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            await Playback.PlayUrlAsync(AudioKey, url);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "{ErrorFallback}", ErrorFallback);
+            Error = UserFacingErrorMessageBuilder.Build(ErrorFallback, exception);
+            await OnError.InvokeAsync(exception);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    Task OnPlaybackChanged() => InvokeAsync(StateHasChanged);
+
+    Task OnPlaybackFailed(string key, string message) => InvokeAsync(async () =>
+    {
+        if (!string.Equals(key, AudioKey, StringComparison.Ordinal))
+            return;
+
+        var exception = new InvalidOperationException(message);
+        Logger.LogError(exception, "{ErrorFallback}", ErrorFallback);
+        Error = UserFacingErrorMessageBuilder.Build(ErrorFallback, exception);
+        await OnError.InvokeAsync(exception);
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Playback.Changed -= OnPlaybackChanged;
+        Playback.Failed -= OnPlaybackFailed;
+    }
+}

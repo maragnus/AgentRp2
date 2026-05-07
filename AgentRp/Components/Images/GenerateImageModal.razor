@@ -7,12 +7,12 @@
             <RailContent>
                 <Section Title="Settings" Class="generate-block">
                     <FieldRow Label="Image Model">
-                        <select class="select" value="@ModelKey" @onchange="SetModel">
+                        <AppSelect Value="@ModelKey" ValueChanged="SetModel">
                             @foreach (var model in ImageModels)
                             {
-                                <option value="@model.Key">@model.Label</option>
+                                <option @key="model.Key" value="@model.Key">@model.Label</option>
                             }
-                        </select>
+                        </AppSelect>
                     </FieldRow>
                     @if (ImageModels.Count == 0)
                     {
@@ -23,10 +23,18 @@
                         <div class="modal-error">@ErrorMessage</div>
                     }
                     <div class="field-row-grid cols-3">
-                        <FieldRow Label="Size"><select class="select" @bind="Size"><option>Landscape</option><option>Portrait</option><option>Square</option></select></FieldRow>
-                        <FieldRow Label="Quality"><select class="select" @bind="Quality"><option>Auto</option><option>High</option><option>Medium</option></select></FieldRow>
-                        <FieldRow Label="Refs"><select class="select" @bind="Refs"><option>Low</option><option>Medium</option><option>High</option></select></FieldRow>
+                        <FieldRow Label="Size"><AppSelect Value="@Size" ValueChanged="value => Size = value"><option>Landscape</option><option>Portrait</option><option>Square</option></AppSelect></FieldRow>
+                        <FieldRow Label="Quality"><AppSelect Value="@Quality" ValueChanged="value => Quality = value"><option>Auto</option><option>High</option><option>Medium</option><option>Low</option></AppSelect></FieldRow>
+                        <FieldRow Label="Reference Detail"><AppSelect Value="@ReferenceDetail" ValueChanged="value => ReferenceDetail = value"><option>Auto</option><option>High</option><option>Low</option></AppSelect></FieldRow>
                     </div>
+                    <FieldRow Label="Art Style">
+                        <AppSelect Value="@ArtStyleKey" ValueChanged="value => ArtStyleKey = value">
+                            @foreach (var style in ArtStyleOptions)
+                            {
+                                <option @key="style.Key" value="@style.Key">@style.Label</option>
+                            }
+                        </AppSelect>
+                    </FieldRow>
                     <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
                         <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate…"></textarea>
                     </FieldRow>
@@ -79,20 +87,11 @@
 
             <MainContent>
                 <Section Title="Generated Image" Class="generate-preview" BodyClass="generate-preview-body">
-                    <div class="generated-frame">
-                        @if (Generating)
-                        {
-                            <div class="empty-preview"><span class="spinner"></span><span>Generating…</span></div>
-                        }
-                        else if (SelectedGenerated is not null)
-                        {
-                            <img class="generated-image-preview" src="@SelectedGenerated.Image.Url" alt="@SelectedGenerated.Image.Name" />
-                        }
-                        else
-                        {
-                            <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
-                        }
-                    </div>
+                    <GeneratedImagePreview Generating="@Generating"
+                                           ImageUrl="@CurrentPreviewUrl"
+                                           ImageAlt="@CurrentPreviewAlt"
+                                           CanOpenDetails="@CanOpenSelectedDetails"
+                                           OnOpenDetails="OpenSelectedDetails" />
                     <TiledSelectList TItem="GeneratedImageOption"
                                      Items="Generated"
                                      SelectedIds="SelectedGeneratedIds"
@@ -118,14 +117,19 @@
     </ChildContent>
     <Footer>
         <span class="modal-action-spacer"></span>
-        <AppButton Variant="primary" Disabled="@(!CanGenerate || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@GenerateButtonText</AppButton>
+        <BusyButton Variant="primary" Disabled="@(!CanGenerate || Generating)" OnClick="Generate"><FaIcon Name="sparkle" />@GenerateButtonText</BusyButton>
         @if (SelectedGenerated is not null)
         {
-            <AppButton Variant="blue" Disabled="@SelectedGenerated.IsSaved" OnClick="Save"><FaIcon Name="download" />@SaveButtonText</AppButton>
+            <BusyButton Variant="blue" Disabled="@SelectedGenerated.IsSaved" OnClick="Save"><FaIcon Name="download" />@SaveButtonText</BusyButton>
         }
         <AppButton Variant="secondary" OnClick="@(_ => RequestClose())">Done</AppButton>
     </Footer>
 </ModalShell>
+
+@if (!string.IsNullOrWhiteSpace(DetailImageId))
+{
+    <ImageDetailsModal ImageId="@DetailImageId" OnClose="@(() => DetailImageId = null)" />
+}
 
 @if (ConfirmDiscard)
 {
@@ -143,16 +147,21 @@
     bool ConfirmDiscard;
     string Prompt = "";
     string ModelKey = "";
+    string ArtStyleKey = "none";
     string Size = "Landscape";
     string Quality = "Auto";
-    string Refs = "Low";
+    string ReferenceDetail = "Auto";
     string ErrorMessage = "";
+    string PreviewImageDataUrl = "";
+    string? DetailImageId;
     string? SelectedGeneratedId;
+    CancellationTokenSource? GenerationCancellation;
     HashSet<string> SelectedCharacters = [];
     HashSet<string> SelectedRefs = [];
     List<GeneratedImageOption> Generated = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string? TargetEntityId { get; set; }
     [Parameter] public string? TargetEntityName { get; set; }
     [Parameter] public string? TargetEntityType { get; set; }
     [Parameter] public bool AutoUseSavedImage { get; set; }
@@ -161,6 +170,7 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<GalleryImage> Images => Session.Chat.Images.Items;
+    IReadOnlyList<ImageArtStyleOption> ArtStyleOptions => ImageGenerationService.GetArtStyleOptions();
     IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.Chat.ModelSelection.State);
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
@@ -170,6 +180,9 @@
     bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
     string GenerateButtonText => Generating ? "Generating…" : Generated.Count > 0 ? "Generate More" : "Generate";
     string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
+    string CurrentPreviewUrl => Generating && !string.IsNullOrWhiteSpace(PreviewImageDataUrl) ? PreviewImageDataUrl : SelectedGenerated?.Image.Url ?? "";
+    string CurrentPreviewAlt => SelectedGenerated?.Image.Name ?? "Generated image preview";
+    bool CanOpenSelectedDetails => !Generating && SelectedGenerated is not null;
 
     protected override void OnInitialized()
     {
@@ -188,9 +201,9 @@
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
-    async Task SetModel(ChangeEventArgs args)
+    async Task SetModel(string modelKey)
     {
-        ModelKey = args.Value?.ToString() ?? "";
+        ModelKey = modelKey;
         var selected = ImageModels.FirstOrDefault(model => model.Key == ModelKey);
         if (selected is not null)
             await Session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Image, selected.ProviderId, selected.ModelId);
@@ -217,31 +230,54 @@
 
         Generating = true;
         ErrorMessage = "";
+        PreviewImageDataUrl = "";
+        GenerationCancellation?.Cancel();
+        GenerationCancellation?.Dispose();
+        var generationCancellation = new CancellationTokenSource();
+        GenerationCancellation = generationCancellation;
         try
         {
             var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no chat is open.");
-            var result = await ImageGenerationService.GenerateAsync(
+            await foreach (var update in ImageGenerationService.GenerateStreamingAsync(
                 document,
                 Session.Providers.Items,
                 new GenerateImageRequest(
                     ModelKey,
                     Prompt,
+                    ArtStyleKey,
                     Size,
                     Quality,
-                    Refs,
+                    ReferenceDetail,
                     SelectedCharacters.ToList(),
                     SelectedRefs.ToList(),
                     TargetEntityName,
-                    TargetEntityType));
-            var option = new GeneratedImageOption
+                    TargetEntityType,
+                    TargetEntityId),
+                generationCancellation.Token))
             {
-                Id = result.Image.Id,
-                Image = result.Image,
-                ProviderName = result.ProviderName,
-                ModelId = result.ModelId
-            };
-            Generated.Insert(0, option);
-            SelectedGeneratedId = option.Id;
+                if (!string.IsNullOrWhiteSpace(update.PreviewImageDataUrl))
+                {
+                    PreviewImageDataUrl = update.PreviewImageDataUrl;
+                    await InvokeAsync(StateHasChanged);
+                }
+
+                if (update.Result is not null)
+                {
+                    var option = new GeneratedImageOption
+                    {
+                        Id = update.Result.Image.Id,
+                        Image = update.Result.Image,
+                        ProviderName = update.Result.ProviderName,
+                        ModelId = update.Result.ModelId
+                    };
+                    Generated.Insert(0, option);
+                    SelectedGeneratedId = option.Id;
+                    PreviewImageDataUrl = "";
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception exception)
         {
@@ -250,12 +286,23 @@
         finally
         {
             Generating = false;
+            if (ReferenceEquals(GenerationCancellation, generationCancellation))
+            {
+                GenerationCancellation.Dispose();
+                GenerationCancellation = null;
+            }
         }
     }
 
     void SelectGenerated(string id) => SelectedGeneratedId = id;
 
-    async Task Save(MouseEventArgs args)
+    void OpenSelectedDetails()
+    {
+        if (SelectedGenerated is not null)
+            DetailImageId = SelectedGenerated.Id;
+    }
+
+    async Task Save()
     {
         var selected = SelectedGenerated;
         if (selected is null || selected.IsSaved)
@@ -269,6 +316,7 @@
 
     async Task RequestClose()
     {
+        CancelGeneration();
         if (HasUnsavedGeneratedImages)
         {
             ConfirmDiscard = true;
@@ -281,6 +329,7 @@
 
     async Task CloseWithoutSaving()
     {
+        CancelGeneration();
         ConfirmDiscard = false;
         await OnClose.InvokeAsync();
     }
@@ -297,9 +346,15 @@
 
     public void Dispose()
     {
+        CancelGeneration();
         Session.Chat.Characters.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
         Session.Chat.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
+    }
+
+    void CancelGeneration()
+    {
+        GenerationCancellation?.Cancel();
     }
 }

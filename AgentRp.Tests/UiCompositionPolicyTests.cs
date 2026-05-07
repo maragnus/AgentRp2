@@ -276,6 +276,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
         await session.InitializeAsync();
@@ -298,6 +299,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
+        context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
         await session.InitializeAsync();
@@ -442,5 +444,29 @@ public sealed class UiCompositionPolicyTests
 
         public Task<AiProviderVoiceRefreshResult> RefreshModelAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default) =>
             Task.FromResult(new AiProviderVoiceRefreshResult(model.Id, model.Id, true, ""));
+    }
+
+    sealed class TestElevenLabsVoiceCatalogService : IElevenLabsVoiceCatalogService
+    {
+        public Task<ElevenLabsVoiceCatalogSnapshot> EnsureLoadedAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
+            LoadSnapshotAsync(cancellationToken: cancellationToken);
+
+        public Task<ElevenLabsVoiceCatalogSnapshot> EnsureLoadedAsync(AiProvider provider, IProgress<ElevenLabsVoiceCatalogRefreshProgress> progress, CancellationToken cancellationToken = default) =>
+            LoadSnapshotAsync(cancellationToken: cancellationToken);
+
+        public Task<ElevenLabsVoiceCatalogSnapshot> RefreshAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
+            LoadSnapshotAsync(cancellationToken: cancellationToken);
+
+        public Task<ElevenLabsVoiceCatalogSnapshot> RefreshAsync(AiProvider provider, IProgress<ElevenLabsVoiceCatalogRefreshProgress> progress, CancellationToken cancellationToken = default) =>
+            LoadSnapshotAsync(cancellationToken: cancellationToken);
+
+        public Task<ElevenLabsVoiceCatalogSnapshot> LoadSnapshotAsync(ElevenLabsVoiceCatalogFilter? filter = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ElevenLabsVoiceCatalogSnapshot([], [], [], [], [], [], null, "", 0, 0));
+
+        public Task<IReadOnlyList<AiProviderVoice>> LoadBookmarkedVoicesAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AiProviderVoice>>([]);
+
+        public Task SetBookmarkedAsync(string voiceId, bool bookmarked, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 }

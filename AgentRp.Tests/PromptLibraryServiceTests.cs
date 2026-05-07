@@ -6,7 +6,7 @@ namespace AgentRp.Tests;
 public sealed class PromptLibraryServiceTests
 {
     [Fact]
-    public void DefaultsMatchAgentRp1PromptLibraryContentExactly()
+    public void DefaultsMatchAgentRp1PromptLibraryContentWithAgentRp2ProseFormatReminder()
     {
         var defaults = PromptLibraryService.CreateDefaultState();
 
@@ -17,7 +17,9 @@ public sealed class PromptLibraryServiceTests
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningSystemPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].System);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].User);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseSystemPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Prose].System);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Prose].User);
+        AssertPromptEqual(
+            PromptLibraryService.WithProseFormatReminder(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseUserPromptTemplate")),
+            defaults.Prompts[PromptLibraryStageIds.Prose].User);
         AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryChatSnapshotService.cs"), "BuildSnapshotSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
         AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
     }

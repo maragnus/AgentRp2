@@ -9,7 +9,10 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
     public DbSet<AiProviderRow> AiProviders => Set<AiProviderRow>();
     public DbSet<AiProviderModelRow> AiProviderModels => Set<AiProviderModelRow>();
     public DbSet<AiProviderMetricRow> AiProviderMetrics => Set<AiProviderMetricRow>();
+    public DbSet<ElevenLabsVoiceCatalogRow> ElevenLabsVoiceCatalog => Set<ElevenLabsVoiceCatalogRow>();
+    public DbSet<ElevenLabsVoiceCatalogStateRow> ElevenLabsVoiceCatalogStates => Set<ElevenLabsVoiceCatalogStateRow>();
     public DbSet<ImageAssetRow> ImageAssets => Set<ImageAssetRow>();
+    public DbSet<SpeechAssetRow> SpeechAssets => Set<SpeechAssetRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -96,6 +99,36 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.HasIndex(x => new { x.ProviderId, x.Kind });
         });
 
+        modelBuilder.Entity<ElevenLabsVoiceCatalogRow>(builder =>
+        {
+            builder.HasKey(x => x.VoiceId);
+            builder.Property(x => x.VoiceId).HasMaxLength(120);
+            builder.Property(x => x.PublicOwnerId).HasMaxLength(200);
+            builder.Property(x => x.Name).HasMaxLength(500);
+            builder.Property(x => x.Description).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.PreviewUrl).HasMaxLength(1000);
+            builder.Property(x => x.Accent).HasMaxLength(200);
+            builder.Property(x => x.Gender).HasMaxLength(100);
+            builder.Property(x => x.Age).HasMaxLength(100);
+            builder.Property(x => x.UseCase).HasMaxLength(200);
+            builder.Property(x => x.Category).HasMaxLength(100);
+            builder.Property(x => x.Language).HasMaxLength(100);
+            builder.Property(x => x.Locale).HasMaxLength(100);
+            builder.Property(x => x.Descriptive).HasMaxLength(500);
+            builder.Property(x => x.VerifiedLanguagesJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.RawJson).HasColumnType("nvarchar(max)");
+            builder.HasIndex(x => x.Name);
+            builder.HasIndex(x => x.IsBookmarked);
+            builder.HasIndex(x => x.IsAvailable);
+        });
+
+        modelBuilder.Entity<ElevenLabsVoiceCatalogStateRow>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).HasMaxLength(80);
+            builder.Property(x => x.LastRefreshError).HasMaxLength(1000);
+        });
+
         modelBuilder.Entity<ImageAssetRow>(builder =>
         {
             builder.HasKey(x => x.Id);
@@ -106,10 +139,33 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.Title).HasMaxLength(500);
             builder.Property(x => x.UserPrompt).HasColumnType("nvarchar(max)");
             builder.Property(x => x.FinalPrompt).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.GenerationMetadataJson).HasColumnType("nvarchar(max)").HasDefaultValue("");
             builder.Property(x => x.ProviderId).HasMaxLength(80);
             builder.Property(x => x.ProviderName).HasMaxLength(200);
             builder.Property(x => x.ProviderModelId).HasMaxLength(500);
             builder.Property(x => x.Bytes).HasColumnType("varbinary(max)");
+            builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
+        });
+
+        modelBuilder.Entity<SpeechAssetRow>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).HasMaxLength(80);
+            builder.Property(x => x.ChatId).HasMaxLength(80);
+            builder.Property(x => x.TurnId).HasMaxLength(80);
+            builder.Property(x => x.Status).HasMaxLength(40).HasDefaultValue(SpeechAssetStatus.Pending);
+            builder.Property(x => x.ContentType).HasMaxLength(100);
+            builder.Property(x => x.FileName).HasMaxLength(500);
+            builder.Property(x => x.ProviderId).HasMaxLength(80);
+            builder.Property(x => x.ProviderName).HasMaxLength(200);
+            builder.Property(x => x.ProviderType).HasMaxLength(100);
+            builder.Property(x => x.ProviderModelId).HasMaxLength(500);
+            builder.Property(x => x.SourceHash).HasMaxLength(200);
+            builder.Property(x => x.InputsJson).HasColumnType("nvarchar(max)").HasDefaultValue("[]");
+            builder.Property(x => x.VoiceIdsJson).HasColumnType("nvarchar(max)").HasDefaultValue("{}");
+            builder.Property(x => x.ErrorMessage).HasMaxLength(1000).HasDefaultValue("");
+            builder.Property(x => x.Bytes).HasColumnType("varbinary(max)");
+            builder.HasIndex(x => new { x.ChatId, x.TurnId });
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
         });
     }
@@ -199,6 +255,41 @@ public sealed class AiProviderMetricRow
     public AiProviderRow Provider { get; set; } = null!;
 }
 
+public sealed class ElevenLabsVoiceCatalogRow
+{
+    public string VoiceId { get; set; } = "";
+    public string PublicOwnerId { get; set; } = "";
+    public long? DateUnix { get; set; }
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string PreviewUrl { get; set; } = "";
+    public bool Featured { get; set; }
+    public string Accent { get; set; } = "";
+    public string Gender { get; set; } = "";
+    public string Age { get; set; } = "";
+    public string UseCase { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Language { get; set; } = "";
+    public string Locale { get; set; } = "";
+    public string Descriptive { get; set; } = "";
+    public string VerifiedLanguagesJson { get; set; } = "[]";
+    public bool IsBookmarked { get; set; }
+    public bool IsAvailable { get; set; } = true;
+    public DateTime CreatedUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
+    public DateTime? LastSeenUtc { get; set; }
+    public string RawJson { get; set; } = "";
+}
+
+public sealed class ElevenLabsVoiceCatalogStateRow
+{
+    public string Id { get; set; } = "";
+    public DateTime? LastRefreshUtc { get; set; }
+    public string LastRefreshError { get; set; } = "";
+    public int TotalCount { get; set; }
+    public int CachedCount { get; set; }
+}
+
 public sealed class ImageAssetRow
 {
     public string Id { get; set; } = "";
@@ -211,8 +302,39 @@ public sealed class ImageAssetRow
     public int? Height { get; set; }
     public string UserPrompt { get; set; } = "";
     public string FinalPrompt { get; set; } = "";
+    public string GenerationMetadataJson { get; set; } = "";
     public string ProviderId { get; set; } = "";
     public string ProviderName { get; set; } = "";
     public string ProviderModelId { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
+}
+
+public sealed class SpeechAssetRow
+{
+    public string Id { get; set; } = "";
+    public string ChatId { get; set; } = "";
+    public string TurnId { get; set; } = "";
+    public byte[] Bytes { get; set; } = [];
+    public string Status { get; set; } = SpeechAssetStatus.Pending;
+    public string ContentType { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string ProviderId { get; set; } = "";
+    public string ProviderName { get; set; } = "";
+    public string ProviderType { get; set; } = "";
+    public string ProviderModelId { get; set; } = "";
+    public string SourceHash { get; set; } = "";
+    public string InputsJson { get; set; } = "[]";
+    public string VoiceIdsJson { get; set; } = "{}";
+    public string ErrorMessage { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public DateTime? StartedUtc { get; set; }
+    public DateTime? CompletedUtc { get; set; }
+}
+
+public static class SpeechAssetStatus
+{
+    public const string Pending = "Pending";
+    public const string Streaming = "Streaming";
+    public const string Ready = "Ready";
+    public const string Failed = "Failed";
 }

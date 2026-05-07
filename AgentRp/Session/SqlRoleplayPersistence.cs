@@ -33,51 +33,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             .ThenBy(x => x.Name)
             .ToListAsync(cancellationToken);
 
-        return rows.Select(row => new AiProvider
-        {
-            Id = row.Id,
-            Name = row.Name,
-            Type = row.Type,
-            Enabled = row.Enabled,
-            ApiKey = row.ApiKey,
-            ManagementApiKey = row.ManagementApiKey,
-            Endpoint = row.Endpoint,
-            AccountId = row.AccountId,
-            ProjectId = row.ProjectId,
-            TeamId = row.TeamId,
-            LastMetricsRefreshUtc = row.LastMetricsRefreshUtc,
-            LastMetricsError = row.LastMetricsError,
-            Models = row.Models
-                .OrderBy(model => model.SortOrder)
-                .ThenBy(model => model.Id)
-                .Select(model => new AiProviderModel
-                {
-                    Id = model.Id,
-                    DisplayName = model.DisplayName,
-                    Endpoint = model.Endpoint,
-                    Repository = model.Repository,
-                    CreatedUnix = model.CreatedUnix,
-                    Enabled = model.Enabled,
-                    Roles = Deserialize(model.RolesJson, new HashSet<AiModelRole>()),
-                    LastVoiceRefreshUtc = model.LastVoiceRefreshUtc,
-                    LastVoiceRefreshError = model.LastVoiceRefreshError,
-                    Voices = Deserialize(model.VoicesJson, new List<AiProviderVoice>())
-                })
-                .ToList(),
-            Metrics = row.Metrics
-                .OrderBy(metric => metric.Label)
-                .ThenBy(metric => metric.Kind)
-                .Select(metric => new AiProviderMetric
-                {
-                    Id = metric.Id,
-                    Kind = metric.Kind,
-                    Label = metric.Label,
-                    Value = metric.Value,
-                    Detail = metric.Detail,
-                    RefreshedUtc = metric.RefreshedUtc
-                })
-                .ToList()
-        }).ToList();
+        return rows.Select(AiProviderPersistenceMapper.ToModel).ToList();
     }
 
     public async Task<RpChatDocument> LoadChatDocumentAsync(string chatId, CancellationToken cancellationToken = default)

@@ -6,6 +6,7 @@ public interface ITtsAudioPlaybackService
 {
     string ActiveKey { get; }
     event Func<Task>? Changed;
+    event Func<string, string, Task>? Failed;
     bool IsPlaying(string key);
     bool TryGetCachedUrl(string key, out string url);
     Task CacheAudioAsync(string key, byte[] bytes, string contentType);
@@ -21,6 +22,7 @@ public sealed class TtsAudioPlaybackService(IJSRuntime js) : ITtsAudioPlaybackSe
 
     public string ActiveKey { get; private set; } = "";
     public event Func<Task>? Changed;
+    public event Func<string, string, Task>? Failed;
 
     public bool IsPlaying(string key) =>
         !string.IsNullOrWhiteSpace(key) && string.Equals(ActiveKey, key, StringComparison.Ordinal);
@@ -64,6 +66,19 @@ public sealed class TtsAudioPlaybackService(IJSRuntime js) : ITtsAudioPlaybackSe
     {
         if (string.Equals(ActiveKey, key, StringComparison.Ordinal))
             ActiveKey = "";
+
+        await NotifyChangedAsync();
+    }
+
+    [JSInvokable]
+    public async Task NotifyAudioFailed(string key, string message)
+    {
+        if (string.Equals(ActiveKey, key, StringComparison.Ordinal))
+            ActiveKey = "";
+
+        var failed = Failed;
+        if (failed is not null)
+            await failed.Invoke(key, string.IsNullOrWhiteSpace(message) ? "Playing audio failed." : message);
 
         await NotifyChangedAsync();
     }

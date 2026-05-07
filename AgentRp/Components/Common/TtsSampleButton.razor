@@ -1,21 +1,19 @@
-@implements IDisposable
 @inject ITtsPreviewService PreviewService
 @inject ITtsAudioPlaybackService Playback
 
-<AppButton Variant="@Variant"
-           Size="@Size"
-           Class="@CssClass"
-           Disabled="@Disabled"
-           Icon="@ButtonIcon"
-           Text="@ButtonText"
-           TooltipText="@TooltipText"
-           OnClick="Click"
-           StopPropagation />
+<AudioPlaybackButton AudioKey="@Key"
+                     ResolveUrlAsync="ResolveUrl"
+                     Variant="@Variant"
+                     Size="@Size"
+                     Class="@CssClass"
+                     Disabled="@Disabled"
+                     IconOnly="@IconOnly"
+                     PlayTooltip="@PlayTooltip"
+                     StopTooltip="@StopTooltip"
+                     LoadingTooltip="@LoadingTooltip"
+                     ErrorFallback="@($"Playing {DisplayVoice} failed.")" />
 
 @code {
-    bool Loading;
-    string Error = "";
-
     [Parameter] public AiProvider Provider { get; set; } = new();
     [Parameter] public AiProviderModel Model { get; set; } = new();
     [Parameter] public AiProviderVoice Voice { get; set; } = new();
@@ -32,23 +30,12 @@
         ? $"This is {DisplayVoice}, a sample voice for AgentRp."
         : Text.Trim();
     string DisplayVoice => string.IsNullOrWhiteSpace(Voice.DisplayName) ? Voice.Id : Voice.DisplayName;
-    bool Playing => Playback.IsPlaying(Key);
     bool HasPreviewUrl => PreviewUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
         || PreviewUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
-    string Icon => Playing ? "circle-stop" : "circle-play";
-    string ButtonIcon => Loading ? "spinner" : Icon;
-    string? ButtonText => IconOnly ? null : Label;
-    string Label => Playing ? "Stop" : "Play";
-    string TooltipText
+    string PlayTooltip
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(Error))
-                return Error;
-            if (Loading)
-                return $"Generating {DisplayVoice} sample.";
-            if (Playing)
-                return $"Stop {DisplayVoice} sample.";
             if (HasPreviewUrl)
                 return $"Play {DisplayVoice} preview.";
             if (Playback.TryGetCachedUrl(Key, out _))
@@ -57,61 +44,26 @@
             return $"Generate and play {DisplayVoice} sample.";
         }
     }
+    string StopTooltip => $"Stop {DisplayVoice} sample.";
+    string LoadingTooltip => $"Generating {DisplayVoice} sample.";
     string CssClass => string.Join(" ", new[]
     {
         "tts-sample-button",
-        Loading ? "is-loading" : null,
-        Playing ? "is-playing" : null,
-        !string.IsNullOrWhiteSpace(Error) ? "has-error" : null,
         Class
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
-    protected override void OnInitialized()
+    async Task<string> ResolveUrl(MouseEventArgs args)
     {
-        Playback.Changed += OnPlaybackChanged;
-    }
+        if (HasPreviewUrl)
+            return PreviewUrl;
 
-    async Task Click(MouseEventArgs args)
-    {
-        Error = "";
-        if (Playing)
+        if (!Playback.TryGetCachedUrl(Key, out var url) || args.ShiftKey)
         {
-            await Playback.StopAsync();
-            return;
+            var audio = await PreviewService.GenerateSampleAsync(Provider, Model, Voice, SampleText);
+            await Playback.ReplaceCachedAudioAsync(Key, audio.Bytes, audio.ContentType);
+            Playback.TryGetCachedUrl(Key, out url);
         }
 
-        try
-        {
-            if (HasPreviewUrl)
-            {
-                await Playback.PlayUrlAsync(Key, PreviewUrl);
-                return;
-            }
-
-            if (!Playback.TryGetCachedUrl(Key, out var url) || args.ShiftKey)
-            {
-                Loading = true;
-                var audio = await PreviewService.GenerateSampleAsync(Provider, Model, Voice, SampleText);
-                await Playback.ReplaceCachedAudioAsync(Key, audio.Bytes, audio.ContentType);
-                Playback.TryGetCachedUrl(Key, out url);
-            }
-
-            await Playback.PlayUrlAsync(Key, url);
-        }
-        catch (Exception exception)
-        {
-            Error = UserFacingErrorMessageBuilder.Build($"Playing {DisplayVoice} failed.", exception);
-        }
-        finally
-        {
-            Loading = false;
-        }
-    }
-
-    Task OnPlaybackChanged() => InvokeAsync(StateHasChanged);
-
-    public void Dispose()
-    {
-        Playback.Changed -= OnPlaybackChanged;
+        return url;
     }
 }

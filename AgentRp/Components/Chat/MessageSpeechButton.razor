@@ -1,0 +1,111 @@
+@inject IServiceProvider Services
+@inject ILogger<MessageSpeechButton> Logger
+@inject DialogHelper Dialogs
+
+@if (Availability.CanDisplay)
+{
+    <div class="message-speech-actions">
+        <AudioPlaybackButton AudioKey="@AudioKey"
+                             ResolveUrlAsync="ResolveUrl"
+                             Disabled="@Disabled"
+                             PlayTooltip="@PlayTooltip"
+                             StopTooltip="@StopTooltip"
+                             LoadingTooltip="@LoadingTooltip"
+                             ErrorFallback="Reading this message aloud failed."
+                             OnError="HandlePlaybackError" />
+        @if (HasSpeech)
+        {
+            <AppButton Icon="refresh"
+                       TooltipText="Regenerate and play"
+                       Disabled="@Disabled"
+                       OnClick="Regenerate"
+                       StopPropagation />
+        }
+    </div>
+    <span class="v-divider"></span>
+}
+
+@code {
+    MessageSpeechAvailability Availability = new(MessageSpeechAvailabilityKind.NoVoiceModel);
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptTurn Message { get; set; } = new();
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+
+    IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
+    ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
+    bool HasSpeech => !string.IsNullOrWhiteSpace(Message.Speech.VoiceMessageId);
+    string AudioKey => AgentRp.Services.MessageSpeechService.PlaybackKey(Message);
+    string PlayTooltip => HasSpeech ? "Play read-aloud" : "Generate and play read-aloud";
+    string StopTooltip => "Stop read-aloud";
+    string LoadingTooltip => HasSpeech ? "Loading read-aloud" : "Generating read-aloud";
+
+    protected override void OnParametersSet()
+    {
+        var document = Session.ActiveChat.Current;
+        Availability = document is null || SpeechService is null || Playback is null
+            ? new(MessageSpeechAvailabilityKind.NoVoiceModel)
+            : SpeechService.ResolveAvailability(document, Session.Providers.Items, Message);
+    }
+
+    async Task<string> ResolveUrl(MouseEventArgs args)
+    {
+        if (!Availability.CanGenerate)
+        {
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, Availability, OnOpenEntities);
+            return "";
+        }
+
+        try
+        {
+            var playback = await Session.Chat.Transcript.GetOrGenerateSpeechAsync(Message.Id, false);
+            return playback?.Url ?? "";
+        }
+        catch (MessageSpeechMissingVoiceException exception)
+        {
+            Logger.LogWarning(exception, "Reading message {TurnId} aloud needs a selected voice.", Message.Id);
+            Availability = exception.Availability;
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, exception.Availability, OnOpenEntities);
+            return "";
+        }
+    }
+
+    async Task Regenerate(MouseEventArgs args)
+    {
+        if (!Availability.CanGenerate)
+        {
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, Availability, OnOpenEntities);
+            return;
+        }
+
+        try
+        {
+            var playback = await Session.Chat.Transcript.GetOrGenerateSpeechAsync(Message.Id, true);
+            if (playback is not null && Playback is not null)
+                await Playback.PlayUrlAsync(playback.Key, playback.Url);
+        }
+        catch (MessageSpeechMissingVoiceException exception)
+        {
+            Logger.LogWarning(exception, "Regenerating read-aloud for message {TurnId} needs a selected voice.", Message.Id);
+            Availability = exception.Availability;
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, exception.Availability, OnOpenEntities);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Regenerating read-aloud for message {TurnId} failed.", Message.Id);
+            await Dialogs.DisplayErrorAsync(
+                "Regenerating read-aloud failed",
+                UserFacingErrorMessageBuilder.Build("Regenerating read-aloud failed.", exception),
+                UserFacingErrorMessageBuilder.BuildDetails(exception));
+        }
+    }
+
+    async Task HandlePlaybackError(Exception exception)
+    {
+        await Dialogs.DisplayErrorAsync(
+            "Reading aloud failed",
+            UserFacingErrorMessageBuilder.Build("Reading this message aloud failed.", exception),
+            UserFacingErrorMessageBuilder.BuildDetails(exception));
+    }
+}

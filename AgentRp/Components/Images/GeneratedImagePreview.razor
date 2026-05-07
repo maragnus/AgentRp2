@@ -1,0 +1,35 @@
+<div class="generated-frame">
+    @if (!string.IsNullOrWhiteSpace(ImageUrl))
+    {
+        <button type="button"
+                class="generated-image-detail-button"
+                title="View image details"
+                aria-label="View image details"
+                disabled="@(!CanOpenDetails)"
+                @onclick="OpenDetails">
+            <img class="generated-image-preview" src="@ImageUrl" alt="@ImageAlt" />
+        </button>
+        @if (Generating)
+        {
+            <span class="generated-image-status"><span class="spinner"></span>Generating...</span>
+        }
+    }
+    else if (Generating)
+    {
+        <div class="empty-preview"><span class="spinner"></span><span>Generating...</span></div>
+    }
+    else
+    {
+        <div class="empty-preview"><FaIcon Name="image" /><span>Preview</span></div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool Generating { get; set; }
+    [Parameter] public string ImageUrl { get; set; } = "";
+    [Parameter] public string ImageAlt { get; set; } = "Generated image";
+    [Parameter] public bool CanOpenDetails { get; set; }
+    [Parameter] public EventCallback OnOpenDetails { get; set; }
+
+    Task OpenDetails() => CanOpenDetails ? OnOpenDetails.InvokeAsync() : Task.CompletedTask;
+}

@@ -7,7 +7,8 @@ public sealed class TranscriptStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
-    ITextGenerationService textGenerationService) : ActiveChatStoreBase(activeChat, registry)
+    ITextGenerationService textGenerationService,
+    IMessageSpeechService? messageSpeechService = null) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Transcript;
 
@@ -35,6 +36,35 @@ public sealed class TranscriptStore(
     public async Task SetShowAppearanceBlocksAsync(bool value) => await SetOptionAsync(options => options.ShowAppearanceBlocks = value);
 
     public async Task SetShowProcessTracesAsync(bool value) => await SetOptionAsync(options => options.ShowProcessTraces = value);
+
+    public async Task SetAutoSpeakNewMessagesAsync(bool value) => await SetOptionAsync(options => options.AutoSpeakNewMessages = value);
+
+    public async Task SetSpeakActionsInNarratorVoiceAsync(bool value) => await SetOptionAsync(options => options.SpeakActionsInNarratorVoice = value);
+
+    public async Task<MessageSpeechPlayback?> GetOrGenerateSpeechAsync(string turnId, bool regenerate, CancellationToken cancellationToken = default)
+    {
+        MessageSpeechPlayback? playback = null;
+        await RunExclusiveAsync(regenerate ? "Regenerating speech..." : "Generating speech...", async () =>
+        {
+            if (Document is null || messageSpeechService is null)
+                return;
+
+            ClearBackgroundError();
+            var turn = TranscriptGraph.FindTurn(Document.Transcript, turnId);
+            if (turn is null)
+                return;
+
+            playback = await messageSpeechService.GetOrGenerateAsync(
+                Document,
+                providers.Items.ToList(),
+                turn,
+                regenerate,
+                cancellationToken);
+            await SaveTranscriptAsync();
+        });
+
+        return playback;
+    }
 
     public async Task PostManualAsync(string text, RpCharacter? speaker) => await RunExclusiveAsync("Posting...", async () =>
     {
@@ -88,17 +118,44 @@ public sealed class TranscriptStore(
         var requestedNarrator = requestedActor is null && string.IsNullOrWhiteSpace(original.ActorCharacterId);
         var actor = requestedNarrator
             ? null
-            : requestedActor ?? Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId);
+            : Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId) ?? requestedActor;
+        var plan = BuildRegenerationPlan(original.Plan, turnShape);
         SelectRegenerationParent(original.ParentTurnId);
         await NotifyChangedAsync();
-        await GenerateTurnCoreAsync(
-            parentTurnId: original.ParentTurnId,
-            guidance: string.IsNullOrWhiteSpace(guidance) ? original.Guidance : guidance,
-            requestedActor: actor,
-            requestedNarrator: requestedNarrator,
-            turnShape: string.IsNullOrWhiteSpace(turnShape) ? original.Plan.TurnShape : turnShape,
-            mode: "regenerated");
+        await GenerateProseFromPlanCoreAsync(
+            BuildProseFromPlanRequest(
+                original,
+                string.IsNullOrWhiteSpace(guidance) ? original.Guidance : guidance,
+                actor,
+                requestedNarrator,
+                plan));
     });
+
+    static RpTurnPlan BuildRegenerationPlan(RpTurnPlan source, string turnShape)
+    {
+        var plan = SessionCloner.Clone(source);
+        if (!string.IsNullOrWhiteSpace(turnShape))
+            plan.TurnShape = turnShape;
+
+        return plan;
+    }
+
+    static GenerateProseFromPlanRequest BuildProseFromPlanRequest(
+        RpTranscriptTurn original,
+        string guidance,
+        RpCharacter? actor,
+        bool requestedNarrator,
+        RpTurnPlan plan) => new(
+            original.ParentTurnId,
+            "regenerated",
+            string.IsNullOrWhiteSpace(guidance) ? original.Guidance : guidance,
+            actor?.Id ?? "",
+            requestedNarrator ? "Narrator" : actor?.Name ?? original.ActorName,
+            requestedNarrator,
+            plan,
+            original.AppearanceByCharacterId,
+            original.PrivateIntentByCharacterId,
+            original.Scene);
 
     public async Task EditTurnAsync(
         string turnId,
@@ -115,26 +172,18 @@ public sealed class TranscriptStore(
         if (original is null)
             return;
 
+        var trimmedBody = body.Trim();
         var now = DateTime.UtcNow;
-        var turn = new RpTranscriptTurn
-        {
-            Id = NextTurnId(),
-            ParentTurnId = original.ParentTurnId,
-            CreatedUtc = now,
-            UpdatedUtc = now,
-            Mode = "edited",
-            AuthorCharacterId = original.AuthorCharacterId,
-            AuthorName = original.AuthorName,
-            ActorCharacterId = original.ActorCharacterId,
-            ActorName = original.ActorName,
-            Guidance = original.Guidance,
-            Body = body.Trim(),
-            Plan = plan is null ? SessionCloner.Clone(original.Plan) : SessionCloner.Clone(plan),
-            AppearanceByCharacterId = CloneMap(appearances ?? original.AppearanceByCharacterId),
-            PrivateIntentByCharacterId = CloneMap(privateIntents ?? original.PrivateIntentByCharacterId),
-            Scene = SessionCloner.Clone(original.Scene)
-        };
-        CommitTurn(turn, now);
+        if (!string.Equals(original.Body, trimmedBody, StringComparison.Ordinal))
+            await DiscardSpeechAsync(original);
+
+        original.UpdatedUtc = now;
+        original.Mode = "edited";
+        original.Body = trimmedBody;
+        original.Plan = plan is null ? SessionCloner.Clone(original.Plan) : SessionCloner.Clone(plan);
+        original.AppearanceByCharacterId = CloneMap(appearances ?? original.AppearanceByCharacterId);
+        original.PrivateIntentByCharacterId = CloneMap(privateIntents ?? original.PrivateIntentByCharacterId);
+        TranscriptProjector.Apply(Document, now);
         await SaveTranscriptAsync();
     });
 
@@ -371,31 +420,7 @@ public sealed class TranscriptStore(
                     requestedActor?.Name ?? "",
                     requestedNarrator),
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
-            result.Trace.Data["actorName"] = result.ActorName;
-            var now = DateTime.UtcNow;
-            var turn = new RpTranscriptTurn
-            {
-                Id = NextTurnId(),
-                ParentTurnId = parentTurnId,
-                CreatedUtc = now,
-                UpdatedUtc = now,
-                Mode = NormalizeMode(mode),
-                AuthorCharacterId = result.ActorCharacterId,
-                AuthorName = string.IsNullOrWhiteSpace(result.ActorName) ? "Narrator" : result.ActorName,
-                ActorCharacterId = result.ActorCharacterId,
-                ActorName = result.ActorName,
-                Guidance = guidance.Trim(),
-                Body = result.Body,
-                Plan = SessionCloner.Clone(result.Plan),
-                AppearanceByCharacterId = CloneMap(result.AppearanceByCharacterId),
-                PrivateIntentByCharacterId = CloneMap(result.PrivateIntentByCharacterId),
-                Scene = SessionCloner.Clone(result.Scene),
-                Trace = SessionCloner.Clone(result.Trace)
-            };
-            ClearActiveDraft();
-            CommitTurn(turn, now);
-            await SaveTranscriptAsync();
-            await ClearActiveTraceAsync();
+            await CommitGeneratedTurnAsync(parentTurnId, guidance, mode, result);
         }
         catch (TranscriptGenerationException exception)
         {
@@ -419,6 +444,90 @@ public sealed class TranscriptStore(
 
             await ClearActiveTraceAsync();
         }
+    }
+
+    async Task GenerateProseFromPlanCoreAsync(GenerateProseFromPlanRequest request)
+    {
+        if (Document is null)
+            return;
+
+        ClearBackgroundError();
+        try
+        {
+            var result = await textGenerationService.GenerateProseFromPlanAsync(
+                Document,
+                providers.Items.ToList(),
+                request,
+                new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
+            await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
+        }
+        catch (TranscriptGenerationException exception)
+        {
+            ClearActiveDraft();
+            PersistFailedTurn(
+                request.ParentTurnId,
+                request.Guidance,
+                request.RequestedNarrator ? null : new() { Id = request.ActorCharacterId, Name = request.ActorName },
+                request.RequestedNarrator,
+                request.Mode,
+                request.Plan.TurnShape,
+                exception.Trace,
+                request.Plan,
+                request.AppearanceByCharacterId,
+                request.PrivateIntentByCharacterId,
+                request.Scene);
+            CaptureBackgroundError(exception);
+            await SaveTranscriptAsync();
+            await ClearActiveTraceAsync();
+        }
+        catch (Exception exception)
+        {
+            ClearActiveDraft();
+            CaptureBackgroundError(exception);
+            PersistFailedTurn(
+                request.ParentTurnId,
+                request.Guidance,
+                request.RequestedNarrator ? null : new() { Id = request.ActorCharacterId, Name = request.ActorName },
+                request.RequestedNarrator,
+                request.Mode,
+                request.Plan.TurnShape,
+                BuildUnhandledFailureTrace(exception),
+                request.Plan,
+                request.AppearanceByCharacterId,
+                request.PrivateIntentByCharacterId,
+                request.Scene);
+            await SaveTranscriptAsync();
+            await ClearActiveTraceAsync();
+        }
+    }
+
+    async Task CommitGeneratedTurnAsync(string parentTurnId, string guidance, string mode, GeneratedTurnResult result)
+    {
+        result.Trace.Data["actorName"] = result.ActorName;
+        var now = DateTime.UtcNow;
+        var turn = new RpTranscriptTurn
+        {
+            Id = NextTurnId(),
+            ParentTurnId = parentTurnId,
+            CreatedUtc = now,
+            UpdatedUtc = now,
+            Mode = NormalizeMode(mode),
+            AuthorCharacterId = result.ActorCharacterId,
+            AuthorName = string.IsNullOrWhiteSpace(result.ActorName) ? "Narrator" : result.ActorName,
+            ActorCharacterId = result.ActorCharacterId,
+            ActorName = result.ActorName,
+            Guidance = guidance.Trim(),
+            Body = result.Body,
+            Plan = SessionCloner.Clone(result.Plan),
+            AppearanceByCharacterId = CloneMap(result.AppearanceByCharacterId),
+            PrivateIntentByCharacterId = CloneMap(result.PrivateIntentByCharacterId),
+            Scene = SessionCloner.Clone(result.Scene),
+            Trace = SessionCloner.Clone(result.Trace)
+        };
+        ClearActiveDraft();
+        CommitTurn(turn, now);
+        await SaveTranscriptAsync();
+        await ClearActiveTraceAsync();
     }
 
     async Task UpdateActiveTraceAsync(RpTurnTrace trace)
@@ -489,7 +598,18 @@ public sealed class TranscriptStore(
         return trace;
     }
 
-    void PersistFailedTurn(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string mode, string turnShape, RpTurnTrace trace)
+    void PersistFailedTurn(
+        string parentTurnId,
+        string guidance,
+        RpCharacter? requestedActor,
+        bool requestedNarrator,
+        string mode,
+        string turnShape,
+        RpTurnTrace trace,
+        RpTurnPlan? plan = null,
+        IReadOnlyDictionary<string, string>? appearances = null,
+        IReadOnlyDictionary<string, string>? privateIntents = null,
+        RpSceneFrame? scene = null)
     {
         if (Document is null)
             return;
@@ -510,8 +630,10 @@ public sealed class TranscriptStore(
             ActorCharacterId = actorId,
             ActorName = actorName,
             Guidance = guidance.Trim(),
-            Plan = new() { TurnShape = turnShape },
-            Scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(Document.Transcript)),
+            Plan = plan is null ? new() { TurnShape = turnShape } : SessionCloner.Clone(plan),
+            AppearanceByCharacterId = appearances is null ? [] : CloneMap(appearances),
+            PrivateIntentByCharacterId = privateIntents is null ? [] : CloneMap(privateIntents),
+            Scene = SessionCloner.Clone(scene ?? TranscriptGraph.GetActiveScene(Document.Transcript)),
             Trace = SessionCloner.Clone(trace)
         };
         CommitTurn(turn, now);
@@ -563,6 +685,17 @@ public sealed class TranscriptStore(
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Timeline);
         await NotifyChangedAsync();
+    }
+
+    async Task DiscardSpeechAsync(RpTranscriptTurn turn)
+    {
+        if (messageSpeechService is not null)
+        {
+            await messageSpeechService.DiscardTurnSpeechAsync(turn);
+            return;
+        }
+
+        turn.Speech = new();
     }
 
     void RemoveSnapshotTimelineEntries(RpTranscriptSnapshot snapshot)

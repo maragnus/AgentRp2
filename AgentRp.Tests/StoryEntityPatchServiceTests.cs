@@ -170,6 +170,7 @@ public sealed class StoryEntityPatchServiceTests
     public async Task ReadStoryEntitiesIncludesTraitLibraryContext()
     {
         var document = CreateDocument();
+        document.Characters[0].Pronouns = ["they/them"];
         var callbacks = new TestCallbacks();
         var service = new StoryEntityPatchService();
 
@@ -185,6 +186,8 @@ public sealed class StoryEntityPatchServiceTests
         var library = json.RootElement.GetProperty("entities").GetProperty("characterTraitLibrary");
         Assert.Equal(CharacterProfileRules.MaxTraits, library.GetProperty("limits").GetProperty("maxTraits").GetInt32());
         Assert.Contains(library.GetProperty("controlledFields").EnumerateArray(), item => item.GetString() == "traits");
+        Assert.Contains(library.GetProperty("controlledFields").EnumerateArray(), item => item.GetString() == "pronouns");
+        Assert.Contains(json.RootElement.GetProperty("entities").GetProperty("characters")[0].GetProperty("pronouns").EnumerateArray(), item => item.GetString() == "they/them");
         Assert.Contains("get_character_profile_options", library.GetProperty("instruction").GetString(), StringComparison.Ordinal);
     }
 
@@ -388,7 +391,7 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "update_character",
-            """{"entityId":"c1","updates":{"sceneRoles":["anchor"],"traits":["guarded","dry-wit"],"coreDrive":"protect-their-people","softSpots":["being-trusted"],"avoidPatterns":["no-random-cruelty"]}}""",
+            """{"entityId":"c1","updates":{"pronouns":["they/them","xe/xem"],"sceneRoles":["anchor"],"traits":["guarded","dry-wit"],"coreDrive":"protect-their-people","softSpots":["being-trusted"],"avoidPatterns":["no-random-cruelty"]}}""",
             callbacks,
             CancellationToken.None);
 
@@ -396,7 +399,53 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(["anchor"], document.Characters[0].SceneRoles);
         Assert.Equal(["guarded", "dry-wit"], document.Characters[0].Traits);
+        Assert.Equal(["they/them", "xe/xem"], document.Characters[0].Pronouns);
         Assert.Equal("protect-their-people", document.Characters[0].CoreDrive);
+    }
+
+    [Fact]
+    public async Task CharacterPatchRejectsInvalidPronounWithoutMutating()
+    {
+        var document = CreateDocument();
+        document.Characters[0].Pronouns = ["she/her"];
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"pronouns":["invented/pronoun"]}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("invalid value 'invented/pronoun'", json.RootElement.GetProperty("reason").GetString());
+        Assert.Contains(json.RootElement.GetProperty("nextStep").GetProperty("fields").EnumerateArray(), item => item.GetString() == "pronouns");
+        Assert.Equal(["she/her"], document.Characters[0].Pronouns);
+        Assert.Empty(callbacks.ToolItems);
+    }
+
+    [Fact]
+    public async Task CharacterPatchRejectsDuplicatePronouns()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"pronouns":["he/him","he/him"]}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("duplicate value 'he/him'", json.RootElement.GetProperty("reason").GetString());
+        Assert.Empty(document.Characters[0].Pronouns);
     }
 
     [Fact]

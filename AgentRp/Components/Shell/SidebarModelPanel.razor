@@ -35,7 +35,7 @@
 </div>
 
 @code {
-    static readonly AiModelRole[] Roles = [AiModelRole.Chat, AiModelRole.Image, AiModelRole.Voice];
+    static readonly AiModelRole[] Roles = [AiModelRole.Chat, AiModelRole.Reasoning, AiModelRole.Image, AiModelRole.Voice];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnOpenProviders { get; set; }
@@ -47,6 +47,7 @@
     static string RoleIcon(AiModelRole role) => role switch
     {
         AiModelRole.Chat => "message-sq",
+        AiModelRole.Reasoning => "brain",
         AiModelRole.Image => "image",
         AiModelRole.Voice => "waveform-lines",
         _ => "circle-question"

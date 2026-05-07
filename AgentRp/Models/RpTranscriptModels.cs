@@ -20,6 +20,8 @@ public sealed class RpTranscriptOptionsState
     public bool HideAudioTags { get; set; }
     public bool ShowAppearanceBlocks { get; set; }
     public bool ShowProcessTraces { get; set; }
+    public bool AutoSpeakNewMessages { get; set; }
+    public bool SpeakActionsInNarratorVoice { get; set; }
 }
 
 public sealed class RpTranscriptTurn
@@ -39,9 +41,22 @@ public sealed class RpTranscriptTurn
     public Dictionary<string, string> AppearanceByCharacterId { get; set; } = [];
     public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public string SnapshotId { get; set; } = "";
+    public RpMessageSpeechState Speech { get; set; } = new();
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpMessageSpeechState
+{
+    public string VoiceMessageId { get; set; } = "";
+    public DateTime GeneratedUtc { get; set; }
+    public string SourceHash { get; set; } = "";
+    public string ProviderId { get; set; } = "";
+    public string ProviderName { get; set; } = "";
+    public string ProviderType { get; set; } = "";
+    public string ModelId { get; set; } = "";
+    public Dictionary<string, string> VoiceIds { get; set; } = [];
 }
 
 public sealed class RpTranscriptSnapshot

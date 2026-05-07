@@ -37,6 +37,7 @@ static class SessionCloner
         Backstory = value.Backstory,
         Voice = value.Voice,
         Notes = value.Notes,
+        Pronouns = [.. value.Pronouns],
         SceneRoles = [.. value.SceneRoles],
         Traits = [.. value.Traits],
         Drives = [.. value.Drives],
@@ -159,6 +160,9 @@ static class SessionCloner
         PreviewUrl = value.PreviewUrl,
         Labels = value.Labels.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Source = value.Source,
+        IsCatalogVoice = value.IsCatalogVoice,
+        IsBookmarked = value.IsBookmarked,
+        IsAvailable = value.IsAvailable,
         UpdatedUtc = value.UpdatedUtc
     };
 
@@ -284,7 +288,9 @@ static class SessionCloner
         InjectAudioTags = value.InjectAudioTags,
         HideAudioTags = value.HideAudioTags,
         ShowAppearanceBlocks = value.ShowAppearanceBlocks,
-        ShowProcessTraces = value.ShowProcessTraces
+        ShowProcessTraces = value.ShowProcessTraces,
+        AutoSpeakNewMessages = value.AutoSpeakNewMessages,
+        SpeakActionsInNarratorVoice = value.SpeakActionsInNarratorVoice
     };
 
     static RpTranscriptTurn Clone(RpTranscriptTurn value) => new()
@@ -304,9 +310,22 @@ static class SessionCloner
         AppearanceByCharacterId = value.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         SnapshotId = value.SnapshotId,
+        Speech = Clone(value.Speech),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
         Data = Clone(value.Data)
+    };
+
+    static RpMessageSpeechState Clone(RpMessageSpeechState value) => new()
+    {
+        VoiceMessageId = value.VoiceMessageId,
+        GeneratedUtc = value.GeneratedUtc,
+        SourceHash = value.SourceHash,
+        ProviderId = value.ProviderId,
+        ProviderName = value.ProviderName,
+        ProviderType = value.ProviderType,
+        ModelId = value.ModelId,
+        VoiceIds = value.VoiceIds.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
     };
 
     static RpTranscriptSnapshot Clone(RpTranscriptSnapshot value) => new()

@@ -20,7 +20,7 @@
     {
         <div class="story-assistant-capability">
             <FaIcon Name="circle-alert" />
-            <span>The active model needs streaming text and tools for the Story Assistant.</span>
+            <span>The reasoning model needs streaming text and tools for the Story Assistant.</span>
         </div>
     }
 
@@ -182,16 +182,17 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    ActiveModelSelection? ActiveModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+    ActiveModelSelection? ActiveModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Reasoning);
 
     bool CanRun => ActiveModel is { Capabilities.CanGenerateStreamingText: true, Capabilities.Tools: true };
     string ModelStatus => ActiveModel is null
-        ? "No active model"
+        ? "No reasoning model"
         : string.IsNullOrWhiteSpace(ActiveModel.Model.DisplayName) ? ActiveModel.Model.Id : ActiveModel.Model.DisplayName;
 
     protected override void OnInitialized()
     {
         Session.Chat.StoryAssistant.Changed += OnStoreChanged;
+        Session.Chat.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
     }
 
@@ -283,6 +284,7 @@
     public void Dispose()
     {
         Session.Chat.StoryAssistant.Changed -= OnStoreChanged;
+        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 }

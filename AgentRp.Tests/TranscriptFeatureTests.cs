@@ -8,7 +8,7 @@ namespace AgentRp.Tests;
 public sealed class TranscriptFeatureTests
 {
     [Fact]
-    public async Task EditTurnCreatesSiblingBranchAndSwitchesActivePath()
+    public async Task EditTurnUpdatesExistingMessageWithoutCreatingBranch()
     {
         await using var liveStore = NewLiveStore();
         var session = NewSession(liveStore, new FakeTextGenerationService());
@@ -17,12 +17,14 @@ public sealed class TranscriptFeatureTests
         var turnToEdit = session.Chat.Transcript.Items[1];
         await session.Chat.Transcript.EditTurnAsync(turnToEdit.Id, "Alternate Bella branch.");
 
-        Assert.Equal("Alternate Bella branch.", session.Chat.Transcript.Items.Last().Body);
-        Assert.Equal(2, session.Chat.Transcript.SiblingsFor(session.Chat.Transcript.Items.Last().Id).Count);
+        var editedTurn = session.Chat.Transcript.Items[1];
+        Assert.Equal(turnToEdit.Id, editedTurn.Id);
+        Assert.Equal("Alternate Bella branch.", editedTurn.Body);
+        Assert.Single(session.Chat.Transcript.SiblingsFor(editedTurn.Id));
     }
 
     [Fact]
-    public async Task SelectingSiblingRestoresOriginalBranchAcrossSessions()
+    public async Task EditTurnUpdatesExistingMessageAcrossSessions()
     {
         await using var liveStore = NewLiveStore();
         var generator = new FakeTextGenerationService();
@@ -34,10 +36,9 @@ public sealed class TranscriptFeatureTests
         var originalTurn = sessionA.Chat.Transcript.Items[1];
         await sessionA.Chat.Transcript.EditTurnAsync(originalTurn.Id, "Alternate Bella branch.");
 
-        await sessionB.Chat.Transcript.SelectSiblingAsync(originalTurn.Id);
-
-        Assert.Equal("turn-3", sessionA.Chat.Transcript.Items.Last().Id);
-        Assert.Equal("turn-3", sessionB.Chat.Transcript.Items.Last().Id);
+        Assert.Equal(originalTurn.Id, sessionA.Chat.Transcript.Items[1].Id);
+        Assert.Equal("Alternate Bella branch.", sessionA.Chat.Transcript.Items[1].Body);
+        Assert.Equal("Alternate Bella branch.", sessionB.Chat.Transcript.Items[1].Body);
     }
 
     [Fact]
@@ -135,6 +136,24 @@ public sealed class TranscriptFeatureTests
         Assert.DoesNotContain("Narrator:", context.TranscriptText, StringComparison.Ordinal);
         Assert.DoesNotContain("Bella:", context.TranscriptText, StringComparison.Ordinal);
         Assert.Contains("Bella has entered the apartment", context.SnapshotText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PromptContextIncludesCharacterPronouns()
+    {
+        var persistence = new SeedRoleplayPersistence();
+        var document = await persistence.LoadChatDocumentAsync("ch1");
+        document.Characters[0].Pronouns = ["she/her"];
+        document.Characters[1].Pronouns = ["they/them"];
+        var builder = new TranscriptPromptContextBuilder();
+
+        var context = builder.BuildTurnContext(document, "turn-3", "", "Brief", document.Characters[0]);
+        var snapshot = builder.BuildSnapshotContext(document, "turn-3");
+
+        Assert.Contains("- Pronouns: she/her", context.ActorText, StringComparison.Ordinal);
+        Assert.Contains("-   Pronouns: she/her", context.CharactersInSceneText, StringComparison.Ordinal);
+        Assert.Contains("Pronouns:", context.SelectionEligibleResponders, StringComparison.Ordinal);
+        Assert.Contains("Bella (she/her)", snapshot.Characters, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -265,6 +284,49 @@ public sealed class TranscriptFeatureTests
                 trace));
         }
 
+        public Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
+            RpChatDocument document,
+            IReadOnlyList<AiProvider> providers,
+            GenerateProseFromPlanRequest request,
+            TranscriptGenerationProgress? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            var now = DateTime.UtcNow;
+            var actorName = request.RequestedNarrator ? "Narrator" : request.ActorName;
+            return Task.FromResult(new GeneratedTurnResult(
+                request.ActorCharacterId,
+                actorName,
+                ClonePlan(request.Plan),
+                request.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                request.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                CloneScene(request.Scene),
+                $"Regenerated for {actorName}: {request.Guidance}".Trim(),
+                new RpTurnTrace
+                {
+                    Summary = $"Completed · {actorName} · Prose",
+                    Status = "completed",
+                    StartedUtc = now,
+                    CompletedUtc = now.AddSeconds(1),
+                    DurationSeconds = 1,
+                    ProviderId = "fake",
+                    ProviderName = "Fake",
+                    ModelId = "fake-model",
+                    Steps =
+                    [
+                        new()
+                        {
+                            Id = "prose",
+                            Label = "Prose",
+                            Status = "completed",
+                            StartedUtc = now,
+                            CompletedUtc = now.AddSeconds(1),
+                            DurationSeconds = 1,
+                            RawOutput = "{}"
+                        }
+                    ]
+                }));
+        }
+
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
@@ -332,7 +394,20 @@ public sealed class TranscriptFeatureTests
             LocationId = source.LocationId,
             LocationName = source.LocationName,
             InSceneCharacterIds = [.. source.InSceneCharacterIds],
-            InSceneItemIds = [.. source.InSceneItemIds]
+            InSceneItemIds = [.. source.InSceneItemIds],
+            Data = source.Data.DeepClone().AsObject()
+        };
+
+        static RpTurnPlan ClonePlan(RpTurnPlan source) => new()
+        {
+            TurnShape = source.TurnShape,
+            Beat = source.Beat,
+            Intent = source.Intent,
+            ImmediateGoal = source.ImmediateGoal,
+            WhyNow = source.WhyNow,
+            ChangeIntroduced = source.ChangeIntroduced,
+            Guardrails = source.Guardrails,
+            Data = source.Data.DeepClone().AsObject()
         };
     }
 }

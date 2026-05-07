@@ -10,11 +10,21 @@ public static class CharacterProfileRules
     public const int MaxSceneRoles = 2;
     public const int RecommendedMinTraits = 3;
     public const int MaxTraits = 6;
+    public const int MaxPronouns = 4;
     public const int MaxSoftSpots = 3;
     public const int MaxAvoidPatterns = 5;
 
+    public static readonly CharacterOption[] PronounOptions =
+    [
+        new("he/him", "he/him", "Use he/him pronouns."),
+        new("she/her", "she/her", "Use she/her pronouns."),
+        new("they/them", "they/them", "Use they/them pronouns."),
+        new("xe/xem", "xe/xem", "Use xe/xem pronouns.")
+    ];
+
     public static readonly string[] ControlledCharacterFields =
     [
+        "pronouns",
         "sceneRoles",
         "traits",
         "coreDrive",
@@ -45,6 +55,7 @@ public static class CharacterProfileRules
             ["backstory"] = StringField("Freeform backstory."),
             ["voice"] = StringField("Freeform voice notes."),
             ["notes"] = StringField("Freeform private or extra notes."),
+            ["pronouns"] = ControlledArray("Pronoun values. Use only the allowed values.", MaxPronouns, PronounOptions),
             ["sceneRoles"] = ControlledArray("Scene role ids. Call get_character_profile_options with fields ['sceneRoles'] before setting.", MaxSceneRoles),
             ["traits"] = ControlledArray($"Trait ids. Aim for {RecommendedMinTraits}-{MaxTraits} total when bootstrapping. Call get_character_profile_options with fields ['traits'] before setting.", MaxTraits),
             ["coreDrive"] = ControlledString("Core drive id. Call get_character_profile_options with fields ['coreDrive'] before setting; empty string clears it."),
@@ -121,11 +132,15 @@ public static class CharacterProfileRules
         };
     }
 
+    public static string FormatPronouns(IEnumerable<string> values) =>
+        string.Join(", ", values.Where(value => PronounOptions.Any(option => string.Equals(option.Id, value, StringComparison.Ordinal))));
+
     static object Limits() => new
     {
         maxSceneRoles = MaxSceneRoles,
         recommendedMinTraits = RecommendedMinTraits,
         maxTraits = MaxTraits,
+        maxPronouns = MaxPronouns,
         maxSoftSpots = MaxSoftSpots,
         maxAvoidPatterns = MaxAvoidPatterns
     };
@@ -133,6 +148,7 @@ public static class CharacterProfileRules
     public static void ValidateCharacterPatch(JsonElement updates, CharacterTraitLibraryState library)
     {
         var normalized = CharacterTraitLibraryService.NormalizeState(library);
+        ValidateOptionArray(updates, "pronouns", "pronouns", PronounOptions, MaxPronouns);
         ValidateOptionArray(updates, "sceneRoles", "scene roles", normalized.SceneRoles, MaxSceneRoles);
         ValidateOptionArray(updates, "traits", "traits", TraitOptions(normalized), MaxTraits);
         ValidateOption(updates, "coreDrive", "core drive", normalized.CoreDrives);
@@ -251,17 +267,25 @@ public static class CharacterProfileRules
         ["description"] = description
     };
 
-    static JsonObject ControlledArray(string description, int max) => new()
+    static JsonObject ControlledArray(string description, int max, IReadOnlyList<CharacterOption>? options = null)
     {
-        ["type"] = "array",
-        ["description"] = description,
-        ["uniqueItems"] = true,
-        ["maxItems"] = max,
-        ["items"] = new JsonObject { ["type"] = "string" }
-    };
+        var items = new JsonObject { ["type"] = "string" };
+        if (options is not null)
+            items["enum"] = new JsonArray(options.Select(option => (JsonNode?)JsonValue.Create(option.Id)).ToArray());
+
+        return new()
+        {
+            ["type"] = "array",
+            ["description"] = description,
+            ["uniqueItems"] = true,
+            ["maxItems"] = max,
+            ["items"] = items
+        };
+    }
 
     static object OptionPayload(CharacterTraitLibraryState library, string field) => field switch
     {
+        "pronouns" => new { maxItems = MaxPronouns, options = Options(PronounOptions) },
         "sceneRoles" => new { maxItems = MaxSceneRoles, options = Options(library.SceneRoles) },
         "traits" => new { recommendedMinItems = RecommendedMinTraits, maxItems = MaxTraits, groups = library.TraitCategories.Select(group => new { group.Name, options = Options(group.Items) }) },
         "coreDrive" => new { options = Options(library.CoreDrives), allowsEmpty = true },
@@ -290,6 +314,7 @@ public sealed class CharacterProfileValidationException(string message, IReadOnl
     static string NormalizeField(string field) => field switch
     {
         "scene roles" => "sceneRoles",
+        "pronouns" => "pronouns",
         "traits" => "traits",
         "soft spots" => "softSpots",
         "avoid patterns" => "avoidPatterns",

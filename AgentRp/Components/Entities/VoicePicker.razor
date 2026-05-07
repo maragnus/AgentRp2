@@ -1,3 +1,5 @@
+@inject IElevenLabsVoiceCatalogService VoiceCatalogService
+
 <div class="@CssClass" title="@Title">
     @if (Compact)
     {
@@ -28,9 +30,22 @@
             </ActiveModelPicker>
             <VoicePickerMenu VoiceSelections="VoiceSelections"
                              ActiveVoiceModel="ActiveVoiceModel"
+                             Voices="AvailableVoices"
                              Compact="Compact"
                              OwnerName="@OwnerName"
-                             OnChanged="OnChanged" />
+                             OnChanged="OnChanged"
+                             OnBookmarkChanged="SetBookmarked" />
+            @if (CanOpenCatalog)
+            {
+                <AppButton Variant="secondary"
+                           Size="sm"
+                           Class="voice-picker-catalog-button"
+                           TooltipText="Open ElevenLabs voice catalog"
+                           AriaLabel="Open ElevenLabs voice catalog"
+                           OnClick="@(_ => VoiceCatalogOpen = true)">
+                    <FaIcon Name="book-open" />
+                </AppButton>
+            }
             @if (SelectedVoice is not null && ActiveVoiceModel is not null)
             {
                 <TtsSampleButton Provider="@ActiveVoiceModel.Provider"
@@ -46,15 +61,38 @@
             <FieldRow Label="@ModelLabel">
                 <VoicePickerMenu VoiceSelections="VoiceSelections"
                                  ActiveVoiceModel="ActiveVoiceModel"
+                                 Voices="AvailableVoices"
                                  Compact="Compact"
                                  OwnerName="@OwnerName"
-                                 OnChanged="OnChanged" />
+                                 OnChanged="OnChanged"
+                                 OnBookmarkChanged="SetBookmarked" />
+                @if (CanOpenCatalog)
+                {
+                    <AppButton Variant="secondary"
+                               Size="sm"
+                               Class="voice-picker-catalog-button"
+                               OnClick="@(_ => VoiceCatalogOpen = true)">
+                        <FaIcon Name="book-open" />Voice Catalog
+                    </AppButton>
+                }
             </FieldRow>
         </div>
     }
 </div>
 
+@if (VoiceCatalogOpen && ActiveVoiceModel is not null)
+{
+    <ElevenLabsVoiceCatalogModal Provider="@ActiveVoiceModel.Provider"
+                                 PreviewModel="@ActiveVoiceModel.Model"
+                                 OnChanged="ReloadBookmarkedVoices"
+                                 OnClose="CloseCatalog" />
+}
+
 @code {
+    List<AiProviderVoice> BookmarkedCatalogVoices = [];
+    string LoadedCatalogKey = "";
+    bool VoiceCatalogOpen;
+
     [Parameter] public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
     [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
     [Parameter] public bool Compact { get; set; }
@@ -67,8 +105,15 @@
         && VoiceSelections.TryGetValue(ModelKey, out var selection)
         ? selection.VoiceId
         : "";
-    AiProviderVoice? SelectedVoice => ActiveVoiceModel?.Model.Voices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
+    IReadOnlyList<AiProviderVoice> AvailableVoices => ActiveVoiceModel is null
+        ? []
+        : IsElevenLabs
+            ? AiProviderVoiceMergeRules.MergeProviderAndCatalogVoices(ActiveVoiceModel.Model.Voices, BookmarkedCatalogVoices)
+            : ActiveVoiceModel.Model.Voices;
+    AiProviderVoice? SelectedVoice => AvailableVoices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
     string SelectedVoiceName => SelectedVoice is null ? "No voice" : AiProviderVoiceDisplayRules.DisplayVoice(SelectedVoice);
+    bool IsElevenLabs => string.Equals(ActiveVoiceModel?.Provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
+    bool CanOpenCatalog => IsElevenLabs && ActiveVoiceModel is not null;
     string ModelPickerTitle => ActiveVoiceModel is null
         ? $"Choose active voice model for {OwnerName}."
         : $"Change active voice model for {OwnerName}. Current model is {ModelLabel}.";
@@ -82,6 +127,35 @@
         "voice-picker-provider-button",
         open ? "is-open" : null
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = IsElevenLabs ? ActiveVoiceModel?.Key ?? "" : "";
+        if (key == LoadedCatalogKey)
+            return;
+
+        LoadedCatalogKey = key;
+        BookmarkedCatalogVoices.Clear();
+        if (!string.IsNullOrWhiteSpace(key))
+            await ReloadBookmarkedVoices();
+    }
+
+    async Task ReloadBookmarkedVoices()
+    {
+        BookmarkedCatalogVoices = (await VoiceCatalogService.LoadBookmarkedVoicesAsync()).ToList();
+    }
+
+    async Task SetBookmarked((string VoiceId, bool Bookmarked) change)
+    {
+        await VoiceCatalogService.SetBookmarkedAsync(change.VoiceId, change.Bookmarked);
+        await ReloadBookmarkedVoices();
+    }
+
+    async Task CloseCatalog()
+    {
+        VoiceCatalogOpen = false;
+        await ReloadBookmarkedVoices();
+    }
 
     static string DisplayModel(ActiveModelSelection selection)
     {

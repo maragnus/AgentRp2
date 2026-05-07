@@ -6,7 +6,15 @@ namespace AgentRp.Services;
 
 public sealed class TranscriptPromptContextBuilder
 {
-    public TurnPromptContext BuildTurnContext(RpChatDocument document, string parentTurnId, string guidance, string requestedTurnShape, RpCharacter? requestedActor, bool requestedNarrator = false)
+    public TurnPromptContext BuildTurnContext(
+        RpChatDocument document,
+        string parentTurnId,
+        string guidance,
+        string requestedTurnShape,
+        RpCharacter? requestedActor,
+        bool requestedNarrator = false,
+        RpSceneFrame? sceneOverride = null,
+        IReadOnlyDictionary<string, string>? appearanceOverrides = null)
     {
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         if (!string.IsNullOrWhiteSpace(parentTurnId))
@@ -29,11 +37,12 @@ public sealed class TranscriptPromptContextBuilder
             ? activePath.Skip(snapshotTurnIndex + 1).ToList()
             : activePath;
 
-        var scene = activePath.LastOrDefault()?.Scene ?? document.Transcript.RootScene;
+        var scene = sceneOverride ?? activePath.LastOrDefault()?.Scene ?? document.Transcript.RootScene;
         var presentCharacters = document.Characters.Where(character => scene.InSceneCharacterIds.Contains(character.Id)).ToList();
         var otherCharacters = document.Characters.Where(character => !scene.InSceneCharacterIds.Contains(character.Id)).ToList();
         var presentItems = document.Items.Where(item => scene.InSceneItemIds.Contains(item.Id)).ToList();
         var characterAppearances = BuildAppearanceMap(snapshot, activePath, snapshotTurnIndex);
+        ApplyAppearanceOverrides(characterAppearances, appearanceOverrides);
         var actor = requestedNarrator ? null : requestedActor ?? presentCharacters.FirstOrDefault() ?? document.Characters.FirstOrDefault();
         var activeSpeakerName = ResolveActiveSpeakerName(activePath.LastOrDefault());
         var requestedShape = string.IsNullOrWhiteSpace(requestedTurnShape) ? "Brief" : requestedTurnShape.Trim();
@@ -112,7 +121,7 @@ public sealed class TranscriptPromptContextBuilder
         return new(
             ThreadTitle: document.Chat.Title,
             CurrentLocation: string.IsNullOrWhiteSpace(currentLocation) ? "None" : currentLocation,
-            Characters: FormatReferenceNames(document.Characters.Select(character => character.Name)),
+            Characters: FormatCharacterReferences(document.Characters),
             Locations: FormatReferenceNames(document.Locations.Select(location => location.Name)),
             Items: FormatReferenceNames(document.Items.Select(item => item.Name)),
             History: FormatSnapshotHistory(document),
@@ -231,6 +240,15 @@ public sealed class TranscriptPromptContextBuilder
         return appearances;
     }
 
+    static void ApplyAppearanceOverrides(Dictionary<string, string> appearances, IReadOnlyDictionary<string, string>? overrides)
+    {
+        if (overrides is null)
+            return;
+
+        foreach (var pair in overrides)
+            appearances[pair.Key] = pair.Value;
+    }
+
     static string BuildEarlierPrivateIntentContinuity(RpTranscriptSnapshot? snapshot, IReadOnlyList<RpTranscriptTurn> path, int snapshotTurnIndex)
     {
         var builder = new StringBuilder();
@@ -280,6 +298,7 @@ public sealed class TranscriptPromptContextBuilder
 
         var builder = new StringBuilder();
         builder.AppendLine($"**Actor:** {actor.Name}");
+        AppendList(builder, "Pronouns", actor.Pronouns);
         AppendField(builder, "Summary", actor.Summary);
         AppendField(builder, "Personality", actor.Personality);
         AppendField(builder, "Appearance", actor.Appearance);
@@ -336,6 +355,7 @@ public sealed class TranscriptPromptContextBuilder
         {
             var role = actor?.Id == character.Id ? "current actor" : "present";
             builder.AppendLine($"- **{character.Name}:** {role}");
+            AppendList(builder, "  Pronouns", character.Pronouns);
             AppendField(builder, "  Summary", character.Summary);
             AppendField(builder, "  Appearance", appearances.TryGetValue(character.Id, out var appearance) && !string.IsNullOrWhiteSpace(appearance) ? appearance : character.Appearance);
             AppendField(builder, "  Voice", character.Voice);
@@ -356,7 +376,7 @@ public sealed class TranscriptPromptContextBuilder
         var names = characters
             .Where(character => !string.IsNullOrWhiteSpace(character.Name))
             .OrderBy(character => character.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(character => character.Name)
+            .Select(FormatCharacterReference)
             .ToList();
         return names.Count == 0
             ? ""
@@ -442,6 +462,24 @@ public sealed class TranscriptPromptContextBuilder
         return values.Count == 0 ? "None" : string.Join(", ", values);
     }
 
+    static string FormatCharacterReferences(IEnumerable<RpCharacter> characters)
+    {
+        var values = characters
+            .Where(character => !string.IsNullOrWhiteSpace(character.Name))
+            .OrderBy(character => character.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(FormatCharacterReference)
+            .ToList();
+        return values.Count == 0 ? "None" : string.Join(", ", values);
+    }
+
+    static string FormatCharacterReference(RpCharacter character)
+    {
+        var pronouns = CharacterProfileRules.FormatPronouns(character.Pronouns);
+        return string.IsNullOrWhiteSpace(pronouns)
+            ? character.Name
+            : $"{character.Name} ({pronouns})";
+    }
+
     static string FormatAppearanceCharacters(IEnumerable<RpCharacter> characters, IReadOnlyDictionary<string, string> appearanceMap)
     {
         var lines = characters.Select(character =>
@@ -481,7 +519,9 @@ public sealed class TranscriptPromptContextBuilder
         return string.Join(Environment.NewLine, eligible.Select(character =>
         {
             var appearance = appearances.TryGetValue(character.Id, out var current) ? current : "";
-            return $"- {character.Name}: {PromptInlineText(character.Summary)} | Current appearance: {PromptInlineText(appearance, "None")}";
+            var pronouns = CharacterProfileRules.FormatPronouns(character.Pronouns);
+            var pronounText = string.IsNullOrWhiteSpace(pronouns) ? "" : $" | Pronouns: {pronouns}";
+            return $"- {character.Name}: {PromptInlineText(character.Summary)}{pronounText} | Current appearance: {PromptInlineText(appearance, "None")}";
         }));
     }
 
@@ -588,6 +628,7 @@ public sealed class TranscriptPromptContextBuilder
         if (normalized.Count > 0)
             builder.AppendLine($"- {label}: {string.Join(", ", normalized)}");
     }
+
 }
 
 public sealed record TurnPromptContext(

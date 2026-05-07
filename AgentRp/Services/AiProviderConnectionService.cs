@@ -210,6 +210,7 @@ public sealed class AiProviderConnectionService(
             Add("gpt-5");
             Add("gpt-5.5");
             Add("gpt-5.5-mini");
+            Add("gpt-image-2");
             Add("gpt-image-1.5");
             Add("gpt-image-1");
             Add("gpt-image-1-mini");
@@ -249,13 +250,15 @@ public sealed class AiProviderConnectionService(
 
     static int ModelSortRank(string providerType, string modelId)
     {
-        if (providerType == "openai" && string.Equals(modelId, "gpt-image-1.5", StringComparison.Ordinal))
+        if (providerType == "openai" && string.Equals(modelId, "gpt-image-2", StringComparison.Ordinal))
             return 0;
-        if (AiProviderModelIdentityRules.IsKnownImageGenerationModel(providerType, modelId))
+        if (providerType == "openai" && string.Equals(modelId, "gpt-image-1.5", StringComparison.Ordinal))
             return 1;
-        if (AiProviderModelIdentityRules.IsKnownSpeechModel(providerType, modelId))
+        if (AiProviderModelIdentityRules.IsKnownImageGenerationModel(providerType, modelId))
             return 2;
-        return 3;
+        if (AiProviderModelIdentityRules.IsKnownSpeechModel(providerType, modelId))
+            return 3;
+        return 4;
     }
 
     HttpClient CreateBearerClient(string apiKey)

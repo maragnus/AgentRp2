@@ -1,0 +1,12 @@
+@if (!string.IsNullOrWhiteSpace(Text))
+{
+    <div class="image-prompt-block">
+        <strong>@Title</strong>
+        <pre>@Text</pre>
+    </div>
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Text { get; set; } = "";
+}

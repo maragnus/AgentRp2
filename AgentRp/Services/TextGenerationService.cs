@@ -15,6 +15,18 @@ public sealed record GenerateTurnRequest(
     string RequestedActorName,
     bool RequestedNarrator = false);
 
+public sealed record GenerateProseFromPlanRequest(
+    string ParentTurnId,
+    string Mode,
+    string Guidance,
+    string ActorCharacterId,
+    string ActorName,
+    bool RequestedNarrator,
+    RpTurnPlan Plan,
+    IReadOnlyDictionary<string, string> AppearanceByCharacterId,
+    IReadOnlyDictionary<string, string> PrivateIntentByCharacterId,
+    RpSceneFrame Scene);
+
 public sealed record GenerateSnapshotRequest(string TurnId);
 
 public sealed record GeneratedTurnResult(
@@ -49,6 +61,7 @@ public sealed record TranscriptProseUpdate(
 public interface ITextGenerationService
 {
     Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -132,6 +145,75 @@ public sealed class TextGenerationService(
                 appearance,
                 privateIntents,
                 scene,
+                prose,
+                trace);
+        }
+        catch (Exception exception) when (exception is not TranscriptGenerationException)
+        {
+            FailRunningStep(trace, exception.Message);
+            FinalizeTrace(trace, "failed");
+            trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
+            throw new TranscriptGenerationException(exception.Message, trace);
+        }
+    }
+
+    public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        GenerateProseFromPlanRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(document, providers);
+        var trace = new RpTurnTrace
+        {
+            Status = "running",
+            StartedUtc = DateTime.UtcNow,
+            ProviderId = selection.Provider.Id,
+            ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
+            ModelId = selection.Model.Id
+        };
+        try
+        {
+            var plan = SessionCloner.Clone(request.Plan);
+            (string Id, string Name) actor = request.RequestedNarrator
+                ? ("", "Narrator")
+                : (request.ActorCharacterId, string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName);
+            var turnRequest = new GenerateTurnRequest(
+                request.ParentTurnId,
+                request.Mode,
+                request.Guidance,
+                plan.TurnShape,
+                actor.Id,
+                actor.Name,
+                request.RequestedNarrator);
+            var context = promptContextBuilder.BuildTurnContext(
+                document,
+                request.ParentTurnId,
+                request.Guidance,
+                plan.TurnShape,
+                document.Characters.FirstOrDefault(character => character.Id == actor.Id),
+                request.RequestedNarrator,
+                request.Scene,
+                request.AppearanceByCharacterId);
+            var planner = CreatePlanningResponse(plan, ResolvePrivateIntent(request.PrivateIntentByCharacterId, actor.Id));
+            SeedTurnSteps(trace, selection, false);
+            await ReportProgressAsync(progress, trace);
+            var prose = await RunProseStepAsync(document, providers, selection, turnRequest, context, actor, planner, trace, progress, cancellationToken, plan, request.Scene);
+            trace.Data["actorName"] = actor.Name;
+            FinalizeTrace(trace, "completed");
+            await ReportProgressAsync(progress, trace);
+
+            return new(
+                actor.Id,
+                actor.Name,
+                plan,
+                CloneMap(request.AppearanceByCharacterId),
+                CloneMap(request.PrivateIntentByCharacterId),
+                SessionCloner.Clone(request.Scene),
                 prose,
                 trace);
         }
@@ -384,7 +466,9 @@ public sealed class TextGenerationService(
         PlanningResponse plan,
         RpTurnTrace trace,
         TranscriptGenerationProgress? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RpTurnPlan? progressPlanOverride = null,
+        RpSceneFrame? progressSceneOverride = null)
     {
         var tuning = ResolveTuning(document.ModelTuning, "prose");
         var turnShape = ResolveTurnShape(plan.TurnShape, context.RequestedTurnShape);
@@ -404,11 +488,11 @@ public sealed class TextGenerationService(
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
         var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers);
         var systemPrompt = AppendPromptBlock(prompt.SystemPrompt, audioTagGuide.SystemGuide);
-        var userPrompt = AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder);
+        var userPrompt = PromptLibraryService.WithProseFormatReminder(AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder));
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "prose", selection, startedUtc, progress);
-        var turnPlan = CreateTurnPlan(plan, context.RequestedTurnShape);
-        var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
+        var turnPlan = progressPlanOverride is null ? CreateTurnPlan(plan, context.RequestedTurnShape) : SessionCloner.Clone(progressPlanOverride);
+        var scene = SessionCloner.Clone(progressSceneOverride ?? TranscriptGraph.GetActiveScene(document.Transcript));
         await ReportProseProgressAsync(progress, request, actor, turnPlan, scene, "");
         var completion = await SendStreamingTextAsync(
             selection,
@@ -470,6 +554,26 @@ public sealed class TextGenerationService(
             Guardrails = $"Turn shape: {context.RequestedTurnShape}. Stay grounded in the visible scene."
         };
     }
+
+    static PlanningResponse CreatePlanningResponse(RpTurnPlan plan, string privateIntent) => new()
+    {
+        TurnShape = plan.TurnShape,
+        Beat = plan.Beat,
+        Intent = plan.Intent,
+        ImmediateGoal = plan.ImmediateGoal,
+        WhyNow = plan.WhyNow,
+        ChangeIntroduced = plan.ChangeIntroduced,
+        Guardrails = plan.Guardrails,
+        PrivateIntent = privateIntent
+    };
+
+    static string ResolvePrivateIntent(IReadOnlyDictionary<string, string> privateIntents, string actorId) =>
+        !string.IsNullOrWhiteSpace(actorId) && privateIntents.TryGetValue(actorId, out var privateIntent)
+            ? privateIntent
+            : "";
+
+    static Dictionary<string, string> CloneMap(IReadOnlyDictionary<string, string> source) =>
+        source.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
     static ModelTuningStepState ResolveTuning(ModelTuningState state, string stepId)
     {

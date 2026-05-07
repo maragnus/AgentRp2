@@ -42,6 +42,7 @@
                     {
                         var selected = ActiveModel?.Provider.Id == group.Provider.Id && ActiveModel.Model.Id == model.Id;
                         <PickerOptionButton @key="model.Id"
+                                            Class="sidebar-model-option"
                                             Title="@DisplayName(model)"
                                             Subtitle="@(ShowModelId(model) ? model.Id : null)"
                                             Selected="@selected"

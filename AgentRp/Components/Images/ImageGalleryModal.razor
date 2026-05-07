@@ -74,9 +74,15 @@
     </Footer>
 </ModalShell>
 
+@if (!string.IsNullOrWhiteSpace(DetailImageId))
+{
+    <ImageDetailsModal ImageId="@DetailImageId" OnClose="@(() => DetailImageId = null)" />
+}
+
 @code {
     string Search = "";
     string Filter = "all";
+    string? DetailImageId;
     GalleryImage? Selected;
     readonly string[] Types = ["all", "character", "location", "item"];
 
@@ -119,8 +125,9 @@
 
     Task Generate(MouseEventArgs args) => OnGenerate.InvokeAsync();
 
-    static void View(GalleryImage image)
+    void View(GalleryImage image)
     {
+        DetailImageId = image.Id;
     }
 
     Task Delete(GalleryImage image) => Session.Chat.Images.DeleteAsync(image.Id);

@@ -15,6 +15,7 @@ public sealed class RpCharacter
     public string Backstory { get; set; } = "";
     public string Voice { get; set; } = "";
     public string Notes { get; set; } = "";
+    public List<string> Pronouns { get; set; } = [];
     public List<string> SceneRoles { get; set; } = [];
     public List<string> Traits { get; set; } = [];
     public List<string> Drives { get; set; } = [];
@@ -157,6 +158,7 @@ public sealed class AiProviderModel
 public enum AiModelRole
 {
     Chat,
+    Reasoning,
     Image,
     Voice
 }
@@ -169,8 +171,66 @@ public sealed class AiProviderVoice
     public string PreviewUrl { get; set; } = "";
     public Dictionary<string, string> Labels { get; set; } = [];
     public string Source { get; set; } = "";
+    public bool IsCatalogVoice { get; set; }
+    public bool IsBookmarked { get; set; }
+    public bool IsAvailable { get; set; } = true;
     public DateTime UpdatedUtc { get; set; }
 }
+
+public sealed class ElevenLabsVoiceCatalogEntry
+{
+    public string VoiceId { get; set; } = "";
+    public string PublicOwnerId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string PreviewUrl { get; set; } = "";
+    public bool Featured { get; set; }
+    public string Accent { get; set; } = "";
+    public string Gender { get; set; } = "";
+    public string Age { get; set; } = "";
+    public string UseCase { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Language { get; set; } = "";
+    public string Locale { get; set; } = "";
+    public string Descriptive { get; set; } = "";
+    public bool IsBookmarked { get; set; }
+    public bool IsAvailable { get; set; } = true;
+    public DateTime? LastSeenUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
+}
+
+public sealed record ElevenLabsVoiceCatalogFilter(
+    string View,
+    string Search,
+    bool FeaturedOnly,
+    string Accent,
+    string Gender,
+    string Age,
+    string UseCase,
+    string Category)
+{
+    public static ElevenLabsVoiceCatalogFilter SearchAll { get; } = new("search", "", false, "", "", "", "", "");
+    public static ElevenLabsVoiceCatalogFilter Bookmarked { get; } = new("bookmarked", "", false, "", "", "", "", "");
+}
+
+public sealed record ElevenLabsVoiceCatalogSnapshot(
+    IReadOnlyList<ElevenLabsVoiceCatalogEntry> Voices,
+    IReadOnlyList<string> Accents,
+    IReadOnlyList<string> Genders,
+    IReadOnlyList<string> Ages,
+    IReadOnlyList<string> UseCases,
+    IReadOnlyList<string> Categories,
+    DateTime? LastRefreshUtc,
+    string LastRefreshError,
+    int TotalCount,
+    int CachedCount);
+
+public sealed record ElevenLabsVoiceCatalogRefreshProgress(
+    int CurrentPage,
+    int? TotalPages,
+    int VoiceCount,
+    int? TotalCount,
+    string Stage);
 
 public sealed class AiProviderMetric
 {

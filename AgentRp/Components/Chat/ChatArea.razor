@@ -1,4 +1,7 @@
 @implements IDisposable
+@inject IServiceProvider Services
+@inject ILogger<ChatArea> Logger
+@inject DialogHelper Dialogs
 
 <main class="chat claude-chat">
     <header class="claude-chat-head">
@@ -27,6 +30,21 @@
                         <span>Hide Tags</span>
                         <span class="toggle-pill @(Options.HideAudioTags ? "is-on" : "")"><span></span></span>
                     </SelectableButton>
+                    <div class="divider"></div>
+                    <div class="popover-label">Speech</div>
+                    <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleAutoSpeakNewMessages())">
+                        <FaIcon Name="volume" />
+                        <span>Auto Speak</span>
+                        <span class="toggle-pill @(Options.AutoSpeakNewMessages ? "is-on" : "")"><span></span></span>
+                    </SelectableButton>
+                    @if (CanSpeakActionsInNarratorVoice)
+                    {
+                        <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleSpeakActionsInNarratorVoice())">
+                            <FaIcon Name="users" />
+                            <span>Narrator Actions</span>
+                            <span class="toggle-pill @(Options.SpeakActionsInNarratorVoice ? "is-on" : "")"><span></span></span>
+                        </SelectableButton>
+                    }
                     <div class="divider"></div>
                     <div class="popover-label">Visible Blocks</div>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowAppearanceBlocks())">
@@ -62,7 +80,8 @@
                              ShowAppearance="Options.ShowAppearanceBlocks"
                              ShowProcess="Options.ShowProcessTraces"
                              TranscriptBusy="TranscriptBusy"
-                             SubsequentCount="subsequentCount" />
+                             SubsequentCount="subsequentCount"
+                             OnOpenEntities="OnOpenEntities" />
             }
             @if (ActiveDraftTurn is not null)
             {
@@ -146,9 +165,15 @@
 @code {
     string Draft = "";
     string TurnShape = TurnShapePickerOptions.Default;
+    string ActiveChatId = "";
+    string PendingAutoSpeakTurnId = "";
+    HashSet<string> KnownMessageIds = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
 
+    IMessageSpeechService? MessageSpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
+    ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
     RpChat Chat => Session.Chats.Active ?? new() { Title = "Loading", Location = "" };
     RpTranscriptOptionsState Options => Session.Chat.Transcript.Options;
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
@@ -162,6 +187,7 @@
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
     bool CanGenerate => !TranscriptBusy;
+    bool CanSpeakActionsInNarratorVoice => string.Equals(Session.Chat.ModelSelection.Resolve(AiModelRole.Voice)?.Provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
     string TranscriptScrollClass => string.Join(" ", new[]
     {
         "claude-chat-scroll",
@@ -170,6 +196,8 @@
 
     protected override void OnInitialized()
     {
+        ActiveChatId = Chat.Id;
+        KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
         Session.Changed += OnSessionChanged;
         Session.Chats.Changed += OnSessionChanged;
         Session.Chat.Transcript.Changed += OnSessionChanged;
@@ -177,7 +205,36 @@
         Session.Chat.Locations.Changed += OnSessionChanged;
     }
 
-    Task OnSessionChanged() => InvokeAsync(StateHasChanged);
+    async Task OnSessionChanged()
+    {
+        var chatId = Chat.Id;
+        if (!string.Equals(ActiveChatId, chatId, StringComparison.Ordinal))
+        {
+            ActiveChatId = chatId;
+            KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
+            PendingAutoSpeakTurnId = "";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var newMessages = Messages
+            .Where(message => !KnownMessageIds.Contains(message.Id))
+            .ToList();
+        foreach (var message in newMessages)
+            KnownMessageIds.Add(message.Id);
+
+        if (Options.AutoSpeakNewMessages && newMessages.Count > 0)
+            PendingAutoSpeakTurnId = newMessages.Last().Id;
+
+        if (Options.AutoSpeakNewMessages && !TranscriptBusy && !string.IsNullOrWhiteSpace(PendingAutoSpeakTurnId))
+        {
+            var turnId = PendingAutoSpeakTurnId;
+            PendingAutoSpeakTurnId = "";
+            await AutoSpeak(turnId);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
 
     async Task PickSpeaker(RpCharacter? character)
     {
@@ -200,6 +257,52 @@
 
     async Task ToggleShowProcessTraces() =>
         await Session.Chat.Transcript.SetShowProcessTracesAsync(!Options.ShowProcessTraces);
+
+    async Task ToggleAutoSpeakNewMessages() =>
+        await Session.Chat.Transcript.SetAutoSpeakNewMessagesAsync(!Options.AutoSpeakNewMessages);
+
+    async Task ToggleSpeakActionsInNarratorVoice() =>
+        await Session.Chat.Transcript.SetSpeakActionsInNarratorVoiceAsync(!Options.SpeakActionsInNarratorVoice);
+
+    async Task AutoSpeak(string turnId)
+    {
+        var document = Session.ActiveChat.Current;
+        var turn = Messages.FirstOrDefault(message => message.Id == turnId);
+        if (document is null || turn is null)
+            return;
+
+        if (MessageSpeechService is null)
+            return;
+
+        var availability = MessageSpeechService.ResolveAvailability(document, Session.Providers.Items, turn);
+        if (!availability.CanDisplay)
+            return;
+        if (!availability.CanGenerate)
+        {
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, availability, OnOpenEntities);
+            return;
+        }
+
+        try
+        {
+            var playback = await Session.Chat.Transcript.GetOrGenerateSpeechAsync(turn.Id, false);
+            if (playback is not null && Playback is not null)
+                await Playback.PlayUrlAsync(playback.Key, playback.Url);
+        }
+        catch (MessageSpeechMissingVoiceException exception)
+        {
+            Logger.LogWarning(exception, "Automatically reading message {TurnId} aloud needs a selected voice.", turn.Id);
+            await MessageSpeechDialogHelper.ShowMissingVoiceAsync(Dialogs, exception.Availability, OnOpenEntities);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Automatically reading message {TurnId} aloud failed.", turn.Id);
+            await Dialogs.DisplayErrorAsync(
+                "Reading aloud failed",
+                UserFacingErrorMessageBuilder.Build("Automatically reading the new message aloud failed.", exception),
+                UserFacingErrorMessageBuilder.BuildDetails(exception));
+        }
+    }
 
     async Task HandleKeyDown(KeyboardEventArgs args)
     {

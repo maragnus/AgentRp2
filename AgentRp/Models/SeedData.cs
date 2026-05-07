@@ -239,6 +239,7 @@ public static class SeedData
             ApiKeyRequired = true,
             SampleModels =
             [
+                new() { Id = "gpt-image-2", Roles = [AiModelRole.Image] },
                 new() { Id = "gpt-image-1.5", Roles = [AiModelRole.Image] },
                 new() { Id = "gpt-image-1", Roles = [AiModelRole.Image] },
                 new() { Id = "gpt-image-1-mini", Roles = [AiModelRole.Image] },

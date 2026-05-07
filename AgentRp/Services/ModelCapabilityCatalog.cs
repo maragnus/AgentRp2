@@ -89,10 +89,11 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
             TextOutput = capabilities.TextOutput,
             ImageOutput = capabilities.ImageOutput,
             SpeechOutput = capabilities.SpeechOutput,
-            Streaming = capabilities.Streaming,
+            Streaming = true,
             StructuredOutput = capabilities.StructuredOutput,
             Tools = capabilities.Tools,
             ImageGenerationModel = capabilities.ImageGenerationModel,
+            ImageInputFidelity = capabilities.ImageInputFidelity,
             Temperature = capabilities.Temperature,
             TopP = capabilities.TopP,
             MaxTokens = capabilities.MaxTokens,
@@ -141,7 +142,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
                 ImageInput = input.Contains("image"),
                 TextOutput = output.Contains("text"),
                 ImageOutput = output.Contains("image"),
-                Streaming = output.Contains("text"),
+                Streaming = true,
                 StructuredOutput = output.Contains("text"),
                 Tools = true,
                 Aliases = aliases,
@@ -241,6 +242,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         target.StructuredOutput = source.StructuredOutput ?? target.StructuredOutput;
         target.Tools = source.Tools ?? target.Tools;
         target.ImageGenerationModel = string.IsNullOrWhiteSpace(source.ImageGenerationModel) ? target.ImageGenerationModel : source.ImageGenerationModel;
+        target.ImageInputFidelity = source.ImageInputFidelity ?? target.ImageInputFidelity;
         target.Temperature = source.Temperature ?? target.Temperature;
         target.TopP = source.TopP ?? target.TopP;
         target.MaxTokens = source.MaxTokens ?? target.MaxTokens;
@@ -267,7 +269,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
             record.ImageInput = false;
             record.ImageOutput = false;
             record.SpeechOutput = false;
-            record.Streaming = false;
+            record.Streaming = true;
             record.StructuredOutput = false;
             record.Tools = false;
             record.Temperature = TuningSupport.Unsupported;
@@ -292,7 +294,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
                 record.TextOutput = false;
                 record.ImageOutput = false;
                 record.SpeechOutput = true;
-                record.Streaming = false;
+                record.Streaming = true;
                 record.StructuredOutput = false;
                 record.Tools = false;
                 record.Temperature = TuningSupport.Unsupported;
@@ -312,10 +314,13 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
 
         record.TextInput = true;
         record.TextOutput = false;
+        record.ImageInput = true;
         record.ImageOutput = true;
         record.SpeechOutput = false;
-        record.Streaming = false;
+        record.Streaming = true;
         record.StructuredOutput = false;
+        record.Tools = true;
+        record.ImageInputFidelity = !AiProviderModelIdentityRules.IsOpenAiGptImage2Model(record.Id);
         record.Temperature = TuningSupport.Unsupported;
         record.TopP = TuningSupport.Unsupported;
         record.MaxTokens = TuningSupport.Unsupported;
@@ -335,10 +340,11 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         TextOutput = record.TextOutput ?? true,
         ImageOutput = record.ImageOutput ?? false,
         SpeechOutput = record.SpeechOutput ?? false,
-        Streaming = record.Streaming ?? true,
+        Streaming = true,
         StructuredOutput = record.StructuredOutput ?? true,
         Tools = record.Tools ?? false,
         ImageGenerationModel = record.ImageGenerationModel ?? "",
+        ImageInputFidelity = record.ImageInputFidelity ?? true,
         Temperature = record.Temperature ?? TuningSupport.Unsupported,
         TopP = record.TopP ?? TuningSupport.Unsupported,
         MaxTokens = record.MaxTokens ?? TuningSupport.Unsupported,
@@ -390,6 +396,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         public bool? StructuredOutput { get; set; }
         public bool? Tools { get; set; }
         public string? ImageGenerationModel { get; set; }
+        public bool? ImageInputFidelity { get; set; }
         public TuningSupport? Temperature { get; set; }
         public TuningSupport? TopP { get; set; }
         public TuningSupport? MaxTokens { get; set; }

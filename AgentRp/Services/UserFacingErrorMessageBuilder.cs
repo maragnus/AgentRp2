@@ -36,6 +36,26 @@ public static partial class UserFacingErrorMessageBuilder
             : $"{fallbackStem}: {detail}";
     }
 
+    public static string BuildDetails(Exception exception)
+    {
+        var details = new List<string>();
+        foreach (var current in Flatten(exception))
+        {
+            var message = SanitizeDetails(RemoveTechnicalNoise(current.Message));
+            if (!string.IsNullOrWhiteSpace(message))
+                details.Add(message);
+
+            if (current is ExternalServiceFailureException external && !string.IsNullOrWhiteSpace(external.ResponseBody))
+                details.Add($"Response body:\n{SanitizeDetails(external.ResponseBody)}");
+        }
+
+        return string.Join(
+            "\n\n",
+            details
+                .Where(detail => !string.IsNullOrWhiteSpace(detail))
+                .Distinct(StringComparer.Ordinal));
+    }
+
     public static string BuildExternalHttpFailure(string operation, HttpStatusCode statusCode, string responseBody, string? serviceName = null)
     {
         var detail = ExtractResponseDetail(responseBody);
@@ -55,14 +75,13 @@ public static partial class UserFacingErrorMessageBuilder
 
     public static string Sanitize(string message)
     {
-        var sanitized = message.Replace("\r", " ").Replace("\n", " ");
-        sanitized = SecretAssignmentRegex().Replace(sanitized, match => $"{match.Groups[1].Value}{match.Groups[2].Value}{RedactSecret(match.Groups[3].Value)}");
-        sanitized = CredentialValueRegex().Replace(sanitized, match => $"{match.Groups[1].Value}{RedactSecret(match.Groups[2].Value)}");
-        sanitized = BearerTokenRegex().Replace(sanitized, match => $"{match.Groups[1].Value}{RedactSecret(match.Groups[2].Value)}");
-        sanitized = LongSecretRegex().Replace(sanitized, match => RedactSecret(match.Value));
+        var sanitized = RedactSecrets(message.Replace("\r", " ").Replace("\n", " "));
         sanitized = WhitespaceRegex().Replace(sanitized, " ").Trim();
         return sanitized.Length <= MaxDetailLength ? sanitized : sanitized[..MaxDetailLength].TrimEnd() + "...";
     }
+
+    public static string SanitizeDetails(string message) =>
+        RedactSecrets(message.Replace("\r\n", "\n").Replace('\r', '\n')).Trim();
 
     static string? FindBestDetail(Exception exception, string fallbackStem)
     {
@@ -198,6 +217,14 @@ public static partial class UserFacingErrorMessageBuilder
     {
         var trimmed = secret.Trim();
         return trimmed.Length <= 8 ? "***" : $"{trimmed[..4]}***{trimmed[^4..]}";
+    }
+
+    static string RedactSecrets(string message)
+    {
+        var sanitized = SecretAssignmentRegex().Replace(message, match => $"{match.Groups[1].Value}{match.Groups[2].Value}{RedactSecret(match.Groups[3].Value)}");
+        sanitized = CredentialValueRegex().Replace(sanitized, match => $"{match.Groups[1].Value}{RedactSecret(match.Groups[2].Value)}");
+        sanitized = BearerTokenRegex().Replace(sanitized, match => $"{match.Groups[1].Value}{RedactSecret(match.Groups[2].Value)}");
+        return LongSecretRegex().Replace(sanitized, match => RedactSecret(match.Value));
     }
 
     [GeneratedRegex("""(?i)\b(api[-_ ]?key|token|authorization|bearer)(["'\s:=]+)([A-Za-z0-9_\-\.]{12,})""")]

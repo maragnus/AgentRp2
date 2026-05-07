@@ -1,0 +1,70 @@
+@implements IDisposable
+@inject DialogHelper Dialogs
+
+@if (Dialogs.Current is { } request)
+{
+    var options = request.Options;
+    var buttons = options.Buttons ?? new DialogButtonOptions();
+
+    <ModalShell @key="request.Id"
+                Title="@options.Title"
+                Subtitle="@options.Subtitle"
+                Icon="@options.Icon"
+                MaxWidth="640px"
+                Height="min(620px, calc(100dvh - 48px))"
+                Class="@DialogCssClass(options.Kind)"
+                ShowExpandButton="@HasDetails(options)"
+                CloseOnBackdropClick
+                OnClose="@(() => Close(DialogResult.Cancelled))">
+        <ChildContent>
+            <div class="dialog-content">
+                <p class="dialog-message">@options.Message</p>
+                @if (HasDetails(options))
+                {
+                    <details class="dialog-details">
+                        <summary>Details</summary>
+                        <pre>@options.Details</pre>
+                    </details>
+                }
+            </div>
+        </ChildContent>
+        <Footer>
+            @if (buttons.ShowCancel)
+            {
+                <AppButton Variant="secondary" OnClick="@(_ => Close(DialogResult.Cancelled))">@buttons.CancelText</AppButton>
+            }
+            <AppButton Variant="@buttons.PrimaryVariant" OnClick="@(_ => Close(DialogResult.Primary))">
+                @if (!string.IsNullOrWhiteSpace(buttons.PrimaryIcon))
+                {
+                    <FaIcon Name="@buttons.PrimaryIcon" />
+                }
+                @buttons.PrimaryText
+            </AppButton>
+        </Footer>
+    </ModalShell>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Dialogs.Changed += OnDialogsChanged;
+    }
+
+    static bool HasDetails(DialogOptions options) => !string.IsNullOrWhiteSpace(options.Details);
+
+    static string DialogCssClass(DialogKind kind) => kind switch
+    {
+        DialogKind.Error => "app-dialog is-error",
+        DialogKind.Confirm => "app-dialog is-confirm",
+        _ => "app-dialog"
+    };
+
+    async Task Close(DialogResult result) => await Dialogs.CloseCurrentAsync(result);
+
+    void OnDialogsChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Dialogs.Changed -= OnDialogsChanged;
+    }
+}

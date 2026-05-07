@@ -28,10 +28,16 @@ builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionSer
 builder.Services.AddScoped<IAiProviderWidgetService, AiProviderWidgetService>();
 builder.Services.AddScoped<IAiProviderVoiceDiscoveryService, AiProviderVoiceDiscoveryService>();
 builder.Services.AddScoped<IAiProviderVoiceInventoryService, AiProviderVoiceInventoryService>();
+builder.Services.AddScoped<IElevenLabsVoiceCatalogService, ElevenLabsVoiceCatalogService>();
+builder.Services.AddSingleton<ISpeechGenerationService, SpeechGenerationService>();
 builder.Services.AddScoped<ITtsPreviewService, TtsPreviewService>();
 builder.Services.AddScoped<ITtsAudioPlaybackService, TtsAudioPlaybackService>();
+builder.Services.AddScoped<IMessageSpeechService, MessageSpeechService>();
+builder.Services.AddSingleton<IVoiceMessageStreamCoordinator, VoiceMessageStreamCoordinator>();
 builder.Services.AddSingleton<IAudioTagGuideService, AudioTagGuideService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
+builder.Services.AddScoped<IImageDetailsService, ImageDetailsService>();
+builder.Services.AddScoped<DialogHelper>();
 builder.Services.AddScoped<OverlayService>();
 builder.Services.AddScoped<TranscriptPromptContextBuilder>();
 builder.Services.AddSingleton<PromptLibraryService>();
@@ -80,6 +86,50 @@ app.MapGet("/story-images/{imageId}", async (
     return image is null
         ? Results.NotFound()
         : Results.File(image.Bytes, image.ContentType, image.FileName, enableRangeProcessing: true);
+});
+
+app.MapGet("/story-audio/{voiceMessageId}", async (
+    string voiceMessageId,
+    HttpContext context,
+    IDbContextFactory<RpDbContext> dbContextFactory,
+    IVoiceMessageStreamCoordinator streamCoordinator,
+    CancellationToken cancellationToken) =>
+{
+    await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+    var audio = await dbContext.SpeechAssets
+        .AsNoTracking()
+        .Where(x => x.Id == voiceMessageId)
+        .Select(x => new { x.Status, x.Bytes, x.ContentType, x.FileName, x.ErrorMessage, x.CreatedUtc, x.CompletedUtc })
+        .FirstOrDefaultAsync(cancellationToken);
+
+    if (audio is null)
+        return Results.NotFound();
+
+    if (audio.Status == SpeechAssetStatus.Ready && audio.Bytes.Length > 0)
+    {
+        context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        context.Response.Headers.ETag = $"\"{voiceMessageId}-{audio.Bytes.Length}-{(audio.CompletedUtc ?? audio.CreatedUtc).Ticks}\"";
+        return Results.File(audio.Bytes, audio.ContentType, audio.FileName, enableRangeProcessing: true);
+    }
+
+    if (audio.Status == SpeechAssetStatus.Failed)
+        return Results.Problem(
+            detail: string.IsNullOrWhiteSpace(audio.ErrorMessage) ? "Reading aloud failed while generating the audio." : audio.ErrorMessage,
+            title: "Reading aloud failed",
+            statusCode: StatusCodes.Status500InternalServerError);
+
+    var start = await streamCoordinator.EnsureStartedAsync(voiceMessageId, cancellationToken);
+    if (!start.Started)
+        return Results.Problem(
+            detail: start.ErrorMessage,
+            title: "Reading aloud failed",
+            statusCode: StatusCodes.Status500InternalServerError);
+
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Stream(
+        stream => streamCoordinator.CopyLiveAsync(voiceMessageId, stream, context.RequestAborted),
+        string.IsNullOrWhiteSpace(audio.ContentType) ? "audio/mpeg" : audio.ContentType,
+        audio.FileName);
 });
 
 app.MapStaticAssets();

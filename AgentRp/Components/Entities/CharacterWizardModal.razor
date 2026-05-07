@@ -77,6 +77,17 @@
                             <Section Title="Summary" Hint="— one sentence, optional">
                                 <textarea class="character-wizard-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
                             </Section>
+                            <Section Title="Pronouns">
+                                <div class="character-wizard-chip-list">
+                                    @foreach (var pronoun in PronounOptions)
+                                    {
+                                        var selected = Character.Pronouns.Contains(pronoun.Id);
+                                        <SelectableButton @key="pronoun.Id" TooltipText="@pronoun.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(Character.Pronouns, pronoun.Id))">
+                                            @pronoun.Label
+                                        </SelectableButton>
+                                    }
+                                </div>
+                            </Section>
                             <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var role in SceneRoles)
@@ -263,6 +274,7 @@
 
     string WizardTitle => string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name;
     CharacterTraitLibraryState TraitLibrary => Session.Chat.CharacterTraitLibrary.State;
+    IReadOnlyList<CharacterOption> PronounOptions => CharacterProfileRules.PronounOptions;
     IReadOnlyList<CharacterOption> SceneRoles => TraitLibrary.SceneRoles;
     IReadOnlyList<CharacterTraitGroupState> TraitCategories => TraitLibrary.TraitCategories;
     IReadOnlyList<CharacterOption> CoreDrives => TraitLibrary.CoreDrives;
@@ -281,7 +293,7 @@
 
     static readonly WizardStep[] Steps =
     [
-        new("concept", "Concept", "Name & role"),
+        new("concept", "Concept", "Name & pronouns"),
         new("personality", "Personality", "Baseline traits"),
         new("engine", "Inner Engine", "Drives & fears"),
         new("voice", "Voice", "How they speak"),

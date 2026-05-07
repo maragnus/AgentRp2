@@ -4,13 +4,21 @@ namespace AgentRp.Services;
 
 public static class AiProviderModelSelectionRules
 {
+    public static IReadOnlyList<AiModelRole> ProviderRoles { get; } = [AiModelRole.Chat, AiModelRole.Image, AiModelRole.Voice];
+
     public static bool HasChatRole(AiProviderModel model) => model.Capabilities.CanGenerateText;
 
     public static bool HasImageRole(AiProviderModel model) => model.Capabilities.CanGenerateImage;
 
     public static bool HasVoiceRole(AiProviderModel model) => model.Capabilities.CanGenerateSpeech;
 
-    public static bool HasRole(AiProviderModel model, AiModelRole role) => role switch
+    public static AiModelRole ProviderRoleFor(AiModelRole role) => role switch
+    {
+        AiModelRole.Reasoning => AiModelRole.Chat,
+        _ => role
+    };
+
+    public static bool HasRole(AiProviderModel model, AiModelRole role) => ProviderRoleFor(role) switch
     {
         AiModelRole.Chat => HasChatRole(model),
         AiModelRole.Image => HasImageRole(model),
@@ -18,7 +26,7 @@ public static class AiProviderModelSelectionRules
         _ => false
     };
 
-    public static bool HasAnyRole(AiProviderModel model) => Enum.GetValues<AiModelRole>().Any(role => HasRole(model, role));
+    public static bool HasAnyRole(AiProviderModel model) => ProviderRoles.Any(role => HasRole(model, role));
 
     public static bool IsSelectedForChat(AiProviderModel model) =>
         IsSelectedForRole(model, AiModelRole.Chat);
@@ -30,10 +38,10 @@ public static class AiProviderModelSelectionRules
         IsSelectedForRole(model, AiModelRole.Voice);
 
     public static bool IsSelectedForRole(AiProviderModel model, AiModelRole role) =>
-        model.Enabled && model.Roles.Contains(role) && HasRole(model, role);
+        model.Enabled && model.Roles.Contains(ProviderRoleFor(role)) && HasRole(model, role);
 
     public static bool IsSelectedForAnyRole(AiProviderModel model) =>
-        Enum.GetValues<AiModelRole>().Any(role => IsSelectedForRole(model, role));
+        ProviderRoles.Any(role => IsSelectedForRole(model, role));
 
     public static void SetChatSelected(AiProviderModel model, bool selected)
     {
@@ -52,10 +60,11 @@ public static class AiProviderModelSelectionRules
 
     public static void SetRoleSelected(AiProviderModel model, AiModelRole role, bool selected)
     {
+        var providerRole = ProviderRoleFor(role);
         if (selected && HasRole(model, role))
-            model.Roles.Add(role);
+            model.Roles.Add(providerRole);
         else
-            model.Roles.Remove(role);
+            model.Roles.Remove(providerRole);
 
         SynchronizeEnabled(model);
     }
@@ -68,7 +77,7 @@ public static class AiProviderModelSelectionRules
 
     public static void SelectAvailableRoles(AiProviderModel model)
     {
-        model.Roles = Enum.GetValues<AiModelRole>()
+        model.Roles = ProviderRoles
             .Where(role => HasRole(model, role))
             .ToHashSet();
         SynchronizeEnabled(model);
@@ -76,13 +85,14 @@ public static class AiProviderModelSelectionRules
 
     public static void SynchronizeEnabled(AiProviderModel model)
     {
-        model.Roles.RemoveWhere(role => !HasRole(model, role));
+        model.Roles.RemoveWhere(role => role == AiModelRole.Reasoning || !HasRole(model, role));
         model.Enabled = model.Roles.Count > 0;
     }
 
     public static string Label(AiModelRole role) => role switch
     {
         AiModelRole.Chat => "Chat",
+        AiModelRole.Reasoning => "Reasoning",
         AiModelRole.Image => "Image Gen",
         AiModelRole.Voice => "Voice",
         _ => role.ToString()

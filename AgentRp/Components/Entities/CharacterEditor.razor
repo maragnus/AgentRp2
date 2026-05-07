@@ -3,6 +3,10 @@
         <p>@SummaryText</p>
     </Section>
 
+    <Section Title="Pronouns" Class="entity-profile-pronouns">
+        <div class="pill-list">@BadgeList(Character.Pronouns, "blue")</div>
+    </Section>
+
     <div class="entity-profile-grid">
         <Section Title="Scene Roles" Class="entity-profile-section">
             <div class="pill-list">@BadgeList(Character.SceneRoles, "blue")</div>
@@ -43,7 +47,6 @@
 
 @code {
     [Parameter] public RpCharacter Character { get; set; } = new();
-    [Parameter] public EventCallback OnChanged { get; set; }
 
     string SummaryText => string.IsNullOrWhiteSpace(Character.Summary)
         ? "No summary yet. Open the editor to define the character concept."
@@ -65,8 +68,6 @@
         ("Action", Character.ActionFingerprint),
         ("Stress", Character.StressPattern)
     ];
-
-    Task Changed() => OnChanged.InvokeAsync();
 
     RenderFragment BadgeList(IReadOnlyCollection<string> values, string tone) => builder =>
     {

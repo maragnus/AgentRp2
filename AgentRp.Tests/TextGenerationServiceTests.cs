@@ -155,6 +155,9 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Test private intent", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Every action must include an explicit subject pronoun or character name", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(prose.UserPrompt, PromptLibraryService.ProseFormatReminder));
         Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- Gemma only", planning.UserPrompt, StringComparison.Ordinal);
@@ -187,13 +190,13 @@ public sealed class TextGenerationServiceTests
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
         document.Transcript.Options.InjectAudioTags = true;
-        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "voice-model" };
+        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "eleven_v3" };
 
         await service.GenerateTurnAsync(
             document,
             [
                 BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true }),
-                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "elevenlabs", AiModelRole.Voice, "voice-provider", "voice-model")
+                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "elevenlabs", AiModelRole.Voice, "voice-provider", "eleven_v3")
             ],
             new("turn-3", "automatic", "", "Brief", "", ""));
 
@@ -202,7 +205,8 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Audio tag guidance for ElevenLabs v3", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("[whispers]", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Audio tag reminder:", prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Inject ElevenLabs-style square-bracket tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Inject supported ElevenLabs-style square-bracket tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -227,7 +231,31 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Audio tag guidance for xAI text-to-speech", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("<whisper>quiet text</whisper>", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Audio tag reminder:", prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Inject xAI-compatible speech tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Inject supported xAI-compatible speech tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProsePromptDoesNotInjectAudioTagGuideForUnsupportedElevenLabsVoiceModel()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        document.Transcript.Options.InjectAudioTags = true;
+        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "eleven_multilingual_v2" };
+
+        await service.GenerateTurnAsync(
+            document,
+            [
+                BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true }),
+                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "elevenlabs", AiModelRole.Voice, "voice-provider", "eleven_multilingual_v2")
+            ],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.DoesNotContain("Audio tag guidance", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Audio tag reminder", prose.UserPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -364,6 +392,93 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
+    public async Task ProseOnlyGenerationSkipsStructuredStagesAndPreservesSavedState()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var source = document.Transcript.Turns.First(turn => turn.Id == "turn-3");
+        var plan = new RpTurnPlan
+        {
+            TurnShape = "Extended",
+            Beat = "Saved beat",
+            Intent = "Saved intent",
+            ImmediateGoal = "Saved goal",
+            WhyNow = "Saved why now",
+            ChangeIntroduced = "Saved change",
+            Guardrails = "Saved guardrails"
+        };
+        plan.Data["marker"] = "saved-plan-data";
+        var scene = CloneScene(source.Scene);
+        scene.Data["marker"] = "saved-scene-data";
+
+        var result = await service.GenerateProseFromPlanAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            new(
+                "turn-2",
+                "regenerated",
+                "Keep the saved beat.",
+                "c2",
+                "Gemma",
+                false,
+                plan,
+                new Dictionary<string, string> { ["c2"] = "Saved appearance" },
+                new Dictionary<string, string> { ["c2"] = "Saved private intent" },
+                scene));
+
+        Assert.Empty(client.StructuredCalls);
+        Assert.Equal(1, client.StreamingTextCalls);
+        Assert.Equal(["prose"], result.Trace.Steps.Select(step => step.Id));
+        Assert.Equal("Saved beat", result.Plan.Beat);
+        Assert.Equal("saved-plan-data", result.Plan.Data["marker"]?.GetValue<string>());
+        Assert.Equal("Saved appearance", result.AppearanceByCharacterId["c2"]);
+        Assert.Equal("Saved private intent", result.PrivateIntentByCharacterId["c2"]);
+        Assert.Equal("saved-scene-data", result.Scene.Data["marker"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ProseOnlyPromptUsesSavedPlanPrivateIntentAppearanceAndTurnShape()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var plan = new RpTurnPlan
+        {
+            TurnShape = "Silent",
+            Beat = "Saved beat for prose only.",
+            Intent = "Saved intent for prose only.",
+            ImmediateGoal = "Saved immediate goal.",
+            WhyNow = "Saved why now.",
+            ChangeIntroduced = "Saved change.",
+            Guardrails = "Saved guardrails."
+        };
+
+        await service.GenerateProseFromPlanAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            new(
+                "turn-2",
+                "regenerated",
+                "",
+                "c2",
+                "Gemma",
+                false,
+                plan,
+                new Dictionary<string, string> { ["c2"] = "Saved appearance for prose only." },
+                new Dictionary<string, string> { ["c2"] = "Saved private intent for prose only." },
+                CloneScene(document.Transcript.Turns.First(turn => turn.Id == "turn-3").Scene)));
+
+        var prose = client.GenerationRequests.Single(request => request.OperationName == "Writing transcript prose");
+        Assert.Contains("This turn has a silent shape", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Saved beat for prose only.", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Saved intent for prose only.", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Saved guardrails.", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Saved private intent for prose only.", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Saved appearance for prose only.", prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SnapshotRequiresStructuredOutput()
     {
         var service = new TextGenerationService(new FakeModelGenerationClient(), new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
@@ -399,6 +514,15 @@ public sealed class TextGenerationServiceTests
         }).ToList()
     };
 
+    static RpSceneFrame CloneScene(RpSceneFrame scene) => new()
+    {
+        LocationId = scene.LocationId,
+        LocationName = scene.LocationName,
+        InSceneCharacterIds = [.. scene.InSceneCharacterIds],
+        InSceneItemIds = [.. scene.InSceneItemIds],
+        Data = scene.Data.DeepClone().AsObject()
+    };
+
     static AiProvider BuildProvider(
         ModelGenerationCapabilities capabilities,
         string providerType = "openai",
@@ -422,6 +546,9 @@ public sealed class TextGenerationServiceTests
             }
         ]
     };
+
+    static int CountOccurrences(string text, string value) =>
+        text.Split(value, StringSplitOptions.None).Length - 1;
 
     sealed class FakeModelGenerationClient : IModelGenerationClient
     {

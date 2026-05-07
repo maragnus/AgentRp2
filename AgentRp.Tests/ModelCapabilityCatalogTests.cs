@@ -184,8 +184,22 @@ public sealed class ModelCapabilityCatalogTests
 
         Assert.False(capabilities.CanGenerateText);
         Assert.True(capabilities.CanGenerateImage);
-        Assert.False(capabilities.Streaming);
+        Assert.True(capabilities.Streaming);
         Assert.False(capabilities.StructuredOutput);
+    }
+
+    [Fact]
+    public void GptImage2DisablesInputFidelity()
+    {
+        var root = CreateTempRoot();
+        Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
+        File.WriteAllText(Path.Combine(root, "wwwroot", "model-capabilities.default.json"), """{ "models": [] }""");
+        var catalog = new ModelCapabilityCatalog(new FakeWebHostEnvironment(root), Path.Combine(root, "model-capabilities.user.json"));
+
+        var capabilities = catalog.Resolve("openai", "gpt-image-2");
+
+        Assert.True(capabilities.CanGenerateImage);
+        Assert.False(capabilities.ImageInputFidelity);
     }
 
     [Fact]
@@ -221,7 +235,7 @@ public sealed class ModelCapabilityCatalogTests
     }
 
     [Fact]
-    public void ExplicitUserDisableOverridesRoleplayReadyDefaults()
+    public void ExplicitUserDisableOverridesRoleplayReadyDefaultsExceptStreaming()
     {
         var root = CreateTempRoot();
         Directory.CreateDirectory(Path.Combine(root, "wwwroot"));
@@ -241,7 +255,8 @@ public sealed class ModelCapabilityCatalogTests
 
         Assert.True(capabilities.CanGenerateText);
         Assert.False(capabilities.StructuredOutput);
-        Assert.False(capabilities.Streaming);
+        Assert.True(capabilities.Streaming);
+        Assert.True(capabilities.CanGenerateStreamingText);
     }
 
     static string CreateTempRoot()

@@ -42,10 +42,10 @@ public sealed class StoryAssistantService(
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections)
-            ?? throw new InvalidOperationException("Starting the Story Assistant failed because no text-capable model is enabled.");
-        if (!selection.Capabilities.CanGenerateStreamingText || !selection.Capabilities.Tools)
-            throw new InvalidOperationException($"Starting the Story Assistant failed because '{selection.Model.Id}' must support streaming text and tools.");
+        var selection = TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, document.ActiveModelSelections)
+            ?? throw new InvalidOperationException("Starting the Story Assistant failed because no reasoning model is enabled.");
+        if (!selection.Capabilities.CanGenerateText || !selection.Capabilities.Tools)
+            throw new InvalidOperationException($"Starting the Story Assistant failed because reasoning model '{selection.Model.Id}' must support text and tools.");
 
         if (string.IsNullOrWhiteSpace(document.StoryAssistant.ConversationId))
         {
@@ -386,6 +386,7 @@ public sealed class StoryEntityPatchService
         character.Backstory,
         character.Voice,
         character.Notes,
+        character.Pronouns,
         character.SceneRoles,
         character.Traits,
         character.Drives,
@@ -710,6 +711,7 @@ public sealed class StoryEntityPatchService
         Set(updates, "backstory", value => target.Backstory = value);
         Set(updates, "voice", value => target.Voice = value);
         Set(updates, "notes", value => target.Notes = value);
+        SetList(updates, "pronouns", value => target.Pronouns = value);
         Set(updates, "coreDrive", value => target.CoreDrive = value);
         Set(updates, "coreFear", value => target.CoreFear = value);
         Set(updates, "surfaceMask", value => target.SurfaceMask = value);

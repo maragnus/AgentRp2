@@ -25,12 +25,14 @@ public sealed record ResponseImageInput(byte[] Bytes, string ContentType);
 
 public sealed record ResponseImageGenerationRequest(
     AiProvider Provider,
-    AiProviderModel Model,
-    ModelGenerationCapabilities Capabilities,
+    AiProviderModel HostModel,
+    ModelGenerationCapabilities HostCapabilities,
+    AiProviderModel ImageModel,
+    ModelGenerationCapabilities ImageCapabilities,
     string Prompt,
     string Size,
     string Quality,
-    string ReferenceFidelity,
+    string ReferenceDetail,
     IReadOnlyList<ResponseImageInput> ReferenceImages,
     string OperationName);
 
@@ -156,13 +158,8 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         ModelGenerationRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!request.Capabilities.CanGenerateStreamingText)
-        {
-            var textCompletion = await GenerateTextAsync(request, cancellationToken);
-            yield return new(TextDelta: textCompletion.Text);
-            yield return new(InputTokens: textCompletion.InputTokens, OutputTokens: textCompletion.OutputTokens, ResponseId: textCompletion.ResponseId, Completed: true);
-            yield break;
-        }
+        if (!request.Capabilities.CanGenerateText)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not support text input and output.");
 
         var updates = new List<ChatResponseUpdate>();
         await foreach (var update in clientFactory.GetChatClient(request.Provider, request.Model).GetStreamingResponseAsync(
@@ -193,8 +190,8 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         ModelAssistantRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!request.Capabilities.CanGenerateStreamingText || !request.Capabilities.Tools)
-            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' must support streaming text and tools.");
+        if (!request.Capabilities.CanGenerateText || !request.Capabilities.Tools)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' must support text and tools.");
 
         await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildAssistantOptions(request), cancellationToken))
         {
@@ -236,10 +233,13 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         ResponseImageGenerationRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (!request.Capabilities.CanGenerateImage)
-            throw new InvalidOperationException($"{request.OperationName} failed because '{request.Model.Id}' does not have Responses image output enabled.");
+        if (!request.HostCapabilities.CanGenerateText || !request.HostCapabilities.Tools)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.HostModel.Id}' must support Responses text and tools.");
 
-        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.Model).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken))
+        if (!request.ImageCapabilities.CanGenerateImage)
+            throw new InvalidOperationException($"{request.OperationName} failed because '{request.ImageModel.Id}' does not have Responses image output enabled.");
+
+        await foreach (var update in clientFactory.GetResponsesClient(request.Provider, request.HostModel).CreateResponseStreamingAsync(BuildImageOptions(request), cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (update is StreamingResponseImageGenerationCallPartialImageUpdate partial && partial.PartialImageBytes is not null)
@@ -292,14 +292,15 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
     {
         var options = new CreateResponseOptions
         {
-            Model = request.Model.Id,
+            Model = request.HostModel.Id,
             Instructions = "Generate the requested image through the Responses image generation tool.",
             StoredOutputEnabled = false,
+            StreamingEnabled = true,
             ToolChoice = ResponseToolChoice.CreateRequiredChoice()
         };
-        var imageGenerationModel = string.IsNullOrWhiteSpace(request.Capabilities.ImageGenerationModel)
-            ? request.Model.Id
-            : request.Capabilities.ImageGenerationModel;
+        var imageGenerationModel = string.IsNullOrWhiteSpace(request.ImageCapabilities.ImageGenerationModel)
+            ? request.ImageModel.Id
+            : request.ImageCapabilities.ImageGenerationModel;
         options.Tools.Add(ResponseTool.CreateImageGenerationTool(
             imageGenerationModel,
             QualityFor(request.Quality),
@@ -308,9 +309,9 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
             null,
             null,
             null,
-            FidelityFor(request.ReferenceFidelity),
+            InputFidelityFor(request),
             null,
-            1,
+            2,
             ImageGenerationToolAction.Generate));
 
         if (request.ReferenceImages.Count == 0)
@@ -321,7 +322,7 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
 
         var parts = new List<ResponseContentPart> { ResponseContentPart.CreateInputTextPart(request.Prompt) };
         foreach (var image in request.ReferenceImages)
-            parts.Add(ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(image.Bytes), ResponseImageDetailLevel.High));
+            parts.Add(ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(image.Bytes), ReferenceImageDetailFor(request.ReferenceDetail)));
 
         options.InputItems.Add(ResponseItem.CreateUserMessageItem(parts));
         return options;
@@ -402,12 +403,30 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         _ => ImageGenerationToolSize.Auto
     };
 
-    static ImageGenerationToolInputFidelity? FidelityFor(string value) => value.ToLowerInvariant() switch
+    static ImageGenerationToolInputFidelity? FidelityFor(string value)
     {
-        "high" => ImageGenerationToolInputFidelity.High,
-        "low" => ImageGenerationToolInputFidelity.Low,
-        _ => null
-    };
+        if (value.Equals("high", StringComparison.OrdinalIgnoreCase))
+            return ImageGenerationToolInputFidelity.High;
+
+        if (value.Equals("low", StringComparison.OrdinalIgnoreCase))
+            return ImageGenerationToolInputFidelity.Low;
+
+        return null;
+    }
+
+    static ImageGenerationToolInputFidelity? InputFidelityFor(ResponseImageGenerationRequest request) =>
+        request.ImageCapabilities.ImageInputFidelity ? FidelityFor(request.ReferenceDetail) : null;
+
+    static ResponseImageDetailLevel ReferenceImageDetailFor(string value)
+    {
+        if (value.Equals("high", StringComparison.OrdinalIgnoreCase))
+            return ResponseImageDetailLevel.High;
+
+        if (value.Equals("low", StringComparison.OrdinalIgnoreCase))
+            return ResponseImageDetailLevel.Low;
+
+        return ResponseImageDetailLevel.Auto;
+    }
 
     static string ContentTypeFor(ImageGenToolCallOutputFormat? format) =>
         format?.ToString().ToLowerInvariant() switch

@@ -7,7 +7,7 @@
         <AppButton Variant="secondary"
                    Size="@(Compact ? "sm" : "md")"
                    Class="@($"voice-picker-selected-button {(picker.IsOpen ? "is-open" : "")}")"
-                   Disabled="@(ActiveVoiceModel is null || ActiveVoiceModel.Model.Voices.Count == 0)"
+                   Disabled="@(ActiveVoiceModel is null || AvailableVoices.Count == 0)"
                    Text="@SelectedVoiceName"
                    TrailingIcon="chevron-down"
                    TooltipText="@VoicePickerTitle"
@@ -24,19 +24,20 @@
             {
                 <VoicePickerEmpty Title="No voice model selected" Message="Choose an active voice model first." />
             }
-            else if (ActiveVoiceModel.Model.Voices.Count == 0)
+            else if (AvailableVoices.Count == 0)
             {
                 <VoicePickerEmpty Title="No cached voices" Message="@($"Refresh voices for {ActiveVoiceModel.Provider.Name} in AI Providers.")" />
             }
             else
             {
-                @foreach (var voice in ActiveVoiceModel.Model.Voices)
+                @foreach (var voice in AvailableVoices)
                 {
                     <VoicePickerOption @key="voice.Id"
                                        Voice="@voice"
                                        Tags="@AiProviderVoiceDisplayRules.VisibleTags(ActiveVoiceModel.Provider, voice)"
                                        Selected="@(voice.Id == SelectedVoiceId)"
-                                       OnSelected="@(selectedVoice => SelectVoice(picker, selectedVoice))" />
+                                       OnSelected="@(selectedVoice => SelectVoice(picker, selectedVoice))"
+                                       OnBookmarkChanged="OnBookmarkChanged" />
                 }
             }
         </div>
@@ -48,16 +49,19 @@
 
     [Parameter] public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
     [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
+    [Parameter] public IReadOnlyList<AiProviderVoice>? Voices { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public string OwnerName { get; set; } = "entity";
     [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<(string VoiceId, bool Bookmarked)> OnBookmarkChanged { get; set; }
 
     string ModelKey => ActiveVoiceModel?.Key ?? "";
     string SelectedVoiceId => !string.IsNullOrWhiteSpace(ModelKey)
         && VoiceSelections.TryGetValue(ModelKey, out var selection)
         ? selection.VoiceId
         : "";
-    AiProviderVoice? SelectedVoice => ActiveVoiceModel?.Model.Voices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
+    IReadOnlyList<AiProviderVoice> AvailableVoices => Voices ?? ActiveVoiceModel?.Model.Voices ?? [];
+    AiProviderVoice? SelectedVoice => AvailableVoices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
     string SelectedVoiceName => SelectedVoice is null ? "No voice" : AiProviderVoiceDisplayRules.DisplayVoice(SelectedVoice);
 
     string VoicePickerTitle
@@ -66,7 +70,7 @@
         {
             if (ActiveVoiceModel is null)
                 return $"Choose a voice model for {OwnerName} first.";
-            if (ActiveVoiceModel.Model.Voices.Count == 0)
+            if (AvailableVoices.Count == 0)
                 return $"No cached voices for {ActiveVoiceModel.Provider.Name}.";
 
             return $"Choose speech voice for {OwnerName}.";

@@ -59,8 +59,29 @@ window.agentRp = {
             clearHandlers(audio);
             audio.src = url;
             audio.onended = () => dotNet.invokeMethodAsync("NotifyAudioStopped", key);
-            audio.onerror = () => dotNet.invokeMethodAsync("NotifyAudioStopped", key);
+            audio.onerror = () => dotNet.invokeMethodAsync("NotifyAudioFailed", key, describeAudioError(audio));
             await audio.play();
+        }
+
+        function describeAudioError(audio) {
+            const code = audio.error && audio.error.code;
+            if (code === 1) {
+                return "Audio playback was interrupted.";
+            }
+
+            if (code === 2) {
+                return "The audio stream stopped because of a network error.";
+            }
+
+            if (code === 3) {
+                return "The generated audio could not be decoded.";
+            }
+
+            if (code === 4) {
+                return "The audio source could not be played.";
+            }
+
+            return "Audio playback failed.";
         }
 
         function stop() {

@@ -21,12 +21,18 @@ public sealed class CharacterProfileRulesTests
         var updates = json.RootElement.GetProperty("properties").GetProperty("updates").GetProperty("properties");
         var traits = updates.GetProperty("traits");
         var sceneRoles = updates.GetProperty("sceneRoles");
+        var pronouns = updates.GetProperty("pronouns");
         var schemaText = tool.Parameters.ToJsonString();
 
         Assert.True(traits.GetProperty("uniqueItems").GetBoolean());
         Assert.Equal(CharacterProfileRules.MaxTraits, traits.GetProperty("maxItems").GetInt32());
         Assert.True(sceneRoles.GetProperty("uniqueItems").GetBoolean());
         Assert.Equal(CharacterProfileRules.MaxSceneRoles, sceneRoles.GetProperty("maxItems").GetInt32());
+        Assert.True(pronouns.GetProperty("uniqueItems").GetBoolean());
+        Assert.Equal(CharacterProfileRules.MaxPronouns, pronouns.GetProperty("maxItems").GetInt32());
+        Assert.Equal(
+            CharacterProfileRules.PronounOptions.Select(option => option.Id),
+            pronouns.GetProperty("items").GetProperty("enum").EnumerateArray().Select(item => item.GetString() ?? ""));
         Assert.False(traits.GetProperty("items").TryGetProperty("enum", out _));
         Assert.DoesNotContain("guarded", schemaText, StringComparison.Ordinal);
         Assert.False(updates.TryGetProperty("relationships", out _));
@@ -72,6 +78,7 @@ public sealed class CharacterProfileRulesTests
             .ToList();
 
         Assert.Contains("traits", fieldEnum);
+        Assert.Contains("pronouns", fieldEnum);
         Assert.Contains("coreDrive", fieldEnum);
         Assert.DoesNotContain("protect-their-people", fieldEnum);
     }

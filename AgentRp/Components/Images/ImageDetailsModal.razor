@@ -1,0 +1,183 @@
+@inject IImageDetailsService ImageDetailsService
+
+<ModalShell Title="@Title" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
+    <ChildContent>
+        <ModalStackLayout BodyClass="image-details-body">
+            <ChildContent>
+                @if (Loading)
+                {
+                    <div class="empty-preview"><span class="spinner"></span><span>Loading image...</span></div>
+                }
+                else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="modal-error">@ErrorMessage</div>
+                }
+                else if (Details is not null)
+                {
+                    <div class="image-details-layout">
+                        <div class="image-details-preview">
+                            @if (!string.IsNullOrWhiteSpace(Details.Url))
+                            {
+                                <img class="generated-image-preview" src="@Details.Url" alt="@Details.Title" />
+                            }
+                            else
+                            {
+                                <ImagePlaceholder Label="@Details.Title" Hue="210" Class="generated-image-preview" />
+                            }
+                        </div>
+
+                        <div class="image-details-content">
+                            <Section Title="Details">
+                                <dl class="image-detail-list">
+                                    @if (!string.IsNullOrWhiteSpace(Details.Entity))
+                                    {
+                                        <dt>Entity</dt>
+                                        <dd>@Details.Entity</dd>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Details.EntityType))
+                                    {
+                                        <dt>Type</dt>
+                                        <dd>@Details.EntityType</dd>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Details.CreatedLabel))
+                                    {
+                                        <dt>Created</dt>
+                                        <dd>@Details.CreatedLabel</dd>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Details.Dimensions))
+                                    {
+                                        <dt>Size</dt>
+                                        <dd>@Details.Dimensions</dd>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Details.ProviderName))
+                                    {
+                                        <dt>Provider</dt>
+                                        <dd>@Details.ProviderName</dd>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Details.ModelId))
+                                    {
+                                        <dt>Model</dt>
+                                        <dd>@Details.ModelId</dd>
+                                    }
+                                </dl>
+                            </Section>
+
+                            @if (Details.HasGenerationMetadata)
+                            {
+                                <Section Title="Generation">
+                                    <dl class="image-detail-list">
+                                        @if (!string.IsNullOrWhiteSpace(Details.Size))
+                                        {
+                                            <dt>Canvas</dt>
+                                            <dd>@Details.Size</dd>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(Details.Quality))
+                                        {
+                                            <dt>Quality</dt>
+                                            <dd>@Details.Quality</dd>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(Details.ReferenceDetail))
+                                        {
+                                            <dt>Reference Detail</dt>
+                                            <dd>@Details.ReferenceDetail</dd>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(Details.ArtStyle))
+                                        {
+                                            <dt>Art Style</dt>
+                                            <dd>@Details.ArtStyle</dd>
+                                        }
+                                    </dl>
+                                </Section>
+                            }
+
+                            <Section Title="Prompts">
+                                @if (!Details.HasGenerationMetadata && string.IsNullOrWhiteSpace(Details.UserPrompt) && string.IsNullOrWhiteSpace(Details.FinalPrompt))
+                                {
+                                    <p class="image-details-empty">No prompt metadata is available for this image.</p>
+                                }
+                                else
+                                {
+                                    <ImagePromptBlock Title="User Prompt" Text="@Details.UserPrompt" />
+                                    <ImagePromptBlock Title="Final Prompt" Text="@Details.FinalPrompt" />
+                                    <ImagePromptBlock Title="Revised Prompt" Text="@Details.RevisedPrompt" />
+                                }
+                            </Section>
+
+                            <Section Title="References">
+                                @if (Details.References.Count == 0)
+                                {
+                                    <p class="image-details-empty">No explicit references were saved for this image.</p>
+                                }
+                                else
+                                {
+                                    <div class="image-reference-list">
+                                        @foreach (var reference in Details.References)
+                                        {
+                                            <div @key="@($"{reference.Kind}:{reference.EntityType}:{reference.Name}")" class="image-reference-row">
+                                                @if (!string.IsNullOrWhiteSpace(reference.ImageUrl))
+                                                {
+                                                    <img class="image-reference-thumb" src="@reference.ImageUrl" alt="@reference.Name" />
+                                                }
+                                                else
+                                                {
+                                                    <ImagePlaceholder Label="@reference.Name" Hue="210" Class="image-reference-thumb" />
+                                                }
+                                                <span>
+                                                    <strong>@reference.Name</strong>
+                                                    <small>@ReferenceLabel(reference)</small>
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </Section>
+                        </div>
+                    </div>
+                }
+            </ChildContent>
+        </ModalStackLayout>
+    </ChildContent>
+    <Footer>
+        <span class="modal-action-spacer"></span>
+        <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
+    </Footer>
+</ModalShell>
+
+@code {
+    ImageDetailsView? Details;
+    bool Loading;
+    string ErrorMessage = "";
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string ImageId { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string Title => Details?.Title ?? "Image Details";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ImageId))
+            return;
+
+        Loading = true;
+        ErrorMessage = "";
+        try
+        {
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading image details failed because no chat is open.");
+            Details = await ImageDetailsService.GetAsync(document, ImageId);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Loading image details failed.", exception);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    static string ReferenceLabel(ImageDetailsReferenceView reference) =>
+        reference.Kind == "image"
+            ? "Reference image"
+            : reference.EntityType;
+}

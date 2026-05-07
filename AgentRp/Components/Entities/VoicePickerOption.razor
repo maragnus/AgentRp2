@@ -1,30 +1,47 @@
-<PickerOptionButton Title="@DisplayName"
-                    Selected="@Selected"
-                    Disabled="@Selected"
-                    TooltipText="@TooltipText"
-                    AriaLabel="@TooltipText"
-                    OnClick="Select">
-    <DetailContent>
-        @if (Tags.Count > 0)
-        {
-            <span class="popover-option-tags">
-                @foreach (var tag in Tags)
-                {
-                    <span @key="@($"{Voice.Id}:{tag}")">@tag</span>
-                }
-            </span>
-        }
-    </DetailContent>
-</PickerOptionButton>
+<div class="voice-picker-option-row">
+    <PickerOptionButton Title="@DisplayName"
+                        Selected="@Selected"
+                        Disabled="@Selected"
+                        Class="voice-picker-option-main"
+                        TooltipText="@TooltipText"
+                        AriaLabel="@TooltipText"
+                        OnClick="Select">
+        <DetailContent>
+            @if (Tags.Count > 0)
+            {
+                <span class="popover-option-tags">
+                    @foreach (var tag in Tags)
+                    {
+                        <span @key="@($"{Voice.Id}:{tag}")">@tag</span>
+                    }
+                </span>
+            }
+        </DetailContent>
+    </PickerOptionButton>
+    @if (Voice.IsCatalogVoice)
+    {
+        <BusyButton Bare
+                    Class="@BookmarkClass"
+                    TooltipText="@BookmarkTooltip"
+                    AriaLabel="@BookmarkTooltip"
+                    OnClick="ToggleBookmark">
+            <FaIcon Name="star" />
+        </BusyButton>
+    }
+</div>
 
 @code {
     [Parameter] public AiProviderVoice Voice { get; set; } = new();
     [Parameter] public IReadOnlyList<string> Tags { get; set; } = [];
     [Parameter] public bool Selected { get; set; }
     [Parameter] public EventCallback<AiProviderVoice> OnSelected { get; set; }
+    [Parameter] public EventCallback<(string VoiceId, bool Bookmarked)> OnBookmarkChanged { get; set; }
 
     string DisplayName => AiProviderVoiceDisplayRules.DisplayVoice(Voice);
     string TooltipText => Selected ? $"{DisplayName} is selected" : $"Use {DisplayName}";
+    string BookmarkTooltip => Voice.IsBookmarked ? $"Remove {DisplayName} bookmark" : $"Bookmark {DisplayName}";
+    string BookmarkClass => $"voice-picker-bookmark {(Voice.IsBookmarked ? "is-bookmarked" : "")}";
 
     Task Select() => OnSelected.InvokeAsync(Voice);
+    Task ToggleBookmark() => OnBookmarkChanged.InvokeAsync((Voice.Id, !Voice.IsBookmarked));
 }

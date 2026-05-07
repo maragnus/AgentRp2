@@ -107,6 +107,9 @@ public static class AiProviderModelIdentityRules
         modelId.Contains("image", StringComparison.OrdinalIgnoreCase)
         || modelId.Contains("dall-e", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsOpenAiGptImage2Model(string modelId) =>
+        modelId.StartsWith("gpt-image-2", StringComparison.OrdinalIgnoreCase);
+
     static bool IsOpenAiSpeechModel(string modelId) =>
         modelId.Contains("tts", StringComparison.OrdinalIgnoreCase)
         || modelId.Equals("tts-1", StringComparison.OrdinalIgnoreCase)

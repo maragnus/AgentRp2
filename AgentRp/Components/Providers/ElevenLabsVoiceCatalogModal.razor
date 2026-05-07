@@ -1,0 +1,364 @@
+@inject IElevenLabsVoiceCatalogService VoiceCatalogService
+
+<ModalShell Title="ElevenLabs Voice Catalog" MaxWidth="980px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalStackLayout BodyClass="voice-catalog-body">
+        <Header>
+            <ModalPaneToolbar Class="voice-catalog-toolbar voice-catalog-toolbar-primary">
+                <div class="segmented">
+                    <AppButton Size="sm" Active="@(View == BookmarkedView)" OnClick="@(_ => SetView(BookmarkedView))">
+                        <FaIcon Name="star" />Bookmarked
+                    </AppButton>
+                    <AppButton Size="sm" Active="@(View == CatalogView)" OnClick="@(_ => SetView(CatalogView))">
+                        <FaIcon Name="book-open" />Catalog
+                    </AppButton>
+                </div>
+                <SearchField Value="@Search" ValueChanged="SetSearch" Placeholder="Search voices..." />
+                <span class="modal-action-spacer"></span>
+                <AppButton Variant="secondary" Size="sm" OnClick="@(_ => ConfirmRefreshOpen = true)">
+                    <FaIcon Name="refresh" />Refresh
+                </AppButton>
+            </ModalPaneToolbar>
+            <ModalPaneToolbar Class="voice-catalog-toolbar voice-catalog-toolbar-filters">
+                <AppSelect Value="@FeaturedValue" ValueChanged="SetFeatured" Size="sm" Class="voice-catalog-select">
+                    <option value="all">All voices</option>
+                    <option value="featured">Featured</option>
+                </AppSelect>
+                @FilterSelect("Accent", Accent, Snapshot.Accents, SetAccent)
+                @FilterSelect("Gender", Gender, Snapshot.Genders, SetGender)
+                @FilterSelect("Age", Age, Snapshot.Ages, SetAge)
+                @FilterSelect("Use Case", UseCase, Snapshot.UseCases, SetUseCase)
+                @FilterSelect("Category", Category, Snapshot.Categories, SetCategory)
+            </ModalPaneToolbar>
+            <div class="voice-catalog-status">
+                <span>@StatusText</span>
+                @if (!string.IsNullOrWhiteSpace(Snapshot.LastRefreshError))
+                {
+                    <span class="field-status-pill is-error">Error</span>
+                }
+            </div>
+        </Header>
+        <ChildContent>
+            @if (Loading)
+            {
+                <div class="providers-empty-state">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <strong>@LoadingTitle</strong>
+                    <span>@LoadingDetail</span>
+                </div>
+            }
+            else
+            {
+                @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                {
+                    <div class="modal-error">@ErrorMessage</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Snapshot.LastRefreshError))
+                {
+                    <div class="modal-error">@Snapshot.LastRefreshError</div>
+                }
+
+                @if (Snapshot.Voices.Count == 0)
+                {
+                    <div class="providers-empty-state">
+                        <FaIcon Name="waveform-lines" />
+                        <strong>@EmptyTitle</strong>
+                        <span>@EmptyMessage</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="voice-catalog-list">
+                        @foreach (var voice in VisibleVoices)
+                        {
+                            <ElevenLabsVoiceCatalogRow @key="voice.VoiceId"
+                                                       Provider="@Provider"
+                                                       PreviewModel="@PreviewModel"
+                                                       Voice="@voice"
+                                                       OnBookmarkChanged="SetBookmarked" />
+                        }
+                    </div>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            <span>@PageStatus</span>
+            <span class="modal-action-spacer"></span>
+            <span class="modal-action-group">
+                <AppButton Variant="secondary" Size="sm" Disabled="@(PageIndex == 0)" OnClick="@(_ => PreviousPage())"><FaIcon Name="chevron-left" />Previous</AppButton>
+                <AppButton Variant="secondary" Size="sm" Disabled="@(PageIndex >= PageCount - 1)" OnClick="@(_ => NextPage())">Next <FaIcon Name="chevron-right" /></AppButton>
+            </span>
+        </Footer>
+    </ModalStackLayout>
+</ModalShell>
+
+@if (ConfirmRefreshOpen)
+{
+    <ConfirmDialog Title="Refresh ElevenLabs voice catalog?"
+                   Body="This will reload the full ElevenLabs voice library and may take several minutes."
+                   Icon="refresh"
+                   ConfirmText="Refresh"
+                   ConfirmVariant="secondary"
+                   OnCancel="@(() => ConfirmRefreshOpen = false)"
+                   OnConfirm="ConfirmRefresh" />
+}
+
+@code {
+    bool Loading = true;
+    const string BookmarkedView = "bookmarked";
+    const string CatalogView = "catalog";
+    const int PageSize = 20;
+    string View = BookmarkedView;
+    string Search = "";
+    string FeaturedValue = "all";
+    string Accent = "";
+    string Gender = "";
+    string Age = "";
+    string UseCase = "";
+    string Category = "";
+    string ErrorMessage = "";
+    bool ConfirmRefreshOpen;
+    int PageIndex;
+    ElevenLabsVoiceCatalogRefreshProgress? RefreshProgress;
+    ElevenLabsVoiceCatalogSnapshot Snapshot = new([], [], [], [], [], [], null, "", 0, 0);
+
+    [Parameter] public AiProvider Provider { get; set; } = new();
+    [Parameter] public AiProviderModel PreviewModel { get; set; } = new();
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string StatusText
+    {
+        get
+        {
+            var count = Snapshot.Voices.Count == 1 ? "1 voice" : $"{Snapshot.Voices.Count} voices";
+            var refresh = Snapshot.LastRefreshUtc is DateTime refreshed
+                ? $"Refreshed {RelativeDateFormatter.FormatDate(refreshed)}"
+                : "Not refreshed";
+            return $"{count} filtered · {Snapshot.CachedCount} cached · {refresh}";
+        }
+    }
+
+    int PageCount => Math.Max(1, (int)Math.Ceiling(Snapshot.Voices.Count / (double)PageSize));
+    IReadOnlyList<ElevenLabsVoiceCatalogEntry> VisibleVoices => Snapshot.Voices
+        .Skip(PageIndex * PageSize)
+        .Take(PageSize)
+        .ToList();
+    string PageStatus
+    {
+        get
+        {
+            if (Snapshot.Voices.Count == 0)
+                return "No voices";
+
+            var first = PageIndex * PageSize + 1;
+            var last = Math.Min(Snapshot.Voices.Count, first + PageSize - 1);
+            return $"Showing {first}-{last} of {Snapshot.Voices.Count}";
+        }
+    }
+    string LoadingTitle => RefreshProgress is { } progress && progress.TotalPages is int totalPages
+        ? $"{progress.Stage} voice catalog · page {progress.CurrentPage} of {totalPages}"
+        : "Loading voice catalog";
+    string LoadingDetail => RefreshProgress is { } progress
+        ? $"{progress.VoiceCount:N0} voices downloaded{(progress.TotalCount is int total ? $" of {total:N0}" : "")}"
+        : "Starting catalog load...";
+    string EmptyTitle => View == BookmarkedView ? "No bookmarked voices" : "No voices found";
+    string EmptyMessage => View == BookmarkedView
+        ? "Use Catalog to explore the voice library and bookmark voices for characters and the narrator."
+        : "Adjust filters or refresh the catalog.";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Loading)
+            return;
+
+        await LoadInitialAsync();
+    }
+
+    async Task LoadInitialAsync()
+    {
+        Loading = true;
+        ErrorMessage = "";
+        try
+        {
+            RefreshProgress = null;
+            await VoiceCatalogService.EnsureLoadedAsync(Provider, new Progress<ElevenLabsVoiceCatalogRefreshProgress>(ReportProgress));
+            await ReloadAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Loading the ElevenLabs voice catalog failed.", exception);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    async Task ConfirmRefresh()
+    {
+        ConfirmRefreshOpen = false;
+        Loading = true;
+        ErrorMessage = "";
+        RefreshProgress = null;
+        try
+        {
+            Snapshot = await VoiceCatalogService.RefreshAsync(Provider, new Progress<ElevenLabsVoiceCatalogRefreshProgress>(ReportProgress));
+            await ReloadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Refreshing the ElevenLabs voice catalog failed.", exception);
+        }
+        finally
+        {
+            Loading = false;
+            RefreshProgress = null;
+        }
+    }
+
+    async Task ReloadAsync()
+    {
+        Snapshot = await VoiceCatalogService.LoadSnapshotAsync(Filter());
+        ClampPage();
+    }
+
+    async Task SetBookmarked((string VoiceId, bool Bookmarked) change)
+    {
+        ErrorMessage = "";
+        try
+        {
+            await VoiceCatalogService.SetBookmarkedAsync(change.VoiceId, change.Bookmarked);
+            await ReloadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Updating the ElevenLabs voice bookmark failed.", exception);
+        }
+    }
+
+    async Task SetView(string value)
+    {
+        View = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetSearch(string value)
+    {
+        Search = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetFeatured(string value)
+    {
+        FeaturedValue = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetAccent(string value)
+    {
+        Accent = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetGender(string value)
+    {
+        Gender = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetAge(string value)
+    {
+        Age = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetUseCase(string value)
+    {
+        UseCase = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    async Task SetCategory(string value)
+    {
+        Category = value;
+        ResetPage();
+        await ReloadAsync();
+    }
+
+    void PreviousPage()
+    {
+        if (PageIndex > 0)
+            PageIndex--;
+    }
+
+    void NextPage()
+    {
+        if (PageIndex < PageCount - 1)
+            PageIndex++;
+    }
+
+    void ResetPage() => PageIndex = 0;
+
+    void ClampPage()
+    {
+        if (PageIndex >= PageCount)
+            PageIndex = PageCount - 1;
+    }
+
+    void ReportProgress(ElevenLabsVoiceCatalogRefreshProgress progress)
+    {
+        RefreshProgress = progress;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    ElevenLabsVoiceCatalogFilter Filter() => new(
+        View,
+        Search,
+        FeaturedValue == "featured",
+        Accent,
+        Gender,
+        Age,
+        UseCase,
+        Category);
+
+    RenderFragment FilterSelect(
+        string label,
+        string value,
+        IReadOnlyList<string> options,
+        Func<string, Task> onChanged) => builder =>
+    {
+        builder.OpenComponent<AppSelect>(0);
+        builder.AddAttribute(1, "Value", value);
+        builder.AddAttribute(2, "ValueChanged", EventCallback.Factory.Create<string>(this, onChanged));
+        builder.AddAttribute(3, "Size", "sm");
+        builder.AddAttribute(4, "Class", "voice-catalog-select");
+        builder.AddAttribute(5, "ChildContent", (RenderFragment)(child =>
+        {
+            child.OpenElement(0, "option");
+            child.AddAttribute(1, "value", "");
+            child.AddContent(2, label);
+            child.CloseElement();
+            var sequence = 3;
+            foreach (var option in options)
+            {
+                child.OpenElement(sequence++, "option");
+                child.AddAttribute(sequence++, "value", option);
+                child.AddContent(sequence++, DisplayLabel(option));
+                child.CloseElement();
+            }
+        }));
+        builder.CloseComponent();
+    };
+
+    static string DisplayLabel(string value) =>
+        System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.Replace('_', ' ').Replace('-', ' '));
+}

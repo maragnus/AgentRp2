@@ -29,6 +29,14 @@ public sealed record PromptRenderResult(
 
 public sealed partial class PromptLibraryService
 {
+    public const string ProseFormatReminder =
+        "Format reminder: Always wrap actions in *asterisks* and speech in \"quotes\". "
+        + "Every action must include an explicit subject pronoun or character name when potentially ambiguous, such as *She trembles* or *Bella looks away*. "
+        + "Do not write bare action fragments like *trembles* or *eyes pleading*. Never output unwrapped output.";
+
+    const string LegacyProseFormatRule = "Format: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
+    const string LegacyProseFormatReminder = "Format reminder: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
+
     static readonly IReadOnlyList<PromptLibraryStageDefinition> StageDefinitions =
     [
         new(PromptLibraryStageIds.Snapshot, "Snapshot", false),
@@ -267,6 +275,18 @@ public sealed partial class PromptLibraryService
         return new(
             RenderTemplate(prompt.System, values),
             RenderTemplate(prompt.User, values));
+    }
+
+    public static string WithProseFormatReminder(string userPrompt)
+    {
+        var body = userPrompt.Replace("\r\n", "\n", StringComparison.Ordinal);
+        body = RemoveProseFormatReminderLine(body, LegacyProseFormatRule);
+        body = RemoveProseFormatReminderLine(body, LegacyProseFormatReminder);
+        body = RemoveProseFormatReminderLine(body, ProseFormatReminder).TrimEnd();
+
+        return string.IsNullOrWhiteSpace(body)
+            ? ProseFormatReminder
+            : $"{body}\n\n{ProseFormatReminder}";
     }
 
     public static string RenderPrompt(PromptLibraryState state, string stageId, string field, IReadOnlyDictionary<string, string> values)
@@ -719,11 +739,34 @@ public sealed partial class PromptLibraryService
         - Do not expand beyond them.
         - Stop early to prevent ramble, recap, or repeating yourself.
 
-        Format: Always wrap actions in *asterisks* and speech in "quotes". Never output unwrapped output.
-
         CRITICAL STEPS: {prose.turnShapeUser}
         - Stop
+
+        Format reminder: Always wrap actions in *asterisks* and speech in "quotes". Every action must include an explicit subject pronoun or character name, such as *She trembles* or *Bella looks away*. Do not write bare action fragments like *trembles* or *eyes pleading*. Never output unwrapped output.
         """;
+
+    static string RemoveProseFormatReminderLine(string prompt, string line)
+    {
+        var updated = prompt
+            .Replace($"\n\n{line}\n\n", "\n\n", StringComparison.Ordinal)
+            .Replace($"\n{line}\n", "\n", StringComparison.Ordinal);
+
+        if (updated.StartsWith($"{line}\n\n", StringComparison.Ordinal))
+            updated = updated[(line.Length + 2)..];
+
+        if (updated.StartsWith($"{line}\n", StringComparison.Ordinal))
+            updated = updated[(line.Length + 1)..];
+
+        if (updated.EndsWith($"\n\n{line}", StringComparison.Ordinal))
+            updated = updated[..^(line.Length + 2)];
+
+        if (updated.EndsWith($"\n{line}", StringComparison.Ordinal))
+            updated = updated[..^(line.Length + 1)];
+
+        return string.Equals(updated, line, StringComparison.Ordinal)
+            ? ""
+            : updated;
+    }
 
     [GeneratedRegex(@"\{(?<key>[A-Za-z0-9_.]+)\}")]
     private static partial Regex PlaceholderRegex();
