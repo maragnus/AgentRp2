@@ -1,3 +1,6 @@
+@implements IDisposable
+@inject IModelSelectionNotifier ModelSelectionNotifier
+
 <AnchoredPopover Placement="@Placement"
                  Class="@PopoverClass"
                  AnchorClass="@AnchorClass"
@@ -76,7 +79,19 @@
     IReadOnlyList<ModelGroup> Groups => BuildGroups();
     OverlayLayer EffectiveLayer => Layer ?? AmbientLayer;
 
-    ActiveModelSelection? ResolveActiveModel() => Session.Chat.ModelSelection.Resolve(Role);
+    ActiveModelSelection? ResolveActiveModel() => Session.ModelSelection.Resolve(Role);
+
+    protected override void OnInitialized()
+    {
+        ModelSelectionNotifier.Changed += OnModelSelectionChanged;
+    }
+
+    Task OnModelSelectionChanged(ModelSelectionChangeNotification notification)
+    {
+        return notification.Role == Role
+            ? InvokeAsync(StateHasChanged)
+            : Task.CompletedTask;
+    }
 
     IReadOnlyList<ModelGroup> BuildGroups()
     {
@@ -96,7 +111,7 @@
         ErrorMessage = null;
         try
         {
-            await Session.Chat.ModelSelection.SetActiveModelAsync(Role, providerId, modelId);
+            await Session.ModelSelection.SetActiveModelAsync(Role, providerId, modelId);
             await OnSelected.InvokeAsync();
             await picker.Close();
         }
@@ -118,6 +133,11 @@
 
     static bool ShowModelId(AiProviderModel model) =>
         !string.Equals(DisplayName(model).Trim(), model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    public void Dispose()
+    {
+        ModelSelectionNotifier.Changed -= OnModelSelectionChanged;
+    }
 
     sealed record ModelGroup(AiProvider Provider, IReadOnlyList<AiProviderModel> Models);
 }

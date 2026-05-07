@@ -208,7 +208,7 @@
     RpLocation? SelectedLocation => Locations.FirstOrDefault(location => location.Id == SelectedId);
     RpItem? SelectedItem => Items.FirstOrDefault(item => item.Id == SelectedId);
     RpTimelineEntry? SelectedTimeline => Timeline.FirstOrDefault(entry => entry.Id == SelectedId);
-    ActiveModelSelection? ActiveVoiceModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Voice);
+    ActiveModelSelection? ActiveVoiceModel => Session.ModelSelection.Resolve(AiModelRole.Voice);
 
     bool HasToggle => Type is "characters" or "locations" or "items";
     string EntityTypeForCurrentTab => Type switch
@@ -253,7 +253,7 @@
         Session.Chat.Timeline.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
         Session.Chat.NarratorProfile.Changed += OnStoreChanged;
-        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
 
         Type = InitialType;
@@ -371,7 +371,7 @@
         Session.Chat.Timeline.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
         Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
-        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 }

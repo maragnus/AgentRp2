@@ -86,6 +86,7 @@ public sealed class UiCompositionPolicyTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -111,6 +112,7 @@ public sealed class UiCompositionPolicyTests
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -147,6 +149,7 @@ public sealed class UiCompositionPolicyTests
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -184,6 +187,7 @@ public sealed class UiCompositionPolicyTests
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
         await using var store = NewLiveStore();
@@ -201,7 +205,7 @@ public sealed class UiCompositionPolicyTests
 
         await option.ClickAsync(new());
 
-        var active = session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+        var active = session.ModelSelection.Resolve(AiModelRole.Chat);
         Assert.Equal("grok-4-0709", active?.Model.Id);
     }
 
@@ -317,6 +321,7 @@ public sealed class UiCompositionPolicyTests
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
@@ -341,6 +346,7 @@ public sealed class UiCompositionPolicyTests
         context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);

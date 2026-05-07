@@ -54,16 +54,19 @@ public interface IMessageSpeechService
     MessageSpeechAvailability ResolveAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptTurn turn);
 
     MessageSpeechAvailability ResolveSnapshotAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptSnapshot snapshot);
 
     Task<MessageSpeechPlayback> GetOrGenerateAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptTurn turn,
         bool regenerate,
         CancellationToken cancellationToken = default);
@@ -71,6 +74,7 @@ public interface IMessageSpeechService
     Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptSnapshot snapshot,
         bool regenerate,
         CancellationToken cancellationToken = default);
@@ -95,27 +99,30 @@ public sealed class MessageSpeechService(
     public MessageSpeechAvailability ResolveAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptTurn turn) =>
-        ResolveAvailability(document, providers, turn.Body, turn.AuthorCharacterId, turn.AuthorName);
+        ResolveAvailability(document, providers, modelSelections, turn.Body, turn.AuthorCharacterId, turn.AuthorName);
 
     public MessageSpeechAvailability ResolveSnapshotAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptSnapshot snapshot) =>
-        ResolveAvailability(document, providers, snapshot.Summary, "", "Snapshot");
+        ResolveAvailability(document, providers, modelSelections, snapshot.Summary, "", "Snapshot");
 
     MessageSpeechAvailability ResolveAvailability(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         string text,
         string authorCharacterId,
         string authorName)
     {
-        var voiceModel = ResolveVoiceModel(document, providers);
+        var voiceModel = ResolveVoiceModel(providers, modelSelections);
         if (voiceModel is null || !HasSpeechContent(NormalizeSpeechText(text)))
             return new(MessageSpeechAvailabilityKind.NoVoiceModel);
 
-        return BuildPlan(document, providers, text, authorCharacterId, authorName) is not null
+        return BuildPlan(document, providers, modelSelections, text, authorCharacterId, authorName) is not null
             ? new(MessageSpeechAvailabilityKind.Ready)
             : MissingVoiceAvailability(document, voiceModel, authorCharacterId, authorName);
     }
@@ -123,12 +130,14 @@ public sealed class MessageSpeechService(
     public async Task<MessageSpeechPlayback> GetOrGenerateAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptTurn turn,
         bool regenerate,
         CancellationToken cancellationToken = default) =>
         await GetOrGenerateCoreAsync(
             document,
             providers,
+            modelSelections,
             turn.Id,
             PlaybackKey(turn),
             turn.Speech,
@@ -146,12 +155,14 @@ public sealed class MessageSpeechService(
     public async Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         RpTranscriptSnapshot snapshot,
         bool regenerate,
         CancellationToken cancellationToken = default) =>
         await GetOrGenerateCoreAsync(
             document,
             providers,
+            modelSelections,
             snapshot.Id,
             SnapshotPlaybackKey(snapshot),
             snapshot.Speech,
@@ -165,6 +176,7 @@ public sealed class MessageSpeechService(
     async Task<MessageSpeechPlayback> GetOrGenerateCoreAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         string ownerId,
         string key,
         RpMessageSpeechState speech,
@@ -175,8 +187,8 @@ public sealed class MessageSpeechService(
         bool regenerate,
         CancellationToken cancellationToken)
     {
-        var plan = BuildPlan(document, providers, text, authorCharacterId, authorName)
-            ?? throw new MessageSpeechMissingVoiceException(ResolveAvailability(document, providers, text, authorCharacterId, authorName));
+        var plan = BuildPlan(document, providers, modelSelections, text, authorCharacterId, authorName)
+            ?? throw new MessageSpeechMissingVoiceException(ResolveAvailability(document, providers, modelSelections, text, authorCharacterId, authorName));
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         if (!regenerate
             && !string.IsNullOrWhiteSpace(speech.VoiceMessageId)
@@ -291,11 +303,12 @@ public sealed class MessageSpeechService(
     MessageSpeechPlan? BuildPlan(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         string body,
         string authorCharacterId,
         string authorName)
     {
-        var voiceModel = ResolveVoiceModel(document, providers);
+        var voiceModel = ResolveVoiceModel(providers, modelSelections);
         if (voiceModel is null)
             return null;
 
@@ -372,12 +385,12 @@ public sealed class MessageSpeechService(
         return new(MessageSpeechAvailabilityKind.MissingVoice, authorCharacterId, authorName);
     }
 
-    ActiveModelSelection? ResolveVoiceModel(RpChatDocument document, IReadOnlyList<AiProvider> providers)
+    ActiveModelSelection? ResolveVoiceModel(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections)
     {
         foreach (var provider in providers)
             capabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        return TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Voice, document.ActiveModelSelections);
+        return TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Voice, modelSelections);
     }
 
     static MessageSpeechPlan BuildSingleVoicePlan(

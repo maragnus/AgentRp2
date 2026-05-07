@@ -44,8 +44,8 @@ public interface IImageGenerationService
     IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null);
     Task<ImageGenerationSettingsDocument> GetSettingsAsync(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null, CancellationToken cancellationToken = default);
     Task SaveSettingsAsync(ImageGenerationSettingsDocument settings, CancellationToken cancellationToken = default);
-    Task<GeneratedImageResult> GenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateImageRequest request, CancellationToken cancellationToken = default);
-    IAsyncEnumerable<ImageGenerationStreamingUpdate> GenerateStreamingAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateImageRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedImageResult> GenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateImageRequest request, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ImageGenerationStreamingUpdate> GenerateStreamingAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateImageRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed class ImageGenerationService(
@@ -150,10 +150,18 @@ public sealed class ImageGenerationService(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         GenerateImageRequest request,
+        CancellationToken cancellationToken = default) =>
+        await GenerateAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, cancellationToken);
+
+    public async Task<GeneratedImageResult> GenerateAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GenerateImageRequest request,
         CancellationToken cancellationToken = default)
     {
         GeneratedImageResult? result = null;
-        await foreach (var update in GenerateStreamingAsync(document, providers, request, cancellationToken))
+        await foreach (var update in GenerateStreamingAsync(document, providers, modelSelections, request, cancellationToken))
         {
             if (update.Result is not null)
                 result = update.Result;
@@ -168,8 +176,19 @@ public sealed class ImageGenerationService(
         GenerateImageRequest request,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var model = ResolveModels(document, providers, request.ModelKey, request.ReferenceImageIds.Count > 0);
-        var prompt = await ComposePromptAsync(document, providers, request, cancellationToken);
+        await foreach (var update in GenerateStreamingAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, cancellationToken))
+            yield return update;
+    }
+
+    public async IAsyncEnumerable<ImageGenerationStreamingUpdate> GenerateStreamingAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GenerateImageRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var model = ResolveModels(document, providers, modelSelections, request.ModelKey, request.ReferenceImageIds.Count > 0);
+        var prompt = await ComposePromptAsync(document, providers, modelSelections, request, cancellationToken);
         if (string.IsNullOrWhiteSpace(prompt.FinalPrompt))
             throw new InvalidOperationException("Generating an image failed because the prompt was empty.");
 
@@ -269,13 +288,18 @@ public sealed class ImageGenerationService(
         return new(galleryImage, prompt.FinalPrompt, model.ImageProvider.Name, model.ImageModel.Id, revisedPrompt, prompt.Rationale);
     }
 
-    ResponseImageModelSelection ResolveModels(RpChatDocument document, IReadOnlyList<AiProvider> providers, string modelKey, bool needsImageInput)
+    ResponseImageModelSelection ResolveModels(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        string modelKey,
+        bool needsImageInput)
     {
         foreach (var provider in providers)
             capabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        var imageModel = ResolveImageModel(document, providers, modelKey);
-        var hostModel = ResolveHostModel(document, providers, imageModel.Provider, imageModel.Model, needsImageInput);
+        var imageModel = ResolveImageModel(providers, modelSelections, modelKey);
+        var hostModel = ResolveHostModel(providers, modelSelections, imageModel.Provider, imageModel.Model, needsImageInput);
         return new(
             imageModel.Provider,
             imageModel.Model,
@@ -285,11 +309,11 @@ public sealed class ImageGenerationService(
             hostModel.Model.Capabilities);
     }
 
-    (AiProvider Provider, AiProviderModel Model) ResolveImageModel(RpChatDocument document, IReadOnlyList<AiProvider> providers, string modelKey)
+    (AiProvider Provider, AiProviderModel Model) ResolveImageModel(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, string modelKey)
     {
         if (string.IsNullOrWhiteSpace(modelKey))
         {
-            var active = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Image, document.ActiveModelSelections);
+            var active = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Image, modelSelections);
             if (active is not null)
                 return (active.Provider, active.Model);
         }
@@ -307,8 +331,8 @@ public sealed class ImageGenerationService(
     }
 
     (AiProvider Provider, AiProviderModel Model) ResolveHostModel(
-        RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         AiProvider imageProvider,
         AiProviderModel imageModel,
         bool needsImageInput)
@@ -316,7 +340,7 @@ public sealed class ImageGenerationService(
         if (CanHostResponsesImageGeneration(imageModel.Capabilities, needsImageInput))
             return (imageProvider, imageModel);
 
-        var activeTextModel = TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections);
+        var activeTextModel = TextModelTuningCatalog.TryResolveActiveTextModel(providers, modelSelections);
         if (activeTextModel is not null
             && string.Equals(activeTextModel.Provider.Id, imageProvider.Id, StringComparison.Ordinal)
             && CanHostResponsesImageGeneration(activeTextModel.Model.Capabilities, needsImageInput))
@@ -438,11 +462,12 @@ public sealed class ImageGenerationService(
     async Task<ComposedImagePrompt> ComposePromptAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         GenerateImageRequest request,
         CancellationToken cancellationToken)
     {
         var fallback = BuildPrompt(document, request);
-        var selection = TryResolveStructuredTextModel(providers, document.ActiveModelSelections);
+        var selection = TryResolveStructuredTextModel(providers, modelSelections);
         if (selection is null)
             return new(fallback, "Composed the prompt from the user request and selected story context.");
 

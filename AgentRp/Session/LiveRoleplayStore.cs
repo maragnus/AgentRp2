@@ -18,8 +18,7 @@ public enum RoleplayStoreArea
     NarratorProfile,
     PromptLibrary,
     CharacterTraitLibrary,
-    ModelTuning,
-    ModelSelection
+    ModelTuning
 }
 
 public sealed record RoleplayStoreNotification(Guid OriginSessionId, string? ChatId, RoleplayStoreArea Area, long Version);
@@ -350,9 +349,6 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 break;
             case RoleplayStoreArea.ModelTuning:
                 target.ModelTuning = SessionCloner.Clone(source.ModelTuning);
-                break;
-            case RoleplayStoreArea.ModelSelection:
-                target.ActiveModelSelections = SessionCloner.Clone(source.ActiveModelSelections);
                 break;
         }
     }

@@ -12,12 +12,16 @@ public sealed class RoleplaySession(
     IStoryAssistantService? storyAssistantService = null,
     IAiProviderCapabilityPipeline? capabilityPipeline = null,
     IAiProviderWidgetService? providerWidgetService = null,
-    IEntityNotifier? entityNotifier = null) : IAsyncDisposable
+    IEntityNotifier? entityNotifier = null,
+    IGlobalModelSelectionStore? globalModelSelectionStore = null,
+    IModelSelectionNotifier? modelSelectionNotifier = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
     readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
     readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
     readonly IEntityNotifier _entityNotifier = entityNotifier ?? NullEntityNotifier.Instance;
+    readonly IGlobalModelSelectionStore _globalModelSelectionStore = globalModelSelectionStore ?? new GlobalModelSelectionStore(new InMemoryAppSettingsService());
+    readonly IModelSelectionNotifier _modelSelectionNotifier = modelSelectionNotifier ?? NullModelSelectionNotifier.Instance;
     bool _initialized;
     string? _activeChatId;
 
@@ -25,6 +29,7 @@ public sealed class RoleplaySession(
     public ChatRegistry Registry { get; private set; } = null!;
     public ChatListStore Chats { get; private set; } = null!;
     public ProviderStore Providers { get; private set; } = null!;
+    public ModelSelectionStore ModelSelection { get; private set; } = null!;
     public ChatWorkspace Chat { get; private set; } = null!;
 
     public bool IsInitialized => _initialized;
@@ -40,9 +45,12 @@ public sealed class RoleplaySession(
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
         Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
-        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier);
+        ModelSelection = new(Providers, _globalModelSelectionStore, _modelSelectionNotifier);
+        Providers.ModelSelection = ModelSelection;
+        Chat = new(ActiveChat, Registry, Providers, ModelSelection, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier);
         liveStore.Changed += OnLiveStoreChanged;
 
+        await ModelSelection.LoadAsync();
         await Chats.LoadAsync();
         await Providers.LoadAsync();
         var first = Chats.Items.FirstOrDefault();
@@ -96,6 +104,7 @@ public sealed class RoleplaySession(
     {
         liveStore.Changed -= OnLiveStoreChanged;
         liveStore.ReleaseChat(_sessionId, _activeChatId);
+        ModelSelection?.Dispose();
         await Task.CompletedTask;
     }
 }
@@ -157,6 +166,7 @@ public sealed class ChatWorkspace
         ActiveChatContext activeChat,
         ChatRegistry registry,
         ProviderStore providers,
+        ModelSelectionStore modelSelection,
         ITextGenerationService textGenerationService,
         SceneTransitionService sceneTransitionService,
         IMessageSpeechService? messageSpeechService,
@@ -168,14 +178,13 @@ public sealed class ChatWorkspace
         Items = new(activeChat, registry, entityNotifier);
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry, entityNotifier);
-        Transcript = new(activeChat, registry, providers, textGenerationService, sceneTransitionService, messageSpeechService);
-        StoryAssistant = new(activeChat, registry, providers, Transcript, storyAssistantService);
+        Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService);
+        StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService);
         ChatDirection = new(activeChat, registry);
         NarratorProfile = new(activeChat, registry);
         PromptLibrary = new(activeChat, registry);
         CharacterTraitLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);
-        ModelSelection = new(activeChat, registry, providers);
 
         Characters.Start();
         Locations.Start();
@@ -189,7 +198,6 @@ public sealed class ChatWorkspace
         PromptLibrary.Start();
         CharacterTraitLibrary.Start();
         ModelTuning.Start();
-        ModelSelection.Start();
     }
 
     public CharacterStore Characters { get; }
@@ -204,7 +212,6 @@ public sealed class ChatWorkspace
     public PromptLibraryStore PromptLibrary { get; }
     public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
     public ModelTuningStore ModelTuning { get; }
-    public ChatModelSelectionStore ModelSelection { get; }
 }
 
 public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, ChatRegistry registry, ActiveChatContext activeChat) : StoreBase
@@ -256,6 +263,7 @@ public sealed class ProviderStore(
     readonly IAiProviderWidgetService _widgetService = widgetService ?? NullAiProviderWidgetService.Instance;
 
     public IReadOnlyList<AiProvider> Items => _items;
+    public ModelSelectionStore? ModelSelection { get; set; }
 
     public async Task LoadAsync() => await RefreshAsync();
 
@@ -264,6 +272,8 @@ public sealed class ProviderStore(
         _items.Clear();
         _items.AddRange((await liveStore.LoadProvidersAsync()).Select(SessionCloner.Clone));
         NormalizeProviders();
+        if (ModelSelection is not null)
+            await ModelSelection.EnsureValidAsync();
         await NotifyChangedAsync();
     }
 
@@ -325,6 +335,8 @@ public sealed class ProviderStore(
     {
         NormalizeProviders();
         await liveStore.ReplaceProvidersAsync(sessionId, _items);
+        if (ModelSelection is not null)
+            await ModelSelection.EnsureValidAsync();
         await NotifyChangedAsync();
     }
 

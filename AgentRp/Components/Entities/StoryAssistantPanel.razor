@@ -216,7 +216,7 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    ActiveModelSelection? ActiveModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Reasoning);
+    ActiveModelSelection? ActiveModel => Session.ModelSelection.Resolve(AiModelRole.Reasoning);
 
     bool CanRun => ActiveModel is { Capabilities.CanGenerateStreamingText: true, Capabilities.Tools: true };
     bool NeedsRestart => Session.Chat.StoryAssistant.State.RemoteThreadLost;
@@ -234,7 +234,7 @@
     protected override void OnInitialized()
     {
         Session.Chat.StoryAssistant.Changed += OnStoreChanged;
-        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
     }
 
@@ -337,7 +337,7 @@
     public void Dispose()
     {
         Session.Chat.StoryAssistant.Changed -= OnStoreChanged;
-        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 }

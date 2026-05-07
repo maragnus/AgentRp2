@@ -25,6 +25,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
         if (Document is not null)
         {
             RemoveCharacterReferences(Document.Transcript.RootScene, id);
+            RemoveCharacterReferences(Document.Transcript.WorkingScene.Scene, id);
             foreach (var turn in Document.Transcript.Turns)
             {
                 RemoveCharacterReferences(turn.Scene, id);
@@ -53,7 +54,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
         if (Document is null)
             return;
 
-        var scene = TranscriptGraph.GetEditableActiveScene(Document.Transcript);
+        var scene = TranscriptGraph.GetEditableWorkingScene(Document.Transcript);
         if (!scene.InSceneCharacterIds.Remove(id))
             scene.InSceneCharacterIds.Add(id);
 
@@ -134,6 +135,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
         if (Document is not null)
         {
             UpdateScene(Document.Transcript.RootScene, id, replacement);
+            UpdateScene(Document.Transcript.WorkingScene.Scene, id, replacement);
             foreach (var turn in Document.Transcript.Turns)
                 UpdateScene(turn.Scene, id, replacement);
 
@@ -155,7 +157,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
         if (Document is null)
             return;
 
-        var scene = TranscriptGraph.GetEditableActiveScene(Document.Transcript);
+        var scene = TranscriptGraph.GetEditableWorkingScene(Document.Transcript);
         var location = Items.FirstOrDefault(item => item.Id == id);
         scene.LocationId = location?.Id ?? "";
         scene.LocationName = location?.Name ?? "";
@@ -240,6 +242,7 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
         if (Document is not null)
         {
             Document.Transcript.RootScene.InSceneItemIds.RemoveAll(itemId => itemId == id);
+            Document.Transcript.WorkingScene.Scene.InSceneItemIds.RemoveAll(itemId => itemId == id);
             foreach (var turn in Document.Transcript.Turns)
                 turn.Scene.InSceneItemIds.RemoveAll(itemId => itemId == id);
 
@@ -261,7 +264,7 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
         if (Document is null)
             return;
 
-        var scene = TranscriptGraph.GetEditableActiveScene(Document.Transcript);
+        var scene = TranscriptGraph.GetEditableWorkingScene(Document.Transcript);
         if (!scene.InSceneItemIds.Remove(id))
             scene.InSceneItemIds.Add(id);
 
@@ -413,6 +416,7 @@ public sealed class StoryAssistantStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
+    ModelSelectionStore modelSelection,
     TranscriptStore transcript,
     IStoryAssistantService? storyAssistantService) : ActiveChatStoreBase(activeChat, registry), IStoryAssistantCallbacks
 {
@@ -446,7 +450,7 @@ public sealed class StoryAssistantStore(
         try
         {
             if (storyAssistantService is not null)
-                await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), CancellationToken.None);
+                await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -491,6 +495,7 @@ public sealed class StoryAssistantStore(
             await storyAssistantService.RunTurnAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 new(text),
                 this,
                 runToken);
@@ -940,75 +945,4 @@ public sealed class ModelTuningStore(ActiveChatContext activeChat, ChatRegistry 
 
         return state;
     }
-}
-
-public sealed class ChatModelSelectionStore(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers) : ActiveChatStoreBase(activeChat, registry)
-{
-    protected override RoleplayStoreArea Area => RoleplayStoreArea.ModelSelection;
-    public ActiveModelSelectionsState State => Document?.ActiveModelSelections ?? ActiveModelSelectionsState.CreateDefault();
-
-    public ActiveModelSelection? Resolve(AiModelRole role) =>
-        role == AiModelRole.Reasoning
-            ? TextModelTuningCatalog.TryResolveActiveReasoningModel(providers.Items, State)
-            : TextModelTuningCatalog.TryResolveActiveModel(providers.Items, role, State);
-
-    public async Task SetActiveModelAsync(AiModelRole role, string providerId, string modelId)
-    {
-        if (Document is null)
-            return;
-
-        var provider = providers.Items.FirstOrDefault(provider => provider.Id == providerId)
-            ?? throw new InvalidOperationException("Selecting the AI model failed because the provider is not available.");
-        if (!provider.Enabled)
-            throw new InvalidOperationException($"Selecting the AI model failed because {provider.Name} is disabled.");
-
-        var model = provider.Models.FirstOrDefault(model => model.Id == modelId)
-            ?? throw new InvalidOperationException("Selecting the AI model failed because the model is not available.");
-        if (!AiProviderModelSelectionRules.IsSelectedForRole(model, role))
-            throw new InvalidOperationException($"Selecting the AI model failed because {DisplayName(model)} is not enabled for {AiProviderModelSelectionRules.Label(role)}.");
-
-        Document.ActiveModelSelections.Values[role] = new()
-        {
-            ProviderId = providerId,
-            ModelId = modelId
-        };
-        await SaveActiveDocumentAsync();
-    }
-
-    public async Task ClearActiveModelAsync(AiModelRole role)
-    {
-        if (Document is null)
-            return;
-
-        Document.ActiveModelSelections.Values.Remove(role);
-        await SaveActiveDocumentAsync();
-    }
-
-    public async Task NormalizeAsync()
-    {
-        if (Document is null)
-            return;
-
-        var invalid = Document.ActiveModelSelections.Values
-            .Where(pair => !IsValid(pair.Key, pair.Value))
-            .Select(pair => pair.Key)
-            .ToList();
-        if (invalid.Count == 0)
-            return;
-
-        foreach (var role in invalid)
-            Document.ActiveModelSelections.Values.Remove(role);
-
-        await SaveActiveDocumentAsync();
-    }
-
-    bool IsValid(AiModelRole role, ActiveModelSelectionState selection)
-    {
-        var provider = providers.Items.FirstOrDefault(provider => provider.Id == selection.ProviderId);
-        var model = provider?.Models.FirstOrDefault(model => model.Id == selection.ModelId);
-        return provider?.Enabled == true && model is not null && AiProviderModelSelectionRules.IsSelectedForRole(model, role);
-    }
-
-    static string DisplayName(AiProviderModel model) =>
-        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 }

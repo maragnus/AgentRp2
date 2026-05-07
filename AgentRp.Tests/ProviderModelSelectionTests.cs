@@ -299,7 +299,9 @@ public sealed class ProviderModelSelectionTests
     public async Task ChatModelSelectionPersistsActiveTextModel()
     {
         await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
-        var session = new RoleplaySession(store);
+        var notifier = new RecordingModelSelectionNotifier();
+        var globalSelections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), notifier);
+        var session = new RoleplaySession(store, globalModelSelectionStore: globalSelections, modelSelectionNotifier: notifier);
         await session.InitializeAsync();
         var provider = new AiProvider
         {
@@ -326,12 +328,162 @@ public sealed class ProviderModelSelectionTests
         };
         await session.Providers.AddAsync(provider);
 
-        await session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Chat, "active-provider", "second");
+        await session.ModelSelection.SetActiveModelAsync(AiModelRole.Chat, "active-provider", "second");
 
-        var reloaded = new RoleplaySession(store);
+        var reloaded = new RoleplaySession(store, globalModelSelectionStore: globalSelections, modelSelectionNotifier: notifier);
         await reloaded.InitializeAsync();
-        var active = reloaded.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+        var active = reloaded.ModelSelection.Resolve(AiModelRole.Chat);
         Assert.Equal("second", active?.Model.Id);
+    }
+
+    [Fact]
+    public async Task GlobalSelectionSavesFallbackWhenSelectionIsMissing()
+    {
+        var selections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), new RecordingModelSelectionNotifier());
+        var providers = new List<AiProvider>
+        {
+            new()
+            {
+                Id = "provider",
+                Enabled = true,
+                Models =
+                [
+                    new()
+                    {
+                        Id = "fallback",
+                        Enabled = true,
+                        Roles = [AiModelRole.Chat],
+                        Capabilities = new() { TextInput = true, TextOutput = true }
+                    }
+                ]
+            }
+        };
+
+        await selections.EnsureValidAsync(providers);
+
+        var snapshot = selections.Snapshot();
+        Assert.Equal("provider", snapshot.Values[AiModelRole.Chat].ProviderId);
+        Assert.Equal("fallback", snapshot.Values[AiModelRole.Chat].ModelId);
+    }
+
+    [Fact]
+    public async Task GlobalSelectionFallsBackAndPersistsWhenActiveModelBecomesInvalid()
+    {
+        var selections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), new RecordingModelSelectionNotifier());
+        var providers = new List<AiProvider>
+        {
+            new()
+            {
+                Id = "provider",
+                Enabled = true,
+                Models =
+                [
+                    new()
+                    {
+                        Id = "active",
+                        Enabled = true,
+                        Roles = [AiModelRole.Chat],
+                        Capabilities = new() { TextInput = true, TextOutput = true }
+                    },
+                    new()
+                    {
+                        Id = "fallback",
+                        Enabled = true,
+                        Roles = [AiModelRole.Chat],
+                        Capabilities = new() { TextInput = true, TextOutput = true }
+                    }
+                ]
+            }
+        };
+        await selections.SetActiveModelAsync(AiModelRole.Chat, "provider", "active", providers);
+        providers[0].Models[0].Enabled = false;
+
+        await selections.EnsureValidAsync(providers);
+
+        Assert.Equal("fallback", selections.Snapshot().Values[AiModelRole.Chat].ModelId);
+    }
+
+    [Fact]
+    public async Task ReasoningSelectionFallsBackToChatCapableModel()
+    {
+        var selections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), new RecordingModelSelectionNotifier());
+        var providers = new List<AiProvider>
+        {
+            new()
+            {
+                Id = "provider",
+                Enabled = true,
+                Models =
+                [
+                    new()
+                    {
+                        Id = "chat-model",
+                        Enabled = true,
+                        Roles = [AiModelRole.Chat],
+                        Capabilities = new() { TextInput = true, TextOutput = true }
+                    }
+                ]
+            }
+        };
+
+        await selections.EnsureValidAsync(providers);
+
+        var active = selections.Resolve(AiModelRole.Reasoning, providers);
+        Assert.Equal("chat-model", active?.Model.Id);
+        Assert.Equal("chat-model", selections.Snapshot().Values[AiModelRole.Reasoning].ModelId);
+    }
+
+    [Fact]
+    public async Task GlobalSelectionLeavesRoleUnresolvedWhenNoValidModelExists()
+    {
+        var selections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), new RecordingModelSelectionNotifier());
+
+        await selections.EnsureValidAsync([]);
+
+        Assert.Null(selections.Resolve(AiModelRole.Chat, []));
+        Assert.False(selections.Snapshot().Values.ContainsKey(AiModelRole.Chat));
+    }
+
+    [Fact]
+    public async Task ModelSelectionNotifierUpdatesOtherSessions()
+    {
+        await using var store = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+        var notifier = new RecordingModelSelectionNotifier();
+        var globalSelections = new GlobalModelSelectionStore(new InMemoryAppSettingsService(), notifier);
+        var sessionA = new RoleplaySession(store, globalModelSelectionStore: globalSelections, modelSelectionNotifier: notifier);
+        var sessionB = new RoleplaySession(store, globalModelSelectionStore: globalSelections, modelSelectionNotifier: notifier);
+        await sessionA.InitializeAsync();
+        await sessionB.InitializeAsync();
+        var notifications = 0;
+        sessionB.ModelSelection.SelectionChanged += notification =>
+        {
+            if (notification.Role == AiModelRole.Chat)
+                notifications++;
+
+            return Task.CompletedTask;
+        };
+        var provider = new AiProvider
+        {
+            Id = "active-provider",
+            Name = "Active Provider",
+            Enabled = true,
+            Models =
+            [
+                new()
+                {
+                    Id = "selected",
+                    Enabled = true,
+                    Roles = [AiModelRole.Chat],
+                    Capabilities = new() { TextInput = true, TextOutput = true }
+                }
+            ]
+        };
+        await sessionA.Providers.AddAsync(provider);
+
+        await sessionA.ModelSelection.SetActiveModelAsync(AiModelRole.Chat, "active-provider", "selected");
+
+        Assert.True(notifications > 0);
+        Assert.Equal("selected", sessionB.ModelSelection.Resolve(AiModelRole.Chat)?.Model.Id);
     }
 
     [Fact]
@@ -439,7 +591,7 @@ public sealed class ProviderModelSelectionTests
         };
         await session.Providers.AddAsync(provider);
 
-        var active = session.Chat.ModelSelection.Resolve(AiModelRole.Voice);
+        var active = session.ModelSelection.Resolve(AiModelRole.Voice);
 
         Assert.Null(active);
         Assert.Contains(AiModelRole.Voice, provider.Models[0].Roles);
@@ -544,6 +696,20 @@ public sealed class ProviderModelSelectionTests
 
         public void Normalize(IEnumerable<AiProvider> providers)
         {
+        }
+    }
+
+    sealed class RecordingModelSelectionNotifier : IModelSelectionNotifier
+    {
+        public List<ModelSelectionChangeNotification> Notifications { get; } = [];
+        public event Func<ModelSelectionChangeNotification, Task>? Changed;
+
+        public async Task PublishAsync(ModelSelectionChangeNotification notification)
+        {
+            Notifications.Add(notification);
+            var changed = Changed;
+            if (changed is not null)
+                await changed(notification);
         }
     }
 

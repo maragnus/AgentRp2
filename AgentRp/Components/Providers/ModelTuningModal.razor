@@ -181,12 +181,12 @@
     protected override void OnInitialized()
     {
         Session.Chat.ModelTuning.Changed += OnStoreChanged;
-        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
         Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
     }
 
-    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+    ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Chat);
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
@@ -283,7 +283,7 @@
     public void Dispose()
     {
         Session.Chat.ModelTuning.Changed -= OnStoreChanged;
-        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 }

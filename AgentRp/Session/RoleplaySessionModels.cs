@@ -18,7 +18,6 @@ public sealed class RpChatDocument
     public PromptLibraryState PromptLibrary { get; set; } = PromptLibraryState.CreateDefault();
     public CharacterTraitLibraryState CharacterTraitLibrary { get; set; } = CharacterTraitLibraryState.CreateDefault();
     public ModelTuningState ModelTuning { get; set; } = ModelTuningState.CreateDefault();
-    public ActiveModelSelectionsState ActiveModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
 }
 
 public sealed class StoryCreationOptions

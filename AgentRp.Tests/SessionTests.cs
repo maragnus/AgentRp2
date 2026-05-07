@@ -601,7 +601,7 @@ public sealed class SessionTests
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _generateCalls);
             Requests.Add(request);
@@ -653,7 +653,7 @@ public sealed class SessionTests
                 trace);
         }
 
-        public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _generateCalls);
             ProseRequests.Add(request);
@@ -702,7 +702,7 @@ public sealed class SessionTests
                 trace);
         }
 
-        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
+        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         static RpSceneFrame CloneScene(RpSceneFrame scene) => new()
@@ -733,7 +733,7 @@ public sealed class SessionTests
     {
         public const string PartialBody = "Failed partial streamed body.";
 
-        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
             var trace = new RpTurnTrace
@@ -777,7 +777,7 @@ public sealed class SessionTests
             throw new TranscriptGenerationException("Prose failed for test.", trace);
         }
 
-        public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
             var trace = new RpTurnTrace
@@ -822,7 +822,7 @@ public sealed class SessionTests
             throw new TranscriptGenerationException("Prose failed for test.", trace);
         }
 
-        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
+        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 
@@ -878,16 +878,16 @@ public sealed class SessionTests
 
     sealed class TestMessageSpeechService(MessageSpeechInputSnapshot? snapshot) : IMessageSpeechService
     {
-        public MessageSpeechAvailability ResolveAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptTurn turn) =>
+        public MessageSpeechAvailability ResolveAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, RpTranscriptTurn turn) =>
             new(MessageSpeechAvailabilityKind.NoVoiceModel);
 
-        public MessageSpeechAvailability ResolveSnapshotAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptSnapshot snapshot) =>
+        public MessageSpeechAvailability ResolveSnapshotAvailability(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, RpTranscriptSnapshot snapshot) =>
             new(MessageSpeechAvailabilityKind.NoVoiceModel);
 
-        public Task<MessageSpeechPlayback> GetOrGenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptTurn turn, bool regenerate, CancellationToken cancellationToken = default) =>
+        public Task<MessageSpeechPlayback> GetOrGenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, RpTranscriptTurn turn, bool regenerate, CancellationToken cancellationToken = default) =>
             Task.FromResult(new MessageSpeechPlayback(MessageSpeechService.PlaybackKey(turn), "", false));
 
-        public Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, RpTranscriptSnapshot snapshot, bool regenerate, CancellationToken cancellationToken = default) =>
+        public Task<MessageSpeechPlayback> GetOrGenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, RpTranscriptSnapshot snapshot, bool regenerate, CancellationToken cancellationToken = default) =>
             Task.FromResult(new MessageSpeechPlayback(MessageSpeechService.SnapshotPlaybackKey(snapshot), "", false));
 
         public Task<MessageSpeechInputSnapshot?> LoadInputSnapshotAsync(RpTranscriptTurn turn, CancellationToken cancellationToken = default) =>

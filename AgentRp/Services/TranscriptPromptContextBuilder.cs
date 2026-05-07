@@ -4,8 +4,10 @@ using AgentRp.Session;
 
 namespace AgentRp.Services;
 
-public sealed class TranscriptPromptContextBuilder
+public sealed class TranscriptPromptContextBuilder(SceneTransitionService? sceneTransitionService = null)
 {
+    readonly SceneTransitionService _sceneTransitionService = sceneTransitionService ?? new();
+
     public TurnPromptContext BuildTurnContext(
         RpChatDocument document,
         string parentTurnId,
@@ -37,7 +39,7 @@ public sealed class TranscriptPromptContextBuilder
             ? activePath.Skip(snapshotTurnIndex + 1).ToList()
             : activePath;
 
-        var scene = sceneOverride ?? activePath.LastOrDefault()?.Scene ?? document.Transcript.RootScene;
+        var scene = sceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, parentTurnId);
         var presentCharacters = document.Characters.Where(character => scene.InSceneCharacterIds.Contains(character.Id)).ToList();
         var otherCharacters = document.Characters.Where(character => !scene.InSceneCharacterIds.Contains(character.Id)).ToList();
         var presentItems = document.Items.Where(item => scene.InSceneItemIds.Contains(item.Id)).ToList();
@@ -58,7 +60,7 @@ public sealed class TranscriptPromptContextBuilder
         var contentGuidanceText = ChatDirectionService.BuildContentGuidance(chatDirection);
         var historySummaryText = FormatHistorySummary(document);
         var snapshotText = snapshot is null ? "No pinned snapshot yet." : snapshot.Summary;
-        var transcriptText = FormatTranscript(transcriptTurns);
+        var transcriptText = FormatTranscript(document, transcriptTurns, snapshot?.Scene);
         var characterAppearancesText = FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary);
         var earlierPrivateIntentContinuity = BuildEarlierPrivateIntentContinuity(snapshot, activePath, snapshotTurnIndex, document.Characters);
         var contextText = JoinSections(
@@ -94,7 +96,7 @@ public sealed class TranscriptPromptContextBuilder
             CharactersInSceneText: charactersText,
             CharacterAppearancesText: characterAppearancesText,
             AppearanceCharactersText: FormatAppearanceCharacters(presentCharacters, characterAppearances, traitLibrary),
-            AppearanceTranscriptText: FormatTranscript(transcriptTurns),
+            AppearanceTranscriptText: FormatTranscript(document, transcriptTurns, snapshot?.Scene),
             EarlierPrivateIntentContinuity: earlierPrivateIntentContinuity,
             SelectionEligibleResponders: FormatEligibleResponders(presentCharacters, activeSpeakerName, characterAppearances, traitLibrary),
             SelectionLocationSection: string.IsNullOrWhiteSpace(locationText) ? "" : locationText + Environment.NewLine,
@@ -143,7 +145,7 @@ public sealed class TranscriptPromptContextBuilder
             Items: FormatReferenceNames(document.Items.Select(item => item.Name)),
             History: FormatSnapshotHistory(document),
             Messages: FormatSnapshotMessages(snapshotTurns),
-            TranscriptText: FormatTranscript(snapshotTurns),
+            TranscriptText: FormatTranscript(document, snapshotTurns, latestSnapshot?.Scene),
             CharacterAppearancesText: FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary),
             EarlierPrivateIntentContinuity: BuildEarlierPrivateIntentContinuity(latestSnapshot, activePath, snapshotTurnIndex, document.Characters));
     }
@@ -294,12 +296,30 @@ public sealed class TranscriptPromptContextBuilder
     static string ResolveCharacterName(IEnumerable<RpCharacter> characters, string characterId) =>
         characters.FirstOrDefault(character => character.Id == characterId)?.Name ?? characterId;
 
-    static string FormatTranscript(IEnumerable<RpTranscriptTurn> turns)
+    string FormatTranscript(RpChatDocument document, IEnumerable<RpTranscriptTurn> turns, RpSceneFrame? baselineScene = null)
     {
-        var lines = turns
-            .Where(turn => !string.IsNullOrWhiteSpace(turn.Body))
-            .Select(turn => $"{ResolveActiveSpeakerName(turn)}: {turn.Body.Trim()}");
-        var content = string.Join("\n\n", lines);
+        var blocks = new List<string>();
+        var previousScene = baselineScene;
+        foreach (var turn in turns.Where(turn => !string.IsNullOrWhiteSpace(turn.Body)))
+        {
+            var builder = new StringBuilder();
+            if (previousScene is not null)
+            {
+                var delta = _sceneTransitionService.BuildDelta(document, previousScene, turn.Scene);
+                var transition = _sceneTransitionService.FormatForTranscript(delta);
+                if (!string.IsNullOrWhiteSpace(transition))
+                    builder.AppendLine(transition.Trim());
+            }
+
+            if (builder.Length > 0)
+                builder.AppendLine();
+
+            builder.Append($"{ResolveActiveSpeakerName(turn)}: {turn.Body.Trim()}");
+            blocks.Add(builder.ToString());
+            previousScene = turn.Scene;
+        }
+
+        var content = string.Join("\n\n", blocks);
         return string.IsNullOrWhiteSpace(content) ? "(No transcript yet.)" : content;
     }
 
@@ -600,6 +620,7 @@ public sealed class TranscriptPromptContextBuilder
         - {actorName} only
         - Choose one immediate beat, not a sequence.
         - React to the last turn only if it truly requires a response.
+        - If the recent transcript includes scene transition lines, naturally react when {actorName} would plausibly notice or be first to respond.
         - Otherwise introduce a small new beat that adds value.
         - The beat should change something: pressure, focus, distance, tone, or uncertainty.
         - Avoid empty turns that only restate rules or repeat the current tension.

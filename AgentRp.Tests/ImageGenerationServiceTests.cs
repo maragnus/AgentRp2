@@ -31,15 +31,7 @@ public sealed class ImageGenerationServiceTests
         var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
         var document = new RpChatDocument
         {
-            Chat = new() { Id = "chat-1", Title = "Test chat" },
-            ActiveModelSelections = new()
-            {
-                Values =
-                {
-                    [AiModelRole.Chat] = new() { ProviderId = "openai", ModelId = "gpt-5.5" },
-                    [AiModelRole.Image] = new() { ProviderId = "openai", ModelId = "gpt-image-1-mini" }
-                }
-            }
+            Chat = new() { Id = "chat-1", Title = "Test chat" }
         };
         var provider = new AiProvider
         {
@@ -324,14 +316,7 @@ public sealed class ImageGenerationServiceTests
             Characters =
             [
                 new() { Id = "c1", Name = "Gemma", Appearance = "Tall blonde." }
-            ],
-            ActiveModelSelections = new()
-            {
-                Values =
-                {
-                    [AiModelRole.Chat] = new() { ProviderId = "openai", ModelId = "gpt-5.5" }
-                }
-            }
+            ]
         };
         var provider = BuildImageProvider();
         provider.Models.Add(new()

@@ -142,8 +142,9 @@ public sealed class StoryAssistantStoreTests
         var liveStore = new TestLiveRoleplayStore(document);
         var registry = new ChatRegistry(Guid.NewGuid(), liveStore, activeChat);
         var providers = new ProviderStore(Guid.NewGuid(), liveStore);
-        var transcript = new TranscriptStore(activeChat, registry, providers, NullTextGenerationService.Instance, new SceneTransitionService());
-        return new(activeChat, registry, providers, transcript, new ScriptedStoryAssistantService(script, clearScript));
+        var modelSelection = new ModelSelectionStore(providers, new GlobalModelSelectionStore(new InMemoryAppSettingsService()));
+        var transcript = new TranscriptStore(activeChat, registry, providers, modelSelection, NullTextGenerationService.Instance, new SceneTransitionService());
+        return new(activeChat, registry, providers, modelSelection, transcript, new ScriptedStoryAssistantService(script, clearScript));
     }
 
     static RpChatDocument CreateDocument() => new()
@@ -168,6 +169,7 @@ public sealed class StoryAssistantStoreTests
         public Task RunTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
             StoryAssistantTurnRequest request,
             IStoryAssistantCallbacks callbacks,
             CancellationToken cancellationToken = default) => script(callbacks, cancellationToken);
@@ -175,6 +177,7 @@ public sealed class StoryAssistantStoreTests
         public Task ClearRemoteStateAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
             CancellationToken cancellationToken = default) =>
             clearScript?.Invoke(document, providers, cancellationToken) ?? Task.CompletedTask;
     }

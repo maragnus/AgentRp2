@@ -70,8 +70,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             NarratorProfile = Deserialize(row.NarratorProfileJson, NarratorProfileState.CreateDefault()),
             PromptLibrary = Deserialize(row.PromptLibraryJson, PromptLibraryState.CreateDefault()),
             CharacterTraitLibrary = Deserialize(row.CharacterTraitLibraryJson, CharacterTraitLibraryState.CreateDefault()),
-            ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault()),
-            ActiveModelSelections = Deserialize(row.ActiveModelSelectionsJson, ActiveModelSelectionsState.CreateDefault())
+            ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault())
         }.ApplyProjection();
     }
 
@@ -199,7 +198,6 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.PromptLibraryJson = Serialize(document.PromptLibrary);
         row.CharacterTraitLibraryJson = Serialize(document.CharacterTraitLibrary);
         row.ModelTuningJson = Serialize(document.ModelTuning);
-        row.ActiveModelSelectionsJson = Serialize(document.ActiveModelSelections);
         row.UpdatedUtc = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -224,7 +222,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         var characters = Deserialize(row.Document.CharactersJson, new List<RpCharacter>());
         var images = Deserialize(row.Document.ImagesJson, new List<GalleryImage>());
         var transcript = Deserialize(row.Document.MessagesJson, new RpTranscriptState());
-        var sceneCharacterIds = TranscriptGraph.GetActiveScene(transcript).InSceneCharacterIds.ToHashSet(StringComparer.Ordinal);
+        var sceneCharacterIds = TranscriptGraph.GetVisibleScene(transcript).InSceneCharacterIds.ToHashSet(StringComparer.Ordinal);
 
         ChatPreviewProjector.ApplySceneCharacters(chat, characters, images, sceneCharacterIds);
 

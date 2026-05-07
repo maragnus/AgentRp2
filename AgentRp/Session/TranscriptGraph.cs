@@ -13,14 +13,44 @@ static class TranscriptGraph
         return turn?.Scene ?? transcript.RootScene;
     }
 
-    public static RpSceneFrame GetEditableActiveScene(RpTranscriptState transcript)
+    public static RpSceneFrame GetSceneForNextTurn(RpTranscriptState transcript, string parentTurnId)
     {
-        var turn = FindTurn(transcript, transcript.ActiveLeafTurnId);
-        if (turn is not null)
-            return turn.Scene;
+        if (HasWorkingSceneFor(transcript, parentTurnId))
+            return transcript.WorkingScene.Scene;
 
-        return transcript.RootScene;
+        var parent = FindTurn(transcript, parentTurnId);
+        return parent?.Scene ?? transcript.RootScene;
     }
+
+    public static RpSceneFrame GetVisibleScene(RpTranscriptState transcript) =>
+        GetSceneForNextTurn(transcript, transcript.ActiveLeafTurnId);
+
+    public static RpSceneFrame GetEditableWorkingScene(RpTranscriptState transcript)
+    {
+        if (HasWorkingSceneFor(transcript, transcript.ActiveLeafTurnId))
+            return transcript.WorkingScene.Scene;
+
+        transcript.WorkingScene = new()
+        {
+            IsActive = true,
+            ParentTurnId = transcript.ActiveLeafTurnId,
+            Scene = SessionCloner.Clone(GetActiveScene(transcript))
+        };
+        return transcript.WorkingScene.Scene;
+    }
+
+    public static void ClearWorkingSceneForParent(RpTranscriptState transcript, string parentTurnId)
+    {
+        if (HasWorkingSceneFor(transcript, parentTurnId))
+            transcript.WorkingScene = new();
+    }
+
+    public static void ClearWorkingScene(RpTranscriptState transcript) =>
+        transcript.WorkingScene = new();
+
+    static bool HasWorkingSceneFor(RpTranscriptState transcript, string parentTurnId) =>
+        transcript.WorkingScene.IsActive
+        && string.Equals(transcript.WorkingScene.ParentTurnId, parentTurnId, StringComparison.Ordinal);
 
     public static RpTranscriptTurn? FindTurn(RpTranscriptState transcript, string turnId) =>
         transcript.Turns.FirstOrDefault(turn => turn.Id == turnId);
@@ -137,7 +167,7 @@ static class TranscriptProjector
     {
         var transcript = document.Transcript;
         EnsureSceneDefaults(document);
-        var scene = TranscriptGraph.GetActiveScene(transcript);
+        var scene = TranscriptGraph.GetVisibleScene(transcript);
         var activePath = TranscriptGraph.GetActivePath(transcript);
         var activeLocationId = scene.LocationId;
         foreach (var location in document.Locations)

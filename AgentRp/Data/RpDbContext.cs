@@ -48,7 +48,6 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.PromptLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.CharacterTraitLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.ModelTuningJson).HasColumnType("nvarchar(max)");
-            builder.Property(x => x.ActiveModelSelectionsJson).HasColumnType("nvarchar(max)");
         });
 
         modelBuilder.Entity<AiProviderRow>(builder =>
@@ -212,7 +211,6 @@ public sealed class RpChatDocumentRow
     public string PromptLibraryJson { get; set; } = "";
     public string CharacterTraitLibraryJson { get; set; } = "";
     public string ModelTuningJson { get; set; } = "";
-    public string ActiveModelSelectionsJson { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
     public RpChatRow Chat { get; set; } = null!;

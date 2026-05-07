@@ -40,7 +40,7 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnOpenProviders { get; set; }
 
-    ActiveModelSelection? ActiveChatModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
+    ActiveModelSelection? ActiveChatModel => Session.ModelSelection.Resolve(AiModelRole.Chat);
 
     static string RoleLabel(AiModelRole role) => AiProviderModelSelectionRules.Label(role);
 

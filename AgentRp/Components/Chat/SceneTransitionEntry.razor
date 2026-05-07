@@ -1,0 +1,94 @@
+<article class="scene-transition-entry" aria-label="Scene transition">
+    @foreach (var line in Delta.Lines)
+    {
+        <div @key="LineKey(line)" class="@LineClass(line)">
+            @if (line.Kind == SceneTransitionLineKind.LocationChanged)
+            {
+                @if (line.CurrentLocation is not null)
+                {
+                    <EntityMention EntityType="@line.CurrentLocation.EntityType"
+                                   EntityId="@line.CurrentLocation.Id"
+                                   Name="@line.CurrentLocation.Name"
+                                   Size="@MentionSize"
+                                   OnOpenEntities="OnOpenEntities" />
+                    @if (line.PreviousLocation is not null)
+                    {
+                        <span>&nbsp;(previously&nbsp;</span>
+                        <EntityMention EntityType="@line.PreviousLocation.EntityType"
+                                       EntityId="@line.PreviousLocation.Id"
+                                       Name="@line.PreviousLocation.Name"
+                                       Size="@MentionSize"
+                                       OnOpenEntities="OnOpenEntities" />
+                        <span>).</span>
+                    }
+                    else
+                    {
+                        <span>.</span>
+                    }
+                }
+            }
+            else
+            {
+                @MentionList(line.Entities)
+                <span class="scene-transition-suffix">@Suffix(line)</span>
+            }
+        </div>
+    }
+</article>
+
+@code {
+    [Parameter] public SceneTransitionDelta Delta { get; set; } = new(false, []);
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+    const int MentionSize = 26;
+
+    RenderFragment MentionList(IReadOnlyList<SceneTransitionMention> mentions) => builder =>
+    {
+        var sequence = 0;
+        for (var index = 0; index < mentions.Count; index++)
+        {
+            if (index > 0)
+            {
+                builder.OpenElement(sequence++, "span");
+                builder.AddAttribute(sequence++, "class", "scene-transition-separator");
+                builder.AddContent(sequence++, index == mentions.Count - 1 ? "and" : ",");
+                builder.CloseElement();
+            }
+
+            var mention = mentions[index];
+            builder.OpenComponent<EntityMention>(sequence++);
+            builder.AddAttribute(sequence++, nameof(EntityMention.EntityType), mention.EntityType);
+            builder.AddAttribute(sequence++, nameof(EntityMention.EntityId), mention.Id);
+            builder.AddAttribute(sequence++, nameof(EntityMention.Name), mention.Name);
+            builder.AddAttribute(sequence++, nameof(EntityMention.Size), MentionSize);
+            builder.AddAttribute(sequence++, nameof(EntityMention.OnOpenEntities), OnOpenEntities);
+            builder.SetKey($"{mention.EntityType}:{mention.Id}");
+            builder.CloseComponent();
+        }
+    };
+
+    static string Suffix(SceneTransitionLine line) => line.Kind switch
+    {
+        SceneTransitionLineKind.CharactersLeft => "left the scene.",
+        SceneTransitionLineKind.CharactersEntered => "entered the scene.",
+        SceneTransitionLineKind.ItemsRemoved => $"{WasWere(line.Entities)} removed from the scene.",
+        SceneTransitionLineKind.ItemsAdded => $"{WasWere(line.Entities)} added to the scene.",
+        SceneTransitionLineKind.CharactersPresent => $"{IsAre(line.Entities)} present in the scene.",
+        SceneTransitionLineKind.ItemsPresent => $"{IsAre(line.Entities)} present in the scene.",
+        _ => ""
+    };
+
+    static string WasWere(IReadOnlyCollection<SceneTransitionMention> mentions) =>
+        mentions.Count == 1 ? "was" : "were";
+
+    static string IsAre(IReadOnlyCollection<SceneTransitionMention> mentions) =>
+        mentions.Count == 1 ? "is" : "are";
+
+    static string LineClass(SceneTransitionLine line) =>
+        $"scene-transition-line is-{line.Kind.ToString().ToLowerInvariant()}";
+
+    static string LineKey(SceneTransitionLine line)
+    {
+        var ids = string.Join(":", line.Entities.Select(entity => entity.Id));
+        return $"{line.Kind}:{line.CurrentLocation?.Id}:{line.PreviousLocation?.Id}:{ids}";
+    }
+}

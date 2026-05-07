@@ -6,12 +6,20 @@ public sealed class RpTranscriptState
 {
     public int SchemaVersion { get; set; } = 1;
     public RpSceneFrame RootScene { get; set; } = new();
+    public RpWorkingSceneState WorkingScene { get; set; } = new();
     public RpTranscriptOptionsState Options { get; set; } = new();
     public List<RpTranscriptTurn> Turns { get; set; } = [];
     public List<RpTranscriptSnapshot> Snapshots { get; set; } = [];
     public string ActiveLeafTurnId { get; set; } = "";
     public Dictionary<string, string> BranchSelections { get; set; } = [];
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpWorkingSceneState
+{
+    public bool IsActive { get; set; }
+    public string ParentTurnId { get; set; } = "";
+    public RpSceneFrame Scene { get; set; } = new();
 }
 
 public sealed class RpTranscriptOptionsState

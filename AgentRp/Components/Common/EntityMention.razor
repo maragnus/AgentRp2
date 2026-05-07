@@ -1,0 +1,63 @@
+@if (CanOpen)
+{
+    <button type="button" class="@CssClass" title="@Title" @onclick="Open">
+        <EntityImage EntityType="@NormalizedType" EntityId="@EntityId" Name="@DisplayName" Image="@CurrentImage" Size="@Size" />
+        <span class="entity-mention-name">@DisplayName</span>
+    </button>
+}
+else
+{
+    <span class="@CssClass" title="@Title">
+        <EntityImage EntityType="@NormalizedType" EntityId="@EntityId" Name="@DisplayName" Image="@CurrentImage" Size="@Size" />
+        <span class="entity-mention-name">@DisplayName</span>
+    </span>
+}
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string EntityType { get; set; } = "";
+    [Parameter] public string EntityId { get; set; } = "";
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 20;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+
+    string NormalizedType => EntityTypes.Normalize(EntityType);
+    string DisplayName => ResolveName();
+    GalleryImage? CurrentImage => ResolveImage(ResolveImageId());
+    bool CanOpen => !string.IsNullOrWhiteSpace(TargetTab) && !string.IsNullOrWhiteSpace(EntityId);
+    string TargetTab => NormalizedType switch
+    {
+        EntityTypes.Character => "characters",
+        EntityTypes.Location => "locations",
+        EntityTypes.Item => "items",
+        _ => ""
+    };
+    string CssClass => string.Join(" ", new[] { "entity-mention", CanOpen ? "is-clickable" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string Title => CanOpen ? $"Open {DisplayName}" : DisplayName;
+
+    Task Open() => CanOpen
+        ? OnOpenEntities.InvokeAsync((TargetTab, EntityId))
+        : Task.CompletedTask;
+
+    string ResolveName() => NormalizedType switch
+    {
+        EntityTypes.Character => Session.Chat.Characters.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
+        EntityTypes.Location => Session.Chat.Locations.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
+        EntityTypes.Item => Session.Chat.Items.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
+        _ => Name
+    };
+
+    string ResolveImageId() => NormalizedType switch
+    {
+        EntityTypes.Character => Session.Chat.Characters.Items.FirstOrDefault(entity => entity.Id == EntityId)?.ImageId ?? "",
+        EntityTypes.Location => Session.Chat.Locations.Items.FirstOrDefault(entity => entity.Id == EntityId)?.ImageId ?? "",
+        EntityTypes.Item => Session.Chat.Items.Items.FirstOrDefault(entity => entity.Id == EntityId)?.ImageId ?? "",
+        _ => ""
+    };
+
+    GalleryImage? ResolveImage(string imageId) =>
+        string.IsNullOrWhiteSpace(imageId)
+            ? null
+            : Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+}

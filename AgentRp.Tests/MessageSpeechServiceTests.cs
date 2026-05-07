@@ -16,7 +16,7 @@ public sealed class MessageSpeechServiceTests
         var document = CreateDocument();
         var turn = CharacterTurn(document);
 
-        var availability = service.ResolveAvailability(document, [], turn);
+        var availability = service.ResolveAvailability(document, [], ActiveModelSelectionsState.CreateDefault(), turn);
 
         Assert.Equal(MessageSpeechAvailabilityKind.NoVoiceModel, availability.Kind);
         Assert.False(availability.CanDisplay);
@@ -28,10 +28,10 @@ public sealed class MessageSpeechServiceTests
         var service = CreateService();
         var document = CreateDocument();
         var provider = VoiceProvider();
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         Character(document).VoiceSelections[ModelSelectionKey.Build(provider.Id, "voice-model")] = Voice("bella-voice");
 
-        var availability = service.ResolveAvailability(document, [provider], CharacterTurn(document));
+        var availability = service.ResolveAvailability(document, [provider], modelSelections, CharacterTurn(document));
 
         Assert.Equal(MessageSpeechAvailabilityKind.Ready, availability.Kind);
     }
@@ -42,10 +42,10 @@ public sealed class MessageSpeechServiceTests
         var service = CreateService();
         var document = CreateDocument();
         var provider = VoiceProvider();
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         document.NarratorProfile.VoiceSelections[ModelSelectionKey.Build(provider.Id, "voice-model")] = Voice("narrator-voice");
 
-        var availability = service.ResolveAvailability(document, [provider], CharacterTurn(document));
+        var availability = service.ResolveAvailability(document, [provider], modelSelections, CharacterTurn(document));
 
         Assert.Equal(MessageSpeechAvailabilityKind.Ready, availability.Kind);
     }
@@ -56,10 +56,10 @@ public sealed class MessageSpeechServiceTests
         var service = CreateService();
         var document = CreateDocument();
         var provider = VoiceProvider();
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         var turn = CharacterTurn(document);
 
-        var availability = service.ResolveAvailability(document, [provider], turn);
+        var availability = service.ResolveAvailability(document, [provider], modelSelections, turn);
 
         Assert.Equal(MessageSpeechAvailabilityKind.MissingVoice, availability.Kind);
         Assert.Equal(turn.AuthorCharacterId, availability.MissingEntityId);
@@ -72,11 +72,11 @@ public sealed class MessageSpeechServiceTests
         var service = CreateService();
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs");
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         document.Transcript.Options.SpeakActionsInNarratorVoice = true;
         Character(document).VoiceSelections[ModelSelectionKey.Build(provider.Id, "voice-model")] = Voice("bella-voice");
 
-        var availability = service.ResolveAvailability(document, [provider], CharacterTurn(document));
+        var availability = service.ResolveAvailability(document, [provider], modelSelections, CharacterTurn(document));
 
         Assert.Equal(MessageSpeechAvailabilityKind.Ready, availability.Kind);
     }
@@ -87,11 +87,11 @@ public sealed class MessageSpeechServiceTests
         var service = CreateService();
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs");
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         document.Transcript.Options.SpeakActionsInNarratorVoice = true;
         document.NarratorProfile.VoiceSelections[ModelSelectionKey.Build(provider.Id, "voice-model")] = Voice("narrator-voice");
 
-        var availability = service.ResolveAvailability(document, [provider], CharacterTurn(document));
+        var availability = service.ResolveAvailability(document, [provider], modelSelections, CharacterTurn(document));
 
         Assert.Equal(MessageSpeechAvailabilityKind.Ready, availability.Kind);
     }
@@ -207,12 +207,12 @@ public sealed class MessageSpeechServiceTests
         var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider();
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         Character(document).VoiceSelections[ModelSelectionKey.Build(provider.Id, "voice-model")] = Voice("bella-voice");
         var turn = CharacterTurn(document);
 
-        var generated = await service.GetOrGenerateAsync(document, [provider], turn, false);
-        var replay = await service.GetOrGenerateAsync(document, [provider], turn, false);
+        var generated = await service.GetOrGenerateAsync(document, [provider], modelSelections, turn, false);
+        var replay = await service.GetOrGenerateAsync(document, [provider], modelSelections, turn, false);
 
         Assert.True(generated.Generated);
         Assert.False(replay.Generated);
@@ -270,12 +270,12 @@ public sealed class MessageSpeechServiceTests
         var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_v3");
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         Character(document).VoiceSelections[ModelSelectionKey.Build(provider.Id, "eleven_v3")] = Voice("bella-voice");
         var turn = CharacterTurn(document);
         turn.Body = "*trembles, hands shaking water from her arms* [stammers] G-Gemma... shadow... in the pool... [voice cracks] chased me, too fast! *eyes pleading*";
 
-        await service.GetOrGenerateAsync(document, [provider], turn, false);
+        await service.GetOrGenerateAsync(document, [provider], modelSelections, turn, false);
 
         var start = Assert.Single(coordinator.Starts);
         var input = Assert.Single(start.Inputs);
@@ -294,12 +294,12 @@ public sealed class MessageSpeechServiceTests
         var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_multilingual_v2");
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         Character(document).VoiceSelections[ModelSelectionKey.Build(provider.Id, "eleven_multilingual_v2")] = Voice("bella-voice");
         var turn = CharacterTurn(document);
         turn.Body = "*glances back* Stay close *nods once*";
 
-        await service.GetOrGenerateAsync(document, [provider], turn, false);
+        await service.GetOrGenerateAsync(document, [provider], modelSelections, turn, false);
 
         var start = Assert.Single(coordinator.Starts);
         var input = Assert.Single(start.Inputs);
@@ -314,14 +314,14 @@ public sealed class MessageSpeechServiceTests
         var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_v3");
-        SelectVoiceModel(document, provider);
+        var modelSelections = SelectVoiceModel(document, provider);
         document.NarratorProfile.VoiceSelections[ModelSelectionKey.Build(provider.Id, "eleven_v3")] = Voice("narrator-voice");
         var turn = CharacterTurn(document);
         turn.AuthorCharacterId = "";
         turn.AuthorName = "Narrator";
         turn.Body = "The room goes quiet.";
 
-        await service.GetOrGenerateAsync(document, [provider], turn, false);
+        await service.GetOrGenerateAsync(document, [provider], modelSelections, turn, false);
 
         var start = Assert.Single(coordinator.Starts);
         var input = Assert.Single(start.Inputs);
@@ -384,13 +384,15 @@ public sealed class MessageSpeechServiceTests
         ]
     };
 
-    static void SelectVoiceModel(RpChatDocument document, AiProvider provider)
+    static ActiveModelSelectionsState SelectVoiceModel(RpChatDocument document, AiProvider provider)
     {
-        document.ActiveModelSelections.Values[AiModelRole.Voice] = new()
+        var selections = ActiveModelSelectionsState.CreateDefault();
+        selections.Values[AiModelRole.Voice] = new()
         {
             ProviderId = provider.Id,
             ModelId = provider.Models.Single().Id
         };
+        return selections;
     }
 
     static CharacterVoiceSelection Voice(string id) => new()

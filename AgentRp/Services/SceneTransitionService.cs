@@ -14,6 +14,32 @@ public sealed record SceneTransitionRequest(
 
 public sealed record SceneTransitionEntity(string Id, string Name);
 
+public enum SceneTransitionLineKind
+{
+    CharactersLeft,
+    CharactersEntered,
+    ItemsRemoved,
+    ItemsAdded,
+    LocationChanged,
+    CharactersPresent,
+    ItemsPresent
+}
+
+public sealed record SceneTransitionMention(string EntityType, string Id, string Name);
+
+public sealed record SceneTransitionLine(
+    SceneTransitionLineKind Kind,
+    IReadOnlyList<SceneTransitionMention> Entities,
+    SceneTransitionMention? CurrentLocation = null,
+    SceneTransitionMention? PreviousLocation = null);
+
+public sealed record SceneTransitionDelta(
+    bool IsLocationTransition,
+    IReadOnlyList<SceneTransitionLine> Lines)
+{
+    public bool HasChanges => Lines.Count > 0;
+}
+
 public sealed record SceneTransitionPlan(
     RpSceneFrame PreviousScene,
     RpSceneFrame TargetScene,
@@ -35,6 +61,69 @@ public sealed record SceneTransitionResult(
 
 public sealed class SceneTransitionService
 {
+    public SceneTransitionDelta BuildDelta(RpChatDocument document, RpSceneFrame previous, RpSceneFrame target)
+    {
+        var isLocationTransition = !string.Equals(previous.LocationId, target.LocationId, StringComparison.Ordinal);
+        var removedCharacters = Mentions(
+            EntityTypes.Character,
+            previous.InSceneCharacterIds.Where(id => !target.InSceneCharacterIds.Contains(id, StringComparer.Ordinal)),
+            document.Characters.Select(character => (character.Id, character.Name)));
+        var addedCharacters = Mentions(
+            EntityTypes.Character,
+            target.InSceneCharacterIds.Where(id => !previous.InSceneCharacterIds.Contains(id, StringComparer.Ordinal)),
+            document.Characters.Select(character => (character.Id, character.Name)));
+        var removedItems = Mentions(
+            EntityTypes.Item,
+            previous.InSceneItemIds.Where(id => !target.InSceneItemIds.Contains(id, StringComparer.Ordinal)),
+            document.Items.Select(item => (item.Id, item.Name)));
+        var addedItems = Mentions(
+            EntityTypes.Item,
+            target.InSceneItemIds.Where(id => !previous.InSceneItemIds.Contains(id, StringComparer.Ordinal)),
+            document.Items.Select(item => (item.Id, item.Name)));
+        var presentCharacters = Mentions(
+            EntityTypes.Character,
+            target.InSceneCharacterIds,
+            document.Characters.Select(character => (character.Id, character.Name)));
+        var presentItems = Mentions(
+            EntityTypes.Item,
+            target.InSceneItemIds,
+            document.Items.Select(item => (item.Id, item.Name)));
+
+        var lines = new List<SceneTransitionLine>();
+        AddLine(lines, SceneTransitionLineKind.CharactersLeft, removedCharacters);
+        AddLine(lines, SceneTransitionLineKind.ItemsRemoved, removedItems);
+        if (isLocationTransition)
+        {
+            var currentLocation = ResolveLocationMention(document, target);
+            if (currentLocation is not null)
+            {
+                lines.Add(new(
+                    SceneTransitionLineKind.LocationChanged,
+                    [],
+                    currentLocation,
+                    ResolveLocationMention(document, previous)));
+            }
+
+            AddLine(lines, SceneTransitionLineKind.CharactersPresent, presentCharacters);
+            AddLine(lines, SceneTransitionLineKind.ItemsPresent, presentItems);
+        }
+        else
+        {
+            AddLine(lines, SceneTransitionLineKind.CharactersEntered, addedCharacters);
+            AddLine(lines, SceneTransitionLineKind.ItemsAdded, addedItems);
+        }
+
+        return new(isLocationTransition, lines);
+    }
+
+    public string FormatForTranscript(SceneTransitionDelta delta)
+    {
+        var lines = delta.Lines
+            .Select(FormatLine)
+            .Where(line => !string.IsNullOrWhiteSpace(line));
+        return string.Join(Environment.NewLine, lines);
+    }
+
     public SceneTransitionPlan Build(RpChatDocument document, SceneTransitionRequest request)
     {
         var location = document.Locations.FirstOrDefault(item => item.Id == request.LocationId)
@@ -96,6 +185,79 @@ public sealed class SceneTransitionService
             .Select(id => id.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToList();
+
+    static void AddLine(List<SceneTransitionLine> lines, SceneTransitionLineKind kind, IReadOnlyList<SceneTransitionMention> entities)
+    {
+        if (entities.Count > 0)
+            lines.Add(new(kind, entities));
+    }
+
+    static List<SceneTransitionMention> Mentions(
+        string entityType,
+        IEnumerable<string> ids,
+        IEnumerable<(string Id, string Name)> entities)
+    {
+        var byId = entities.ToDictionary(entity => entity.Id, entity => entity.Name, StringComparer.Ordinal);
+        return ids
+            .Where(id => byId.ContainsKey(id))
+            .Select(id => new SceneTransitionMention(entityType, id, byId[id]))
+            .ToList();
+    }
+
+    static SceneTransitionMention? ResolveLocationMention(RpChatDocument document, RpSceneFrame scene)
+    {
+        var location = document.Locations.FirstOrDefault(location => string.Equals(location.Id, scene.LocationId, StringComparison.Ordinal));
+        var name = location?.Name ?? scene.LocationName;
+        if (string.IsNullOrWhiteSpace(location?.Id ?? scene.LocationId) && IsMissingLocationName(name))
+            return null;
+
+        return new(EntityTypes.Location, location?.Id ?? scene.LocationId, string.IsNullOrWhiteSpace(name) ? "Unknown location" : name);
+    }
+
+    static bool IsMissingLocationName(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+        || string.Equals(name.Trim(), "No Location", StringComparison.OrdinalIgnoreCase);
+
+    static string FormatLine(SceneTransitionLine line) => line.Kind switch
+    {
+        SceneTransitionLineKind.CharactersLeft => $"{FormatMentionList(line.Entities)} left the scene.",
+        SceneTransitionLineKind.CharactersEntered => $"{FormatMentionList(line.Entities)} entered the scene.",
+        SceneTransitionLineKind.ItemsRemoved => $"{FormatMentionList(line.Entities)} {WasWere(line.Entities)} removed from the scene.",
+        SceneTransitionLineKind.ItemsAdded => $"{FormatMentionList(line.Entities)} {WasWere(line.Entities)} added to the scene.",
+        SceneTransitionLineKind.LocationChanged => FormatLocationLine(line),
+        SceneTransitionLineKind.CharactersPresent => $"{FormatMentionList(line.Entities)} {IsAre(line.Entities)} present in the scene.",
+        SceneTransitionLineKind.ItemsPresent => $"{FormatMentionList(line.Entities)} {IsAre(line.Entities)} present in the scene.",
+        _ => ""
+    };
+
+    static string FormatLocationLine(SceneTransitionLine line)
+    {
+        var current = line.CurrentLocation?.Name;
+        var previous = line.PreviousLocation?.Name;
+        if (string.IsNullOrWhiteSpace(current))
+            return "";
+
+        return string.IsNullOrWhiteSpace(previous)
+            ? $"{current}."
+            : $"{current} (previously {previous}).";
+    }
+
+    static string FormatMentionList(IReadOnlyList<SceneTransitionMention> mentions) =>
+        FormatNameList(mentions.Select(mention => mention.Name).ToList());
+
+    static string FormatNameList(IReadOnlyList<string> names) => names.Count switch
+    {
+        0 => "",
+        1 => names[0],
+        2 => $"{names[0]} and {names[1]}",
+        _ => $"{string.Join(", ", names.Take(names.Count - 1))}, and {names[^1]}"
+    };
+
+    static string WasWere(IReadOnlyCollection<SceneTransitionMention> mentions) =>
+        mentions.Count == 1 ? "was" : "were";
+
+    static string IsAre(IReadOnlyCollection<SceneTransitionMention> mentions) =>
+        mentions.Count == 1 ? "is" : "are";
 
     static void ValidateIds(IEnumerable<string> requestedIds, IEnumerable<string> existingIds, string entityName)
     {

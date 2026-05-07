@@ -89,6 +89,7 @@ public sealed partial class TranscriptStore
             playback = await messageSpeechService.GetOrGenerateSnapshotAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 snapshot,
                 regenerate,
                 cancellationToken);
@@ -114,6 +115,7 @@ public sealed partial class TranscriptStore
             var result = await textGenerationService.GenerateSnapshotAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 new(turnId),
                 cancellationToken);
             draft = new()

@@ -210,8 +210,7 @@ static class SessionCloner
         NarratorProfile = Clone(value.NarratorProfile),
         PromptLibrary = Clone(value.PromptLibrary),
         CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
-        ModelTuning = Clone(value.ModelTuning),
-        ActiveModelSelections = Clone(value.ActiveModelSelections)
+        ModelTuning = Clone(value.ModelTuning)
     };
 
     public static ActiveModelSelectionsState Clone(ActiveModelSelectionsState value) => new()
@@ -317,12 +316,20 @@ static class SessionCloner
     {
         SchemaVersion = value.SchemaVersion,
         RootScene = Clone(value.RootScene),
+        WorkingScene = Clone(value.WorkingScene),
         Options = Clone(value.Options),
         Turns = value.Turns.Select(Clone).ToList(),
         Snapshots = value.Snapshots.Select(Clone).ToList(),
         ActiveLeafTurnId = value.ActiveLeafTurnId,
         BranchSelections = value.BranchSelections.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Data = Clone(value.Data)
+    };
+
+    static RpWorkingSceneState Clone(RpWorkingSceneState value) => new()
+    {
+        IsActive = value.IsActive,
+        ParentTurnId = value.ParentTurnId,
+        Scene = Clone(value.Scene)
     };
 
     static RpTranscriptOptionsState Clone(RpTranscriptOptionsState value) => new()

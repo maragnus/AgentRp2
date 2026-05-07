@@ -1,6 +1,9 @@
+using AgentRp.Components.Chat;
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
+using Bunit;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json.Nodes;
 
 namespace AgentRp.Tests;
@@ -182,6 +185,88 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
+    public async Task SceneEditsBecomeWorkingStateForNextTurn()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        var previousTurn = session.Chat.Transcript.Items.Last();
+        var previousLocationId = previousTurn.Scene.LocationId;
+        var targetLocation = session.Chat.Locations.Items.First(location => location.Id != previousLocationId);
+
+        await session.Chat.Locations.SetActiveAsync(targetLocation.Id);
+
+        Assert.True(session.Chat.Transcript.State.WorkingScene.IsActive);
+        Assert.Equal(previousLocationId, previousTurn.Scene.LocationId);
+        Assert.Equal(targetLocation.Id, session.Chat.Locations.Active?.Id);
+
+        await session.Chat.Transcript.PostManualAsync("Now we are here.", null);
+
+        var newTurn = session.Chat.Transcript.Items.Last();
+        Assert.Equal(targetLocation.Id, newTurn.Scene.LocationId);
+        Assert.Equal(previousLocationId, previousTurn.Scene.LocationId);
+        Assert.False(session.Chat.Transcript.State.WorkingScene.IsActive);
+    }
+
+    [Fact]
+    public void PromptTranscriptIncludesInlineSceneTransitions()
+    {
+        var document = CreateTransitionDocument();
+        var builder = new TranscriptPromptContextBuilder();
+
+        var context = builder.BuildTurnContext(document, "turn-2", "", "Brief", document.Characters[1]);
+
+        Assert.Contains("Library (previously Apartment).", context.TranscriptText, StringComparison.Ordinal);
+        Assert.Contains("Gemma and Mara are present in the scene.", context.TranscriptText, StringComparison.Ordinal);
+        Assert.Contains("Gemma: Second message.", context.TranscriptText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Scene changes", context.TranscriptText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SceneTransitionEntryRendersClickableEntityMentions()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        var mention = new SceneTransitionMention(EntityTypes.Character, session.Chat.Characters.Items[0].Id, session.Chat.Characters.Items[0].Name);
+        var delta = new SceneTransitionDelta(false, [new(SceneTransitionLineKind.CharactersLeft, [mention])]);
+        (string Type, string? Id) opened = default;
+
+        var component = context.Render<SceneTransitionEntry>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(component => component.Delta, delta)
+            .Add(component => component.OnOpenEntities, value => opened = value));
+
+        Assert.Contains("left the scene", component.Markup, StringComparison.Ordinal);
+        component.Find(".entity-mention").Click();
+
+        Assert.Equal("characters", opened.Type);
+        Assert.Equal(mention.Id, opened.Id);
+    }
+
+    [Fact]
+    public async Task SceneTransitionEntrySeparatesMentionsAndSuffixText()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        var gemma = new SceneTransitionMention(EntityTypes.Character, "c2", "Gemma");
+        var lucia = new SceneTransitionMention(EntityTypes.Character, "c1", "Lucia");
+        var delta = new SceneTransitionDelta(false, [new(SceneTransitionLineKind.CharactersPresent, [gemma, lucia])]);
+
+        var component = context.Render<SceneTransitionEntry>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(component => component.Delta, delta));
+
+        Assert.Equal("and", component.Find(".scene-transition-separator").TextContent.Trim());
+        Assert.Equal("are present in the scene.", component.Find(".scene-transition-suffix").TextContent.Trim());
+    }
+
+    [Fact]
     public async Task PromptContextIncludesCharacterPronouns()
     {
         var persistence = new SeedRoleplayPersistence();
@@ -246,6 +331,85 @@ public sealed class TranscriptFeatureTests
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
 
+    static RpChatDocument CreateTransitionDocument()
+    {
+        var firstScene = new RpSceneFrame
+        {
+            LocationId = "l1",
+            LocationName = "Apartment",
+            InSceneCharacterIds = ["c1", "c2"],
+            InSceneItemIds = ["i1"]
+        };
+        var secondScene = new RpSceneFrame
+        {
+            LocationId = "l2",
+            LocationName = "Library",
+            InSceneCharacterIds = ["c2", "c3"],
+            InSceneItemIds = ["i2"]
+        };
+        var now = DateTime.UtcNow;
+        return new()
+        {
+            Chat = new() { Id = "ch-test", Title = "Transition Test" },
+            Locations =
+            [
+                new() { Id = "l1", Name = "Apartment" },
+                new() { Id = "l2", Name = "Library" }
+            ],
+            Characters =
+            [
+                new() { Id = "c1", Name = "Lucia" },
+                new() { Id = "c2", Name = "Gemma" },
+                new() { Id = "c3", Name = "Mara" }
+            ],
+            Items =
+            [
+                new() { Id = "i1", Name = "Lantern" },
+                new() { Id = "i2", Name = "Map" }
+            ],
+            Transcript = new()
+            {
+                RootScene = CloneScene(firstScene),
+                ActiveLeafTurnId = "turn-2",
+                Turns =
+                [
+                    new()
+                    {
+                        Id = "turn-1",
+                        CreatedUtc = now,
+                        UpdatedUtc = now,
+                        AuthorName = "Lucia",
+                        ActorName = "Lucia",
+                        Body = "First message.",
+                        Scene = CloneScene(firstScene)
+                    },
+                    new()
+                    {
+                        Id = "turn-2",
+                        ParentTurnId = "turn-1",
+                        CreatedUtc = now.AddMinutes(1),
+                        UpdatedUtc = now.AddMinutes(1),
+                        AuthorCharacterId = "c2",
+                        AuthorName = "Gemma",
+                        ActorCharacterId = "c2",
+                        ActorName = "Gemma",
+                        Body = "Second message.",
+                        Scene = CloneScene(secondScene)
+                    }
+                ]
+            }
+        };
+    }
+
+    static RpSceneFrame CloneScene(RpSceneFrame scene) => new()
+    {
+        LocationId = scene.LocationId,
+        LocationName = scene.LocationName,
+        InSceneCharacterIds = [.. scene.InSceneCharacterIds],
+        InSceneItemIds = [.. scene.InSceneItemIds],
+        Data = scene.Data.DeepClone().AsObject()
+    };
+
     static RoleplaySession NewSession(LiveRoleplayStore liveStore, ITextGenerationService generator) =>
         new(liveStore, new FakeCapabilityCatalog(), generator);
 
@@ -275,6 +439,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
             GenerateTurnRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -330,6 +495,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
             GenerateProseFromPlanRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -373,6 +539,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
             GenerateSnapshotRequest request,
             CancellationToken cancellationToken = default)
         {

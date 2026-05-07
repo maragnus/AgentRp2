@@ -7,6 +7,7 @@ public sealed partial class TranscriptStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
+    ModelSelectionStore modelSelection,
     ITextGenerationService textGenerationService,
     SceneTransitionService sceneTransitionService,
     IMessageSpeechService? messageSpeechService = null) : ActiveChatStoreBase(activeChat, registry)
@@ -58,6 +59,7 @@ public sealed partial class TranscriptStore(
             playback = await messageSpeechService.GetOrGenerateAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 turn,
                 regenerate,
                 cancellationToken);
@@ -87,7 +89,7 @@ public sealed partial class TranscriptStore(
             ActorCharacterId = speaker?.Id ?? "",
             ActorName = authorName,
             Body = text.Trim(),
-            Scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(Document.Transcript))
+            Scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(Document.Transcript, Document.Transcript.ActiveLeafTurnId))
         };
         CommitTurn(turn, now);
         await SaveTranscriptAsync();
@@ -297,6 +299,7 @@ public sealed partial class TranscriptStore(
         if (TranscriptGraph.FindTurn(Document.Transcript, turnId) is null)
             return;
 
+        TranscriptGraph.ClearWorkingScene(Document.Transcript);
         TranscriptGraph.SelectLeaf(Document.Transcript, ResolveLeafFrom(turnId));
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -321,6 +324,7 @@ public sealed partial class TranscriptStore(
         if (Document.Transcript.ActiveLeafTurnId == id)
             Document.Transcript.ActiveLeafTurnId = children.LastOrDefault()?.Id ?? turn.ParentTurnId;
 
+        TranscriptGraph.ClearWorkingScene(Document.Transcript);
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -342,6 +346,7 @@ public sealed partial class TranscriptStore(
         if (toDelete.Contains(Document.Transcript.ActiveLeafTurnId))
             Document.Transcript.ActiveLeafTurnId = TranscriptGraph.GetChildren(Document.Transcript, parentId).LastOrDefault()?.Id ?? parentId;
 
+        TranscriptGraph.ClearWorkingScene(Document.Transcript);
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -353,7 +358,7 @@ public sealed partial class TranscriptStore(
             return;
 
         ClearBackgroundError();
-        var target = TranscriptGraph.GetEditableActiveScene(Document.Transcript);
+        var target = TranscriptGraph.GetEditableWorkingScene(Document.Transcript);
         target.LocationId = scene.LocationId;
         target.LocationName = scene.LocationName;
         target.InSceneCharacterIds = [.. scene.InSceneCharacterIds];
@@ -410,6 +415,7 @@ public sealed partial class TranscriptStore(
             var result = await textGenerationService.GenerateTurnAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 new(
                     parentTurnId,
                     mode,
@@ -456,6 +462,7 @@ public sealed partial class TranscriptStore(
             var result = await textGenerationService.GenerateProseFromPlanAsync(
                 Document,
                 providers.Items.ToList(),
+                modelSelection.State,
                 request,
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
             return await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
@@ -635,7 +642,7 @@ public sealed partial class TranscriptStore(
             Plan = plan is null ? new() { TurnShape = turnShape } : SessionCloner.Clone(plan),
             AppearanceByCharacterId = appearances is null ? [] : CloneMap(appearances),
             PrivateIntentByCharacterId = privateIntents is null ? [] : CloneMap(privateIntents),
-            Scene = SessionCloner.Clone(scene ?? TranscriptGraph.GetActiveScene(Document.Transcript)),
+            Scene = SessionCloner.Clone(scene ?? TranscriptGraph.GetSceneForNextTurn(Document.Transcript, parentTurnId)),
             Trace = SessionCloner.Clone(trace)
         };
         CommitTurn(turn, now);
@@ -650,11 +657,13 @@ public sealed partial class TranscriptStore(
         {
             Document.Transcript.ActiveLeafTurnId = "";
             Document.Transcript.BranchSelections.Remove(TranscriptGraph.RootBranchKey);
+            TranscriptGraph.ClearWorkingScene(Document.Transcript);
             TranscriptProjector.Apply(Document);
             return;
         }
 
         TranscriptGraph.SelectLeaf(Document.Transcript, parentTurnId);
+        TranscriptGraph.ClearWorkingScene(Document.Transcript);
         TranscriptProjector.Apply(Document);
     }
 
@@ -664,6 +673,7 @@ public sealed partial class TranscriptStore(
             return;
 
         Document.Transcript.Turns.Add(turn);
+        TranscriptGraph.ClearWorkingSceneForParent(Document.Transcript, turn.ParentTurnId);
         TranscriptGraph.SelectLeaf(Document.Transcript, turn.Id);
         TranscriptProjector.Apply(Document, now);
     }

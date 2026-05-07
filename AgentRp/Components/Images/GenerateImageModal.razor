@@ -164,7 +164,7 @@
 
     List<GalleryImage> Images => Session.Chat.Images.Items;
     IReadOnlyList<ImageArtStyleOption> ArtStyleOptions => ImageGenerationService.GetArtStyleOptions();
-    IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.Chat.ModelSelection.State);
+    IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.ModelSelection.State);
     IReadOnlyList<ImageEntityOption> EntityOptions => BuildEntityOptions();
     ImageEntityOption? TargetEntity => EntityOptions.FirstOrDefault(entity => entity.EntityType == NormalizedTargetEntityType && entity.EntityId == TargetEntityId);
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
@@ -187,7 +187,7 @@
         Session.Chat.Locations.Changed += OnStoreChanged;
         Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
-        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
         await LoadDefaultsAsync();
     }
@@ -200,7 +200,7 @@
 
     async Task LoadDefaultsAsync()
     {
-        var settings = await ImageGenerationService.GetSettingsAsync(Session.Providers.Items, Session.Chat.ModelSelection.State);
+        var settings = await ImageGenerationService.GetSettingsAsync(Session.Providers.Items, Session.ModelSelection.State);
         ModelKey = settings.ModelKey;
         ArtStyleKey = settings.ArtStyleKey;
         Quality = settings.Quality;
@@ -222,7 +222,7 @@
         ModelKey = modelKey;
         var selected = ImageModels.FirstOrDefault(model => model.Key == ModelKey);
         if (selected is not null)
-            await Session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Image, selected.ProviderId, selected.ModelId);
+            await Session.ModelSelection.SetActiveModelAsync(AiModelRole.Image, selected.ProviderId, selected.ModelId);
     }
 
     void ToggleEntity(string key)
@@ -258,6 +258,7 @@
             await foreach (var update in ImageGenerationService.GenerateStreamingAsync(
                 document,
                 Session.Providers.Items,
+                Session.ModelSelection.State,
                 new GenerateImageRequest(
                     ModelKey,
                     Prompt,
@@ -414,7 +415,7 @@
         Session.Chat.Locations.Changed -= OnStoreChanged;
         Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
-        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 

@@ -1280,6 +1280,65 @@
     margin: 0 16px 12px;
 }
 
+.scene-transition-entry {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0;
+    padding: 6px 30px 8px;
+    color: var(--c-text3);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.scene-transition-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    min-width: 0;
+}
+
+.scene-transition-separator,
+.scene-transition-suffix {
+    margin-left: 4px;
+}
+
+.scene-transition-separator {
+    margin-right: 4px;
+}
+
+.entity-mention {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--c-text2);
+    font: inherit;
+    vertical-align: middle;
+}
+
+.entity-mention.is-clickable {
+    cursor: pointer;
+}
+
+.entity-mention.is-clickable:hover,
+.entity-mention.is-clickable:focus-visible {
+    color: var(--c-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.entity-mention .entity-image {
+    flex: 0 0 auto;
+}
+
+.entity-mention-name {
+    font-weight: 700;
+}
+
 .app-markdown {
     min-width: 0;
     color: inherit;

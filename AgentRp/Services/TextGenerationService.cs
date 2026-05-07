@@ -56,9 +56,9 @@ public sealed record TranscriptProseUpdate(
 
 public interface ITextGenerationService
 {
-    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed record TranscriptGenerationProgress(Func<RpTurnTrace, Task> OnChanged, Func<TranscriptProseUpdate, Task>? OnProseChanged = null)
@@ -85,12 +85,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         GenerateTurnRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(document, providers);
+        var selection = ResolveTextModel(providers, modelSelections);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -112,7 +113,7 @@ public sealed class TextGenerationService(
             SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText);
             await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
-                return await GenerateDumbProseTurnAsync(document, providers, selection, request, context, trace, progress, cancellationToken);
+                return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, request, context, trace, progress, cancellationToken);
 
             var appearance = await RunAppearanceStepAsync(document, selection, context, trace, progress, cancellationToken);
             var selectedActor = await RunSelectionStepAsync(document, selection, context, request, trace, progress, cancellationToken);
@@ -124,7 +125,7 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
                 request.RequestedNarrator);
             var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
             trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -133,7 +134,7 @@ public sealed class TextGenerationService(
             if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(selectedActor.Id))
                 privateIntents[selectedActor.Id] = plan.PrivateIntent;
 
-            var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
+            var scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
             return new(
                 selectedActor.Id,
                 selectedActor.Name,
@@ -157,12 +158,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         GenerateProseFromPlanRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(document, providers);
+        var selection = ResolveTextModel(providers, modelSelections);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -198,7 +200,7 @@ public sealed class TextGenerationService(
             var planner = CreatePlanningResponse(plan, ResolvePrivateIntent(request.PrivateIntentByCharacterId, actor.Id));
             SeedTurnSteps(trace, selection, false);
             await ReportProgressAsync(progress, trace);
-            var prose = await RunProseStepAsync(document, providers, selection, turnRequest, context, actor, planner, trace, progress, cancellationToken, plan, request.Scene);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, planner, trace, progress, cancellationToken, plan, request.Scene);
             trace.Data["actorName"] = actor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -226,11 +228,12 @@ public sealed class TextGenerationService(
     public async Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         GenerateSnapshotRequest request,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveSnapshotModel(document, providers);
+        var selection = ResolveSnapshotModel(providers, modelSelections);
         var trace = new RpTurnTrace
         {
             Status = "running",
@@ -280,6 +283,7 @@ public sealed class TextGenerationService(
     async Task<GeneratedTurnResult> GenerateDumbProseTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
@@ -294,12 +298,12 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
-        var prose = await RunProseStepAsync(document, providers, selection, request, context, actor, plan, trace, progress, cancellationToken);
+        var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, context, actor, plan, trace, progress, cancellationToken);
         trace.Data["actorName"] = actor.Name;
         FinalizeTrace(trace, "completed");
         await ReportProgressAsync(progress, trace);
 
-        var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
+        var scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
         return new(
             actor.Id,
             actor.Name,
@@ -445,6 +449,7 @@ public sealed class TextGenerationService(
     async Task<string> RunProseStepAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
         ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
@@ -472,13 +477,13 @@ public sealed class TextGenerationService(
             plan.Guardrails,
             document.PromptLibrary);
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
-        var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers);
+        var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers, modelSelections);
         var systemPrompt = AppendPromptBlock(prompt.SystemPrompt, audioTagGuide.SystemGuide);
         var userPrompt = PromptLibraryService.WithProseFormatReminder(AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder));
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "prose", selection, startedUtc, progress);
         var turnPlan = progressPlanOverride is null ? CreateTurnPlan(plan, context.RequestedTurnShape) : SessionCloner.Clone(progressPlanOverride);
-        var scene = SessionCloner.Clone(progressSceneOverride ?? TranscriptGraph.GetActiveScene(document.Transcript));
+        var scene = SessionCloner.Clone(progressSceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
         await ReportProseProgressAsync(progress, request, actor, turnPlan, scene, "");
         var completion = await SendStreamingTextAsync(
             selection,
@@ -786,12 +791,12 @@ public sealed class TextGenerationService(
             capabilityCatalog.ApplyResolvedCapabilities(provider);
     }
 
-    static ActiveModelSelection ResolveTextModel(RpChatDocument document, IReadOnlyList<AiProvider> providers) =>
-        TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections)
+    static ActiveModelSelection ResolveTextModel(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections) =>
+        TextModelTuningCatalog.TryResolveActiveTextModel(providers, modelSelections)
         ?? throw new InvalidOperationException("Generating transcript text failed because no text-capable model is enabled.");
 
-    static ActiveModelSelection ResolveSnapshotModel(RpChatDocument document, IReadOnlyList<AiProvider> providers) =>
-        TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, document.ActiveModelSelections)
+    static ActiveModelSelection ResolveSnapshotModel(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections) =>
+        TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, modelSelections)
         ?? throw new InvalidOperationException("Creating a snapshot failed because no reasoning model is enabled.");
 
     static string ResolveCharacterId(IEnumerable<RpCharacter> characters, string name)

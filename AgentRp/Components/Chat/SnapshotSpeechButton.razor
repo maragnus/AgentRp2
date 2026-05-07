@@ -44,7 +44,7 @@
         var document = Session.ActiveChat.Current;
         Availability = document is null || SpeechService is null || Playback is null
             ? new(MessageSpeechAvailabilityKind.NoVoiceModel)
-            : SpeechService.ResolveSnapshotAvailability(document, Session.Providers.Items, Snapshot);
+            : SpeechService.ResolveSnapshotAvailability(document, Session.Providers.Items, Session.ModelSelection.State, Snapshot);
     }
 
     async Task<string> ResolveUrl(MouseEventArgs args)

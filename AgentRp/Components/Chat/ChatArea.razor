@@ -81,6 +81,12 @@
                 }
                 else if (item.Message is not null)
                 {
+                    @if (item.Transition is not null && item.Transition.HasChanges)
+                    {
+                        <SceneTransitionEntry @key="@($"transition:{item.Message.Id}")"
+                                              Delta="item.Transition"
+                                              OnOpenEntities="OnOpenEntities" />
+                    }
                     <ChatMessage @key="item.Message.Id"
                                  Message="item.Message"
                                  Characters="Characters"
@@ -195,6 +201,7 @@
     RpTranscriptSnapshotDraft? SnapshotDraft;
     RpTranscriptSnapshotDraftPreview? SnapshotDraftPreview;
     HashSet<string> KnownMessageIds = [];
+    readonly SceneTransitionService SceneTransitions = new();
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
@@ -218,7 +225,7 @@
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
     bool CanGenerate => !TranscriptBusy;
-    bool CanSpeakActionsInNarratorVoice => string.Equals(Session.Chat.ModelSelection.Resolve(AiModelRole.Voice)?.Provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
+    bool CanSpeakActionsInNarratorVoice => string.Equals(Session.ModelSelection.Resolve(AiModelRole.Voice)?.Provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
     string TranscriptScrollClass => string.Join(" ", new[]
     {
         "claude-chat-scroll",
@@ -228,6 +235,7 @@
     IReadOnlyList<TranscriptDisplayItem> BuildDisplayItems()
     {
         var messages = Messages;
+        var document = Session.ActiveChat.Current;
         var indexById = messages
             .Select((message, index) => (message.Id, index))
             .ToDictionary(pair => pair.Id, pair => pair.index, StringComparer.Ordinal);
@@ -237,18 +245,27 @@
             .ToList();
         var items = new List<TranscriptDisplayItem>();
         var nextIndex = 0;
+        RpSceneFrame? previousScene = null;
         foreach (var snapshot in snapshots)
         {
             var snapshotIndex = indexById[snapshot.TurnId];
             if (snapshotIndex < nextIndex)
                 continue;
 
-            items.Add(new($"snapshot:{snapshot.Id}", null, snapshot, messages.Count - snapshotIndex - 1));
+            items.Add(new($"snapshot:{snapshot.Id}", null, snapshot, null, messages.Count - snapshotIndex - 1));
             nextIndex = snapshotIndex + 1;
+            previousScene = snapshot.Scene;
         }
 
         for (var index = nextIndex; index < messages.Count; index++)
-            items.Add(new($"turn:{messages[index].Id}", messages[index], null, messages.Count - index - 1));
+        {
+            var message = messages[index];
+            var transition = document is not null && previousScene is not null
+                ? SceneTransitions.BuildDelta(document, previousScene, message.Scene)
+                : null;
+            items.Add(new($"turn:{message.Id}", message, null, transition, messages.Count - index - 1));
+            previousScene = message.Scene;
+        }
 
         return items;
     }
@@ -263,7 +280,7 @@
         Session.Chats.Changed += OnSessionChanged;
         Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Transcript.Changed += OnSessionChanged;
-        Session.Chat.ModelSelection.Changed += OnSessionChanged;
+        Session.ModelSelection.Changed += OnSessionChanged;
         Session.Chat.Characters.Changed += OnSessionChanged;
         Session.Chat.Locations.Changed += OnSessionChanged;
     }
@@ -397,7 +414,7 @@
         if (MessageSpeechService is null)
             return;
 
-        var availability = MessageSpeechService.ResolveAvailability(document, Session.Providers.Items, turn);
+        var availability = MessageSpeechService.ResolveAvailability(document, Session.Providers.Items, Session.ModelSelection.State, turn);
         if (!availability.CanDisplay)
             return;
         if (!availability.CanGenerate)
@@ -464,7 +481,7 @@
         Session.Chats.Changed -= OnSessionChanged;
         Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Transcript.Changed -= OnSessionChanged;
-        Session.Chat.ModelSelection.Changed -= OnSessionChanged;
+        Session.ModelSelection.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;
         Session.Chat.Locations.Changed -= OnSessionChanged;
     }
@@ -473,5 +490,6 @@
         string Key,
         RpTranscriptTurn? Message,
         RpTranscriptSnapshot? Snapshot,
+        SceneTransitionDelta? Transition,
         int SubsequentCount);
 }

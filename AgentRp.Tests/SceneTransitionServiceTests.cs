@@ -52,6 +52,92 @@ public sealed class SceneTransitionServiceTests
     }
 
     [Fact]
+    public void SameLocationDeltaOnlyShowsEnteredAndLeftEntities()
+    {
+        var document = CreateDocument();
+        var previous = new RpSceneFrame
+        {
+            LocationId = "l1",
+            LocationName = "Apartment",
+            InSceneCharacterIds = ["c1", "c2"],
+            InSceneItemIds = ["i1"]
+        };
+        var target = new RpSceneFrame
+        {
+            LocationId = "l1",
+            LocationName = "Apartment",
+            InSceneCharacterIds = ["c2", "c3"],
+            InSceneItemIds = ["i2"]
+        };
+
+        var service = new SceneTransitionService();
+        var delta = service.BuildDelta(document, previous, target);
+        var transcript = service.FormatForTranscript(delta);
+
+        Assert.False(delta.IsLocationTransition);
+        Assert.Contains("Lucia left the scene.", transcript, StringComparison.Ordinal);
+        Assert.Contains("Mara entered the scene.", transcript, StringComparison.Ordinal);
+        Assert.Contains("Lantern was removed from the scene.", transcript, StringComparison.Ordinal);
+        Assert.Contains("Map was added to the scene.", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gemma", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("previously", transcript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LocationDeltaReestablishesPresentEntities()
+    {
+        var document = CreateDocument();
+        var previous = new RpSceneFrame
+        {
+            LocationId = "l1",
+            LocationName = "Apartment",
+            InSceneCharacterIds = ["c1", "c2"],
+            InSceneItemIds = ["i1"]
+        };
+        var target = new RpSceneFrame
+        {
+            LocationId = "l2",
+            LocationName = "Library",
+            InSceneCharacterIds = ["c2", "c3"],
+            InSceneItemIds = ["i2"]
+        };
+
+        var service = new SceneTransitionService();
+        var delta = service.BuildDelta(document, previous, target);
+        var transcript = service.FormatForTranscript(delta);
+
+        Assert.True(delta.IsLocationTransition);
+        Assert.Contains("Lucia left the scene.", transcript, StringComparison.Ordinal);
+        Assert.Contains("Library (previously Apartment).", transcript, StringComparison.Ordinal);
+        Assert.Contains("Gemma and Mara are present in the scene.", transcript, StringComparison.Ordinal);
+        Assert.Contains("Map is present in the scene.", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mara entered the scene.", transcript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LocationDeltaOmitsMissingPreviousLocation()
+    {
+        var document = CreateDocument();
+        var previous = new RpSceneFrame
+        {
+            LocationName = "No Location",
+            InSceneCharacterIds = ["c1"]
+        };
+        var target = new RpSceneFrame
+        {
+            LocationId = "l2",
+            LocationName = "Library",
+            InSceneCharacterIds = ["c1"]
+        };
+
+        var transcript = new SceneTransitionService().FormatForTranscript(new SceneTransitionService().BuildDelta(document, previous, target));
+
+        Assert.Contains("Library.", transcript, StringComparison.Ordinal);
+        Assert.DoesNotContain("previously", transcript, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No Location", transcript, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TimeSkipWithoutLocationChangeIsClassified()
     {
         var document = CreateDocument();

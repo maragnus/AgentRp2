@@ -38,6 +38,7 @@ public sealed class TextGenerationServiceTests
         await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "", ""),
             new(trace =>
             {
@@ -67,6 +68,7 @@ public sealed class TextGenerationServiceTests
         var result = await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
             new("turn-3", "automatic", "Keep moving.", "Brief", "", ""),
             new(_ => Task.CompletedTask, update =>
             {
@@ -97,6 +99,7 @@ public sealed class TextGenerationServiceTests
         await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
             new(trace =>
             {
@@ -122,6 +125,7 @@ public sealed class TextGenerationServiceTests
         var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
             new(trace =>
             {
@@ -190,7 +194,6 @@ public sealed class TextGenerationServiceTests
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
         document.Transcript.Options.InjectAudioTags = true;
-        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "eleven_v3" };
 
         await service.GenerateTurnAsync(
             document,
@@ -216,7 +219,6 @@ public sealed class TextGenerationServiceTests
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
         document.Transcript.Options.InjectAudioTags = true;
-        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "voice-model" };
 
         await service.GenerateTurnAsync(
             document,
@@ -242,7 +244,6 @@ public sealed class TextGenerationServiceTests
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
         document.Transcript.Options.InjectAudioTags = true;
-        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "eleven_multilingual_v2" };
 
         await service.GenerateTurnAsync(
             document,
@@ -338,7 +339,6 @@ public sealed class TextGenerationServiceTests
         var client = new FakeModelGenerationClient();
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
-        document.ActiveModelSelections.Values[AiModelRole.Reasoning] = new() { ProviderId = "provider", ModelId = "test-model" };
 
         var result = await service.GenerateSnapshotAsync(
             document,
@@ -364,7 +364,7 @@ public sealed class TextGenerationServiceTests
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.GenerateSnapshotAsync(
             document,
-            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            [],
             new("turn-3")));
 
         Assert.Contains("reasoning model", exception.Message, StringComparison.Ordinal);
@@ -496,7 +496,6 @@ public sealed class TextGenerationServiceTests
     {
         var service = new TextGenerationService(new FakeModelGenerationClient(), new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
-        document.ActiveModelSelections.Values[AiModelRole.Reasoning] = new() { ProviderId = "provider", ModelId = "test-model" };
 
         var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateSnapshotAsync(
             document,

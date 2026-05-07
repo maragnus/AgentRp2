@@ -527,7 +527,7 @@
     static string SpeechInputKey(SpeechGenerationInput input, int index) =>
         $"{index}:{input.VoiceId}:{input.Text.Length}";
 
-    ActiveModelSelection? ResolveActiveTextModel() => Session.Chat.ModelSelection.Resolve(AiModelRole.Reasoning);
+    ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Reasoning);
 
     GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 

@@ -5,7 +5,7 @@ namespace AgentRp.Services;
 
 public interface IAudioTagGuideService
 {
-    AudioTagPromptGuide BuildGuide(RpChatDocument document, IReadOnlyList<AiProvider> providers);
+    AudioTagPromptGuide BuildGuide(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections);
 }
 
 public sealed record AudioTagPromptGuide(string SystemGuide, string UserReminder)
@@ -16,12 +16,12 @@ public sealed record AudioTagPromptGuide(string SystemGuide, string UserReminder
 
 public sealed class AudioTagGuideService : IAudioTagGuideService
 {
-    public AudioTagPromptGuide BuildGuide(RpChatDocument document, IReadOnlyList<AiProvider> providers)
+    public AudioTagPromptGuide BuildGuide(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections)
     {
         if (!document.Transcript.Options.InjectAudioTags)
             return AudioTagPromptGuide.Empty;
 
-        var selection = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Voice, document.ActiveModelSelections);
+        var selection = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Voice, modelSelections);
         if (selection is null || !AudioTagTransportRules.SupportsAudioTags(selection))
             return AudioTagPromptGuide.Empty;
 
