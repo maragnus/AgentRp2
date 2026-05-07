@@ -1,135 +1,60 @@
-@inject IModelCapabilityCatalog CapabilityCatalog
-
 <div class="sidebar-model-panel">
-    <AnchoredPopover Placement="OverlayPlacement.BottomStart" Class="sidebar-model-popover" AnchorClass="is-block">
-        <Trigger Context="picker">
-        <AppButton Bare
-                   Class="@SummaryClass(picker.IsOpen)"
-                   Title="Switch active chat model"
-                   AriaLabel="Switch active chat model"
-                   OnClick="@(_ => picker.Toggle())">
-            @if (ActiveTextModel is null)
-            {
-                <span class="sidebar-status-dot is-muted"></span>
-                <span class="sidebar-model-lockup">
-                    <span class="sidebar-model-name">No text model selected</span>
-                    <span class="sidebar-model-provider">Enable a chat model in AI Providers</span>
-                </span>
-            }
-            else
-            {
-                <span class="sidebar-status-dot"></span>
-                <span class="sidebar-model-lockup">
-                    <span class="sidebar-model-name">@DisplayName(ActiveTextModel.Model)</span>
-                    <span class="sidebar-model-provider">@ActiveTextModel.Provider.Name</span>
-                </span>
-                <FaIcon Name="chevron-down" />
-            }
-        </AppButton>
-        </Trigger>
-        <Content>
-                <div class="popover-label">Chat Models</div>
-                @if (AvailableGroups.Count == 0)
-                {
-                    <div class="sidebar-model-empty">
-                        <span>No chat models are enabled.</span>
-                        <AppButton Variant="primary" Size="xs" OnClick="@(_ => OpenProviders())"><FaIcon Name="settings" />AI Providers</AppButton>
-                    </div>
-                }
-                else
-                {
-                    @foreach (var group in AvailableGroups)
-                    {
-                        <div @key="group.Provider.Id" class="sidebar-model-group">
-                            <div class="sidebar-model-group-title">
-                                <ProviderBadge Type="@group.Provider.Type" Size="28" />
-                                <span title="@group.Provider.Name">@group.Provider.Name</span>
-                            </div>
-                            @foreach (var model in group.Models)
-                            {
-                                var selected = ActiveTextModel?.Provider.Id == group.Provider.Id && ActiveTextModel.Model.Id == model.Id;
-                                <BusyButton @key="model.Id"
-                                            Variant="ghost"
-                                            Size="sm"
-                                            Class="@($"sidebar-model-option {(selected ? "is-selected" : "")}")"
-                                            Disabled="@selected"
-                                            Title="@($"Use {DisplayName(model)}")"
-                                            AriaLabel="@($"Use {DisplayName(model)}")"
-                                            OnClick="@(() => SelectModel(group.Provider.Id, model.Id))">
-                                    <span>
-                                        <strong>@DisplayName(model)</strong>
-                                        @if (ShowModelId(model))
-                                        {
-                                            <small>@model.Id</small>
-                                        }
-                                    </span>
-                                    @if (selected)
-                                    {
-                                        <FaIcon Name="check" />
-                                    }
-                                </BusyButton>
-                            }
-                        </div>
-                    }
-                }
-        </Content>
-    </AnchoredPopover>
+    @foreach (var role in Roles)
+    {
+        <ActiveModelPicker @key="role" Role="@role" DebugName="@($"Sidebar model picker {role}")" OnOpenProviders="OnOpenProviders">
+            <TriggerContent Context="picker">
+                <SidebarRow Title="@RoleLabel(role)"
+                            Subtitle="@ModelSummary(picker.ActiveModel, role)"
+                            Tooltip="@($"Switch active {RoleLabel(role).ToLowerInvariant()} model")"
+                            Open="@picker.IsOpen"
+                            OnClick="@(_ => picker.Toggle())">
+                    <LeadingContent>
+                        @if (picker.ActiveModel is null)
+                        {
+                            <span class="sidebar-row-icon"><FaIcon Name="@RoleIcon(role)" /></span>
+                        }
+                        else
+                        {
+                            <ProviderBadge Type="@picker.ActiveModel.Provider.Type" Size="28" />
+                        }
+                    </LeadingContent>
+                    <TrailingContent>
+                        <FaIcon Name="@(picker.IsOpen ? "chevron-up" : "chevron-down")" />
+                    </TrailingContent>
+                </SidebarRow>
+            </TriggerContent>
+        </ActiveModelPicker>
+    }
 
-    @if (ActiveTextModel is not null && ActiveTextModel.Provider.Type == "huggingface")
+    @if (ActiveChatModel is not null && ActiveChatModel.Provider.Type == "huggingface")
     {
         <div class="sidebar-provider-widget">
-            <HuggingFaceEndpointWidget Provider="@ActiveTextModel.Provider" Model="@ActiveTextModel.Model" ShowModelName="false" />
+            <HuggingFaceEndpointWidget Provider="@ActiveChatModel.Provider" Model="@ActiveChatModel.Model" ShowModelName="false" />
         </div>
     }
 </div>
 
 @code {
+    static readonly AiModelRole[] Roles = [AiModelRole.Chat, AiModelRole.Image, AiModelRole.Voice];
+
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnOpenProviders { get; set; }
 
-    ActiveTextModel? ActiveTextModel => ResolveActiveTextModel();
-    IReadOnlyList<ModelGroup> AvailableGroups => BuildGroups();
-    static string SummaryClass(bool pickerOpen) => $"sidebar-model-summary-button {(pickerOpen ? "is-open" : "")}";
+    ActiveModelSelection? ActiveChatModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
 
-    ActiveTextModel? ResolveActiveTextModel()
+    static string RoleLabel(AiModelRole role) => AiProviderModelSelectionRules.Label(role);
+
+    static string RoleIcon(AiModelRole role) => role switch
     {
-        foreach (var provider in Session.Providers.Items)
-            CapabilityCatalog.ApplyResolvedCapabilities(provider);
+        AiModelRole.Chat => "message-sq",
+        AiModelRole.Image => "image",
+        AiModelRole.Voice => "waveform-lines",
+        _ => "circle-question"
+    };
 
-        return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
-    }
-
-    IReadOnlyList<ModelGroup> BuildGroups()
-    {
-        foreach (var provider in Session.Providers.Items)
-            CapabilityCatalog.ApplyResolvedCapabilities(provider);
-
-        return Session.Providers.Items
-            .Where(provider => provider.Enabled)
-            .Select(provider => new ModelGroup(
-                provider,
-                provider.Models
-                    .Where(AiProviderModelSelectionRules.IsSelectedForChat)
-                    .ToList()))
-            .Where(group => group.Models.Count > 0)
-            .ToList();
-    }
-
-    async Task SelectModel(string providerId, string modelId)
-    {
-        await Session.Providers.SetActiveTextModelAsync(providerId, modelId);
-    }
-
-    async Task OpenProviders()
-    {
-        await OnOpenProviders.InvokeAsync();
-    }
+    static string ModelSummary(ActiveModelSelection? selection, AiModelRole role) =>
+        selection is null ? $"No {RoleLabel(role).ToLowerInvariant()} model selected" : DisplayName(selection.Model);
 
     static string DisplayName(AiProviderModel model) =>
         string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
-
-    static bool ShowModelId(AiProviderModel model) =>
-        !string.Equals(DisplayName(model).Trim(), model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
-
-    sealed record ModelGroup(AiProvider Provider, IReadOnlyList<AiProviderModel> Models);
 }

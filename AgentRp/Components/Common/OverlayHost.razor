@@ -1,18 +1,31 @@
 @inject OverlayService Overlays
 @implements IDisposable
 
-<div class="overlay-root">
-    @foreach (var entry in Overlays.Entries)
-    {
-        <OverlaySurface @key="entry.Id" Entry="entry" />
-    }
-</div>
+@foreach (var layer in Layers)
+{
+    <div @key="layer" class="@RootCssClass(layer)">
+        @foreach (var entry in EntriesFor(layer))
+        {
+            <OverlaySurface @key="entry.Id" Entry="entry" />
+        }
+    </div>
+}
 
 @code {
+    static readonly OverlayLayer[] Layers = [OverlayLayer.Page, OverlayLayer.Modal];
+
     protected override void OnInitialized()
     {
         Overlays.Changed += OnOverlaysChanged;
     }
+
+    IEnumerable<OverlayEntry> EntriesFor(OverlayLayer layer) =>
+        Overlays.Entries.Where(entry => entry.Layer == layer);
+
+    static string RootCssClass(OverlayLayer layer) =>
+        layer == OverlayLayer.Modal
+            ? "overlay-root is-layer-modal"
+            : "overlay-root is-layer-page";
 
     void OnOverlaysChanged() => _ = InvokeAsync(StateHasChanged);
 

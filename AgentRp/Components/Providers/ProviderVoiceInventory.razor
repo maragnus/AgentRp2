@@ -1,0 +1,166 @@
+@inject IAiProviderVoiceInventoryService VoiceInventoryService
+
+@if (VoiceModels.Count > 0)
+{
+    <Section Title="Voices" Hint="Cached per voice model; refresh when provider inventory changes." Class="provider-section">
+        <ChildContent>
+            <div class="accordion-list provider-voice-accordion">
+                @foreach (var model in VoiceModels)
+                {
+                    var key = ModelKey(model);
+                    <AccordionPanel @key="key"
+                                    Title="@DisplayName(model)"
+                                    Summary="@Summary(model)"
+                                    Icon="waveform-lines"
+                                    DefaultOpen="false"
+                                    Class="@PanelClass(model)">
+                        <MetaContent>
+                            <span class="@StatusClass(model)">@StatusText(model)</span>
+                        </MetaContent>
+                        <ChildContent>
+                            @if (IsRefreshing(model))
+                            {
+                                <div class="providers-empty-state is-compact">
+                                    <span class="spinner" aria-hidden="true"></span>
+                                    <strong>Refreshing voices</strong>
+                                    <span>Fetching voice inventory from @Provider.Name.</span>
+                                </div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(model.LastVoiceRefreshError))
+                            {
+                                <div class="modal-error">@model.LastVoiceRefreshError</div>
+                            }
+                            else if (model.Voices.Count == 0)
+                            {
+                                <div class="providers-empty-state is-compact">
+                                    <FaIcon Name="waveform-lines" />
+                                    <strong>No voices cached</strong>
+                                    <span>Refresh voices to load this inventory.</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="provider-voice-detail-list">
+                                    @foreach (var voice in model.Voices)
+                                    {
+                                        var tags = AiProviderVoiceDisplayRules.VisibleTags(Provider, voice);
+                                        <div @key="voice.Id" class="provider-voice-detail-row">
+                                            <div class="provider-voice-detail-head">
+                                                <span class="provider-voice-detail-title">
+                                                    <strong title="@voice.Id">@AiProviderVoiceDisplayRules.DisplayVoice(voice)</strong>
+                                                    <small>@voice.Id</small>
+                                                </span>
+                                                <TtsSampleButton Provider="@Provider"
+                                                                 Model="@model"
+                                                                 Voice="@voice"
+                                                                 PreviewUrl="@voice.PreviewUrl" />
+                                            </div>
+                                            @if (tags.Count > 0)
+                                            {
+                                                <div class="provider-voice-tag-list">
+                                                @foreach (var tag in tags)
+                                                {
+                                                    <span @key="@($"{voice.Id}:{tag}")" class="provider-voice-label">@tag</span>
+                                                }
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(voice.Description))
+                                            {
+                                                <p>@voice.Description</p>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </ChildContent>
+                    </AccordionPanel>
+                }
+            </div>
+        </ChildContent>
+    </Section>
+}
+
+@code {
+    readonly HashSet<string> autoRefreshStarted = new(StringComparer.Ordinal);
+    readonly HashSet<string> refreshing = new(StringComparer.Ordinal);
+    bool autoRefreshRunning;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public AiProvider Provider { get; set; } = new();
+
+    IReadOnlyList<AiProviderModel> VoiceModels => Provider.Models
+        .Where(AiProviderModelSelectionRules.IsSelectedForVoice)
+        .ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (autoRefreshRunning)
+            return;
+
+        var models = VoiceModels
+            .Where(VoiceInventoryService.NeedsInitialRefresh)
+            .Where(model => !VoiceInventoryService.IsRefreshing(Provider, model))
+            .Where(model => !autoRefreshStarted.Contains(ModelKey(model)))
+            .ToList();
+        if (models.Count == 0)
+            return;
+
+        autoRefreshRunning = true;
+        foreach (var model in models)
+        {
+            var key = ModelKey(model);
+            autoRefreshStarted.Add(key);
+            refreshing.Add(key);
+        }
+
+        await InvokeAsync(StateHasChanged);
+
+        foreach (var model in models)
+        {
+            await VoiceInventoryService.RefreshModelAsync(Provider, model);
+            refreshing.Remove(ModelKey(model));
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await Session.Providers.MarkChangedAsync();
+        autoRefreshRunning = false;
+    }
+
+    bool IsRefreshing(AiProviderModel model) =>
+        refreshing.Contains(ModelKey(model)) || VoiceInventoryService.IsRefreshing(Provider, model);
+
+    string StatusText(AiProviderModel model)
+    {
+        if (IsRefreshing(model))
+            return "Refreshing";
+        if (!string.IsNullOrWhiteSpace(model.LastVoiceRefreshError))
+            return "Error";
+        if (model.LastVoiceRefreshUtc is DateTime refreshed)
+            return $"Refreshed {RelativeDateFormatter.FormatDate(refreshed)}";
+
+        return "Not refreshed";
+    }
+
+    string StatusClass(AiProviderModel model) => string.Join(" ", new[]
+    {
+        "field-status-pill",
+        IsRefreshing(model) ? "is-loading" : null,
+        !string.IsNullOrWhiteSpace(model.LastVoiceRefreshError) ? "is-error" : null
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    string PanelClass(AiProviderModel model) =>
+        !string.IsNullOrWhiteSpace(model.LastVoiceRefreshError) ? "has-error" : "";
+
+    string Summary(AiProviderModel model)
+    {
+        if (AiProviderModelIdentityRules.IsProviderManagedVoiceEndpoint(Provider.Type, model.Id))
+            return "Provider endpoint";
+
+        return model.Voices.Count == 1 ? "1 cached voice" : $"{model.Voices.Count} cached voices";
+    }
+
+    static string ModelKey(AiProviderModel model) => model.Id;
+
+    static string DisplayName(AiProviderModel model) =>
+        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
+}

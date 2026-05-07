@@ -20,11 +20,17 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+builder.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
 builder.Services.AddSingleton<IModelClientFactory, ModelClientFactory>();
 builder.Services.AddSingleton<IModelGenerationClient, OpenAiModelGenerationClient>();
 builder.Services.AddScoped<IAiProviderConnectionService, AiProviderConnectionService>();
 builder.Services.AddScoped<IAiProviderWidgetService, AiProviderWidgetService>();
+builder.Services.AddScoped<IAiProviderVoiceDiscoveryService, AiProviderVoiceDiscoveryService>();
+builder.Services.AddScoped<IAiProviderVoiceInventoryService, AiProviderVoiceInventoryService>();
+builder.Services.AddScoped<ITtsPreviewService, TtsPreviewService>();
+builder.Services.AddScoped<ITtsAudioPlaybackService, TtsAudioPlaybackService>();
+builder.Services.AddSingleton<IAudioTagGuideService, AudioTagGuideService>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
 builder.Services.AddScoped<OverlayService>();
 builder.Services.AddScoped<TranscriptPromptContextBuilder>();

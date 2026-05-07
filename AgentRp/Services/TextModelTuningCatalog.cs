@@ -31,6 +31,7 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
     public bool ImageInput { get; init; }
     public bool TextOutput { get; init; } = true;
     public bool ImageOutput { get; init; }
+    public bool SpeechOutput { get; init; }
     public bool Streaming { get; init; }
     public bool StructuredOutput { get; init; }
     public bool Tools { get; init; }
@@ -42,6 +43,7 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
     public bool CanGenerateStructuredText => CanGenerateText && StructuredOutput;
     public bool CanGenerateStreamingText => CanGenerateText && Streaming;
     public bool CanGenerateImage => TextInput && ImageOutput;
+    public bool CanGenerateSpeech => TextInput && SpeechOutput;
 
     public static ModelGenerationCapabilities Fallback { get; } = new()
     {
@@ -54,7 +56,10 @@ public sealed class ModelGenerationCapabilities : ModelTuningCapabilities
     };
 }
 
-public sealed record ActiveTextModel(AiProvider Provider, AiProviderModel Model, ModelGenerationCapabilities Capabilities);
+public sealed record ActiveModelSelection(AiProvider Provider, AiProviderModel Model, ModelGenerationCapabilities Capabilities, AiModelRole Role)
+{
+    public string Key => ModelSelectionKey.Build(Provider.Id, Model.Id);
+}
 
 public sealed record ResponseTuningOptions(
     float? Temperature,
@@ -63,29 +68,35 @@ public sealed record ResponseTuningOptions(
 
 public static class TextModelTuningCatalog
 {
-    public static ActiveTextModel? TryResolveActiveTextModel(IReadOnlyList<AiProvider> providers)
+    public static ActiveModelSelection? TryResolveActiveTextModel(
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState? selections = null) =>
+        TryResolveActiveModel(providers, AiModelRole.Chat, selections);
+
+    public static ActiveModelSelection? TryResolveActiveModel(
+        IReadOnlyList<AiProvider> providers,
+        AiModelRole role,
+        ActiveModelSelectionsState? selections = null)
     {
         var enabled = providers.Where(provider => provider.Enabled).ToList();
-        foreach (var provider in enabled)
+        if (selections?.Values.TryGetValue(role, out var selected) == true
+            && !string.IsNullOrWhiteSpace(selected.ProviderId)
+            && !string.IsNullOrWhiteSpace(selected.ModelId))
         {
-            foreach (var model in provider.Models.Where(IsActiveTextCandidate))
-                return new(provider, model, model.Capabilities);
+            var provider = enabled.FirstOrDefault(provider => provider.Id == selected.ProviderId);
+            var model = provider?.Models.FirstOrDefault(model => model.Id == selected.ModelId);
+            if (provider is not null && model is not null && AiProviderModelSelectionRules.IsSelectedForRole(model, role))
+                return new(provider, model, model.Capabilities, role);
         }
 
         foreach (var provider in enabled)
         {
-            foreach (var model in provider.Models.Where(IsTextCandidate))
-                return new(provider, model, model.Capabilities);
+            foreach (var model in provider.Models.Where(model => AiProviderModelSelectionRules.IsSelectedForRole(model, role)))
+                return new(provider, model, model.Capabilities, role);
         }
 
         return null;
     }
-
-    static bool IsActiveTextCandidate(AiProviderModel model) =>
-        model.ActiveText && IsTextCandidate(model);
-
-    static bool IsTextCandidate(AiProviderModel model) =>
-        AiProviderModelSelectionRules.IsSelectedForChat(model);
 
     public static ResponseTuningOptions Filter(ModelTuningStepState tuning, ModelGenerationCapabilities capabilities) => new(
         FilterTemperature(tuning.Temperature, capabilities.Temperature),
@@ -109,4 +120,9 @@ public static class TextModelTuningCatalog
 
     static bool TryParseFloat(string value, out float parsed) =>
         float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed);
+}
+
+public static class ModelSelectionKey
+{
+    public static string Build(string providerId, string modelId) => $"{providerId}::{modelId}";
 }

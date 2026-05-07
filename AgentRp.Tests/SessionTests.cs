@@ -15,8 +15,8 @@ public sealed class SessionTests
     public async Task TwoSessionsShareOneLoadedLiveChat()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
 
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
@@ -32,7 +32,7 @@ public sealed class SessionTests
     public async Task SelectAsyncAwaitsFullChatContextBeforeSwitchCompletes()
     {
         await using var liveStore = NewLiveStore();
-        var session = new RoleplaySession(liveStore);
+        var session = NewSession(liveStore);
         await session.InitializeAsync();
 
         await session.Chats.SelectAsync("ch2");
@@ -48,8 +48,8 @@ public sealed class SessionTests
     public async Task CharacterChangeInOneSessionUpdatesSecondSessionOnSameChat()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -71,8 +71,8 @@ public sealed class SessionTests
     public async Task TranscriptPostInOneSessionUpdatesSecondSessionOnSameChat()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -85,8 +85,8 @@ public sealed class SessionTests
     public async Task SessionOnDifferentChatIgnoresChatLocalNotification()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
         await sessionB.Chats.SelectAsync("ch2");
@@ -107,8 +107,8 @@ public sealed class SessionTests
     public async Task ActiveChatSwitchUsesLiveMemoryInsteadOfFreshSeedClone()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -123,8 +123,8 @@ public sealed class SessionTests
     public async Task ProviderChangesNotifyAllSessions()
     {
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -147,7 +147,7 @@ public sealed class SessionTests
     public async Task UnreferencedInactiveChatsCanUnloadAfterTtl()
     {
         await using var liveStore = NewLiveStore(TimeSpan.FromMilliseconds(10));
-        var session = new RoleplaySession(liveStore);
+        var session = NewSession(liveStore);
         await session.InitializeAsync();
 
         Assert.True(liveStore.IsChatLoaded("ch1"));
@@ -166,10 +166,11 @@ public sealed class SessionTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        context.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         await using var liveStore = NewLiveStore();
-        var sessionA = new RoleplaySession(liveStore);
-        var sessionB = new RoleplaySession(liveStore);
+        var sessionA = NewSession(liveStore);
+        var sessionB = NewSession(liveStore);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
         var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(sessionB));
@@ -185,10 +186,11 @@ public sealed class SessionTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        context.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         var generation = new BlockingTextGenerationService();
         await using var liveStore = NewLiveStore();
-        var session = new RoleplaySession(liveStore, generation);
+        var session = NewSession(liveStore, generation);
         await session.InitializeAsync();
         var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(session));
 
@@ -200,6 +202,15 @@ public sealed class SessionTests
             Assert.NotNull(component.Find(".claude-composer.is-locked"));
             Assert.NotNull(component.Find("textarea[disabled]"));
             Assert.Contains("Generating...", component.Markup, StringComparison.Ordinal);
+            Assert.False(session.Chat.Transcript.Options.ShowProcessTraces);
+            Assert.NotNull(component.Find(".process-row.is-live"));
+            Assert.DoesNotContain("process-steps", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("Appearance", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("Selection", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("Planning", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("Prose", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("process-flow-step is-pending", component.Markup, StringComparison.Ordinal);
+            Assert.Contains("fa-spinner", component.Markup, StringComparison.Ordinal);
             Assert.True(component.FindAll(".claude-composer-actions button[disabled]").Count > 0);
         });
 
@@ -208,6 +219,12 @@ public sealed class SessionTests
 
         generation.Release.SetResult();
         await operation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        component.WaitForAssertion(() =>
+        {
+            Assert.Empty(component.FindAll(".process-row.is-live"));
+            Assert.Contains(BlockingTextGenerationService.GeneratedBody, component.Markup, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -215,7 +232,7 @@ public sealed class SessionTests
     {
         var generation = new BlockingTextGenerationService();
         await using var liveStore = NewLiveStore();
-        var session = new RoleplaySession(liveStore, generation);
+        var session = NewSession(liveStore, generation);
         await session.InitializeAsync();
 
         var operation = session.Chat.Transcript.GenerateAsync("", null, false, "automatic", "Brief");
@@ -237,8 +254,28 @@ public sealed class SessionTests
         Assert.Contains(session.Chat.Transcript.Items, message => message.Body == BlockingTextGenerationService.GeneratedBody);
     }
 
+    [Fact]
+    public async Task TranscriptStoreClearsLiveTraceAndPersistsFailedTrace()
+    {
+        var generation = new FailingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+
+        await session.Chat.Transcript.GenerateAsync("", null, true, "automatic", "Brief");
+
+        Assert.Null(session.Chat.Transcript.ActiveTrace);
+        var failedTurn = session.Chat.Transcript.Items.Last();
+        Assert.Equal("failed", failedTurn.Trace?.Status);
+        Assert.Equal("failed", failedTurn.Trace?.Steps.Single().Status);
+        Assert.NotNull(session.Chat.Transcript.LastBackgroundError);
+    }
+
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+
+    static RoleplaySession NewSession(LiveRoleplayStore liveStore, ITextGenerationService? generator = null) =>
+        new(liveStore, new TestModelCapabilityCatalog(), generator);
 
     sealed class BlockingTextGenerationService : ITextGenerationService
     {
@@ -249,11 +286,34 @@ public sealed class SessionTests
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, CancellationToken cancellationToken = default)
+        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _generateCalls);
+            var startedUtc = DateTime.UtcNow;
+            var trace = new RpTurnTrace
+            {
+                Summary = "Generating · Appearance · Appearance -> Selection -> Planning -> Prose",
+                Status = "running",
+                StartedUtc = startedUtc,
+                Steps =
+                [
+                    new() { Id = "appearance", Label = "Appearance", Status = "running", StartedUtc = startedUtc },
+                    new() { Id = "selection", Label = "Selection", Status = "pending" },
+                    new() { Id = "planning", Label = "Planning", Status = "pending" },
+                    new() { Id = "prose", Label = "Prose", Status = "pending" }
+                ]
+            };
+            if (progress is not null)
+                await progress.ReportAsync(trace);
+
             Entered.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
+            trace.Status = "completed";
+            trace.CompletedUtc = DateTime.UtcNow;
+            trace.DurationSeconds = (trace.CompletedUtc - trace.StartedUtc).TotalSeconds;
+            trace.Steps[0].Status = "completed";
+            trace.Steps[0].CompletedUtc = trace.CompletedUtc;
+            trace.Steps[0].DurationSeconds = trace.DurationSeconds;
 
             return new(
                 "",
@@ -263,12 +323,7 @@ public sealed class SessionTests
                 [],
                 CloneScene(document.Transcript.RootScene),
                 GeneratedBody,
-                new()
-                {
-                    Status = "completed",
-                    StartedUtc = DateTime.UtcNow,
-                    CompletedUtc = DateTime.UtcNow
-                });
+                trace);
         }
 
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
@@ -281,6 +336,39 @@ public sealed class SessionTests
             InSceneCharacterIds = [.. scene.InSceneCharacterIds],
             InSceneItemIds = [.. scene.InSceneItemIds]
         };
+    }
+
+    sealed class FailingTextGenerationService : ITextGenerationService
+    {
+        public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        {
+            var startedUtc = DateTime.UtcNow;
+            var trace = new RpTurnTrace
+            {
+                Summary = "Generating · Prose",
+                Status = "running",
+                StartedUtc = startedUtc,
+                Steps =
+                [
+                    new() { Id = "prose", Label = "Prose", Status = "running", StartedUtc = startedUtc }
+                ]
+            };
+            if (progress is not null)
+                await progress.ReportAsync(trace);
+
+            trace.Status = "failed";
+            trace.CompletedUtc = DateTime.UtcNow;
+            trace.DurationSeconds = (trace.CompletedUtc - trace.StartedUtc).TotalSeconds;
+            trace.Data["error"] = "Prose failed for test.";
+            trace.Steps[0].Status = "failed";
+            trace.Steps[0].CompletedUtc = trace.CompletedUtc;
+            trace.Steps[0].DurationSeconds = trace.DurationSeconds;
+            trace.Steps[0].Error = "Prose failed for test.";
+            throw new TranscriptGenerationException("Prose failed for test.", trace);
+        }
+
+        public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     sealed class TestModelCapabilityCatalog : IModelCapabilityCatalog

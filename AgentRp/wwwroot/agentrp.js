@@ -37,6 +37,97 @@ window.agentRp = {
             input.click();
         });
     },
+    audio: (() => {
+        let current = null;
+
+        function ensureAudio() {
+            if (!current) {
+                current = new Audio();
+            }
+
+            return current;
+        }
+
+        function clearHandlers(audio) {
+            audio.onended = null;
+            audio.onerror = null;
+        }
+
+        async function playUrl(key, url, dotNet) {
+            const audio = ensureAudio();
+            audio.pause();
+            clearHandlers(audio);
+            audio.src = url;
+            audio.onended = () => dotNet.invokeMethodAsync("NotifyAudioStopped", key);
+            audio.onerror = () => dotNet.invokeMethodAsync("NotifyAudioStopped", key);
+            await audio.play();
+        }
+
+        function stop() {
+            if (!current) {
+                return;
+            }
+
+            current.pause();
+            current.currentTime = 0;
+        }
+
+        function createObjectUrl(bytes, contentType) {
+            const blob = new Blob([bytes], { type: contentType || "audio/mpeg" });
+            return URL.createObjectURL(blob);
+        }
+
+        function revokeObjectUrl(url) {
+            if (url && url.startsWith("blob:")) {
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        return { playUrl, stop, createObjectUrl, revokeObjectUrl };
+    })(),
+    modal: (() => {
+        const modals = new Map();
+        let listening = false;
+
+        function ensureListener() {
+            if (listening) {
+                return;
+            }
+
+            document.addEventListener("keydown", closeOnEscape);
+            listening = true;
+        }
+
+        function removeListener() {
+            if (!listening || modals.size > 0) {
+                return;
+            }
+
+            document.removeEventListener("keydown", closeOnEscape);
+            listening = false;
+        }
+
+        function closeOnEscape(event) {
+            if (event.key !== "Escape" || event.defaultPrevented || modals.size === 0) {
+                return;
+            }
+
+            event.preventDefault();
+            [...modals.values()].at(-1).dotNet.invokeMethodAsync("CloseFromBrowser");
+        }
+
+        function track(id, dotNet) {
+            modals.set(id, { id, dotNet });
+            ensureListener();
+        }
+
+        function untrack(id) {
+            modals.delete(id);
+            removeListener();
+        }
+
+        return { track, untrack };
+    })(),
     overlay: (() => {
         const overlays = new Map();
         let listening = false;
@@ -94,7 +185,14 @@ window.agentRp = {
         }
 
         function track(id, anchor, popover, placement, dotNet) {
+            console.debug("[AgentRp overlay] track begin", {
+                id,
+                hasAnchor: !!anchor,
+                hasPopover: !!popover,
+                placement
+            });
             if (!anchor || !popover) {
+                console.debug("[AgentRp overlay] track skipped: missing anchor or popover", { id });
                 return;
             }
 
@@ -117,17 +215,21 @@ window.agentRp = {
             overlays.set(id, overlay);
             ensureListeners();
             requestAnimationFrame(() => position(overlay));
+            console.debug("[AgentRp overlay] track registered", { id, placement });
         }
 
         function untrack(id) {
+            console.debug("[AgentRp overlay] untrack begin", { id });
             const overlay = overlays.get(id);
             if (!overlay) {
+                console.debug("[AgentRp overlay] untrack skipped: not found", { id });
                 return;
             }
 
             overlay.resizeObserver.disconnect();
             overlays.delete(id);
             removeListeners();
+            console.debug("[AgentRp overlay] untrack complete", { id });
         }
 
         function position(overlay) {

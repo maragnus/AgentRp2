@@ -1,0 +1,72 @@
+<div class="@CssClass">
+    <button type="button"
+            class="accordion-panel-header"
+            title="@Title"
+            aria-expanded="@Open"
+            @onclick="Toggle">
+        @if (!string.IsNullOrWhiteSpace(Icon))
+        {
+            <span class="accordion-panel-icon"><FaIcon Name="@Icon" /></span>
+        }
+        <span class="accordion-panel-copy">
+            <strong>@Title</strong>
+            @if (!string.IsNullOrWhiteSpace(Summary))
+            {
+                <small>@Summary</small>
+            }
+        </span>
+        @if (MetaContent is not null)
+        {
+            <span class="accordion-panel-meta">@MetaContent</span>
+        }
+        <FaIcon Name="chevron-down" />
+    </button>
+    @if (Open)
+    {
+        <div class="accordion-panel-body">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    bool Open;
+    bool Initialized;
+    bool PreviousDefaultOpen;
+
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Summary { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool DefaultOpen { get; set; }
+    [Parameter] public RenderFragment? MetaContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Initialized)
+        {
+            if (DefaultOpen && !PreviousDefaultOpen)
+                Open = true;
+
+            PreviousDefaultOpen = DefaultOpen;
+            return;
+        }
+
+        Open = DefaultOpen;
+        PreviousDefaultOpen = DefaultOpen;
+        Initialized = true;
+    }
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "accordion-panel",
+        Open ? "is-open" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    void Toggle()
+    {
+        Open = !Open;
+    }
+}

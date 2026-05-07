@@ -24,7 +24,7 @@
                     <span class="toolbar-spacer"></span>
                     <AppButton Variant="secondary" Size="xs" OnClick="ImportSettings"><FaIcon Name="download" />Import</AppButton>
                     <AppButton Variant="secondary" Size="xs" OnClick="ExportSettings"><FaIcon Name="upload" />Export</AppButton>
-                    <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Layer="OverlayLayer.Modal" Class="copy-popover">
+                    <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Class="copy-popover">
                         <Trigger Context="copy">
                             <AppButton Variant="@(copy.IsOpen ? "outline" : "secondary")" Size="xs" OnClick="@(_ => copy.Toggle())">
                                 <FaIcon Name="copy" />Copy To <FaIcon Name="@(copy.IsOpen ? "chevron-up" : "chevron-down")" />
@@ -165,7 +165,7 @@
     StepDef CurrentStep => Steps.First(step => step.Id == Active);
     Dictionary<string, ModelTuningStepState> Values => Session.Chat.ModelTuning.State.Values;
     ModelTuningStepState Current => Values[Active];
-    ActiveTextModel? ActiveTextModel => ResolveActiveTextModel();
+    ActiveModelSelection? ActiveTextModel => ResolveActiveTextModel();
     ModelGenerationCapabilities ActiveCapabilities => ActiveTextModel?.Capabilities ?? ModelGenerationCapabilities.Fallback;
     bool CanCustomizeTemperature => ActiveCapabilities.Temperature == TuningSupport.Supported;
     double TemperatureSliderValue => Current.Temperature ?? 1d;
@@ -182,15 +182,17 @@
     protected override void OnInitialized()
     {
         Session.Chat.ModelTuning.Changed += OnStoreChanged;
+        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.Providers.Changed += OnStoreChanged;
         Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
     }
 
-    ActiveTextModel? ResolveActiveTextModel()
+    ActiveModelSelection? ResolveActiveTextModel()
     {
         foreach (var provider in Session.Providers.Items)
             CapabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
+        return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
@@ -288,5 +290,7 @@
     public void Dispose()
     {
         Session.Chat.ModelTuning.Changed -= OnStoreChanged;
+        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.Providers.Changed -= OnStoreChanged;
     }
 }

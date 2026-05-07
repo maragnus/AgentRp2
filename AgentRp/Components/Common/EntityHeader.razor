@@ -1,6 +1,6 @@
 <div class="entity-form-head">
     <EntityImage Name="@Name" Image="Image" Size="@ImageSize" Editable="@Editable" OnClick="OnImagePickerRequested" />
-    <div>
+    <div class="entity-header-copy">
         <strong>@Name</strong>
         @if (!string.IsNullOrWhiteSpace(Subtitle))
         {
@@ -9,7 +9,7 @@
     </div>
     @if (Actions is not null)
     {
-        <span class="entity-header-actions">@Actions</span>
+        <div class="entity-header-actions">@Actions</div>
     }
 </div>
 

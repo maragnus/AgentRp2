@@ -76,6 +76,11 @@
             {
                 <EntityHeader Name="Narrator" Subtitle="Story voice" ImageSize="40">
                     <Actions>
+                        <VoicePicker VoiceSelections="Session.Chat.NarratorProfile.State.VoiceSelections"
+                                     ActiveVoiceModel="ActiveVoiceModel"
+                                     Compact
+                                     OwnerName="Narrator"
+                                     OnChanged="Changed" />
                         <AppButton Variant="secondary" OnClick="@(_ => NarratorWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
                     </Actions>
                 </EntityHeader>
@@ -84,6 +89,11 @@
             {
                 <EntityHeader Name="@SelectedCharacter.Name" Subtitle="Guided profile" Image="@ImageFor(SelectedCharacter.ImageId)" ImageSize="40" Editable OnImagePickerRequested="SelectSelectedEntityImage">
                     <Actions>
+                        <VoicePicker VoiceSelections="SelectedCharacter.VoiceSelections"
+                                     ActiveVoiceModel="ActiveVoiceModel"
+                                     Compact
+                                     OwnerName="@SelectedCharacter.Name"
+                                     OnChanged="Changed" />
                         <AppButton Variant="secondary" OnClick="@(_ => CharacterWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
                         <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
                     </Actions>
@@ -199,6 +209,7 @@
     RpLocation? SelectedLocation => Locations.FirstOrDefault(location => location.Id == SelectedId);
     RpItem? SelectedItem => Items.FirstOrDefault(item => item.Id == SelectedId);
     RpTimelineEntry? SelectedTimeline => Timeline.FirstOrDefault(entry => entry.Id == SelectedId);
+    ActiveModelSelection? ActiveVoiceModel => Session.Chat.ModelSelection.Resolve(AiModelRole.Voice);
 
     bool HasToggle => Type is "characters" or "locations" or "items";
     string ActiveSingular => ActiveTypeLabel.TrimEnd('s');
@@ -236,6 +247,8 @@
         Session.Chat.Timeline.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
         Session.Chat.NarratorProfile.Changed += OnStoreChanged;
+        Session.Chat.ModelSelection.Changed += OnStoreChanged;
+        Session.Providers.Changed += OnStoreChanged;
 
         Type = InitialType;
         SelectedId = InitialId ?? Entries.FirstOrDefault()?.Id;
@@ -352,5 +365,7 @@
         Session.Chat.Timeline.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
         Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
+        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
+        Session.Providers.Changed -= OnStoreChanged;
     }
 }

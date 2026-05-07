@@ -1,0 +1,56 @@
+@implements IDisposable
+@using AgentRp.Services
+
+@DurationText
+
+@code {
+    System.Threading.Timer? Timer;
+    DateTime NowUtc = DateTime.UtcNow;
+
+    [Parameter] public DateTime StartedUtc { get; set; }
+    [Parameter] public DateTime? CompletedUtc { get; set; }
+
+    string DurationText
+    {
+        get
+        {
+            if (StartedUtc == default)
+                return "";
+
+            var completedUtc = CompletedUtc ?? NowUtc;
+            var durationSeconds = Math.Max(0.001, (completedUtc - StartedUtc).TotalSeconds);
+            return RelativeDateFormatter.FormatDuration(durationSeconds);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (CompletedUtc.HasValue)
+        {
+            StopTimer();
+            NowUtc = CompletedUtc.Value;
+            return;
+        }
+
+        NowUtc = DateTime.UtcNow;
+        Timer ??= new(_ => Refresh(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    public void Dispose()
+    {
+        StopTimer();
+        GC.SuppressFinalize(this);
+    }
+
+    void StopTimer()
+    {
+        Timer?.Dispose();
+        Timer = null;
+    }
+
+    void Refresh()
+    {
+        NowUtc = DateTime.UtcNow;
+        _ = InvokeAsync(StateHasChanged);
+    }
+}

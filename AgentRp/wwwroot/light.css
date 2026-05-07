@@ -10,6 +10,7 @@
     --c-text: #1a1612;
     --c-text2: #6b6560;
     --c-text3: #767068;
+    --c-action: var(--c-violet);
     --c-amber: oklch(72% 0.14 68);
     --c-amberDim: oklch(55% 0.10 68);
     --c-amberBg: oklch(93% 0.05 68);

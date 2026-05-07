@@ -1,22 +1,33 @@
-<span class="@CssClass">@Glyph</span>
+<span class="@CssClass">
+    <i class="@IconClass" aria-hidden="true"></i>
+</span>
 
 @code {
     [Parameter] public string Type { get; set; } = "compatible";
     [Parameter] public int Size { get; set; } = 28;
-    string CssClass => $"provider-badge provider-{Type} provider-badge-{SizeClass}";
+
+    string ProviderType => Type switch
+    {
+        "grok" or "openai" or "claude" or "huggingface" or "elevenlabs" or "compatible" => Type,
+        _ => "compatible"
+    };
+
+    string CssClass => $"provider-badge provider-{ProviderType} provider-badge-{SizeClass}";
     string SizeClass => Size switch
     {
+        <= 24 => "xs",
         <= 28 => "sm",
         <= 32 => "md",
         _ => "lg"
     };
 
-    string Glyph => Type switch
+    string IconClass => ProviderType switch
     {
-        "grok" => "⚡",
-        "claude" => "✦",
-        "huggingface" => "🤗",
-        "openai" => "⬡",
-        _ => "⬡"
+        "claude" => "fa-brands fa-claude",
+        "grok" => "fa-brands fa-x-twitter",
+        "huggingface" => "fa-brands fa-hugging-face",
+        "openai" => "fa-brands fa-openai",
+        "elevenlabs" => "fa-solid fa-grip-lines-vertical",
+        _ => "fa-solid fa-brain-circuit"
     };
 }

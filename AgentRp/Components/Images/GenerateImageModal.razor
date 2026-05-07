@@ -7,7 +7,7 @@
             <RailContent>
                 <Section Title="Settings" Class="generate-block">
                     <FieldRow Label="Image Model">
-                        <select class="select" @bind="ModelKey">
+                        <select class="select" value="@ModelKey" @onchange="SetModel">
                             @foreach (var model in ImageModels)
                             {
                                 <option value="@model.Key">@model.Label</option>
@@ -161,7 +161,7 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<GalleryImage> Images => Session.Chat.Images.Items;
-    IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items);
+    IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.Chat.ModelSelection.State);
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
     bool HasPrompt => !string.IsNullOrWhiteSpace(Prompt);
@@ -175,6 +175,7 @@
     {
         Session.Chat.Characters.Changed += OnStoreChanged;
         Session.Chat.Images.Changed += OnStoreChanged;
+        Session.Chat.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
         ModelKey = ImageModels.FirstOrDefault()?.Key ?? "";
     }
@@ -186,6 +187,14 @@
     }
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    async Task SetModel(ChangeEventArgs args)
+    {
+        ModelKey = args.Value?.ToString() ?? "";
+        var selected = ImageModels.FirstOrDefault(model => model.Key == ModelKey);
+        if (selected is not null)
+            await Session.Chat.ModelSelection.SetActiveModelAsync(AiModelRole.Image, selected.ProviderId, selected.ModelId);
+    }
 
     void Toggle(string id)
     {
@@ -290,6 +299,7 @@
     {
         Session.Chat.Characters.Changed -= OnStoreChanged;
         Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.Chat.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }
 }

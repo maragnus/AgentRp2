@@ -6,11 +6,20 @@ public sealed class RpTranscriptState
 {
     public int SchemaVersion { get; set; } = 1;
     public RpSceneFrame RootScene { get; set; } = new();
+    public RpTranscriptOptionsState Options { get; set; } = new();
     public List<RpTranscriptTurn> Turns { get; set; } = [];
     public List<RpTranscriptSnapshot> Snapshots { get; set; } = [];
     public string ActiveLeafTurnId { get; set; } = "";
     public Dictionary<string, string> BranchSelections { get; set; } = [];
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpTranscriptOptionsState
+{
+    public bool InjectAudioTags { get; set; }
+    public bool HideAudioTags { get; set; }
+    public bool ShowAppearanceBlocks { get; set; }
+    public bool ShowProcessTraces { get; set; }
 }
 
 public sealed class RpTranscriptTurn
@@ -101,6 +110,7 @@ public sealed class RpTurnTrace
     public DateTime CompletedUtc { get; set; }
     public string ProviderId { get; set; } = "";
     public string ProviderName { get; set; } = "";
+    public string ProviderType { get; set; } = "";
     public string ModelId { get; set; } = "";
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
@@ -119,6 +129,7 @@ public sealed class RpTurnTraceStep
     public DateTime CompletedUtc { get; set; }
     public string ProviderId { get; set; } = "";
     public string ProviderName { get; set; } = "";
+    public string ProviderType { get; set; } = "";
     public string ModelId { get; set; } = "";
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }

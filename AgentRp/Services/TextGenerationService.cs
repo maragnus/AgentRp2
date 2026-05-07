@@ -37,8 +37,13 @@ public sealed record GeneratedSnapshotResult(
 
 public interface ITextGenerationService
 {
-    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
+}
+
+public sealed record TranscriptGenerationProgress(Func<RpTurnTrace, Task> OnChanged)
+{
+    public Task ReportAsync(RpTurnTrace trace) => OnChanged(trace);
 }
 
 public sealed class TranscriptGenerationException(string message, RpTurnTrace trace) : Exception(message)
@@ -50,24 +55,28 @@ public sealed class TextGenerationService(
     IModelGenerationClient generationClient,
     IModelCapabilityCatalog capabilityCatalog,
     TranscriptPromptContextBuilder promptContextBuilder,
-    PromptLibraryService? promptLibraryService = null) : ITextGenerationService
+    PromptLibraryService? promptLibraryService = null,
+    IAudioTagGuideService? audioTagGuideService = null) : ITextGenerationService
 {
     readonly PromptLibraryService _promptLibraryService = promptLibraryService ?? new();
+    readonly IAudioTagGuideService _audioTagGuideService = audioTagGuideService ?? new AudioTagGuideService();
 
     public async Task<GeneratedTurnResult> GenerateTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         GenerateTurnRequest request,
+        TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers);
+        var selection = ResolveTextModel(document, providers);
         var trace = new RpTurnTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
             ProviderId = selection.Provider.Id,
             ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
             ModelId = selection.Model.Id
         };
         try
@@ -79,11 +88,13 @@ public sealed class TextGenerationService(
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId),
                 request.RequestedNarrator);
+            SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText);
+            await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
-                return await GenerateDumbProseTurnAsync(document, selection, request, context, trace, cancellationToken);
+                return await GenerateDumbProseTurnAsync(document, providers, selection, request, context, trace, progress, cancellationToken);
 
-            var appearance = await RunAppearanceStepAsync(document, selection, context, trace, cancellationToken);
-            var selectedActor = await RunSelectionStepAsync(document, selection, context, request, trace, cancellationToken);
+            var appearance = await RunAppearanceStepAsync(document, selection, context, trace, progress, cancellationToken);
+            var selectedActor = await RunSelectionStepAsync(document, selection, context, request, trace, progress, cancellationToken);
             var selectedContext = promptContextBuilder.BuildTurnContext(
                 document,
                 request.ParentTurnId,
@@ -91,9 +102,11 @@ public sealed class TextGenerationService(
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
                 request.RequestedNarrator);
-            var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, cancellationToken);
-            var prose = await RunProseStepAsync(document, selection, selectedContext, selectedActor, plan, trace, cancellationToken);
+            var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, selection, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
+            trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
+            await ReportProgressAsync(progress, trace);
 
             var privateIntents = new Dictionary<string, string>(StringComparer.Ordinal);
             if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(selectedActor.Id))
@@ -121,8 +134,10 @@ public sealed class TextGenerationService(
         }
         catch (Exception exception) when (exception is not TranscriptGenerationException)
         {
+            FailRunningStep(trace, exception.Message);
             FinalizeTrace(trace, "failed");
             trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
             throw new TranscriptGenerationException(exception.Message, trace);
         }
     }
@@ -134,13 +149,14 @@ public sealed class TextGenerationService(
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers);
+        var selection = ResolveTextModel(document, providers);
         var trace = new RpTurnTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
             ProviderId = selection.Provider.Id,
             ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
             ModelId = selection.Model.Id
         };
         try
@@ -192,10 +208,12 @@ public sealed class TextGenerationService(
 
     async Task<GeneratedTurnResult> GenerateDumbProseTurnAsync(
         RpChatDocument document,
-        ActiveTextModel selection,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
         RpTurnTrace trace,
+        TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.RequestedActorCharacterId) && !request.RequestedNarrator)
@@ -205,8 +223,10 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
-        var prose = await RunProseStepAsync(document, selection, context, actor, plan, trace, cancellationToken);
+        var prose = await RunProseStepAsync(document, providers, selection, context, actor, plan, trace, progress, cancellationToken);
+        trace.Data["actorName"] = actor.Name;
         FinalizeTrace(trace, "completed");
+        await ReportProgressAsync(progress, trace);
 
         var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
         return new(
@@ -231,18 +251,20 @@ public sealed class TextGenerationService(
 
     async Task<Dictionary<string, string>> RunAppearanceStepAsync(
         RpChatDocument document,
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         TurnPromptContext context,
         RpTurnTrace trace,
+        TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
         var tuning = ResolveTuning(document.ModelTuning, "appearance");
         var tokens = promptContextBuilder.BuildTokens(context, "");
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Appearance, tokens);
         var startedUtc = DateTime.UtcNow;
+        await StartStepAsync(trace, "appearance", selection, startedUtc, progress);
         var completion = await SendStructuredAsync<AppearanceResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Generating appearance state", cancellationToken);
         var result = completion.Value;
-        trace.Steps.Add(CreateStepTrace(
+        await CompleteStepAsync(trace, CreateStepTrace(
             "appearance",
             "Appearance",
             selection,
@@ -252,7 +274,7 @@ public sealed class TextGenerationService(
             prompt.UserPrompt,
             completion,
             JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
-            ""));
+            ""), progress);
         return result.Characters
             ?.Where(character => !string.IsNullOrWhiteSpace(character.CharacterName))
             .Select(character => ResolveAppearanceCharacter(document.Characters, character))
@@ -264,55 +286,55 @@ public sealed class TextGenerationService(
 
     async Task<(string Id, string Name)> RunSelectionStepAsync(
         RpChatDocument document,
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         TurnPromptContext context,
         GenerateTurnRequest request,
         RpTurnTrace trace,
+        TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
+        var startedUtc = DateTime.UtcNow;
+        await StartStepAsync(trace, "selection", selection, startedUtc, progress);
         if (request.RequestedNarrator)
         {
             var explicitSelection = new SelectionResponse("Narrator", "User override");
-            var now = DateTime.UtcNow;
-            trace.Steps.Add(CreateStepTrace(
+            await CompleteStepAsync(trace, CreateStepTrace(
                 "selection",
                 "Selection",
                 selection,
-                now,
-                now,
+                startedUtc,
+                DateTime.UtcNow,
                 "User override",
                 "Narrator",
                 new ModelTextCompletion("User override", 0, 0, ""),
                 JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
-                ""));
+                ""), progress);
             return ("", "Narrator");
         }
 
         if (!string.IsNullOrWhiteSpace(request.RequestedActorCharacterId))
         {
             var explicitSelection = new SelectionResponse(request.RequestedActorName, "User override");
-            var now = DateTime.UtcNow;
-            trace.Steps.Add(CreateStepTrace(
+            await CompleteStepAsync(trace, CreateStepTrace(
                 "selection",
                 "Selection",
                 selection,
-                now,
-                now,
+                startedUtc,
+                DateTime.UtcNow,
                 "User override",
                 request.RequestedActorName,
                 new ModelTextCompletion("User override", 0, 0, ""),
                 JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
-                ""));
+                ""), progress);
             return (request.RequestedActorCharacterId, request.RequestedActorName);
         }
 
         var tuning = ResolveTuning(document.ModelTuning, "selection");
         var tokens = promptContextBuilder.BuildTokens(context, "");
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Selection, tokens);
-        var startedUtc = DateTime.UtcNow;
         var completion = await SendStructuredAsync<SelectionResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Selecting transcript actor", cancellationToken);
         var result = completion.Value;
-        trace.Steps.Add(CreateStepTrace(
+        await CompleteStepAsync(trace, CreateStepTrace(
             "selection",
             "Selection",
             selection,
@@ -322,7 +344,7 @@ public sealed class TextGenerationService(
             prompt.UserPrompt,
             completion,
             JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
-            ""));
+            ""), progress);
         var actorId = ResolveCharacterId(document.Characters, result.CharacterName);
         var actorName = document.Characters.FirstOrDefault(character => character.Id == actorId)?.Name ?? result.CharacterName;
         return (actorId, actorName);
@@ -330,19 +352,21 @@ public sealed class TextGenerationService(
 
     async Task<PlanningResponse> RunPlanningStepAsync(
         RpChatDocument document,
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         TurnPromptContext context,
         (string Id, string Name) actor,
         RpTurnTrace trace,
+        TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
         var tuning = ResolveTuning(document.ModelTuning, "planning");
         var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "");
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Planning, tokens);
         var startedUtc = DateTime.UtcNow;
+        await StartStepAsync(trace, "planning", selection, startedUtc, progress);
         var completion = await SendStructuredAsync<PlanningResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Planning transcript turn", cancellationToken);
         var result = completion.Value;
-        trace.Steps.Add(CreateStepTrace(
+        await CompleteStepAsync(trace, CreateStepTrace(
             "planning",
             "Planning",
             selection,
@@ -352,17 +376,19 @@ public sealed class TextGenerationService(
             prompt.UserPrompt,
             completion,
             JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
-            ""));
+            ""), progress);
         return result;
     }
 
     async Task<string> RunProseStepAsync(
         RpChatDocument document,
-        ActiveTextModel selection,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelection selection,
         TurnPromptContext context,
         (string Id, string Name) actor,
         PlanningResponse plan,
         RpTurnTrace trace,
+        TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
         var tuning = ResolveTuning(document.ModelTuning, "prose");
@@ -381,19 +407,23 @@ public sealed class TextGenerationService(
             plan.Guardrails,
             document.PromptLibrary);
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
+        var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers);
+        var systemPrompt = AppendPromptBlock(prompt.SystemPrompt, audioTagGuide.SystemGuide);
+        var userPrompt = AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder);
         var startedUtc = DateTime.UtcNow;
-        var completion = await SendStreamingTextAsync(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Writing transcript prose", cancellationToken);
-        trace.Steps.Add(CreateStepTrace(
+        await StartStepAsync(trace, "prose", selection, startedUtc, progress);
+        var completion = await SendStreamingTextAsync(selection, tuning, systemPrompt, userPrompt, "Writing transcript prose", cancellationToken);
+        await CompleteStepAsync(trace, CreateStepTrace(
             "prose",
             "Prose",
             selection,
             startedUtc,
             DateTime.UtcNow,
-            prompt.SystemPrompt,
-            prompt.UserPrompt,
+            systemPrompt,
+            userPrompt,
             completion,
             "",
-            ""));
+            ""), progress);
         return completion.Text.Trim();
     }
 
@@ -424,7 +454,7 @@ public sealed class TextGenerationService(
     }
 
     async Task<ModelStructuredCompletion<T>> SendStructuredAsync<T>(
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         ModelTuningStepState tuning,
         string systemPrompt,
         string userPrompt,
@@ -442,7 +472,7 @@ public sealed class TextGenerationService(
     }
 
     async Task<ModelTextCompletion> SendStreamingTextAsync(
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         ModelTuningStepState tuning,
         string systemPrompt,
         string userPrompt,
@@ -462,7 +492,7 @@ public sealed class TextGenerationService(
     static RpTurnTraceStep CreateStepTrace(
         string id,
         string label,
-        ActiveTextModel selection,
+        ActiveModelSelection selection,
         DateTime startedUtc,
         DateTime completedUtc,
         string systemPrompt,
@@ -478,6 +508,7 @@ public sealed class TextGenerationService(
         CompletedUtc = completedUtc,
         ProviderId = selection.Provider.Id,
         ProviderName = selection.Provider.Name,
+        ProviderType = selection.Provider.Type,
         ModelId = selection.Model.Id,
         InputTokens = completion.InputTokens,
         OutputTokens = completion.OutputTokens,
@@ -489,6 +520,102 @@ public sealed class TextGenerationService(
         StructuredOutputJson = structuredOutputJson,
         Error = error
     };
+
+    static void SeedTurnSteps(RpTurnTrace trace, ActiveModelSelection selection, bool structured)
+    {
+        var steps = structured
+            ? new[] { ("appearance", "Appearance"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
+            : new[] { ("prose", "Prose") };
+
+        foreach (var (id, label) in steps)
+            trace.Steps.Add(new()
+            {
+                Id = id,
+                Label = label,
+                Status = "pending",
+                ProviderId = selection.Provider.Id,
+                ProviderName = selection.Provider.Name,
+                ProviderType = selection.Provider.Type,
+                ModelId = selection.Model.Id
+            });
+
+        trace.Summary = $"Generating · {string.Join(" -> ", trace.Steps.Select(step => step.Label))}";
+    }
+
+    static async Task StartStepAsync(RpTurnTrace trace, string stepId, ActiveModelSelection selection, DateTime startedUtc, TranscriptGenerationProgress? progress)
+    {
+        var step = FindStep(trace, stepId);
+        step.Status = "running";
+        step.StartedUtc = startedUtc;
+        step.CompletedUtc = default;
+        step.ProviderId = selection.Provider.Id;
+        step.ProviderName = selection.Provider.Name;
+        step.ProviderType = selection.Provider.Type;
+        step.ModelId = selection.Model.Id;
+        trace.Summary = $"Generating · {string.Join(" -> ", trace.Steps.Select(item => item.Label))}";
+        await ReportProgressAsync(progress, trace);
+    }
+
+    static async Task CompleteStepAsync(RpTurnTrace trace, RpTurnTraceStep completedStep, TranscriptGenerationProgress? progress)
+    {
+        var step = FindStep(trace, completedStep.Id);
+        CopyStep(completedStep, step);
+        trace.Summary = $"Generating · {string.Join(" -> ", trace.Steps.Select(item => item.Label))}";
+        await ReportProgressAsync(progress, trace);
+    }
+
+    static RpTurnTraceStep FindStep(RpTurnTrace trace, string stepId)
+    {
+        var step = trace.Steps.FirstOrDefault(step => step.Id == stepId);
+        if (step is not null)
+            return step;
+
+        step = new() { Id = stepId, Label = stepId };
+        trace.Steps.Add(step);
+        return step;
+    }
+
+    static void CopyStep(RpTurnTraceStep source, RpTurnTraceStep target)
+    {
+        target.Id = source.Id;
+        target.Label = source.Label;
+        target.Status = source.Status;
+        target.StartedUtc = source.StartedUtc;
+        target.CompletedUtc = source.CompletedUtc;
+        target.ProviderId = source.ProviderId;
+        target.ProviderName = source.ProviderName;
+        target.ProviderType = source.ProviderType;
+        target.ModelId = source.ModelId;
+        target.InputTokens = source.InputTokens;
+        target.OutputTokens = source.OutputTokens;
+        target.TotalTokens = source.TotalTokens;
+        target.DurationSeconds = source.DurationSeconds;
+        target.SystemPrompt = source.SystemPrompt;
+        target.UserPrompt = source.UserPrompt;
+        target.RawOutput = source.RawOutput;
+        target.StructuredOutputJson = source.StructuredOutputJson;
+        target.Error = source.Error;
+        target.Data = source.Data.DeepClone().AsObject();
+    }
+
+    static void FailRunningStep(RpTurnTrace trace, string error)
+    {
+        var step = trace.Steps.FirstOrDefault(step => step.Status == "running")
+            ?? trace.Steps.FirstOrDefault(step => step.Status == "pending");
+        if (step is null)
+            return;
+
+        if (step.StartedUtc == default)
+            step.StartedUtc = DateTime.UtcNow;
+
+        step.Status = "failed";
+        step.CompletedUtc = DateTime.UtcNow;
+        step.DurationSeconds = (step.CompletedUtc - step.StartedUtc).TotalSeconds;
+        step.Error = error;
+    }
+
+    static Task ReportProgressAsync(TranscriptGenerationProgress? progress, RpTurnTrace trace) =>
+        progress?.ReportAsync(trace) ?? Task.CompletedTask;
 
     static void FinalizeTrace(RpTurnTrace trace, string status)
     {
@@ -508,8 +635,8 @@ public sealed class TextGenerationService(
             capabilityCatalog.ApplyResolvedCapabilities(provider);
     }
 
-    static ActiveTextModel ResolveTextModel(IReadOnlyList<AiProvider> providers) =>
-        TextModelTuningCatalog.TryResolveActiveTextModel(providers)
+    static ActiveModelSelection ResolveTextModel(RpChatDocument document, IReadOnlyList<AiProvider> providers) =>
+        TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections)
         ?? throw new InvalidOperationException("Generating transcript text failed because no text-capable model is enabled.");
 
     static string ResolveCharacterId(IEnumerable<RpCharacter> characters, string name)
@@ -546,6 +673,11 @@ public sealed class TextGenerationService(
         Private Intent: {plan.PrivateIntent}
         Guardrails: {plan.Guardrails}
         """;
+
+    static string AppendPromptBlock(string prompt, string block) =>
+        string.IsNullOrWhiteSpace(block)
+            ? prompt
+            : $"{prompt.TrimEnd()}{Environment.NewLine}{Environment.NewLine}{block.Trim()}";
 
     static string ResolveTurnShape(string requestedByPlanner, string fallback)
     {

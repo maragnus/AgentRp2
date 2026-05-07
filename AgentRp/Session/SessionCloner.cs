@@ -52,7 +52,15 @@ static class SessionCloner
         StressPattern = value.StressPattern,
         SoftSpots = [.. value.SoftSpots],
         AvoidPatterns = [.. value.AvoidPatterns],
-        ProfileRelationships = value.ProfileRelationships.Select(Clone).ToList()
+        ProfileRelationships = value.ProfileRelationships.Select(Clone).ToList(),
+        VoiceSelections = value.VoiceSelections.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal)
+    };
+
+    static CharacterVoiceSelection Clone(CharacterVoiceSelection value) => new()
+    {
+        VoiceId = value.VoiceId,
+        VoiceName = value.VoiceName,
+        UpdatedUtc = value.UpdatedUtc
     };
 
     static RpRelationship Clone(RpRelationship value) => new()
@@ -136,10 +144,22 @@ static class SessionCloner
         Repository = value.Repository,
         CreatedUnix = value.CreatedUnix,
         Enabled = value.Enabled,
-        Text = value.Text,
-        Image = value.Image,
-        ActiveText = value.ActiveText,
+        Roles = [.. value.Roles],
+        LastVoiceRefreshUtc = value.LastVoiceRefreshUtc,
+        LastVoiceRefreshError = value.LastVoiceRefreshError,
+        Voices = value.Voices.Select(Clone).ToList(),
         Capabilities = value.Capabilities
+    };
+
+    public static AiProviderVoice Clone(AiProviderVoice value) => new()
+    {
+        Id = value.Id,
+        DisplayName = value.DisplayName,
+        Description = value.Description,
+        PreviewUrl = value.PreviewUrl,
+        Labels = value.Labels.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        Source = value.Source,
+        UpdatedUtc = value.UpdatedUtc
     };
 
     public static AiProviderMetric Clone(AiProviderMetric value) => new()
@@ -165,7 +185,19 @@ static class SessionCloner
         NarratorProfile = Clone(value.NarratorProfile),
         PromptLibrary = Clone(value.PromptLibrary),
         CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
-        ModelTuning = Clone(value.ModelTuning)
+        ModelTuning = Clone(value.ModelTuning),
+        ActiveModelSelections = Clone(value.ActiveModelSelections)
+    };
+
+    public static ActiveModelSelectionsState Clone(ActiveModelSelectionsState value) => new()
+    {
+        Values = value.Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value))
+    };
+
+    static ActiveModelSelectionState Clone(ActiveModelSelectionState value) => new()
+    {
+        ProviderId = value.ProviderId,
+        ModelId = value.ModelId
     };
 
     public static NarratorProfileState Clone(NarratorProfileState value) => new()
@@ -177,7 +209,8 @@ static class SessionCloner
         TransitionContext = value.TransitionContext,
         Foreshadowing = value.Foreshadowing,
         DirectionStrength = value.DirectionStrength,
-        CustomGuidance = value.CustomGuidance
+        CustomGuidance = value.CustomGuidance,
+        VoiceSelections = value.VoiceSelections.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal)
     };
 
     public static StoryAssistantState Clone(StoryAssistantState value) => new()
@@ -238,11 +271,20 @@ static class SessionCloner
     {
         SchemaVersion = value.SchemaVersion,
         RootScene = Clone(value.RootScene),
+        Options = Clone(value.Options),
         Turns = value.Turns.Select(Clone).ToList(),
         Snapshots = value.Snapshots.Select(Clone).ToList(),
         ActiveLeafTurnId = value.ActiveLeafTurnId,
         BranchSelections = value.BranchSelections.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Data = Clone(value.Data)
+    };
+
+    static RpTranscriptOptionsState Clone(RpTranscriptOptionsState value) => new()
+    {
+        InjectAudioTags = value.InjectAudioTags,
+        HideAudioTags = value.HideAudioTags,
+        ShowAppearanceBlocks = value.ShowAppearanceBlocks,
+        ShowProcessTraces = value.ShowProcessTraces
     };
 
     static RpTranscriptTurn Clone(RpTranscriptTurn value) => new()
@@ -333,6 +375,7 @@ static class SessionCloner
         CompletedUtc = value.CompletedUtc,
         ProviderId = value.ProviderId,
         ProviderName = value.ProviderName,
+        ProviderType = value.ProviderType,
         ModelId = value.ModelId,
         InputTokens = value.InputTokens,
         OutputTokens = value.OutputTokens,
@@ -351,6 +394,7 @@ static class SessionCloner
         CompletedUtc = value.CompletedUtc,
         ProviderId = value.ProviderId,
         ProviderName = value.ProviderName,
+        ProviderType = value.ProviderType,
         ModelId = value.ModelId,
         InputTokens = value.InputTokens,
         OutputTokens = value.OutputTokens,

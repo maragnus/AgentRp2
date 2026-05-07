@@ -28,6 +28,84 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
+    public async Task StructuredGenerationReportsLiveStepProgress()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var reports = new List<RpTurnTrace>();
+
+        await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "", "Brief", "", ""),
+            new(trace =>
+            {
+                reports.Add(CloneTrace(trace));
+                return Task.CompletedTask;
+            }));
+
+        Assert.NotEmpty(reports);
+        Assert.Equal(["appearance", "selection", "planning", "prose"], reports.First().Steps.Select(step => step.Id));
+        Assert.All(reports.First().Steps, step => Assert.Equal("pending", step.Status));
+        Assert.Contains(reports, report => report.Steps.First(step => step.Id == "appearance").Status == "running");
+        Assert.Contains(reports, report =>
+            report.Steps.First(step => step.Id == "appearance").Status == "completed" &&
+            report.Steps.First(step => step.Id == "selection").Status == "running");
+        Assert.Equal("completed", reports.Last().Status);
+        Assert.All(reports.Last().Steps, step => Assert.Equal("completed", step.Status));
+    }
+
+    [Fact]
+    public async Task DumbProseGenerationReportsOnlyProseProgress()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var reports = new List<RpTurnTrace>();
+
+        await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
+            new(trace =>
+            {
+                reports.Add(CloneTrace(trace));
+                return Task.CompletedTask;
+            }));
+
+        Assert.NotEmpty(reports);
+        Assert.All(reports, report => Assert.Equal(["prose"], report.Steps.Select(step => step.Id)));
+        Assert.Contains(reports, report => report.Steps.Single().Status == "running");
+        Assert.Equal("completed", reports.Last().Status);
+        Assert.Equal("completed", reports.Last().Steps.Single().Status);
+    }
+
+    [Fact]
+    public async Task FailedGenerationReportsFailedRunningStep()
+    {
+        var client = new FakeModelGenerationClient { FailStreamingText = true };
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var reports = new List<RpTurnTrace>();
+
+        var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
+            new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
+            new(trace =>
+            {
+                reports.Add(CloneTrace(trace));
+                return Task.CompletedTask;
+            })));
+
+        Assert.Equal("failed", exception.Trace.Status);
+        Assert.Equal("failed", exception.Trace.Steps.Single().Status);
+        Assert.Equal("failed", reports.Last().Status);
+        Assert.Equal("failed", reports.Last().Steps.Single().Status);
+    }
+
+    [Fact]
     public async Task StructuredGenerationRendersPromptLibraryDefaultsAndPlannerPrivateIntent()
     {
         var client = new FakeModelGenerationClient();
@@ -70,6 +148,77 @@ public sealed class TextGenerationServiceTests
         var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
 
         Assert.Contains("**Guidance to follow strictly:**\nKeep this sharp.", prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProsePromptInjectsElevenLabsAudioTagGuideFromActiveVoiceProvider()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        document.Transcript.Options.InjectAudioTags = true;
+        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "voice-model" };
+
+        await service.GenerateTurnAsync(
+            document,
+            [
+                BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true }),
+                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "elevenlabs", AiModelRole.Voice, "voice-provider", "voice-model")
+            ],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Contains("Audio tag guidance for ElevenLabs v3", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("[whispers]", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Audio tag reminder:", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Inject ElevenLabs-style square-bracket tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProsePromptInjectsXAiAudioTagGuideFromActiveVoiceProvider()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        document.Transcript.Options.InjectAudioTags = true;
+        document.ActiveModelSelections.Values[AiModelRole.Voice] = new() { ProviderId = "voice-provider", ModelId = "voice-model" };
+
+        await service.GenerateTurnAsync(
+            document,
+            [
+                BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true }),
+                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "grok", AiModelRole.Voice, "voice-provider", "voice-model")
+            ],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Contains("Audio tag guidance for xAI text-to-speech", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("<whisper>quiet text</whisper>", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Audio tag reminder:", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Inject xAI-compatible speech tags directly into the prose", prose.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProsePromptDoesNotInjectAudioTagGuideWhenOptionIsOff()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        await service.GenerateTurnAsync(
+            document,
+            [
+                BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true }),
+                BuildProvider(new() { TextInput = true, SpeechOutput = true }, "elevenlabs", AiModelRole.Voice, "voice-provider", "voice-model")
+            ],
+            new("turn-3", "automatic", "", "Brief", "", ""));
+
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.DoesNotContain("Audio tag guidance", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Audio tag reminder", prose.UserPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -201,21 +350,44 @@ public sealed class TextGenerationServiceTests
     static async Task<RpChatDocument> LoadDocumentAsync() =>
         await new SeedRoleplayPersistence().LoadChatDocumentAsync("ch1");
 
-    static AiProvider BuildProvider(ModelGenerationCapabilities capabilities) => new()
+    static RpTurnTrace CloneTrace(RpTurnTrace trace) => new()
     {
-        Id = "provider",
+        Summary = trace.Summary,
+        Status = trace.Status,
+        StartedUtc = trace.StartedUtc,
+        CompletedUtc = trace.CompletedUtc,
+        DurationSeconds = trace.DurationSeconds,
+        Steps = trace.Steps.Select(step => new RpTurnTraceStep
+        {
+            Id = step.Id,
+            Label = step.Label,
+            Status = step.Status,
+            StartedUtc = step.StartedUtc,
+            CompletedUtc = step.CompletedUtc,
+            DurationSeconds = step.DurationSeconds,
+            Error = step.Error
+        }).ToList()
+    };
+
+    static AiProvider BuildProvider(
+        ModelGenerationCapabilities capabilities,
+        string providerType = "openai",
+        AiModelRole role = AiModelRole.Chat,
+        string providerId = "provider",
+        string modelId = "test-model") => new()
+    {
+        Id = providerId,
         Name = "Provider",
-        Type = "openai",
+        Type = providerType,
         Enabled = true,
         ApiKey = "test-key",
         Models =
         [
             new()
             {
-                Id = "test-model",
+                Id = modelId,
                 Enabled = true,
-                Text = true,
-                ActiveText = true,
+                Roles = [role],
                 Capabilities = capabilities
             }
         ]
@@ -226,6 +398,7 @@ public sealed class TextGenerationServiceTests
         public List<string> StructuredCalls { get; } = [];
         public List<ModelGenerationRequest> GenerationRequests { get; } = [];
         public int StreamingTextCalls { get; private set; }
+        public bool FailStreamingText { get; init; }
 
         public Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default)
         {
@@ -244,6 +417,9 @@ public sealed class TextGenerationServiceTests
         public Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
         {
             StreamingTextCalls++;
+            if (FailStreamingText)
+                throw new InvalidOperationException("Streaming failed for test.");
+
             return GenerateTextAsync(request, cancellationToken);
         }
 

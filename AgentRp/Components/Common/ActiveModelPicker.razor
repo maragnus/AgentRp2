@@ -1,0 +1,150 @@
+@inject IModelCapabilityCatalog CapabilityCatalog
+
+<AnchoredPopover Placement="@Placement"
+                 Class="@PopoverClass"
+                 AnchorClass="@AnchorClass"
+                 Layer="@EffectiveLayer"
+                 DebugName="@DebugName"
+                 CloseOnContentClick="false">
+    <Trigger Context="picker">
+        @TriggerContent(new(
+            picker.IsOpen,
+            Role,
+            ActiveModel,
+            picker.Open,
+            picker.Close,
+            picker.Toggle))
+    </Trigger>
+    <Content Context="picker">
+        <div class="popover-label">@AiProviderModelSelectionRules.Label(Role) Models</div>
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <div class="sidebar-picker-error">@ErrorMessage</div>
+        }
+        @if (Groups.Count == 0)
+        {
+            <div class="sidebar-picker-empty">
+                <span>No @AiProviderModelSelectionRules.Label(Role).ToLowerInvariant() models are enabled.</span>
+                @if (OnOpenProviders.HasDelegate)
+                {
+                    <AppButton Variant="primary" Size="xs" OnClick="@(_ => OpenProviders(picker))"><FaIcon Name="settings" />AI Providers</AppButton>
+                }
+            </div>
+        }
+        else
+        {
+            @foreach (var group in Groups)
+            {
+                <div @key="group.Provider.Id" class="sidebar-model-group">
+                    <div class="sidebar-model-group-title">
+                        <ProviderBadge Type="@group.Provider.Type" Size="28" />
+                        <span title="@group.Provider.Name">@group.Provider.Name</span>
+                    </div>
+                    @foreach (var model in group.Models)
+                    {
+                        var selected = ActiveModel?.Provider.Id == group.Provider.Id && ActiveModel.Model.Id == model.Id;
+                        <BusyButton @key="model.Id"
+                                    Variant="ghost"
+                                    Size="sm"
+                                    Class="@($"sidebar-picker-option sidebar-model-option {(selected ? "is-selected" : "")}")"
+                                    Disabled="@selected"
+                                    Title="@($"Use {DisplayName(model)}")"
+                                    AriaLabel="@($"Use {DisplayName(model)}")"
+                                    OnClick="@(() => SelectModel(picker, group.Provider.Id, model.Id))">
+                            <span class="sidebar-picker-option-copy">
+                                <strong>@DisplayName(model)</strong>
+                                @if (ShowModelId(model))
+                                {
+                                    <small>@model.Id</small>
+                                }
+                            </span>
+                            @if (selected)
+                            {
+                                <FaIcon Name="check" />
+                            }
+                        </BusyButton>
+                    }
+                </div>
+            }
+        }
+    </Content>
+</AnchoredPopover>
+
+@code {
+    string? ErrorMessage;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [CascadingParameter(Name = "OverlayLayer")] public OverlayLayer AmbientLayer { get; set; } = OverlayLayer.Page;
+    [Parameter] public AiModelRole Role { get; set; } = AiModelRole.Chat;
+    [Parameter] public OverlayPlacement Placement { get; set; } = OverlayPlacement.BottomStart;
+    [Parameter] public OverlayLayer? Layer { get; set; }
+    [Parameter] public string PopoverClass { get; set; } = "sidebar-model-popover";
+    [Parameter] public string AnchorClass { get; set; } = "is-block";
+    [Parameter] public string? DebugName { get; set; }
+    [Parameter] public RenderFragment<ActiveModelPickerContext> TriggerContent { get; set; } = _ => builder => { };
+    [Parameter] public EventCallback OnOpenProviders { get; set; }
+    [Parameter] public EventCallback OnSelected { get; set; }
+
+    ActiveModelSelection? ActiveModel => ResolveActiveModel();
+    IReadOnlyList<ModelGroup> Groups => BuildGroups();
+    OverlayLayer EffectiveLayer => Layer ?? AmbientLayer;
+
+    ActiveModelSelection? ResolveActiveModel()
+    {
+        ApplyProviderCapabilities();
+        return Session.Chat.ModelSelection.Resolve(Role);
+    }
+
+    IReadOnlyList<ModelGroup> BuildGroups()
+    {
+        ApplyProviderCapabilities();
+        return Session.Providers.Items
+            .Where(provider => provider.Enabled)
+            .Select(provider => new ModelGroup(
+                provider,
+                provider.Models
+                    .Where(model => AiProviderModelSelectionRules.IsSelectedForRole(model, Role))
+                    .ToList()))
+            .Where(group => group.Models.Count > 0)
+            .ToList();
+    }
+
+    void ApplyProviderCapabilities()
+    {
+        foreach (var provider in Session.Providers.Items)
+        {
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
+            CapabilityCatalog.ApplyResolvedCapabilities(provider);
+        }
+    }
+
+    async Task SelectModel(AnchoredPopoverContext picker, string providerId, string modelId)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Session.Chat.ModelSelection.SetActiveModelAsync(Role, providerId, modelId);
+            await OnSelected.InvokeAsync();
+            await picker.Close();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {AiProviderModelSelectionRules.Label(Role).ToLowerInvariant()} model {modelId} failed.", exception);
+        }
+    }
+
+    async Task OpenProviders(AnchoredPopoverContext picker)
+    {
+        ErrorMessage = null;
+        await picker.Close();
+        await OnOpenProviders.InvokeAsync();
+    }
+
+    static string DisplayName(AiProviderModel model) =>
+        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
+
+    static bool ShowModelId(AiProviderModel model) =>
+        !string.Equals(DisplayName(model).Trim(), model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    sealed record ModelGroup(AiProvider Provider, IReadOnlyList<AiProviderModel> Models);
+}

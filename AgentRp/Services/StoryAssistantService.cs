@@ -42,7 +42,7 @@ public sealed class StoryAssistantService(
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = TextModelTuningCatalog.TryResolveActiveTextModel(providers)
+        var selection = TextModelTuningCatalog.TryResolveActiveTextModel(providers, document.ActiveModelSelections)
             ?? throw new InvalidOperationException("Starting the Story Assistant failed because no text-capable model is enabled.");
         if (!selection.Capabilities.CanGenerateStreamingText || !selection.Capabilities.Tools)
             throw new InvalidOperationException($"Starting the Story Assistant failed because '{selection.Model.Id}' must support streaming text and tools.");

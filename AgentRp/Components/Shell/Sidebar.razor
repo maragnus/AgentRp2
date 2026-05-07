@@ -33,25 +33,7 @@
             <IconButton Icon="edit" Title="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
             </RightContent>
         </Section>
-        <div class="row" @onclick="() => LocationOpen = !LocationOpen">
-            <FaIcon Name="map-pin" />
-            <span class="row-title">@ActiveLocation.Name</span>
-            <FaIcon Name="@(LocationOpen ? "chevron-up" : "chevron-down")" />
-        </div>
-        @if (LocationOpen)
-        {
-            @foreach (var location in Locations)
-            {
-                <div @key="location.Id" class="row @(location.IsActive ? "is-active" : "")" @onclick="() => SwitchLocation(location.Id)">
-                    <FaIcon Name="map-pin" />
-                    <span class="row-title">@location.Name</span>
-                    @if (location.IsActive)
-                    {
-                        <FaIcon Name="check" />
-                    }
-                </div>
-            }
-        }
+        <ActiveLocationPicker />
 
         <div class="divider"></div>
 
@@ -107,8 +89,6 @@
 </aside>
 
 @code {
-    bool LocationOpen;
-
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<string> OnOpenModal { get; set; }
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
@@ -127,16 +107,11 @@
         Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Characters.Changed += OnSessionChanged;
         Session.Chat.Locations.Changed += OnSessionChanged;
+        Session.Chat.Images.Changed += OnSessionChanged;
         Session.Chat.Items.Changed += OnSessionChanged;
     }
 
     Task OnSessionChanged() => InvokeAsync(StateHasChanged);
-
-    async Task SwitchLocation(string id)
-    {
-        LocationOpen = false;
-        await Session.Chat.Locations.SetActiveAsync(id);
-    }
 
     Task SetSpeakingAs(RpCharacter? character) => Session.SetSpeakingAsAsync(character);
 
@@ -152,6 +127,7 @@
         Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;
         Session.Chat.Locations.Changed -= OnSessionChanged;
+        Session.Chat.Images.Changed -= OnSessionChanged;
         Session.Chat.Items.Changed -= OnSessionChanged;
     }
 }

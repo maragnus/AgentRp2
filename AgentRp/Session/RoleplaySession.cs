@@ -5,6 +5,7 @@ namespace AgentRp.Session;
 
 public sealed class RoleplaySession(
     ILiveRoleplayStore liveStore,
+    IModelCapabilityCatalog capabilityCatalog,
     ITextGenerationService? textGenerationService = null,
     IStoryAssistantService? storyAssistantService = null) : IAsyncDisposable
 {
@@ -30,7 +31,7 @@ public sealed class RoleplaySession(
         Registry = new(_sessionId, liveStore, ActiveChat);
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
-        Providers = new(_sessionId, liveStore);
+        Providers = new(_sessionId, liveStore, capabilityCatalog);
         Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, storyAssistantService);
         liveStore.Changed += OnLiveStoreChanged;
 
@@ -157,6 +158,7 @@ public sealed class ChatWorkspace
         PromptLibrary = new(activeChat, registry);
         CharacterTraitLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);
+        ModelSelection = new(activeChat, registry, providers);
 
         Characters.Start();
         Locations.Start();
@@ -169,6 +171,7 @@ public sealed class ChatWorkspace
         PromptLibrary.Start();
         CharacterTraitLibrary.Start();
         ModelTuning.Start();
+        ModelSelection.Start();
     }
 
     public CharacterStore Characters { get; }
@@ -182,6 +185,7 @@ public sealed class ChatWorkspace
     public PromptLibraryStore PromptLibrary { get; }
     public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
     public ModelTuningStore ModelTuning { get; }
+    public ChatModelSelectionStore ModelSelection { get; }
 }
 
 public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, ChatRegistry registry, ActiveChatContext activeChat) : StoreBase
@@ -221,7 +225,7 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
     }
 }
 
-public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore) : StoreBase
+public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, IModelCapabilityCatalog capabilityCatalog) : StoreBase
 {
     readonly List<AiProvider> _items = [];
 
@@ -233,6 +237,7 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore) 
     {
         _items.Clear();
         _items.AddRange((await liveStore.LoadProvidersAsync()).Select(SessionCloner.Clone));
+        NormalizeProviderManagedVoiceModels();
         await NotifyChangedAsync();
     }
 
@@ -253,7 +258,7 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore) 
         foreach (var model in provider.Models)
         {
             if (enabled)
-                AiProviderModelSelectionRules.SetChatSelected(model, true);
+                AiProviderModelSelectionRules.SelectAvailableRoles(model);
             else
                 AiProviderModelSelectionRules.ClearSelectedRoles(model);
         }
@@ -261,50 +266,16 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore) 
         await MarkChangedAsync();
     }
 
-    public async Task SetActiveTextModelAsync(string providerId, string modelId)
-    {
-        var targetProvider = _items.FirstOrDefault(provider => provider.Id == providerId)
-            ?? throw new InvalidOperationException("Selecting the AI model failed because the provider is not available.");
-        if (!targetProvider.Enabled)
-            throw new InvalidOperationException($"Selecting the AI model failed because {targetProvider.Name} is disabled.");
-
-        var targetModel = targetProvider.Models.FirstOrDefault(model => model.Id == modelId)
-            ?? throw new InvalidOperationException("Selecting the AI model failed because the model is not available.");
-        if (!AiProviderModelSelectionRules.IsSelectedForChat(targetModel))
-            throw new InvalidOperationException($"Selecting the AI model failed because {DisplayName(targetModel)} is not enabled for chat.");
-
-        foreach (var provider in _items)
-        {
-            foreach (var model in provider.Models)
-                model.ActiveText = false;
-        }
-
-        targetModel.ActiveText = true;
-        await MarkChangedAsync();
-    }
-
     public async Task MarkChangedAsync()
     {
-        NormalizeActiveTextSelection();
+        NormalizeProviderManagedVoiceModels();
         await liveStore.ReplaceProvidersAsync(sessionId, _items);
         await NotifyChangedAsync();
     }
 
-    void NormalizeActiveTextSelection()
+    void NormalizeProviderManagedVoiceModels()
     {
-        var active = _items
-            .Where(provider => provider.Enabled)
-            .SelectMany(provider => provider.Models.Select(model => new { Provider = provider, Model = model }))
-            .Where(item => item.Model.ActiveText && AiProviderModelSelectionRules.IsSelectedForChat(item.Model))
-            .ToList();
-
-        foreach (var item in _items.SelectMany(provider => provider.Models))
-            item.ActiveText = false;
-
-        if (active.Count > 0)
-            active[0].Model.ActiveText = true;
+        foreach (var provider in _items)
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, capabilityCatalog);
     }
-
-    static string DisplayName(AiProviderModel model) =>
-        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 }

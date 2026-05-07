@@ -1,23 +1,27 @@
-<div class="modal-backdrop confirm-backdrop" @onclick="BackdropClick">
-    <section class="confirm-dialog" @onclick:stopPropagation="true">
-        <div class="confirm-head">
-            <span class="danger-mark @IconClass"><FaIcon Name="@Icon" /></span>
-            <strong>@Title</strong>
+<CascadingValue Name="OverlayLayer" Value="ModalOverlayLayer" IsFixed="true">
+    <ModalEscapeBoundary OnClose="OnCancel">
+        <div class="modal-backdrop confirm-backdrop" @onclick="BackdropClick">
+            <section class="confirm-dialog" @onclick:stopPropagation="true">
+                <div class="confirm-head">
+                    <span class="danger-mark @IconClass"><FaIcon Name="@Icon" /></span>
+                    <strong>@Title</strong>
+                </div>
+                <p>@Body</p>
+                <div class="confirm-actions">
+                    @if (Actions is not null)
+                    {
+                        @Actions
+                    }
+                    else
+                    {
+                        <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
+                        <AppButton Variant="@ConfirmVariant" OnClick="@Confirm"><FaIcon Name="@Icon" /> @ConfirmText</AppButton>
+                    }
+                </div>
+            </section>
         </div>
-        <p>@Body</p>
-        <div class="confirm-actions">
-            @if (Actions is not null)
-            {
-                @Actions
-            }
-            else
-            {
-                <AppButton Variant="secondary" OnClick="@Cancel">Cancel</AppButton>
-                <AppButton Variant="@ConfirmVariant" OnClick="@Confirm"><FaIcon Name="@Icon" /> @ConfirmText</AppButton>
-            }
-        </div>
-    </section>
-</div>
+    </ModalEscapeBoundary>
+</CascadingValue>
 
 @code {
     [Parameter] public string Title { get; set; } = "Delete item?";
@@ -31,6 +35,7 @@
     [Parameter] public RenderFragment? Actions { get; set; }
 
     string IconClass => Icon == "trash" ? "" : "is-neutral";
+    OverlayLayer ModalOverlayLayer => OverlayLayer.Modal;
 
     Task BackdropClick(MouseEventArgs args) => CloseOnBackdropClick ? OnCancel.InvokeAsync() : Task.CompletedTask;
     Task Cancel(MouseEventArgs args) => OnCancel.InvokeAsync();

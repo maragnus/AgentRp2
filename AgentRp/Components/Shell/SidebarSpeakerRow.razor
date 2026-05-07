@@ -1,22 +1,25 @@
-<div class="@CssClass">
-    <span class="avatar-wrap">
-        @if (AvatarContent is not null)
-        {
-            @AvatarContent
-        }
-        else
-        {
-            <Avatar Name="@Name" Size="24" />
-        }
-        @if (InScene)
-        {
-            <span class="scene-dot"></span>
-        }
-    </span>
-    <span class="row-title">@Name</span>
-    <IconButton Icon="message-sq" Title="@SpeakTitle" OnClick="@OnSpeak" />
-    @Actions
-</div>
+<SidebarRow Title="@Name" Active="@Active">
+    <LeadingContent>
+        <span class="avatar-wrap">
+            @if (AvatarContent is not null)
+            {
+                @AvatarContent
+            }
+            else
+            {
+                <Avatar Name="@Name" Size="24" />
+            }
+            @if (InScene)
+            {
+                <span class="scene-dot"></span>
+            }
+        </span>
+    </LeadingContent>
+    <Actions>
+        <IconButton Icon="message-sq" Title="@SpeakTitle" OnClick="@OnSpeak" />
+        @Actions
+    </Actions>
+</SidebarRow>
 
 @code {
     [Parameter] public string Name { get; set; } = "";
@@ -26,6 +29,4 @@
     [Parameter] public RenderFragment? AvatarContent { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnSpeak { get; set; }
-
-    string CssClass => $"row {(Active ? "is-active" : "")}".Trim();
 }

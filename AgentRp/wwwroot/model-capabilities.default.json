@@ -131,6 +131,45 @@
       "guidance": "Responses/Open Responses image generation model."
     },
     {
+      "provider": "openai",
+      "id": "gpt-4o-mini-tts",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "OpenAI text-to-speech model with catalog-provided built-in voices."
+    },
+    {
+      "provider": "openai",
+      "id": "tts-1",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "OpenAI lower-latency text-to-speech model."
+    },
+    {
+      "provider": "openai",
+      "id": "tts-1-hd",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "OpenAI higher-quality text-to-speech model."
+    },
+    {
       "provider": "grok",
       "id": "grok-4-0709",
       "aliases": [ "grok-4", "grok-4-latest" ],
@@ -190,6 +229,45 @@
       "imageOutput": true,
       "tools": true,
       "guidance": "Responses/Open Responses image output model."
+    },
+    {
+      "provider": "grok",
+      "id": "xai-tts",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "xAI text-to-speech endpoint model representation for voice selection."
+    },
+    {
+      "provider": "elevenlabs",
+      "id": "eleven_multilingual_v2",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "ElevenLabs text-to-speech model."
+    },
+    {
+      "provider": "elevenlabs",
+      "id": "eleven_flash_v2_5",
+      "textInput": true,
+      "textOutput": false,
+      "speechOutput": true,
+      "streaming": false,
+      "structuredOutput": false,
+      "temperature": "Unsupported",
+      "topP": "Unsupported",
+      "maxTokens": "Unsupported",
+      "guidance": "ElevenLabs low-latency text-to-speech model."
     },
     {
       "provider": "claude",

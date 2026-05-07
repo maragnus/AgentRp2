@@ -1,0 +1,126 @@
+@implements IDisposable
+@inject ITtsPreviewService PreviewService
+@inject ITtsAudioPlaybackService Playback
+
+<AppButton Variant="@Variant"
+           Size="@Size"
+           Class="@CssClass"
+           Disabled="@Disabled"
+           Title="@Title"
+           AriaLabel="@Title"
+           OnClick="Click"
+           StopPropagation>
+    @if (Loading)
+    {
+        <span class="spinner" aria-hidden="true"></span>
+    }
+    else
+    {
+        <FaIcon Name="@Icon" />
+    }
+    @if (!IconOnly)
+    {
+        <span>@Label</span>
+    }
+</AppButton>
+
+@code {
+    bool Loading;
+    string Error = "";
+
+    [Parameter] public AiProvider Provider { get; set; } = new();
+    [Parameter] public AiProviderModel Model { get; set; } = new();
+    [Parameter] public AiProviderVoice Voice { get; set; } = new();
+    [Parameter] public string PreviewUrl { get; set; } = "";
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public string Variant { get; set; } = "secondary";
+    [Parameter] public string Size { get; set; } = "icon";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool IconOnly { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+
+    string Key => $"{Provider.Id}::{Model.Id}::{Voice.Id}::{SampleText}";
+    string SampleText => string.IsNullOrWhiteSpace(Text)
+        ? $"This is {DisplayVoice}, a sample voice for AgentRp."
+        : Text.Trim();
+    string DisplayVoice => string.IsNullOrWhiteSpace(Voice.DisplayName) ? Voice.Id : Voice.DisplayName;
+    bool Playing => Playback.IsPlaying(Key);
+    bool HasPreviewUrl => PreviewUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        || PreviewUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+    string Icon => Playing ? "circle-stop" : "circle-play";
+    string Label => Playing ? "Stop" : "Play";
+    string Title
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Error))
+                return Error;
+            if (Loading)
+                return $"Generating {DisplayVoice} sample.";
+            if (Playing)
+                return $"Stop {DisplayVoice} sample.";
+            if (HasPreviewUrl)
+                return $"Play {DisplayVoice} preview.";
+            if (Playback.TryGetCachedUrl(Key, out _))
+                return $"Play {DisplayVoice} sample. Shift-click to replace it.";
+
+            return $"Generate and play {DisplayVoice} sample.";
+        }
+    }
+    string CssClass => string.Join(" ", new[]
+    {
+        "tts-sample-button",
+        Playing ? "is-playing" : null,
+        !string.IsNullOrWhiteSpace(Error) ? "has-error" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    protected override void OnInitialized()
+    {
+        Playback.Changed += OnPlaybackChanged;
+    }
+
+    async Task Click(MouseEventArgs args)
+    {
+        Error = "";
+        if (Playing)
+        {
+            await Playback.StopAsync();
+            return;
+        }
+
+        try
+        {
+            if (HasPreviewUrl)
+            {
+                await Playback.PlayUrlAsync(Key, PreviewUrl);
+                return;
+            }
+
+            if (!Playback.TryGetCachedUrl(Key, out var url) || args.ShiftKey)
+            {
+                Loading = true;
+                var audio = await PreviewService.GenerateSampleAsync(Provider, Model, Voice, SampleText);
+                await Playback.ReplaceCachedAudioAsync(Key, audio.Bytes, audio.ContentType);
+                Playback.TryGetCachedUrl(Key, out url);
+            }
+
+            await Playback.PlayUrlAsync(Key, url);
+        }
+        catch (Exception exception)
+        {
+            Error = UserFacingErrorMessageBuilder.Build($"Playing {DisplayVoice} failed.", exception);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    Task OnPlaybackChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Playback.Changed -= OnPlaybackChanged;
+    }
+}

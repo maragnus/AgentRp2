@@ -32,6 +32,7 @@ public sealed class AiProviderConnectionService(
             "grok" => await DiscoverGrokModelsAsync(provider, cancellationToken),
             "claude" => await DiscoverOpenAiCompatibleModelsAsync(provider, cancellationToken),
             "huggingface" => await DiscoverHuggingFaceModelsAsync(provider, cancellationToken),
+            "elevenlabs" => await DiscoverElevenLabsModelsAsync(provider, cancellationToken),
             "compatible" => await DiscoverOpenAiCompatibleModelsAsync(provider, cancellationToken),
             _ => []
         };
@@ -153,6 +154,20 @@ public sealed class AiProviderConnectionService(
         return models;
     }
 
+    async Task<List<DiscoveredModel>> DiscoverElevenLabsModelsAsync(AiProvider provider, CancellationToken cancellationToken)
+    {
+        using var client = CreateElevenLabsClient(provider.ApiKey);
+        using var response = await client.GetAsync(new Uri(new Uri(NormalizeEndpoint(provider)), "models"), cancellationToken);
+        var json = await ReadJsonAsync(response, $"Discovering ElevenLabs models for '{provider.Name}'", cancellationToken);
+        return json.AsArray()
+            .Select(node => new DiscoveredModel(
+                node?["model_id"]?.GetValue<string>() ?? node?["id"]?.GetValue<string>() ?? "",
+                node?["name"]?.GetValue<string>() ?? ""))
+            .Where(model => !string.IsNullOrWhiteSpace(model.Id))
+            .Where(model => AiProviderModelIdentityRules.IsKnownSpeechModel(provider.Type, model.Id))
+            .ToList();
+    }
+
     static void AddNamespace(List<string> namespaces, string? candidate)
     {
         if (string.IsNullOrWhiteSpace(candidate) || namespaces.Any(value => string.Equals(value, candidate, StringComparison.Ordinal)))
@@ -183,10 +198,10 @@ public sealed class AiProviderConnectionService(
 
     static List<DiscoveredModel> AddKnownProviderModels(string providerType, List<DiscoveredModel> models)
     {
-        void Add(string id)
+        void Add(string id, string displayName = "")
         {
             if (models.All(model => !string.Equals(model.Id, id, StringComparison.Ordinal)))
-                models.Add(new(id));
+                models.Add(new(id, displayName));
         }
 
         if (providerType == "openai")
@@ -198,10 +213,14 @@ public sealed class AiProviderConnectionService(
             Add("gpt-image-1.5");
             Add("gpt-image-1");
             Add("gpt-image-1-mini");
+            Add("gpt-4o-mini-tts");
+            Add("tts-1");
+            Add("tts-1-hd");
         }
         else if (providerType == "grok")
         {
             Add("grok-imagine-image");
+            Add(AiProviderModelIdentityRules.XAiTextToSpeechModelId, "xAI Text to Speech");
         }
         else if (providerType == "claude")
         {
@@ -223,8 +242,7 @@ public sealed class AiProviderConnectionService(
             Endpoint = model.Endpoint,
             Repository = model.Repository,
             CreatedUnix = model.CreatedUnix,
-            Text = false,
-            Image = false,
+            Roles = [],
             Capabilities = capabilities
         };
     }
@@ -235,7 +253,9 @@ public sealed class AiProviderConnectionService(
             return 0;
         if (AiProviderModelIdentityRules.IsKnownImageGenerationModel(providerType, modelId))
             return 1;
-        return 2;
+        if (AiProviderModelIdentityRules.IsKnownSpeechModel(providerType, modelId))
+            return 2;
+        return 3;
     }
 
     HttpClient CreateBearerClient(string apiKey)
@@ -244,6 +264,16 @@ public sealed class AiProviderConnectionService(
         client.Timeout = TimeSpan.FromSeconds(30);
         if (!string.IsNullOrWhiteSpace(apiKey))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        return client;
+    }
+
+    HttpClient CreateElevenLabsClient(string apiKey)
+    {
+        var client = httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(30);
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            client.DefaultRequestHeaders.Add("xi-api-key", apiKey);
 
         return client;
     }

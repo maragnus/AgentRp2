@@ -8,7 +8,6 @@ internal static class ProviderModelListRules
     public static IEnumerable<AiProviderModel> SortModels(IEnumerable<AiProviderModel> models) =>
         models
             .OrderBy(model => IsSelectedForAnyRole(model) ? 0 : 1)
-            .ThenBy(model => model.ActiveText ? 0 : 1)
             .ThenBy(model => IsReady(model) ? 0 : 1)
             .ThenByDescending(model => model.CreatedUnix ?? 0)
             .ThenBy(model => model.Id, StringComparer.OrdinalIgnoreCase);
@@ -36,6 +35,9 @@ internal static class ProviderModelListRules
 
     public static void SetImageSelected(AiProviderModel model, bool selected) =>
         AiProviderModelSelectionRules.SetImageSelected(model, selected);
+
+    public static void SetVoiceSelected(AiProviderModel model, bool selected) =>
+        AiProviderModelSelectionRules.SetVoiceSelected(model, selected);
 
     public static void ClearSelectedRoles(AiProviderModel model) =>
         AiProviderModelSelectionRules.ClearSelectedRoles(model);

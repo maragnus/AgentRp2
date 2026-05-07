@@ -1,0 +1,49 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@ChildContent
+
+@code {
+    readonly Guid Id = Guid.NewGuid();
+    DotNetObjectReference<ModalEscapeBoundary>? DotNetReference;
+    bool IsRegistered;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsRegistered || !OnClose.HasDelegate)
+            return;
+
+        DotNetReference ??= DotNetObjectReference.Create(this);
+
+        try
+        {
+            await JS.InvokeVoidAsync("agentRp.modal.track", Id.ToString(), DotNetReference);
+            IsRegistered = true;
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public Task CloseFromBrowser() => OnClose.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (IsRegistered)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("agentRp.modal.untrack", Id.ToString());
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        DotNetReference?.Dispose();
+    }
+}

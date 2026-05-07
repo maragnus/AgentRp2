@@ -1,6 +1,7 @@
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
+using System.Text.Json.Nodes;
 
 namespace AgentRp.Tests;
 
@@ -10,7 +11,7 @@ public sealed class TranscriptFeatureTests
     public async Task EditTurnCreatesSiblingBranchAndSwitchesActivePath()
     {
         await using var liveStore = NewLiveStore();
-        var session = new RoleplaySession(liveStore, new FakeTextGenerationService());
+        var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
         var turnToEdit = session.Chat.Transcript.Items[1];
@@ -25,8 +26,8 @@ public sealed class TranscriptFeatureTests
     {
         await using var liveStore = NewLiveStore();
         var generator = new FakeTextGenerationService();
-        var sessionA = new RoleplaySession(liveStore, generator);
-        var sessionB = new RoleplaySession(liveStore, generator);
+        var sessionA = NewSession(liveStore, generator);
+        var sessionB = NewSession(liveStore, generator);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -44,8 +45,8 @@ public sealed class TranscriptFeatureTests
     {
         await using var liveStore = NewLiveStore();
         var generator = new FakeTextGenerationService();
-        var sessionA = new RoleplaySession(liveStore, generator);
-        var sessionB = new RoleplaySession(liveStore, generator);
+        var sessionA = NewSession(liveStore, generator);
+        var sessionB = NewSession(liveStore, generator);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -67,8 +68,8 @@ public sealed class TranscriptFeatureTests
     {
         await using var liveStore = NewLiveStore();
         var generator = new FakeTextGenerationService();
-        var sessionA = new RoleplaySession(liveStore, generator);
-        var sessionB = new RoleplaySession(liveStore, generator);
+        var sessionA = NewSession(liveStore, generator);
+        var sessionB = NewSession(liveStore, generator);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -86,8 +87,8 @@ public sealed class TranscriptFeatureTests
     {
         await using var liveStore = NewLiveStore();
         var generator = new FakeTextGenerationService();
-        var sessionA = new RoleplaySession(liveStore, generator);
-        var sessionB = new RoleplaySession(liveStore, generator);
+        var sessionA = NewSession(liveStore, generator);
+        var sessionB = NewSession(liveStore, generator);
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
@@ -108,7 +109,7 @@ public sealed class TranscriptFeatureTests
     public async Task NewChatCopiesNarratorProfileFromTemplate()
     {
         await using var liveStore = NewLiveStore();
-        var session = new RoleplaySession(liveStore, new FakeTextGenerationService());
+        var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
         session.Chat.NarratorProfile.State.VoicePreset = "mythic-fable";
@@ -136,8 +137,76 @@ public sealed class TranscriptFeatureTests
         Assert.Contains("Bella has entered the apartment", context.SnapshotText, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TranscriptOptionsDefaultToAudioTagsVisibleAndBlocksHidden()
+    {
+        var persistence = new SeedRoleplayPersistence();
+        var document = await persistence.LoadChatDocumentAsync("ch1");
+
+        Assert.False(document.Transcript.Options.InjectAudioTags);
+        Assert.False(document.Transcript.Options.HideAudioTags);
+        Assert.False(document.Transcript.Options.ShowAppearanceBlocks);
+        Assert.False(document.Transcript.Options.ShowProcessTraces);
+    }
+
+    [Fact]
+    public async Task TranscriptOptionsPersistAndPropagateAcrossSessions()
+    {
+        var persistence = new SeedRoleplayPersistence();
+        await using (var liveStore = new LiveRoleplayStore(persistence, TimeSpan.FromMinutes(10), TimeSpan.FromHours(1)))
+        {
+            var sessionA = NewSession(liveStore, new FakeTextGenerationService());
+            var sessionB = NewSession(liveStore, new FakeTextGenerationService());
+            await sessionA.InitializeAsync();
+            await sessionB.InitializeAsync();
+
+            await sessionA.Chat.Transcript.SetInjectAudioTagsAsync(true);
+            await sessionA.Chat.Transcript.SetHideAudioTagsAsync(true);
+            await sessionA.Chat.Transcript.SetShowAppearanceBlocksAsync(true);
+            await sessionA.Chat.Transcript.SetShowProcessTracesAsync(true);
+
+            Assert.True(sessionB.Chat.Transcript.Options.InjectAudioTags);
+            Assert.True(sessionB.Chat.Transcript.Options.HideAudioTags);
+            Assert.True(sessionB.Chat.Transcript.Options.ShowAppearanceBlocks);
+            Assert.True(sessionB.Chat.Transcript.Options.ShowProcessTraces);
+        }
+
+        await using var reloadedStore = new LiveRoleplayStore(persistence, TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+        var reloadedSession = NewSession(reloadedStore, new FakeTextGenerationService());
+        await reloadedSession.InitializeAsync();
+
+        Assert.True(reloadedSession.Chat.Transcript.Options.InjectAudioTags);
+        Assert.True(reloadedSession.Chat.Transcript.Options.HideAudioTags);
+        Assert.True(reloadedSession.Chat.Transcript.Options.ShowAppearanceBlocks);
+        Assert.True(reloadedSession.Chat.Transcript.Options.ShowProcessTraces);
+    }
+
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+
+    static RoleplaySession NewSession(LiveRoleplayStore liveStore, ITextGenerationService generator) =>
+        new(liveStore, new FakeCapabilityCatalog(), generator);
+
+    sealed class FakeCapabilityCatalog : IModelCapabilityCatalog
+    {
+        public string UserCatalogPath => "";
+
+        public ModelGenerationCapabilities Resolve(AiProvider provider, AiProviderModel model) => model.Capabilities;
+
+        public ModelGenerationCapabilities Resolve(string providerType, string modelId) => ModelGenerationCapabilities.Fallback;
+
+        public void ApplyResolvedCapabilities(AiProvider provider)
+        {
+        }
+
+        public void SaveUserCapabilities(string providerType, string modelId, ModelGenerationCapabilities capabilities)
+        {
+        }
+
+        public void UpdateLiveGrokCapabilities(JsonNode languageModelsJson)
+        {
+        }
+    }
 
     sealed class FakeTextGenerationService : ITextGenerationService
     {
@@ -145,6 +214,7 @@ public sealed class TranscriptFeatureTests
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
             GenerateTurnRequest request,
+            TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
         {
             var actor = document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId)

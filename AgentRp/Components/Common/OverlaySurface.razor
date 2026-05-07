@@ -1,5 +1,6 @@
 @inject IJSRuntime JS
 @inject OverlayService Overlays
+@inject ILogger<OverlaySurface> Logger
 @implements IAsyncDisposable
 
 <div @ref="Element"
@@ -27,7 +28,24 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         DotNetReference ??= DotNetObjectReference.Create(this);
-        await JS.InvokeVoidAsync("agentRp.overlay.track", Entry.Id.ToString(), Entry.Anchor, Element, Entry.Placement.ToString(), DotNetReference);
+        try
+        {
+            await JS.InvokeVoidAsync("agentRp.overlay.track", Entry.Id.ToString(), Entry.Anchor, Element, Entry.Placement.ToString(), DotNetReference);
+        }
+        catch (InvalidOperationException exception) when (IsDetachedElementReference(exception))
+        {
+            Logger.LogWarning(
+                exception,
+                "OverlaySurface track failed because an ElementReference was detached. Id={OverlayId} Owner={Owner} Class={Class}",
+                Entry.Id,
+                Entry.OwnerDebugName,
+                Entry.Class);
+            await Overlays.CloseAsync(Entry.Id);
+        }
+        catch (JSDisconnectedException)
+        {
+            Logger.LogDebug("OverlaySurface track skipped because JS disconnected. Id={OverlayId} Owner={Owner}", Entry.Id, Entry.OwnerDebugName);
+        }
     }
 
     async Task ContentClick(MouseEventArgs args)
@@ -50,10 +68,22 @@
         {
             await JS.InvokeVoidAsync("agentRp.overlay.untrack", Entry.Id.ToString());
         }
+        catch (InvalidOperationException exception) when (IsDetachedElementReference(exception))
+        {
+            Logger.LogWarning(
+                exception,
+                "OverlaySurface untrack ignored because an ElementReference was detached. Id={OverlayId} Owner={Owner}",
+                Entry.Id,
+                Entry.OwnerDebugName);
+        }
         catch (JSDisconnectedException)
         {
+            Logger.LogDebug("OverlaySurface untrack skipped because JS disconnected. Id={OverlayId} Owner={Owner}", Entry.Id, Entry.OwnerDebugName);
         }
 
         DotNetReference?.Dispose();
     }
+
+    static bool IsDetachedElementReference(InvalidOperationException exception) =>
+        exception.Message.Contains("No element is currently associated", StringComparison.OrdinalIgnoreCase);
 }

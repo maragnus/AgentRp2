@@ -22,7 +22,7 @@ public sealed record GeneratedImageResult(GalleryImage Image, string FinalPrompt
 
 public interface IImageGenerationService
 {
-    IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers);
+    IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null);
     Task<GeneratedImageResult> GenerateAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateImageRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -39,12 +39,12 @@ public sealed class ImageGenerationService(
         "image/webp"
     };
 
-    public IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers)
+    public IReadOnlyList<ImageModelOption> GetEnabledImageModels(IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState? selections = null)
     {
         foreach (var provider in providers)
             capabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        return providers
+        var options = providers
             .Where(provider => provider.Enabled)
             .SelectMany(provider => provider.Models
                 .Where(AiProviderModelSelectionRules.IsSelectedForImage)
@@ -56,6 +56,15 @@ public sealed class ImageGenerationService(
                     provider.Type,
                     model.Id)))
             .ToList();
+
+        var active = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Image, selections);
+        if (active is null)
+            return options;
+
+        var activeKey = BuildModelKey(active.Provider.Id, active.Model.Id);
+        return options
+            .OrderBy(option => option.Key == activeKey ? 0 : 1)
+            .ToList();
     }
 
     public async Task<GeneratedImageResult> GenerateAsync(
@@ -64,7 +73,7 @@ public sealed class ImageGenerationService(
         GenerateImageRequest request,
         CancellationToken cancellationToken = default)
     {
-        var model = ResolveModel(providers, request.ModelKey);
+        var model = ResolveModel(document, providers, request.ModelKey);
         var finalPrompt = BuildPrompt(document, request);
         if (string.IsNullOrWhiteSpace(finalPrompt))
             throw new InvalidOperationException("Generating an image failed because the prompt was empty.");
@@ -151,10 +160,17 @@ public sealed class ImageGenerationService(
         return new(lastBytes, contentType, "responses-image.png");
     }
 
-    (AiProvider Provider, AiProviderModel Model) ResolveModel(IReadOnlyList<AiProvider> providers, string modelKey)
+    (AiProvider Provider, AiProviderModel Model) ResolveModel(RpChatDocument document, IReadOnlyList<AiProvider> providers, string modelKey)
     {
         foreach (var provider in providers)
             capabilityCatalog.ApplyResolvedCapabilities(provider);
+
+        if (string.IsNullOrWhiteSpace(modelKey))
+        {
+            var active = TextModelTuningCatalog.TryResolveActiveModel(providers, AiModelRole.Image, document.ActiveModelSelections);
+            if (active is not null)
+                return (active.Provider, active.Model);
+        }
 
         foreach (var provider in providers.Where(provider => provider.Enabled))
         {

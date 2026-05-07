@@ -25,7 +25,7 @@
 
         @if (!string.IsNullOrWhiteSpace(Message.Body))
         {
-            <MarkdownContent Markdown="@Message.Body" Class="@($"narrative-body {ProseClass}")" />
+            <TranscriptBody Body="@Message.Body" Class="@($"narrative-body {ProseClass}")" />
         }
 
         @if (ShowAppearance && Message.AppearanceByCharacterId.Count > 0)
@@ -89,7 +89,7 @@
                         </Trigger>
                         <Content>
                             <div class="popover-label">Turn Shape</div>
-                            @foreach (var shape in TurnShapes)
+                            @foreach (var shape in TurnShapePickerOptions.All)
                             {
                                 <SelectableButton @key="shape" Class="@($"select-row {(SelectedTurnShape == shape ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (SelectedTurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
                             }
@@ -184,7 +184,7 @@
                             {
                                 <Section Title="Turn Length" Hint="Regeneration target" Class="edit-plan-section">
                                     <div class="turn-shape-chip-grid" role="group" aria-label="Turn Length">
-                                        @foreach (var shape in TurnShapes)
+                                        @foreach (var shape in TurnShapePickerOptions.All)
                                         {
                                             <button @key="shape" type="button" class="turn-shape-chip @(PlanShape == shape ? "is-selected" : "")" @onclick="@(() => PlanShape = shape)">
                                                 @shape
@@ -260,7 +260,7 @@
     string ActivePlanTab = "appearance";
     string SelectedTurnShape = "";
     string BodyDraft = "";
-    string PlanShape = "Brief";
+    string PlanShape = TurnShapePickerOptions.Default;
     string Beat = "";
     string Intent = "";
     string ImmediateGoal = "";
@@ -269,7 +269,6 @@
     string Guardrails = "";
     Dictionary<string, string> Appearances = [];
     Dictionary<string, string> PrivateIntents = [];
-    readonly string[] TurnShapes = ["Compact", "Brief", "Extended", "Monologue", "Silent", "Silent Extended"];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTranscriptTurn Message { get; set; } = new();
@@ -318,7 +317,7 @@
 
     protected override void OnParametersSet()
     {
-        SelectedTurnShape = string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape;
+        SelectedTurnShape = TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
     }
 
     async Task DeleteSingle()
@@ -348,7 +347,7 @@
     void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
 
     bool IsPlanDirty() =>
-        PlanShape != (string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape) ||
+        PlanShape != TurnShapePickerOptions.Normalize(Message.Plan.TurnShape) ||
         Beat != Message.Plan.Beat ||
         ChangeIntroduced != Message.Plan.ChangeIntroduced ||
         Intent != Message.Plan.Intent ||
@@ -378,7 +377,7 @@
 
     void OpenPlanEditor()
     {
-        PlanShape = string.IsNullOrWhiteSpace(Message.Plan.TurnShape) ? "Brief" : Message.Plan.TurnShape;
+        PlanShape = TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
         Beat = Message.Plan.Beat;
         Intent = Message.Plan.Intent;
         ImmediateGoal = Message.Plan.ImmediateGoal;
@@ -423,11 +422,11 @@
         await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
     }
 
-    ActiveTextModel? ResolveActiveTextModel()
+    ActiveModelSelection? ResolveActiveTextModel()
     {
         foreach (var provider in Session.Providers.Items)
             CapabilityCatalog.ApplyResolvedCapabilities(provider);
 
-        return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items);
+        return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
     }
 }

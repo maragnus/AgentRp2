@@ -1,0 +1,66 @@
+<div class="@CssClass"
+     title="@Tooltip"
+     role="@InteractiveRole"
+     tabindex="@TabIndex"
+     @onclick="OnClick"
+     @onkeydown="HandleKeyDown">
+    @if (LeadingContent is not null)
+    {
+        <span class="sidebar-row-leading">
+            @LeadingContent
+        </span>
+    }
+    <span class="sidebar-row-copy">
+        <span class="row-title">@Title</span>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <span class="sidebar-row-sub">@Subtitle</span>
+        }
+    </span>
+    @if (Actions is not null)
+    {
+        <span class="sidebar-row-actions">
+            @Actions
+        </span>
+    }
+    @if (TrailingContent is not null)
+    {
+        <span class="sidebar-row-trailing">
+            @TrailingContent
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public bool Active { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    string? InteractiveRole => OnClick.HasDelegate ? "button" : null;
+    int? TabIndex => OnClick.HasDelegate ? 0 : null;
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "row",
+        "sidebar-row",
+        Active ? "is-active" : null,
+        Open ? "is-open" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (!OnClick.HasDelegate)
+            return;
+
+        if (args.Key is "Enter" or " ")
+            await OnClick.InvokeAsync(new MouseEventArgs());
+    }
+}

@@ -31,6 +31,14 @@ public sealed class RpCharacter
     public List<string> SoftSpots { get; set; } = [];
     public List<string> AvoidPatterns { get; set; } = [];
     public List<RpRelationship> ProfileRelationships { get; set; } = [];
+    public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
+}
+
+public sealed class CharacterVoiceSelection
+{
+    public string VoiceId { get; set; } = "";
+    public string VoiceName { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
 }
 
 public sealed class RpRelationship
@@ -139,10 +147,29 @@ public sealed class AiProviderModel
     public string Repository { get; set; } = "";
     public long? CreatedUnix { get; set; }
     public bool Enabled { get; set; }
-    public bool Text { get; set; }
-    public bool Image { get; set; }
-    public bool ActiveText { get; set; }
+    public HashSet<AiModelRole> Roles { get; set; } = [];
+    public DateTime? LastVoiceRefreshUtc { get; set; }
+    public string LastVoiceRefreshError { get; set; } = "";
+    public List<AiProviderVoice> Voices { get; set; } = [];
     public ModelGenerationCapabilities Capabilities { get; set; } = ModelGenerationCapabilities.Fallback;
+}
+
+public enum AiModelRole
+{
+    Chat,
+    Image,
+    Voice
+}
+
+public sealed class AiProviderVoice
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string PreviewUrl { get; set; } = "";
+    public Dictionary<string, string> Labels { get; set; } = [];
+    public string Source { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
 }
 
 public sealed class AiProviderMetric

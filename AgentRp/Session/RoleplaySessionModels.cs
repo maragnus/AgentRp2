@@ -17,6 +17,20 @@ public sealed class RpChatDocument
     public PromptLibraryState PromptLibrary { get; set; } = PromptLibraryState.CreateDefault();
     public CharacterTraitLibraryState CharacterTraitLibrary { get; set; } = CharacterTraitLibraryState.CreateDefault();
     public ModelTuningState ModelTuning { get; set; } = ModelTuningState.CreateDefault();
+    public ActiveModelSelectionsState ActiveModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
+}
+
+public sealed class ActiveModelSelectionsState
+{
+    public Dictionary<AiModelRole, ActiveModelSelectionState> Values { get; set; } = [];
+
+    public static ActiveModelSelectionsState CreateDefault() => new();
+}
+
+public sealed class ActiveModelSelectionState
+{
+    public string ProviderId { get; set; } = "";
+    public string ModelId { get; set; } = "";
 }
 
 public sealed class NarratorProfileState
@@ -29,6 +43,7 @@ public sealed class NarratorProfileState
     public int Foreshadowing { get; set; }
     public int DirectionStrength { get; set; } = 1;
     public string CustomGuidance { get; set; } = "";
+    public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
 
     public static NarratorProfileState CreateDefault() => NarratorProfileService.CreateDefaultState();
 }

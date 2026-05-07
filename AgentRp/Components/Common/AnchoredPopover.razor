@@ -1,4 +1,5 @@
 @inject OverlayService Overlays
+@inject ILogger<AnchoredPopover> Logger
 @implements IAsyncDisposable
 
 <span @ref="AnchorElement" class="@AnchorCssClass">
@@ -13,13 +14,16 @@
     [Parameter] public RenderFragment<AnchoredPopoverContext>? Trigger { get; set; }
     [Parameter] public RenderFragment<AnchoredPopoverContext>? Content { get; set; }
     [Parameter] public OverlayPlacement Placement { get; set; } = OverlayPlacement.BottomStart;
-    [Parameter] public OverlayLayer Layer { get; set; } = OverlayLayer.Page;
+    [Parameter] public OverlayLayer? Layer { get; set; }
     [Parameter] public bool CloseOnContentClick { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? AnchorClass { get; set; }
+    [Parameter] public string? DebugName { get; set; }
+    [CascadingParameter(Name = "OverlayLayer")] public OverlayLayer AmbientLayer { get; set; } = OverlayLayer.Page;
 
     AnchoredPopoverContext Context => new(IsOpen, Open, Close, Toggle);
     RenderFragment? TriggerContent => Trigger?.Invoke(Context);
+    OverlayLayer EffectiveLayer => Layer ?? AmbientLayer;
     string AnchorCssClass => string.Join(" ", new[] { "popover-anchor", AnchorClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
     async Task Open()
@@ -29,16 +33,27 @@
 
         EntryId ??= Guid.NewGuid();
         IsOpen = true;
+        var owner = OwnerDebugName;
+
+        Logger.LogInformation(
+            "AnchoredPopover opening. Id={OverlayId} Owner={Owner} Class={Class} AnchorClass={AnchorClass} Layer={Layer} Placement={Placement}",
+            EntryId.Value,
+            owner,
+            Class,
+            AnchorClass,
+            EffectiveLayer,
+            Placement);
 
         await Overlays.ShowAsync(new OverlayEntry(
             EntryId.Value,
             AnchorElement,
             Content(Context),
             Placement,
-            Layer,
+            EffectiveLayer,
             Class,
             CloseOnContentClick,
-            CloseFromOverlay));
+            CloseFromOverlay,
+            owner));
     }
 
     async Task Close()
@@ -46,7 +61,10 @@
         IsOpen = false;
 
         if (EntryId is Guid id)
+        {
+            Logger.LogInformation("AnchoredPopover closing. Id={OverlayId} Owner={Owner}", id, OwnerDebugName);
             await Overlays.CloseAsync(id, notifyOwner: false);
+        }
 
         EntryId = null;
     }
@@ -63,6 +81,14 @@
     public async ValueTask DisposeAsync()
     {
         if (EntryId is Guid id)
+        {
+            Logger.LogInformation("AnchoredPopover disposing with open overlay. Id={OverlayId} Owner={Owner}", id, OwnerDebugName);
             await Overlays.CloseAsync(id, notifyOwner: false);
+        }
     }
+
+    string OwnerDebugName =>
+        string.IsNullOrWhiteSpace(DebugName)
+            ? $"AnchoredPopover Class='{Class ?? ""}' AnchorClass='{AnchorClass ?? ""}'"
+            : DebugName;
 }

@@ -1,6 +1,6 @@
 <SelectableRow Class="provider-model"
                Selected="@AnyEnabled"
-               Disabled="@(!HasAnyRole)"
+               Disabled="@(!HasAnyRole || ProviderManagedVoiceEndpoint)"
                Limited="@(!HasAnyRole)"
                SelectionTitle="@RowTitle"
                OnToggle="@(_ => ToggleModel())">
@@ -14,10 +14,6 @@
         </span>
     </ChildContent>
     <Actions>
-        @if (Model.ActiveText)
-        {
-            <span class="cap cap-passive">Active</span>
-        }
         @if (CanChat)
         {
             <CapabilityPill Tone="text"
@@ -31,6 +27,24 @@
                             Active="@ImageActive"
                             Title="@ImageTitle"
                             OnClick="@(_ => ToggleImage())">Image Gen</CapabilityPill>
+        }
+        @if (CanVoice)
+        {
+            @if (ProviderManagedVoiceEndpoint)
+            {
+                <span class="cap cap-passive is-voice" title="@VoiceTitle">Voice</span>
+            }
+            else
+            {
+                <CapabilityPill Tone="voice"
+                                Active="@VoiceActive"
+                                Title="@VoiceTitle"
+                                OnClick="@(_ => ToggleVoice())">Voice</CapabilityPill>
+            }
+            @if (VoiceActive)
+            {
+                <span class="cap cap-passive" title="@VoiceCountTitle">@Model.Voices.Count voices</span>
+            }
         }
         @if (Model.Capabilities.ImageInput)
         {
@@ -46,31 +60,48 @@
 </SelectableRow>
 
 @code {
+    [Parameter] public string ProviderType { get; set; } = "";
     [Parameter] public AiProviderModel Model { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public EventCallback<AiProviderModel> OnSetup { get; set; }
 
     bool CanChat => AiProviderModelSelectionRules.HasChatRole(Model);
     bool CanImage => AiProviderModelSelectionRules.HasImageRole(Model);
+    bool CanVoice => AiProviderModelSelectionRules.HasVoiceRole(Model);
     bool HasAnyRole => AiProviderModelSelectionRules.HasAnyRole(Model);
     bool ChatActive => AiProviderModelSelectionRules.IsSelectedForChat(Model);
     bool ImageActive => AiProviderModelSelectionRules.IsSelectedForImage(Model);
+    bool VoiceActive => AiProviderModelSelectionRules.IsSelectedForVoice(Model);
     bool AnyEnabled => AiProviderModelSelectionRules.IsSelectedForAnyRole(Model);
     bool NeedsSetup => !HasAnyRole;
+    bool ProviderManagedVoiceEndpoint => AiProviderModelIdentityRules.IsProviderManagedVoiceEndpoint(ProviderType, Model.Id);
     string DisplayName => string.IsNullOrWhiteSpace(Model.DisplayName) ? Model.Id : Model.DisplayName;
     bool ShowModelId => !string.Equals(DisplayName.Trim(), Model.Id.Trim(), StringComparison.OrdinalIgnoreCase);
-    string RowTitle => AnyEnabled ? $"Clear selected roles for {Model.Id}" : $"Choose available roles for {Model.Id}";
+    string RowTitle => ProviderManagedVoiceEndpoint
+        ? "xAI text-to-speech is available automatically when an API key is configured."
+        : AnyEnabled ? $"Clear selected roles for {Model.Id}" : $"Choose available roles for {Model.Id}";
     string ChatTitle => CanChat
         ? $"Enable this model for chat."
         : "Chat is not available for this model.";
     string ImageTitle => CanImage
         ? "Enable this model for image generation through Responses image output."
         : "Image generation is not available for this model.";
+    string VoiceTitle => ProviderManagedVoiceEndpoint
+        ? "xAI text-to-speech uses the provider endpoint and does not require model selection."
+        : CanVoice
+        ? "Enable this model for text-to-speech voice selection."
+        : "Voice generation is not available for this model.";
+    string VoiceCountTitle => Model.LastVoiceRefreshUtc is null
+        ? "Voices have not been refreshed for this model."
+        : $"Voices refreshed {Model.LastVoiceRefreshUtc:g}.";
     string VisionTitle => "This model can accept image input.";
     string NeedsSetupTitle => "No supported app role is known for this model. Set up model capabilities to enable it.";
 
     async Task ToggleModel()
     {
+        if (ProviderManagedVoiceEndpoint)
+            return;
+
         if (AnyEnabled)
             AiProviderModelSelectionRules.ClearSelectedRoles(Model);
         else
@@ -95,6 +126,16 @@
             return;
 
         AiProviderModelSelectionRules.SetImageSelected(Model, !ImageActive);
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task ToggleVoice()
+    {
+        if (!CanVoice || ProviderManagedVoiceEndpoint)
+            return;
+
+        AiProviderModelSelectionRules.SetVoiceSelected(Model, !VoiceActive);
 
         await OnChanged.InvokeAsync();
     }

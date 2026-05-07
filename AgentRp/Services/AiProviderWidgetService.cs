@@ -53,6 +53,13 @@ public sealed class AiProviderWidgetService(IHttpClientFactory httpClientFactory
         if (provider.Models.Count > 0)
             metrics.Add(CreateMetric("models", "Models", $"{provider.Models.Count} discovered", $"{provider.Models.Count(model => model.Enabled)} enabled for use"));
 
+        var voiceModels = provider.Models.Count(AiProviderModelSelectionRules.IsSelectedForVoice);
+        if (voiceModels > 0 || provider.Type == "elevenlabs")
+        {
+            var voices = provider.Models.Sum(model => model.Voices.Count);
+            metrics.Add(CreateMetric("voices", "Voices", $"{voices} cached", $"{voiceModels} voice models enabled"));
+        }
+
         if (provider.Type == "claude" && string.IsNullOrWhiteSpace(provider.ManagementApiKey))
         {
             metrics.Add(CreateMetric("usage", "Usage", "Admin key required", "Anthropic usage and cost metrics require an Admin API key."));
@@ -68,6 +75,12 @@ public sealed class AiProviderWidgetService(IHttpClientFactory httpClientFactory
         if (provider.Type == "huggingface")
         {
             metrics.Add(CreateMetric("billing", "Billing", "Endpoint runtime based", "Hugging Face Inference Endpoints are billed by deployed runtime; pause endpoints to stop billing."));
+            return metrics;
+        }
+
+        if (provider.Type == "elevenlabs")
+        {
+            metrics.Add(CreateMetric("usage", "Usage", "Use dashboard/API", "ElevenLabs usage and subscription details are available from the ElevenLabs dashboard."));
             return metrics;
         }
 

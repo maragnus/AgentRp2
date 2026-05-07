@@ -2,6 +2,7 @@
 @inject IAiProviderConnectionService ProviderConnectionService
 @inject IModelCapabilityCatalog CapabilityCatalog
 @inject IAiProviderWidgetService ProviderWidgetService
+@inject IAiProviderVoiceInventoryService VoiceInventoryService
 
 <ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
     <ModalSplitLayout RailWidth="230px">
@@ -16,8 +17,8 @@
                     var counts = Counts(provider);
                     <SidebarListRow @key="provider.Id"
                                     Title="@provider.Name"
-                                    Summary="@($"{counts.TextCount}t · {counts.ImageCount}i")"
-                                    Count="@((counts.TextCount + counts.ImageCount).ToString())"
+                                    Summary="@($"{counts.ChatCount}c · {counts.ImageCount}i · {counts.VoiceCount}v")"
+                                    Count="@((counts.ChatCount + counts.ImageCount + counts.VoiceCount).ToString())"
                                     Active="@selected"
                                     Class="provider-row"
                                     OnClick="@(_ => Select(provider.Id))">
@@ -127,6 +128,7 @@
                         else
                         {
                             <ProviderModelList Models="OnboardModels"
+                                               ProviderType="@OnboardMeta.Id"
                                                ShowHeader="true"
                                                ShowNeedsSetup="@ShowModelsNeedingSetup"
                                                ShowNeedsSetupChanged="value => ShowModelsNeedingSetup = value"
@@ -155,7 +157,7 @@
                                 <ProviderBadge Type="@Selected.Type" Size="40" />
                                 <span>
                                     <strong>@Selected.Name</strong>
-                                    <small>@counts.TextCount text · @counts.ImageCount image · @Selected.Models.Count total</small>
+                                    <small>@counts.ChatCount chat · @counts.ImageCount image · @counts.VoiceCount voice · @Selected.Models.Count total</small>
                                 </span>
                             </div>
                             <div class="provider-enabled-wrap">
@@ -168,6 +170,7 @@
                             <AppButton Variant="primary" Size="sm" OnClick="SaveSelectedClick"><FaIcon Name="check" />Save</AppButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="TestProvider"><FaIcon Name="zap" />Test connection</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
+                            <BusyButton Variant="secondary" Size="sm" Disabled="@(!CanRefreshVoices(Selected))" OnClick="RefreshVoices"><FaIcon Name="waveform-lines" />Refresh voices</BusyButton>
                             <BusyButton Variant="secondary" Size="sm" OnClick="RefreshWidget"><FaIcon Name="chart-line" />Refresh widget</BusyButton>
                             @if (TestOk is true)
                             {
@@ -267,15 +270,17 @@
                             </ChildContent>
                         </Section>
 
-                        <Section Title="Models" Hint="Enable models for Chat, Image Gen, or both." Class="provider-section">
+                        <Section Title="Models" Hint="Enable models for Chat, Image Gen, or Voice." Class="provider-section">
                             <ChildContent>
                                 <ProviderModelList Models="Selected.Models"
+                                                   ProviderType="@Selected.Type"
                                                    ShowNeedsSetup="@ShowModelsNeedingSetup"
                                                    ShowNeedsSetupChanged="value => ShowModelsNeedingSetup = value"
                                                    OnChanged="SaveSelected"
                                                    OnSetup="model => OpenSetup(Selected, model)" />
                             </ChildContent>
                         </Section>
+                        <ProviderVoiceInventory Provider="Selected" />
                     </ChildContent>
                 </ModalStackLayout>
             }
@@ -313,6 +318,10 @@
                     <label class="setup-toggle-row">
                         <span><strong>Image Gen</strong><small>Text prompt to image output</small></span>
                         <ToggleSwitch Value="@SetupImage" ValueChanged="value => SetupImage = value" Title="Toggle image generation capability" />
+                    </label>
+                    <label class="setup-toggle-row">
+                        <span><strong>Voice</strong><small>Text input to speech output</small></span>
+                        <ToggleSwitch Value="@SetupVoice" ValueChanged="value => SetupVoice = value" Title="Toggle voice capability" />
                     </label>
                     <label class="setup-toggle-row">
                         <span><strong>Vision</strong><small>Accepts image input</small></span>
@@ -366,6 +375,7 @@
     AiProviderModel? SetupModel;
     bool SetupChat;
     bool SetupImage;
+    bool SetupVoice;
     bool SetupVision;
     bool SetupStructured;
     bool SetupStreaming;
@@ -409,13 +419,14 @@
     Task OnProvidersChanged() => InvokeAsync(StateHasChanged);
 
     AiProviderMeta MetaFor(string type) => ProviderTypes.FirstOrDefault(provider => provider.Id == type) ?? ProviderTypes.Last();
-    (int TextCount, int ImageCount) Counts(AiProvider provider)
+    (int ChatCount, int ImageCount, int VoiceCount) Counts(AiProvider provider)
     {
         CapabilityCatalog.ApplyResolvedCapabilities(provider);
         var enabled = provider.Models.Where(model => model.Enabled).ToList();
         return (
             enabled.Count(AiProviderModelSelectionRules.IsSelectedForChat),
-            enabled.Count(AiProviderModelSelectionRules.IsSelectedForImage));
+            enabled.Count(AiProviderModelSelectionRules.IsSelectedForImage),
+            enabled.Count(AiProviderModelSelectionRules.IsSelectedForVoice));
     }
 
     void Select(string id)
@@ -466,7 +477,10 @@
         ProviderError = "";
         try
         {
-            OnboardModels = ProviderModelListRules.SortModels((await ProviderConnectionService.DiscoverModelsAsync(BuildOnboardProvider())).Select(CloneDisabled)).ToList();
+            var provider = BuildOnboardProvider();
+            provider.Models = (await ProviderConnectionService.DiscoverModelsAsync(provider)).Select(CloneDisabled).ToList();
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
+            OnboardModels = ProviderModelListRules.SortModels(provider.Models).ToList();
             OnboardStep = 3;
         }
         catch (Exception exception)
@@ -490,16 +504,11 @@
             Endpoint = OnboardMeta.NeedsEndpoint ? OnboardEndpoint : "",
             Models = ProviderModelListRules.SortModels(OnboardModels.Select(Clone)).ToList()
         };
-        if (!HasActiveTextModel())
-        {
-            var active = provider.Models.FirstOrDefault(AiProviderModelSelectionRules.IsSelectedForChat);
-            if (active is not null)
-                active.ActiveText = true;
-        }
-
+        AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(provider, CapabilityCatalog);
         await Session.Providers.AddAsync(provider);
         SelectedId = provider.Id;
         OnboardStep = 0;
+        _ = AutoRefreshMissingVoicesAsync(provider);
     }
 
     Task OnOnboardModelChanged() => InvokeAsync(StateHasChanged);
@@ -533,8 +542,10 @@
         {
             var discovered = await ProviderConnectionService.DiscoverModelsAsync(Selected);
             MergeModels(Selected, discovered);
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
             Selected.Models = ProviderModelListRules.SortModels(Selected.Models).ToList();
             await Session.Providers.MarkChangedAsync();
+            _ = AutoRefreshMissingVoicesAsync(Selected);
         }
         catch (Exception exception)
         {
@@ -563,6 +574,42 @@
         }
     }
 
+    async Task RefreshVoices()
+    {
+        if (Selected is null)
+            return;
+
+        ProviderError = "";
+        var failures = new List<AiProviderVoiceRefreshResult>();
+        foreach (var model in Selected.Models.Where(AiProviderModelSelectionRules.IsSelectedForVoice))
+        {
+            var result = await VoiceInventoryService.RefreshModelAsync(Selected, model);
+            if (!result.Succeeded)
+                failures.Add(result);
+        }
+
+        if (failures.Count > 0)
+            ProviderError = failures.Count == 1
+                ? failures[0].Error
+                : $"Refreshing voices for {Selected.Name} had {failures.Count} failures. Expand the voice inventory for details.";
+
+        await Session.Providers.MarkChangedAsync();
+    }
+
+    async Task AutoRefreshMissingVoicesAsync(AiProvider provider)
+    {
+        var models = provider.Models
+            .Where(VoiceInventoryService.NeedsInitialRefresh)
+            .ToList();
+        if (models.Count == 0)
+            return;
+
+        foreach (var model in models)
+            await VoiceInventoryService.RefreshModelAsync(provider, model);
+
+        await Session.Providers.MarkChangedAsync();
+    }
+
     async Task DeleteProvider()
     {
         ConfirmDelete = false;
@@ -579,9 +626,25 @@
         await Session.Providers.MarkChangedAsync();
     }
 
-    Task SaveSelectedClick(MouseEventArgs args) => Session.Providers.MarkChangedAsync();
+    async Task SaveSelectedClick(MouseEventArgs args)
+    {
+        if (Selected is not null)
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
 
-    Task SaveSelected() => Session.Providers.MarkChangedAsync();
+        await Session.Providers.MarkChangedAsync();
+        if (Selected is not null)
+            _ = AutoRefreshMissingVoicesAsync(Selected);
+    }
+
+    async Task SaveSelected()
+    {
+        if (Selected is not null)
+            AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(Selected, CapabilityCatalog);
+
+        await Session.Providers.MarkChangedAsync();
+        if (Selected is not null)
+            _ = AutoRefreshMissingVoicesAsync(Selected);
+    }
 
     AiProvider BuildOnboardProvider() => new()
     {
@@ -621,6 +684,7 @@
         SetupModel = model;
         SetupChat = model.Capabilities.CanGenerateText;
         SetupImage = model.Capabilities.CanGenerateImage;
+        SetupVoice = model.Capabilities.CanGenerateSpeech;
         SetupVision = model.Capabilities.ImageInput;
         SetupStructured = model.Capabilities.StructuredOutput;
         SetupStreaming = model.Capabilities.Streaming;
@@ -647,10 +711,11 @@
 
         var capabilities = new ModelGenerationCapabilities
         {
-            TextInput = SetupChat || SetupImage || SetupVision,
+            TextInput = SetupChat || SetupImage || SetupVision || SetupVoice,
             TextOutput = SetupChat,
             ImageInput = SetupVision,
             ImageOutput = SetupImage,
+            SpeechOutput = SetupVoice,
             Streaming = SetupStreaming,
             StructuredOutput = SetupStructured,
             Tools = SetupTools,
@@ -667,8 +732,12 @@
         CapabilityCatalog.SaveUserCapabilities(SetupProvider.Type, SetupModel.Id, capabilities);
         SetupModel.Capabilities = CapabilityCatalog.Resolve(SetupProvider, SetupModel);
         AiProviderModelSelectionRules.SelectAvailableRoles(SetupModel);
+        AiProviderModelIdentityRules.EnsureProviderManagedVoiceModels(SetupProvider, CapabilityCatalog);
         if (Providers.Any(provider => provider.Id == SetupProvider.Id))
+        {
             await Session.Providers.MarkChangedAsync();
+            _ = AutoRefreshMissingVoicesAsync(SetupProvider);
+        }
 
         CloseSetup();
     }
@@ -676,15 +745,13 @@
     static TuningSupport ParseSupport(string value) =>
         Enum.TryParse<TuningSupport>(value, out var parsed) ? parsed : TuningSupport.Unsupported;
 
-    bool HasActiveTextModel() =>
-        Providers.Any(provider => provider.Enabled && provider.Models.Any(model => model.ActiveText && AiProviderModelSelectionRules.IsSelectedForChat(model)));
-
     static string ProviderWidgetHint(AiProvider provider) => provider.Type switch
     {
         "openai" => "Shows connection, model inventory, and usage guidance.",
         "grok" => "Shows xAI billing status when a team id is configured.",
         "claude" => "Shows Anthropic usage status when an admin key is configured.",
         "huggingface" => "Shows managed endpoint runtime and controls.",
+        "elevenlabs" => "Shows connection, model inventory, and cached voice status.",
         _ => "Shows provider-specific connection details."
     };
 
@@ -712,9 +779,10 @@
         Repository = model.Repository,
         CreatedUnix = model.CreatedUnix,
         Enabled = model.Enabled,
-        Text = model.Text,
-        Image = model.Image,
-        ActiveText = model.ActiveText,
+        Roles = [.. model.Roles],
+        LastVoiceRefreshUtc = model.LastVoiceRefreshUtc,
+        LastVoiceRefreshError = model.LastVoiceRefreshError,
+        Voices = model.Voices.Select(SessionCloner.Clone).ToList(),
         Capabilities = model.Capabilities
     };
 
@@ -725,10 +793,16 @@
         Endpoint = model.Endpoint,
         Repository = model.Repository,
         CreatedUnix = model.CreatedUnix,
-        Text = false,
-        Image = false,
+        Roles = [],
+        Voices = model.Voices.Select(SessionCloner.Clone).ToList(),
         Capabilities = model.Capabilities
     };
+
+    static bool CanRefreshVoices(AiProvider provider) =>
+        provider.Models.Any(AiProviderModelSelectionRules.IsSelectedForVoice);
+
+    static string DisplayName(AiProviderModel model) =>
+        string.IsNullOrWhiteSpace(model.DisplayName) ? model.Id : model.DisplayName;
 
     public void Dispose()
     {

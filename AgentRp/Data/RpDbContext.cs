@@ -43,6 +43,7 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.PromptLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.CharacterTraitLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.ModelTuningJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.ActiveModelSelectionsJson).HasColumnType("nvarchar(max)");
         });
 
         modelBuilder.Entity<AiProviderRow>(builder =>
@@ -77,6 +78,9 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.DisplayName).HasMaxLength(500);
             builder.Property(x => x.Endpoint).HasMaxLength(1000);
             builder.Property(x => x.Repository).HasMaxLength(500);
+            builder.Property(x => x.RolesJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.VoicesJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.LastVoiceRefreshError).HasMaxLength(1000);
             builder.HasIndex(x => x.SortOrder);
         });
 
@@ -139,6 +143,7 @@ public sealed class RpChatDocumentRow
     public string PromptLibraryJson { get; set; } = "";
     public string CharacterTraitLibraryJson { get; set; } = "";
     public string ModelTuningJson { get; set; } = "";
+    public string ActiveModelSelectionsJson { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
     public RpChatRow Chat { get; set; } = null!;
@@ -174,9 +179,10 @@ public sealed class AiProviderModelRow
     public string Repository { get; set; } = "";
     public long? CreatedUnix { get; set; }
     public bool Enabled { get; set; }
-    public bool Text { get; set; }
-    public bool Image { get; set; }
-    public bool ActiveText { get; set; }
+    public string RolesJson { get; set; } = "[]";
+    public DateTime? LastVoiceRefreshUtc { get; set; }
+    public string LastVoiceRefreshError { get; set; } = "";
+    public string VoicesJson { get; set; } = "[]";
     public int SortOrder { get; set; }
     public AiProviderRow Provider { get; set; } = null!;
 }

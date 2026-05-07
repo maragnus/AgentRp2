@@ -1,34 +1,38 @@
-<div class="@BackdropCssClass" @onclick="BackdropClick">
-    <section class="@ModalCssClass" style="@Style" @onclick:stopPropagation="true">
-        <header class="modal-header">
-            <div class="modal-title">
-                @if (!string.IsNullOrWhiteSpace(Icon))
+<CascadingValue Name="OverlayLayer" Value="ModalOverlayLayer" IsFixed="true">
+    <ModalEscapeBoundary OnClose="OnClose">
+        <div class="@BackdropCssClass" @onclick="BackdropClick">
+            <section class="@ModalCssClass" style="@Style" @onclick:stopPropagation="true">
+                <header class="modal-header">
+                    <div class="modal-title">
+                        @if (!string.IsNullOrWhiteSpace(Icon))
+                        {
+                            <FaIcon Name="@Icon" />
+                        }
+                        <span>@Title</span>
+                        @if (!string.IsNullOrWhiteSpace(Subtitle))
+                        {
+                            <small>@Subtitle</small>
+                        }
+                    </div>
+                    <div class="modal-window-actions">
+                        @if (ShowExpandButton)
+                        {
+                            <IconButton Icon="@ExpandIcon" Title="@ExpandTitle" OnClick="@ToggleExpanded" />
+                        }
+                        <IconButton Icon="x" Title="Close" OnClick="@CloseClick" />
+                    </div>
+                </header>
+                <div class="modal-body @BodyClass">
+                    @ChildContent
+                </div>
+                @if (Footer is not null)
                 {
-                    <FaIcon Name="@Icon" />
+                    <footer class="modal-footer">@Footer</footer>
                 }
-                <span>@Title</span>
-                @if (!string.IsNullOrWhiteSpace(Subtitle))
-                {
-                    <small>@Subtitle</small>
-                }
-            </div>
-            <div class="modal-window-actions">
-                @if (ShowExpandButton)
-                {
-                    <IconButton Icon="@ExpandIcon" Title="@ExpandTitle" OnClick="@ToggleExpanded" />
-                }
-                <IconButton Icon="x" Title="Close" OnClick="@CloseClick" />
-            </div>
-        </header>
-        <div class="modal-body @BodyClass">
-            @ChildContent
+            </section>
         </div>
-        @if (Footer is not null)
-        {
-            <footer class="modal-footer">@Footer</footer>
-        }
-    </section>
-</div>
+    </ModalEscapeBoundary>
+</CascadingValue>
 
 @code {
     bool IsExpanded;
@@ -48,6 +52,7 @@
 
     string BackdropCssClass => IsExpanded ? "modal-backdrop is-expanded" : "modal-backdrop";
     string ModalCssClass => string.Join(" ", new[] { "modal", IsExpanded ? "is-expanded" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    OverlayLayer ModalOverlayLayer => OverlayLayer.Modal;
     string ExpandIcon => IsExpanded ? "restore" : "maximize";
     string ExpandTitle => IsExpanded ? "Restore" : "Maximize";
     string Style => string.IsNullOrWhiteSpace(Height)

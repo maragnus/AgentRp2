@@ -58,9 +58,10 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
                     Repository = model.Repository,
                     CreatedUnix = model.CreatedUnix,
                     Enabled = model.Enabled,
-                    Text = model.Text,
-                    Image = model.Image,
-                    ActiveText = model.ActiveText
+                    Roles = Deserialize(model.RolesJson, new HashSet<AiModelRole>()),
+                    LastVoiceRefreshUtc = model.LastVoiceRefreshUtc,
+                    LastVoiceRefreshError = model.LastVoiceRefreshError,
+                    Voices = Deserialize(model.VoicesJson, new List<AiProviderVoice>())
                 })
                 .ToList(),
             Metrics = row.Metrics
@@ -112,7 +113,8 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             NarratorProfile = Deserialize(row.NarratorProfileJson, NarratorProfileState.CreateDefault()),
             PromptLibrary = Deserialize(row.PromptLibraryJson, PromptLibraryState.CreateDefault()),
             CharacterTraitLibrary = Deserialize(row.CharacterTraitLibraryJson, CharacterTraitLibraryState.CreateDefault()),
-            ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault())
+            ModelTuning = Deserialize(row.ModelTuningJson, ModelTuningState.CreateDefault()),
+            ActiveModelSelections = Deserialize(row.ActiveModelSelectionsJson, ActiveModelSelectionsState.CreateDefault())
         }.ApplyProjection();
     }
 
@@ -177,9 +179,10 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
                     Repository = model.Repository,
                     CreatedUnix = model.CreatedUnix,
                     Enabled = model.Enabled,
-                    Text = model.Text,
-                    Image = model.Image,
-                    ActiveText = model.ActiveText,
+                    RolesJson = Serialize(model.Roles),
+                    LastVoiceRefreshUtc = model.LastVoiceRefreshUtc,
+                    LastVoiceRefreshError = model.LastVoiceRefreshError,
+                    VoicesJson = Serialize(model.Voices),
                     SortOrder = modelIndex
                 }).ToList(),
                 Metrics = provider.Metrics.Select(metric => new AiProviderMetricRow
@@ -238,6 +241,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.PromptLibraryJson = Serialize(document.PromptLibrary);
         row.CharacterTraitLibraryJson = Serialize(document.CharacterTraitLibrary);
         row.ModelTuningJson = Serialize(document.ModelTuning);
+        row.ActiveModelSelectionsJson = Serialize(document.ActiveModelSelections);
         row.UpdatedUtc = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);

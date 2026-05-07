@@ -88,6 +88,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
             ImageInput = capabilities.ImageInput,
             TextOutput = capabilities.TextOutput,
             ImageOutput = capabilities.ImageOutput,
+            SpeechOutput = capabilities.SpeechOutput,
             Streaming = capabilities.Streaming,
             StructuredOutput = capabilities.StructuredOutput,
             Tools = capabilities.Tools,
@@ -235,6 +236,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         target.ImageInput = source.ImageInput ?? target.ImageInput;
         target.TextOutput = source.TextOutput ?? target.TextOutput;
         target.ImageOutput = source.ImageOutput ?? target.ImageOutput;
+        target.SpeechOutput = source.SpeechOutput ?? target.SpeechOutput;
         target.Streaming = source.Streaming ?? target.Streaming;
         target.StructuredOutput = source.StructuredOutput ?? target.StructuredOutput;
         target.Tools = source.Tools ?? target.Tools;
@@ -258,13 +260,60 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         if (record.Provider is null || record.Id is null)
             return;
 
+        if (AiProviderModelIdentityRules.IsKnownSpeechToTextModel(record.Provider, record.Id))
+        {
+            record.TextInput = false;
+            record.TextOutput = false;
+            record.ImageInput = false;
+            record.ImageOutput = false;
+            record.SpeechOutput = false;
+            record.Streaming = false;
+            record.StructuredOutput = false;
+            record.Tools = false;
+            record.Temperature = TuningSupport.Unsupported;
+            record.TopP = TuningSupport.Unsupported;
+            record.MaxTokens = TuningSupport.Unsupported;
+            record.Seed = TuningSupport.Unsupported;
+            record.FrequencyPenalty = TuningSupport.Unsupported;
+            record.PresencePenalty = TuningSupport.Unsupported;
+            record.StopSequences = TuningSupport.Unsupported;
+            record.SupportsReasoningEffort = false;
+            record.SupportsVerbosity = false;
+            record.Guidance = "Resolved as a speech-to-text model. AgentRp does not expose speech-to-text model roles yet.";
+            return;
+        }
+
         if (!record.Provider.Equals("openai", StringComparison.OrdinalIgnoreCase)
             || !AiProviderModelIdentityRules.IsKnownImageGenerationModel(record.Provider, record.Id))
+        {
+            if (AiProviderModelIdentityRules.IsKnownSpeechModel(record.Provider, record.Id))
+            {
+                record.TextInput = true;
+                record.TextOutput = false;
+                record.ImageOutput = false;
+                record.SpeechOutput = true;
+                record.Streaming = false;
+                record.StructuredOutput = false;
+                record.Tools = false;
+                record.Temperature = TuningSupport.Unsupported;
+                record.TopP = TuningSupport.Unsupported;
+                record.MaxTokens = TuningSupport.Unsupported;
+                record.Seed = TuningSupport.Unsupported;
+                record.FrequencyPenalty = TuningSupport.Unsupported;
+                record.PresencePenalty = TuningSupport.Unsupported;
+                record.StopSequences = TuningSupport.Unsupported;
+                record.SupportsReasoningEffort = false;
+                record.SupportsVerbosity = false;
+                record.Guidance = "Resolved as a text-to-speech model from its provider model id.";
+            }
+
             return;
+        }
 
         record.TextInput = true;
         record.TextOutput = false;
         record.ImageOutput = true;
+        record.SpeechOutput = false;
         record.Streaming = false;
         record.StructuredOutput = false;
         record.Temperature = TuningSupport.Unsupported;
@@ -285,6 +334,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         ImageInput = record.ImageInput ?? false,
         TextOutput = record.TextOutput ?? true,
         ImageOutput = record.ImageOutput ?? false,
+        SpeechOutput = record.SpeechOutput ?? false,
         Streaming = record.Streaming ?? true,
         StructuredOutput = record.StructuredOutput ?? true,
         Tools = record.Tools ?? false,
@@ -335,6 +385,7 @@ public sealed class ModelCapabilityCatalog : IModelCapabilityCatalog
         public bool? ImageInput { get; set; }
         public bool? TextOutput { get; set; }
         public bool? ImageOutput { get; set; }
+        public bool? SpeechOutput { get; set; }
         public bool? Streaming { get; set; }
         public bool? StructuredOutput { get; set; }
         public bool? Tools { get; set; }

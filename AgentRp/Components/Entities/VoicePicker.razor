@@ -1,0 +1,92 @@
+<div class="@CssClass" title="@Title">
+    @if (Compact)
+    {
+        <div class="voice-picker-inline">
+            <ActiveModelPicker Role="AiModelRole.Voice"
+                               AnchorClass=""
+                               PopoverClass="sidebar-model-popover voice-model-popover"
+                               DebugName="@($"VoicePicker model picker for {OwnerName}")">
+                <TriggerContent Context="modelPicker">
+                    <AppButton Variant="secondary"
+                               Size="icon"
+                               Class="@ProviderButtonClass(modelPicker.IsOpen)"
+                               Title="@ModelPickerTitle"
+                               AriaLabel="@ModelPickerTitle"
+                               OnClick="@(_ => modelPicker.Toggle())">
+                        <span class="voice-picker-provider-glyph">
+                            @if (modelPicker.ActiveModel is null)
+                            {
+                                <FaIcon Name="waveform-lines" />
+                            }
+                            else
+                            {
+                                <ProviderBadge Type="@modelPicker.ActiveModel.Provider.Type" Size="20" />
+                            }
+                        </span>
+                        <FaIcon Name="chevron-down" />
+                    </AppButton>
+                </TriggerContent>
+            </ActiveModelPicker>
+            <VoicePickerMenu VoiceSelections="VoiceSelections"
+                             ActiveVoiceModel="ActiveVoiceModel"
+                             Compact="Compact"
+                             OwnerName="@OwnerName"
+                             OnChanged="OnChanged" />
+            @if (SelectedVoice is not null && ActiveVoiceModel is not null)
+            {
+                <TtsSampleButton Provider="@ActiveVoiceModel.Provider"
+                                 Model="@ActiveVoiceModel.Model"
+                                 Voice="@SelectedVoice"
+                                 PreviewUrl="@SelectedVoice.PreviewUrl" />
+            }
+        </div>
+    }
+    else
+    {
+        <div class="voice-picker-stack">
+            <FieldRow Label="@ModelLabel">
+                <VoicePickerMenu VoiceSelections="VoiceSelections"
+                                 ActiveVoiceModel="ActiveVoiceModel"
+                                 Compact="Compact"
+                                 OwnerName="@OwnerName"
+                                 OnChanged="OnChanged" />
+            </FieldRow>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
+    [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string OwnerName { get; set; } = "entity";
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    string CssClass => $"voice-picker {(Compact ? "is-compact" : "")}";
+    string ModelKey => ActiveVoiceModel?.Key ?? "";
+    string SelectedVoiceId => !string.IsNullOrWhiteSpace(ModelKey)
+        && VoiceSelections.TryGetValue(ModelKey, out var selection)
+        ? selection.VoiceId
+        : "";
+    AiProviderVoice? SelectedVoice => ActiveVoiceModel?.Model.Voices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
+    string SelectedVoiceName => SelectedVoice is null ? "No voice" : AiProviderVoiceDisplayRules.DisplayVoice(SelectedVoice);
+    string ModelPickerTitle => ActiveVoiceModel is null
+        ? $"Choose active voice model for {OwnerName}."
+        : $"Change active voice model for {OwnerName}. Current model is {ModelLabel}.";
+    string ModelLabel => ActiveVoiceModel is null ? "No voice model" : DisplayModel(ActiveVoiceModel);
+    string Title => ActiveVoiceModel is null
+        ? $"No voice model selected for {OwnerName}."
+        : $"Speech voice for {OwnerName} using {ModelLabel}.";
+
+    string ProviderButtonClass(bool open) => string.Join(" ", new[]
+    {
+        "voice-picker-provider-button",
+        open ? "is-open" : null
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    static string DisplayModel(ActiveModelSelection selection)
+    {
+        var model = string.IsNullOrWhiteSpace(selection.Model.DisplayName) ? selection.Model.Id : selection.Model.DisplayName;
+        return $"{selection.Provider.Name} · {model}";
+    }
+}

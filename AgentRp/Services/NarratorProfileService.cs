@@ -1,3 +1,4 @@
+using AgentRp.Models;
 using AgentRp.Session;
 
 namespace AgentRp.Services;
@@ -26,7 +27,8 @@ public static class NarratorProfileService
         TransitionContext = 1,
         Foreshadowing = 0,
         DirectionStrength = 1,
-        CustomGuidance = ""
+        CustomGuidance = "",
+        VoiceSelections = []
     };
 
     public static NarratorProfileState NormalizeState(NarratorProfileState? state)
@@ -48,9 +50,17 @@ public static class NarratorProfileService
             TransitionContext = ClampLevel(state.TransitionContext),
             Foreshadowing = ClampLevel(state.Foreshadowing),
             DirectionStrength = ClampLevel(state.DirectionStrength),
-            CustomGuidance = state.CustomGuidance.Trim()
+            CustomGuidance = state.CustomGuidance.Trim(),
+            VoiceSelections = state.VoiceSelections.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal)
         };
     }
+
+    static CharacterVoiceSelection Clone(CharacterVoiceSelection value) => new()
+    {
+        VoiceId = value.VoiceId,
+        VoiceName = value.VoiceName,
+        UpdatedUtc = value.UpdatedUtc
+    };
 
     public static string BuildPromptGuidance(NarratorProfileState state)
     {

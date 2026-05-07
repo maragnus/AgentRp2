@@ -200,12 +200,13 @@ public static class SeedData
             ApiKey = "xai-••••••••••••••••••••••••••••••••",
             Models =
             [
-                new() { Id = "grok-4-1-fast-non-reasoning", DisplayName = "grok-4-1-fast-non-reasoning", CreatedUnix = 1773014400, Enabled = true, Text = true, ActiveText = true },
-                new() { Id = "grok-4-0709", CreatedUnix = 1752019200, Enabled = true, Text = true },
-                new() { Id = "grok-4.20-0309", CreatedUnix = 1776384000, Enabled = true, Text = true, Image = true },
-                new() { Id = "grok-4.20-0309-non-reasoning", CreatedUnix = 1776384000, Text = true },
-                new() { Id = "grok-4.20-0309-reasoning", CreatedUnix = 1776384000, Text = true },
-                new() { Id = "grok-vision-beta", Text = true, Image = true }
+                new() { Id = "grok-4-1-fast-non-reasoning", DisplayName = "grok-4-1-fast-non-reasoning", CreatedUnix = 1773014400, Enabled = true, Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4-0709", CreatedUnix = 1752019200, Enabled = true, Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4.20-0309", CreatedUnix = 1776384000, Enabled = true, Roles = [AiModelRole.Chat, AiModelRole.Image] },
+                new() { Id = "grok-4.20-0309-non-reasoning", CreatedUnix = 1776384000, Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4.20-0309-reasoning", CreatedUnix = 1776384000, Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-vision-beta", Roles = [AiModelRole.Chat, AiModelRole.Image] },
+                new() { Id = "xai-tts", Enabled = true, Roles = [AiModelRole.Voice] }
             ]
         },
         new()
@@ -214,13 +215,14 @@ public static class SeedData
             ApiKey = "sk-••••••••••••••••••••••••••••••••",
             Models =
             [
-                new() { Id = "gpt-4o", Enabled = true, Text = true, Image = true },
-                new() { Id = "gpt-4o-mini", Enabled = true, Text = true, Image = true },
-                new() { Id = "o3", Enabled = true, Text = true },
-                new() { Id = "o4-mini", Text = true },
-                new() { Id = "gpt-4-turbo", Text = true, Image = true },
-                new() { Id = "gpt-3.5-turbo", Text = true },
-                new() { Id = "dall-e-3", Image = true }
+                new() { Id = "gpt-4o", Enabled = true, Roles = [AiModelRole.Chat, AiModelRole.Image] },
+                new() { Id = "gpt-4o-mini", Enabled = true, Roles = [AiModelRole.Chat, AiModelRole.Image] },
+                new() { Id = "o3", Enabled = true, Roles = [AiModelRole.Chat] },
+                new() { Id = "o4-mini", Roles = [AiModelRole.Chat] },
+                new() { Id = "gpt-4-turbo", Roles = [AiModelRole.Chat, AiModelRole.Image] },
+                new() { Id = "gpt-3.5-turbo", Roles = [AiModelRole.Chat] },
+                new() { Id = "dall-e-3", Roles = [AiModelRole.Image] },
+                new() { Id = "gpt-4o-mini-tts", Enabled = true, Roles = [AiModelRole.Voice] }
             ]
         }
     ];
@@ -231,35 +233,37 @@ public static class SeedData
         {
             Id = "openai",
             Name = "OpenAI",
-            Description = "OpenAI Responses API models for text and image generation.",
+            Description = "OpenAI models for text, image, and speech generation.",
             KeyLabel = "OpenAI API Key",
             KeyLink = "https://platform.openai.com/api-keys",
             ApiKeyRequired = true,
             SampleModels =
             [
-                new() { Id = "gpt-image-1.5", Image = true },
-                new() { Id = "gpt-image-1", Image = true },
-                new() { Id = "gpt-image-1-mini", Image = true },
-                new() { Id = "gpt-5.5", Text = true },
-                new() { Id = "gpt-5.5-mini", Text = true }
+                new() { Id = "gpt-image-1.5", Roles = [AiModelRole.Image] },
+                new() { Id = "gpt-image-1", Roles = [AiModelRole.Image] },
+                new() { Id = "gpt-image-1-mini", Roles = [AiModelRole.Image] },
+                new() { Id = "gpt-5.5", Roles = [AiModelRole.Chat] },
+                new() { Id = "gpt-5.5-mini", Roles = [AiModelRole.Chat] },
+                new() { Id = "gpt-4o-mini-tts", Roles = [AiModelRole.Voice] }
             ]
         },
         new()
         {
             Id = "grok",
             Name = "Grok / xAI",
-            Description = "xAI Open Responses-compatible Grok models.",
+            Description = "xAI Open Responses-compatible Grok and voice models.",
             KeyLabel = "xAI API Key",
             KeyLink = "https://console.x.ai",
             ApiKeyRequired = true,
             SampleModels =
             [
-                new() { Id = "grok-4-1-fast-non-reasoning", Text = true },
-                new() { Id = "grok-4-0709", Text = true },
-                new() { Id = "grok-imagine-image", Image = true },
-                new() { Id = "grok-4.20-0309", Text = true },
-                new() { Id = "grok-4.20-0309-non-reasoning", Text = true },
-                new() { Id = "grok-4.20-0309-reasoning", Text = true }
+                new() { Id = "grok-4-1-fast-non-reasoning", Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4-0709", Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-imagine-image", Roles = [AiModelRole.Image] },
+                new() { Id = "grok-4.20-0309", Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4.20-0309-non-reasoning", Roles = [AiModelRole.Chat] },
+                new() { Id = "grok-4.20-0309-reasoning", Roles = [AiModelRole.Chat] },
+                new() { Id = "xai-tts", Roles = [AiModelRole.Voice] }
             ]
         },
         new()
@@ -272,12 +276,21 @@ public static class SeedData
             ApiKeyRequired = true,
             SampleModels =
             [
-                new() { Id = "claude-opus-4-5", Text = true },
-                new() { Id = "claude-sonnet-4-5", Text = true },
-                new() { Id = "claude-haiku-4-5", Text = true },
-                new() { Id = "claude-3-5-sonnet-20241022", Text = true },
-                new() { Id = "claude-3-haiku-20240307", Text = true }
+                new() { Id = "claude-opus-4-5", Roles = [AiModelRole.Chat] },
+                new() { Id = "claude-sonnet-4-5", Roles = [AiModelRole.Chat] },
+                new() { Id = "claude-haiku-4-5", Roles = [AiModelRole.Chat] },
+                new() { Id = "claude-3-5-sonnet-20241022", Roles = [AiModelRole.Chat] },
+                new() { Id = "claude-3-haiku-20240307", Roles = [AiModelRole.Chat] }
             ]
+        },
+        new()
+        {
+            Id = "elevenlabs",
+            Name = "ElevenLabs",
+            Description = "ElevenLabs text-to-speech models and voice library.",
+            KeyLabel = "ElevenLabs API Key",
+            KeyLink = "https://elevenlabs.io/app/settings/api-keys",
+            ApiKeyRequired = true
         },
         new()
         {

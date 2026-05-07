@@ -1,4 +1,5 @@
 @page "/"
+@inject OverlayService Overlays
 
 <PageTitle>AgentRp</PageTitle>
 
@@ -70,23 +71,26 @@
         await Session.InitializeAsync();
     }
 
-    void OpenModal(string name)
+    async Task OpenModal(string name)
     {
+        await Overlays.CloseAllAsync($"Opening modal '{name}'");
         if (name is "gallery" or "generate")
             ClearPendingEntityImage();
 
         Modal = name;
     }
 
-    void OpenEntities((string Type, string? Id) value)
+    async Task OpenEntities((string Type, string? Id) value)
     {
+        await Overlays.CloseAllAsync($"Opening story entities '{value.Type}'");
         EntityType = value.Type;
         EntityId = value.Id;
         Modal = "entities";
     }
 
-    void CloseModal()
+    async Task CloseModal()
     {
+        await Overlays.CloseAllAsync("Closing modal");
         Modal = null;
         ClearPendingEntityImage();
     }
@@ -107,28 +111,38 @@
         _ => null
     };
 
-    Task OpenEntityImagePicker((string Type, string Id) value)
+    async Task OpenEntityImagePicker((string Type, string Id) value)
     {
+        await Overlays.CloseAllAsync("Opening entity image picker");
         PendingEntityType = value.Type;
         PendingEntityId = value.Id;
         EntityType = value.Type;
         EntityId = value.Id;
         Modal = "imageSelect";
-        return Task.CompletedTask;
     }
 
-    void OpenGalleryGenerator()
+    async Task OpenGalleryGenerator()
     {
+        await Overlays.CloseAllAsync("Opening gallery generator");
         ClearPendingEntityImage();
         Modal = "generate";
     }
 
-    void OpenSelectionGenerator() => Modal = "generate";
-
-    void ReturnToEntities() => Modal = "entities";
-
-    void CloseGenerator()
+    async Task OpenSelectionGenerator()
     {
+        await Overlays.CloseAllAsync("Opening selection generator");
+        Modal = "generate";
+    }
+
+    async Task ReturnToEntities()
+    {
+        await Overlays.CloseAllAsync("Returning to story entities");
+        Modal = "entities";
+    }
+
+    async Task CloseGenerator()
+    {
+        await Overlays.CloseAllAsync("Closing image generator");
         Modal = PendingEntityId is null ? null : "imageSelect";
     }
 

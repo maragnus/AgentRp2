@@ -42,13 +42,14 @@ else
     <SelectableList Class="provider-model-list">
         @foreach (var model in VisibleModelsList)
         {
-            <ProviderModelRow @key="model.Id" Model="model" OnChanged="OnChanged" OnSetup="OnSetup" />
+            <ProviderModelRow @key="model.Id" ProviderType="@ProviderType" Model="model" OnChanged="OnChanged" OnSetup="OnSetup" />
         }
     </SelectableList>
 }
 
 @code {
     [Parameter] public IReadOnlyList<AiProviderModel> Models { get; set; } = [];
+    [Parameter] public string ProviderType { get; set; } = "";
     [Parameter] public string Title { get; set; } = "Models";
     [Parameter] public bool ShowHeader { get; set; }
     [Parameter] public bool ShowNeedsSetup { get; set; }

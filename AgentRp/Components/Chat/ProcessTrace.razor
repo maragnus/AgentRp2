@@ -1,10 +1,33 @@
 @using AgentRp.Services
 
-<div class="process-row">
-    <StatusRow Icon="zap" Class="process-summary" OnClick="@(_ => Open = !Open)">
-        <ChildContent>@Trace.Summary</ChildContent>
+<div class="@ProcessRowClass">
+    <StatusRow Icon="@ProcessIcon" Class="@ProcessSummaryClass" OnClick="@(_ => Open = !Open)">
+        <ChildContent>
+            @if (UseFlowSummary)
+            {
+                <span class="process-flow-summary">
+                    @for (var i = 0; i < Trace.Steps.Count; i++)
+                    {
+                        var step = Trace.Steps[i];
+                        <span @key="step.Id" class="@FlowStepClass(step)">@step.Label</span>
+                        @if (i < Trace.Steps.Count - 1)
+                        {
+                            <span class="process-flow-separator" aria-hidden="true">-&gt;</span>
+                        }
+                    }
+                </span>
+            }
+            else
+            {
+                @SummaryText
+            }
+        </ChildContent>
         <BadgeContent>
-            @if (!string.IsNullOrWhiteSpace(StatusText))
+            @if (Trace.Status == "running")
+            {
+                <span class="status-text-neutral">Running · <LiveDurationText StartedUtc="@Trace.StartedUtc" /></span>
+            }
+            else if (!string.IsNullOrWhiteSpace(StatusText))
             {
                 <span class="@StatusClass">@StatusText</span>
             }
@@ -16,14 +39,31 @@
         <div class="process-steps">
             @foreach (var step in Trace.Steps)
             {
-                <div @key="step.Id" class="process-step">
-                    <div class="process-step-head" @onclick="() => Toggle(step.Id)">
+                <div @key="step.Id" class="@StepClass(step)">
+                    <div class="process-step-head" @onclick="() => Toggle(step)">
                         <FaIcon Name="@IconFor(step.Id)" />
                         <strong class="process-step-title">@step.Label</strong>
-                        <code>@step.InputTokens.ToString("N0") in</code>
-                        <code>@step.OutputTokens.ToString("N0") out</code>
-                        <code>@RelativeDateFormatter.FormatDuration(step.DurationSeconds)</code>
-                        <FaIcon Name="@(OpenSteps.Contains(step.Id) ? "chevron-up" : "chevron-down")" />
+                        @if (!string.IsNullOrWhiteSpace(ModelText(step)))
+                        {
+                            <code class="process-step-metric"><i class="@ProviderIconClass(step)" aria-hidden="true"></i>@ModelText(step)</code>
+                        }
+                        @if (TotalTokens(step) > 0)
+                        {
+                            <code class="process-step-metric"><FaIcon Name="coin" />@TotalTokens(step).ToString("N0")</code>
+                        }
+                        @if (step.Status == "running" && step.StartedUtc != default)
+                        {
+                            <code class="process-step-metric"><FaIcon Name="timer" /><LiveDurationText StartedUtc="@step.StartedUtc" /></code>
+                        }
+                        else if (step.DurationSeconds > 0)
+                        {
+                            <code class="process-step-metric"><FaIcon Name="timer" />@RelativeDateFormatter.FormatDuration(step.DurationSeconds)</code>
+                        }
+                        <span class="@StepStatusClass(step)"><FaIcon Name="@StepStatusIcon(step)" /></span>
+                        @if (CanExpand(step))
+                        {
+                            <FaIcon Name="@(OpenSteps.Contains(step.Id) ? "chevron-up" : "chevron-down")" />
+                        }
                     </div>
                     @if (OpenSteps.Contains(step.Id))
                     {
@@ -49,9 +89,30 @@
 
 @code {
     bool Open;
+    bool Initialized;
+    bool LastAutoExpand;
     HashSet<string> OpenSteps = [];
 
     [Parameter] public RpTurnTrace Trace { get; set; } = new();
+    [Parameter] public bool IsLive { get; set; }
+    [Parameter] public bool AutoExpand { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!Initialized)
+        {
+            Open = AutoExpand;
+            LastAutoExpand = AutoExpand;
+            Initialized = true;
+            return;
+        }
+
+        if (AutoExpand == LastAutoExpand)
+            return;
+
+        Open = AutoExpand;
+        LastAutoExpand = AutoExpand;
+    }
 
     string StatusText => Trace.Status switch
     {
@@ -61,12 +122,76 @@
     };
 
     string StatusClass => Trace.Status == "failed" ? "status-text-danger" : "status-text-success";
+    string ProcessRowClass => $"process-row {(IsLive ? "is-live" : "")}".Trim();
+    string ProcessSummaryClass => $"process-summary {(Trace.Status == "running" ? "is-running" : "")}".Trim();
+    string ProcessIcon => Trace.Status == "running" ? "spinner" : "zap";
+    string SummaryText => string.IsNullOrWhiteSpace(Trace.Summary) ? "Generating" : Trace.Summary;
+    bool UseFlowSummary => Trace.Status == "running" && Trace.Steps.Count > 0;
 
-    void Toggle(string id)
+    void Toggle(RpTurnTraceStep step)
     {
-        if (!OpenSteps.Add(id))
-            OpenSteps.Remove(id);
+        if (!CanExpand(step))
+            return;
+
+        if (!OpenSteps.Add(step.Id))
+            OpenSteps.Remove(step.Id);
     }
+
+    static bool CanExpand(RpTurnTraceStep step) =>
+        !string.Equals(step.Status, "pending", StringComparison.Ordinal) &&
+        (!string.IsNullOrWhiteSpace(step.SystemPrompt) ||
+         !string.IsNullOrWhiteSpace(step.UserPrompt) ||
+         !string.IsNullOrWhiteSpace(step.StructuredOutputJson) ||
+         !string.IsNullOrWhiteSpace(step.RawOutput) ||
+         !string.IsNullOrWhiteSpace(step.Error));
+
+    static string StepClass(RpTurnTraceStep step) =>
+        $"process-step is-{NormalizeStatus(step.Status)}";
+
+    static string StepStatusClass(RpTurnTraceStep step) =>
+        $"process-step-status is-{NormalizeStatus(step.Status)}";
+
+    static string FlowStepClass(RpTurnTraceStep step) =>
+        $"process-flow-step is-{NormalizeStatus(step.Status)}";
+
+    static string ModelText(RpTurnTraceStep step)
+    {
+        if (string.IsNullOrWhiteSpace(step.ModelId))
+            return "";
+
+        return step.ModelId;
+    }
+
+    static string ProviderIconClass(RpTurnTraceStep step) => step.ProviderType.Trim().ToLowerInvariant() switch
+    {
+        "claude" => "fa-brands fa-claude",
+        "grok" => "fa-brands fa-x-twitter",
+        "huggingface" => "fa-brands fa-hugging-face",
+        "openai" => "fa-brands fa-openai",
+        "elevenlabs" => "fa-solid fa-grip-lines-vertical",
+        _ => "fa-solid fa-brain-circuit"
+    };
+
+    static int TotalTokens(RpTurnTraceStep step) =>
+        step.TotalTokens > 0
+            ? step.TotalTokens
+            : step.InputTokens + step.OutputTokens;
+
+    static string StepStatusIcon(RpTurnTraceStep step) => NormalizeStatus(step.Status) switch
+    {
+        "running" => "spinner",
+        "completed" => "check",
+        "failed" => "warning",
+        _ => "circle"
+    };
+
+    static string NormalizeStatus(string status) => status switch
+    {
+        "running" => "running",
+        "completed" => "completed",
+        "failed" => "failed",
+        _ => "pending"
+    };
 
     static string IconFor(string id) => id switch
     {

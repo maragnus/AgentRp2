@@ -72,9 +72,6 @@ namespace AgentRp.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<bool>("ActiveText")
-                        .HasColumnType("bit");
-
                     b.Property<long?>("CreatedUnix")
                         .HasColumnType("bigint");
 
@@ -91,19 +88,29 @@ namespace AgentRp.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<bool>("Image")
-                        .HasColumnType("bit");
+                    b.Property<string>("LastVoiceRefreshError")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("LastVoiceRefreshUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Repository")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("RolesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
-                    b.Property<bool>("Text")
-                        .HasColumnType("bit");
+                    b.Property<string>("VoicesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("ProviderId", "Id");
 
@@ -257,6 +264,10 @@ namespace AgentRp.Migrations
                     b.Property<string>("ChatId")
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActiveModelSelectionsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("CharacterTraitLibraryJson")
                         .IsRequired()

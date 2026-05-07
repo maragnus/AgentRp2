@@ -183,14 +183,14 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    ActiveTextModel? ActiveModel
+    ActiveModelSelection? ActiveModel
     {
         get
         {
             foreach (var provider in Session.Providers.Items)
                 CapabilityCatalog.ApplyResolvedCapabilities(provider);
 
-            return TextModelTuningCatalog.TryResolveActiveTextModel(Session.Providers.Items.ToList());
+            return Session.Chat.ModelSelection.Resolve(AiModelRole.Chat);
         }
     }
 

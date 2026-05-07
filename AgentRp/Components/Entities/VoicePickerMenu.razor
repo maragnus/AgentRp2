@@ -1,0 +1,100 @@
+<AnchoredPopover Placement="OverlayPlacement.BottomStart"
+                 Class="voice-picker-popover"
+                 AnchorClass="voice-picker-anchor"
+                 DebugName="@($"VoicePicker voice menu for {OwnerName}")"
+                 CloseOnContentClick="false">
+    <Trigger Context="picker">
+        <AppButton Variant="secondary"
+                   Size="@(Compact ? "icon" : "md")"
+                   Class="@($"voice-picker-selected-button {(picker.IsOpen ? "is-open" : "")}")"
+                   Disabled="@(ActiveVoiceModel is null || ActiveVoiceModel.Model.Voices.Count == 0)"
+                   Title="@VoicePickerTitle"
+                   AriaLabel="@VoicePickerTitle"
+                   OnClick="@(_ => picker.Toggle())">
+            @SelectedVoiceName
+            <FaIcon Name="chevron-down" />
+        </AppButton>
+    </Trigger>
+    <Content Context="picker">
+        <div class="voice-picker-menu">
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="sidebar-picker-error">@ErrorMessage</div>
+            }
+            @if (ActiveVoiceModel is null)
+            {
+                <VoicePickerEmpty Title="No voice model selected" Message="Choose an active voice model first." />
+            }
+            else if (ActiveVoiceModel.Model.Voices.Count == 0)
+            {
+                <VoicePickerEmpty Title="No cached voices" Message="@($"Refresh voices for {ActiveVoiceModel.Provider.Name} in AI Providers.")" />
+            }
+            else
+            {
+                @foreach (var voice in ActiveVoiceModel.Model.Voices)
+                {
+                    <VoicePickerOption @key="voice.Id"
+                                       Voice="@voice"
+                                       Tags="@AiProviderVoiceDisplayRules.VisibleTags(ActiveVoiceModel.Provider, voice)"
+                                       Selected="@(voice.Id == SelectedVoiceId)"
+                                       OnSelected="@(selectedVoice => SelectVoice(picker, selectedVoice))" />
+                }
+            }
+        </div>
+    </Content>
+</AnchoredPopover>
+
+@code {
+    string ErrorMessage = "";
+
+    [Parameter] public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
+    [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string OwnerName { get; set; } = "entity";
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    string ModelKey => ActiveVoiceModel?.Key ?? "";
+    string SelectedVoiceId => !string.IsNullOrWhiteSpace(ModelKey)
+        && VoiceSelections.TryGetValue(ModelKey, out var selection)
+        ? selection.VoiceId
+        : "";
+    AiProviderVoice? SelectedVoice => ActiveVoiceModel?.Model.Voices.FirstOrDefault(voice => voice.Id == SelectedVoiceId);
+    string SelectedVoiceName => SelectedVoice is null ? "No voice" : AiProviderVoiceDisplayRules.DisplayVoice(SelectedVoice);
+
+    string VoicePickerTitle
+    {
+        get
+        {
+            if (ActiveVoiceModel is null)
+                return $"Choose a voice model for {OwnerName} first.";
+            if (ActiveVoiceModel.Model.Voices.Count == 0)
+                return $"No cached voices for {ActiveVoiceModel.Provider.Name}.";
+
+            return $"Choose speech voice for {OwnerName}.";
+        }
+    }
+
+    async Task SelectVoice(AnchoredPopoverContext picker, AiProviderVoice voice)
+    {
+        if (ActiveVoiceModel is null)
+            return;
+
+        ErrorMessage = "";
+        VoiceSelections[ModelKey] = new()
+        {
+            VoiceId = voice.Id,
+            VoiceName = AiProviderVoiceDisplayRules.DisplayVoice(voice),
+            UpdatedUtc = DateTime.UtcNow
+        };
+
+        try
+        {
+            await OnChanged.InvokeAsync();
+            await picker.Close();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {AiProviderVoiceDisplayRules.DisplayVoice(voice)} for {OwnerName} failed.", exception);
+        }
+    }
+}
