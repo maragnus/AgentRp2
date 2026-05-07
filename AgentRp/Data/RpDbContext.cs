@@ -43,6 +43,7 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.ImagesJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.MessagesJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.StoryAssistantJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.ChatDirectionJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.NarratorProfileJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.PromptLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.CharacterTraitLibraryJson).HasColumnType("nvarchar(max)");
@@ -206,6 +207,7 @@ public sealed class RpChatDocumentRow
     public string ImagesJson { get; set; } = "[]";
     public string MessagesJson { get; set; } = "[]";
     public string StoryAssistantJson { get; set; } = "";
+    public string ChatDirectionJson { get; set; } = "";
     public string NarratorProfileJson { get; set; } = "";
     public string PromptLibraryJson { get; set; } = "";
     public string CharacterTraitLibraryJson { get; set; } = "";

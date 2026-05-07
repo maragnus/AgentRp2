@@ -99,7 +99,7 @@
         await DisposeCropAsync();
         try
         {
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading the crop editor failed because no chat is open.");
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading the crop editor failed because no story is open.");
             CropImage = await ImageCropService.GetAsync(document, Image.Id);
             SetDraftCrop(CropImage.Crop);
         }
@@ -152,7 +152,7 @@
         ErrorMessage = "";
         try
         {
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Saving the crop failed because no chat is open.");
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Saving the crop failed because no story is open.");
             var crop = await ImageCropService.UpdateAsync(
                 new(document.Chat.Id, Image.Id, FocusXPercent, FocusYPercent, ZoomPercent),
                 CancellationToken.None);

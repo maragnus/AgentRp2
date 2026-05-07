@@ -8,6 +8,7 @@ public sealed partial class TranscriptStore(
     ChatRegistry registry,
     ProviderStore providers,
     ITextGenerationService textGenerationService,
+    SceneTransitionService sceneTransitionService,
     IMessageSpeechService? messageSpeechService = null) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Transcript;
@@ -105,6 +106,52 @@ public sealed partial class TranscriptStore(
             turnShape,
             mode);
     });
+
+    public async Task<SceneTransitionResult?> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken = default)
+    {
+        SceneTransitionPlan? transition = null;
+        RpTranscriptTurn? narratorTurn = null;
+        await RunExclusiveAsync("Setting scene...", async () =>
+        {
+            if (Document is null)
+                return;
+
+            transition = sceneTransitionService.Build(Document, request);
+            var plan = new RpTurnPlan
+            {
+                TurnShape = "Brief",
+                Beat = "Set the scene",
+                Intent = "Orient the story around the requested scene state.",
+                ImmediateGoal = transition.IsOpeningScene
+                    ? "Establish the opening scene from the provided starting state."
+                    : "Bridge into the requested scene state and make the new moment playable.",
+                WhyNow = string.IsNullOrWhiteSpace(request.Reason)
+                    ? "The user requested a scene setup or transition."
+                    : request.Reason.Trim(),
+                ChangeIntroduced = transition.IsOpeningScene
+                    ? "The story begins in the requested location with the requested scene contents."
+                    : "The story moves to the requested scene state.",
+                Guardrails = "Do not invent major off-screen consequences, relationship resolutions, losses, victories, or irreversible plot outcomes unless the user explicitly requested them."
+            };
+            narratorTurn = await GenerateProseFromPlanCoreAsync(new(
+                Document.Transcript.ActiveLeafTurnId,
+                "scene-transition",
+                transition.NarratorInstruction,
+                "",
+                "Narrator",
+                true,
+                plan,
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                transition.TargetScene));
+            if (narratorTurn is null)
+                throw new InvalidOperationException("Setting the scene failed while generating the narrator transition.", LastBackgroundError);
+        });
+
+        return transition is null || narratorTurn is null
+            ? null
+            : new(transition, narratorTurn.Id, narratorTurn.Body);
+    }
 
     public async Task RegenerateAsync(string turnId, string guidance, RpCharacter? requestedActor, string turnShape) => await RunExclusiveAsync("Regenerating...", async () =>
     {
@@ -398,10 +445,10 @@ public sealed partial class TranscriptStore(
         }
     }
 
-    async Task GenerateProseFromPlanCoreAsync(GenerateProseFromPlanRequest request)
+    async Task<RpTranscriptTurn?> GenerateProseFromPlanCoreAsync(GenerateProseFromPlanRequest request)
     {
         if (Document is null)
-            return;
+            return null;
 
         ClearBackgroundError();
         try
@@ -411,7 +458,7 @@ public sealed partial class TranscriptStore(
                 providers.Items.ToList(),
                 request,
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
-            await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
+            return await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
         }
         catch (TranscriptGenerationException exception)
         {
@@ -431,6 +478,7 @@ public sealed partial class TranscriptStore(
             CaptureBackgroundError(exception);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
+            return null;
         }
         catch (Exception exception)
         {
@@ -450,10 +498,11 @@ public sealed partial class TranscriptStore(
                 request.Scene);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
+            return null;
         }
     }
 
-    async Task CommitGeneratedTurnAsync(string parentTurnId, string guidance, string mode, GeneratedTurnResult result)
+    async Task<RpTranscriptTurn> CommitGeneratedTurnAsync(string parentTurnId, string guidance, string mode, GeneratedTurnResult result)
     {
         result.Trace.Data["actorName"] = result.ActorName;
         var now = DateTime.UtcNow;
@@ -480,6 +529,7 @@ public sealed partial class TranscriptStore(
         CommitTurn(turn, now);
         await SaveTranscriptAsync();
         await ClearActiveTraceAsync();
+        return turn;
     }
 
     async Task UpdateActiveTraceAsync(RpTurnTrace trace)
@@ -625,7 +675,7 @@ public sealed partial class TranscriptStore(
 
         TranscriptProjector.Apply(Document);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     async Task SaveTranscriptAndTimelineAsync()
@@ -636,7 +686,8 @@ public sealed partial class TranscriptStore(
         TranscriptProjector.Apply(Document);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Timeline);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Timeline);
     }
 
     async Task DiscardSpeechAsync(RpTranscriptTurn turn)

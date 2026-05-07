@@ -18,6 +18,9 @@
                                     OnSelectEntityImage="OpenEntityImagePicker"
                                     OnClose="CloseModal" />
                 break;
+            case "newStory":
+                <NewStoryModal OnClose="CloseModal" OnOpenAssistant="OpenStoryAssistant" />
+                break;
             case "gallery":
                 <ImageGalleryModal Mode="ImageGalleryMode.View" OnGenerate="OpenGalleryGenerator" OnClose="CloseModal" />
                 break;
@@ -41,6 +44,9 @@
                 break;
             case "promptLibrary":
                 <PromptLibraryModal OnClose="CloseModal" />
+                break;
+            case "chatDirection":
+                <ChatDirectionModal OnClose="CloseModal" />
                 break;
             case "modelTuning":
                 <ModelTuningModal OnClose="CloseModal" />
@@ -94,6 +100,14 @@
         await Overlays.CloseAllAsync($"Opening story entities '{value.Type}'");
         EntityType = value.Type;
         EntityId = value.Id;
+        Modal = "entities";
+    }
+
+    async Task OpenStoryAssistant()
+    {
+        await Overlays.CloseAllAsync("Opening Story Assistant");
+        EntityType = "assistant";
+        EntityId = null;
         Modal = "entities";
     }
 

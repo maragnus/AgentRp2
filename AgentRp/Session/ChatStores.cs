@@ -82,7 +82,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
 
         await Registry.ReplaceAreaAsync(Document, Area);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     async Task SaveTranscriptAsync()
@@ -91,7 +91,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
             return;
 
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     static void RemoveCharacterReferences(RpSceneFrame scene, string id) =>
@@ -184,7 +184,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
 
         await Registry.ReplaceAreaAsync(Document, Area);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     async Task SaveTranscriptAsync()
@@ -193,7 +193,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
             return;
 
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     static void UpdateScene(RpSceneFrame scene, string deletedId, RpLocation? replacement)
@@ -290,7 +290,7 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
 
         await Registry.ReplaceAreaAsync(Document, Area);
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     async Task SaveTranscriptAsync()
@@ -299,7 +299,7 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
             return;
 
         await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
     }
 
     string NextId() => NextIdFor(Items.Select(item => item.Id), "i");
@@ -413,6 +413,7 @@ public sealed class StoryAssistantStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
+    TranscriptStore transcript,
     IStoryAssistantService? storyAssistantService) : ActiveChatStoreBase(activeChat, registry), IStoryAssistantCallbacks
 {
     readonly Dictionary<string, TaskCompletionSource<StoryAssistantDecision>> _pendingReviews = [];
@@ -657,6 +658,13 @@ public sealed class StoryAssistantStore(
         return answer;
     }
 
+    public async Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
+    {
+        var transition = await transcript.GenerateSceneTransitionAsync(request, cancellationToken)
+            ?? throw new InvalidOperationException("Setting the scene failed because no active chat is loaded.");
+        return transition;
+    }
+
     void CloseTrailingAssistantMessage()
     {
         if (State.Items.LastOrDefault() is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
@@ -791,6 +799,45 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
     {
         var defaults = PromptLibraryService.CreateDefaultState();
         State.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value = defaults.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value;
+    }
+}
+
+public sealed class ChatDirectionStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+{
+    protected override RoleplayStoreArea Area => RoleplayStoreArea.ChatDirection;
+    public ChatDirectionState State
+    {
+        get
+        {
+            if (Document is null)
+                return ChatDirectionState.CreateDefault();
+
+            Document.ChatDirection = ChatDirectionService.NormalizeState(Document.ChatDirection);
+            return Document.ChatDirection;
+        }
+    }
+
+    public async Task MarkChangedAsync()
+    {
+        if (Document is not null)
+            Document.ChatDirection = ChatDirectionService.NormalizeState(Document.ChatDirection);
+
+        await SaveActiveDocumentAsync();
+    }
+
+    public void SetTitle(string title)
+    {
+        if (Document is not null)
+            Document.Chat.Title = string.IsNullOrWhiteSpace(title) ? "Untitled Scene" : title.Trim();
+    }
+
+    public async Task ResetAsync()
+    {
+        if (Document is null)
+            return;
+
+        Document.ChatDirection = ChatDirectionState.CreateDefault();
+        await MarkChangedAsync();
     }
 }
 

@@ -105,6 +105,42 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
+    public async Task SidebarLocationPickerFollowsActiveStoryAfterEmptyStory()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+        await session.Chats.AddAsync(StoryCreationOptions.Blank());
+
+        var component = context.Render<Sidebar>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.OnOpenModal, _ => Task.CompletedTask)
+            .Add(item => item.OnOpenEntities, _ => Task.CompletedTask));
+        var overlays = context.Render<OverlayHost>();
+
+        Assert.Contains("No location", component.Markup, StringComparison.Ordinal);
+
+        await session.Chats.SelectAsync("ch1");
+
+        Assert.NotEmpty(session.Chat.Locations.Items);
+        Assert.Equal("Devonshire Apartment 822", session.Chat.Locations.Active?.Name);
+
+        component.WaitForAssertion(() =>
+            Assert.Contains("Devonshire Apartment 822", component.Find("[title='Switch current location']").TextContent, StringComparison.Ordinal));
+
+        await component.Find("[title='Switch current location']").ClickAsync(new());
+
+        overlays.WaitForAssertion(() =>
+            Assert.Contains("Devonshire Apartment 822", overlays.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SidebarModelPickerGroupsEnabledChatModelsByProvider()
     {
         using var context = new BunitContext();

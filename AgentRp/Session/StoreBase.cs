@@ -75,7 +75,15 @@ public abstract class ActiveChatStoreBase : StoreBase
             return;
 
         await Registry.ReplaceAreaAsync(Document, Area);
-        await NotifyChangedAsync();
+        await NotifyActiveDocumentChangedAsync(Area);
+    }
+
+    protected async Task NotifyActiveDocumentChangedAsync(RoleplayStoreArea area)
+    {
+        if (Document is null)
+            return;
+
+        await ActiveChat.UpdateAsync(Document, area);
     }
 
     protected virtual void Attach(RpChatDocument? document)

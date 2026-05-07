@@ -150,7 +150,7 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
-    public async Task NewChatCopiesNarratorProfileFromTemplate()
+    public async Task NewStoryCanCopyNarratorProfileFromCurrentStory()
     {
         await using var liveStore = NewLiveStore();
         var session = NewSession(liveStore, new FakeTextGenerationService());
@@ -160,7 +160,7 @@ public sealed class TranscriptFeatureTests
         session.Chat.NarratorProfile.State.DirectionStrength = 2;
         await session.Chat.NarratorProfile.MarkChangedAsync();
 
-        await session.Chats.AddAsync(session.Chats.Active?.Location ?? "");
+        await session.Chats.AddAsync(new() { CopyNarratorProfile = true });
 
         Assert.Equal("mythic-fable", session.Chat.NarratorProfile.State.VoicePreset);
         Assert.Equal(2, session.Chat.NarratorProfile.State.DirectionStrength);

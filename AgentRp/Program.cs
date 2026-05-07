@@ -47,6 +47,7 @@ builder.Services.AddScoped<OverlayService>();
 builder.Services.AddScoped<TranscriptPromptContextBuilder>();
 builder.Services.AddSingleton<PromptLibraryService>();
 builder.Services.AddSingleton<CharacterTraitLibraryService>();
+builder.Services.AddScoped<SceneTransitionService>();
 builder.Services.AddScoped<ITextGenerationService, TextGenerationService>();
 builder.Services.AddScoped<StoryEntityPatchService>();
 builder.Services.AddScoped<IStoryAssistantService, StoryAssistantService>();

@@ -19,7 +19,7 @@
     </span>
     @if (Actions is not null)
     {
-        <span class="sidebar-row-actions">
+        <span class="sidebar-row-actions" @onclick:stopPropagation="StopActionPropagation">
             @Actions
         </span>
     }
@@ -41,6 +41,7 @@
     [Parameter] public RenderFragment? LeadingContent { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
+    [Parameter] public bool StopActionPropagation { get; set; } = true;
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
     string? InteractiveRole => OnClick.HasDelegate ? "button" : null;

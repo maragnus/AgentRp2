@@ -1,0 +1,50 @@
+<AnchoredPopover Class="@PopoverClass"
+                 DebugName="@DebugName"
+                 AnchorClass="is-block"
+                 CloseOnContentClick="false">
+    <Trigger Context="picker">
+        <SidebarRow Title="@Title"
+                    Subtitle="@Subtitle"
+                    Tooltip="@Tooltip"
+                    Open="@picker.IsOpen"
+                    Class="@TriggerClass"
+                    OnClick="@(_ => picker.Toggle())">
+            <LeadingContent>
+                @LeadingContent
+            </LeadingContent>
+            <TrailingContent>
+                <FaIcon Name="@(picker.IsOpen ? "chevron-up" : "chevron-down")" />
+            </TrailingContent>
+        </SidebarRow>
+    </Trigger>
+    <Content Context="picker">
+        <div class="popover-label">@Label</div>
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <div class="sidebar-picker-error">@ErrorMessage</div>
+        }
+        @if (Empty)
+        {
+            <div class="sidebar-picker-empty">@EmptyContent</div>
+        }
+        else
+        {
+            @ChildContent(picker)
+        }
+    </Content>
+</AnchoredPopover>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public string PopoverClass { get; set; } = "sidebar-picker-popover";
+    [Parameter] public string? TriggerClass { get; set; }
+    [Parameter] public string? DebugName { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public bool Empty { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public RenderFragment<AnchoredPopoverContext> ChildContent { get; set; } = _ => builder => { };
+}

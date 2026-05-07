@@ -6,25 +6,28 @@
             <span class="brand-mark"><FaIcon Name="book-open" /></span>
             <span>AgentRp</span>
         </div>
-        <div>
-            <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-        </div>
-    </div>
-
-    <div class="sidebar-action-row">
-        <AppButton Variant="primary" Size="md" Class="sidebar-new-chat" OnClick="@(_ => AddChat())">New Chat <FaIcon Name="plus" /></AppButton>
-        <AppButton Icon="download" TooltipText="Import" Class="sidebar-import-button" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
     </div>
 
     <div class="sidebar-scroll">
         <Section Title="AI Model" Compact="true">
             <RightContent>
-                <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
                 <AppButton Icon="wrench" TooltipText="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
                 <AppButton Icon="settings" TooltipText="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
             </RightContent>
         </Section>
-        <SidebarModelPanel OnOpenProviders="@(() => OnOpenModal.InvokeAsync("aiProviders"))" />
+        <SidebarModelPanel @key="@($"models:{ActiveStoryKey}")" OnOpenProviders="@(() => OnOpenModal.InvokeAsync("aiProviders"))" />
+
+        <div class="divider"></div>
+
+        <Section Title="Story" Compact="true">
+            <RightContent>
+                <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
+                <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
+                <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+                <AppButton Icon="download" TooltipText="Export story" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
+            </RightContent>
+        </Section>
+        <ActiveStoryPicker @key="@($"story:{ActiveStoryKey}")" OnNewStory="@(() => OnOpenModal.InvokeAsync("newStory"))" />
 
         <div class="divider"></div>
 
@@ -33,7 +36,7 @@
             <AppButton Icon="edit" TooltipText="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
             </RightContent>
         </Section>
-        <ActiveLocationPicker />
+        <ActiveLocationPicker @key="@($"location:{ActiveStoryKey}")" />
 
         <div class="divider"></div>
 
@@ -42,7 +45,7 @@
             <AppButton Icon="edit" TooltipText="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
             </RightContent>
         </Section>
-        <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" SpeakTitle="Speak as Narrator" OnSpeak="@(_ => SetSpeakingAs(null))">
+        <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" OnSelect="@(_ => SetSpeakingAs(null))">
             <Actions>
                 <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
             </Actions>
@@ -53,7 +56,7 @@
                                Name="@character.Name"
                                Active="@(Session.SpeakingAs?.Id == character.Id)"
                                InScene="@character.InScene"
-                               OnSpeak="@(_ => SetSpeakingAs(character))">
+                               OnSelect="@(_ => SetSpeakingAs(character))">
                 <AvatarContent>
                     <EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="24" />
                 </AvatarContent>
@@ -78,16 +81,6 @@
                 <span class="row-title">@item.Name</span>
             </div>
         }
-
-        <div class="divider"></div>
-
-        <Section Title="Chats" Compact="true">
-            <RightContent><span class="section-header-note">Starred first</span></RightContent>
-        </Section>
-        @foreach (var chat in Chats)
-        {
-            <SidebarChatRow @key="chat.Id" Chat="chat" Active="@(ActiveChat?.Id == chat.Id)" OnClick="@(_ => Session.Chats.SelectAsync(chat.Id))" />
-        }
     </div>
 </aside>
 
@@ -97,11 +90,8 @@
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
-    List<RpLocation> Locations => Session.Chat.Locations.Items;
     List<RpItem> Items => Session.Chat.Items.Items;
-    IReadOnlyList<RpChat> Chats => Session.Chats.Items;
-    RpChat? ActiveChat => Session.Chats.Active;
-    RpLocation ActiveLocation => Locations.FirstOrDefault(location => location.IsActive) ?? Locations.FirstOrDefault() ?? new() { Name = "No location" };
+    string ActiveStoryKey => Session.Chats.Active?.Id ?? "";
 
     GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 
@@ -119,11 +109,6 @@
     Task OnSessionChanged() => InvokeAsync(StateHasChanged);
 
     Task SetSpeakingAs(RpCharacter? character) => Session.SetSpeakingAsAsync(character);
-
-    async Task AddChat()
-    {
-        await Session.Chats.AddAsync(ActiveLocation.Name);
-    }
 
     public void Dispose()
     {

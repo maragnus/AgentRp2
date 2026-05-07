@@ -1,0 +1,42 @@
+<Section Title="@Title" Hint="@Hint" Count="@SelectedCount" MaxCount="@Max">
+    <div class="@GridClass">
+        @foreach (var item in Items)
+        {
+            var selected = IsSelected(item.Id);
+            var disabled = IsDisabled(selected);
+            <SelectableButton @key="item.Id" TooltipText="@item.Hover" Disabled="@disabled" Class="@($"option-card {(selected ? "is-selected" : "")}")" OnClick="@(_ => Toggle(item.Id))">
+                <span class="option-card-dot">
+                    @if (selected)
+                    {
+                        <FaIcon Name="check" />
+                    }
+                </span>
+                <span class="option-card-copy">
+                    <strong>@item.Label</strong>
+                    <small>@item.Hover</small>
+                </span>
+            </SelectableButton>
+        }
+    </div>
+</Section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public int Columns { get; set; } = 2;
+    [Parameter] public IReadOnlyList<CharacterOption> Items { get; set; } = [];
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public List<string>? MultiValues { get; set; }
+    [Parameter] public int? Max { get; set; }
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+
+    int? SelectedCount => MultiValues?.Count;
+    string GridClass => $"option-grid cols-{Columns}";
+
+    bool IsSelected(string id) => MultiValues?.Contains(id) ?? Selected == id;
+
+    bool IsDisabled(bool selected) => MultiValues is not null && Max.HasValue && !selected && MultiValues.Count >= Max.Value;
+
+    Task Toggle(string id) => MultiValues is null ? OnSelect.InvokeAsync(id) : OnToggle.InvokeAsync(id);
+}

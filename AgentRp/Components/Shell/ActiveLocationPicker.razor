@@ -1,58 +1,42 @@
-<AnchoredPopover Class="sidebar-picker-popover sidebar-location-popover"
-                 DebugName="Sidebar active location picker"
-                 AnchorClass="is-block"
-                 CloseOnContentClick="false">
-    <Trigger Context="picker">
-        <SidebarRow Title="@ActiveLocationName"
-                    Tooltip="Switch current location"
-                    Open="@picker.IsOpen"
-                    OnClick="@(_ => picker.Toggle())">
-            <LeadingContent>
-                @if (ActiveLocation is null)
-                {
-                    <span class="sidebar-row-icon"><FaIcon Name="map-pin" /></span>
-                }
-                else
-                {
-                    <EntityImage Name="@ActiveLocation.Name" Image="@ImageFor(ActiveLocation.ImageId)" EntityType="location" EntityId="@ActiveLocation.Id" Size="24" />
-                }
-            </LeadingContent>
-            <TrailingContent>
-                <FaIcon Name="@(picker.IsOpen ? "chevron-up" : "chevron-down")" />
-            </TrailingContent>
-        </SidebarRow>
-    </Trigger>
-    <Content Context="picker">
-        <div class="popover-label">Locations</div>
-        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+@implements IDisposable
+
+<SidebarActivePicker Label="Locations"
+                     Title="@ActiveLocationName"
+                     Tooltip="Switch current location"
+                     PopoverClass="sidebar-picker-popover sidebar-location-popover"
+                     DebugName="Sidebar active location picker"
+                     ErrorMessage="@ErrorMessage"
+                     Empty="@(Locations.Count == 0)">
+    <LeadingContent>
+        @if (ActiveLocation is null)
         {
-            <div class="sidebar-picker-error">@ErrorMessage</div>
-        }
-        @if (Locations.Count == 0)
-        {
-            <div class="sidebar-picker-empty">No locations are available.</div>
+            <span class="sidebar-row-icon"><FaIcon Name="map-pin" /></span>
         }
         else
         {
-            @foreach (var location in Locations)
-            {
-                var selected = location.IsActive;
-                <PickerOptionButton @key="location.Id"
-                                    Title="@location.Name"
-                                    Subtitle="@location.Summary"
-                                    Selected="@selected"
-                                    Disabled="@selected"
-                                    TooltipText="@($"Use {location.Name}")"
-                                    AriaLabel="@($"Use {location.Name}")"
-                                    OnClick="@(() => SelectLocation(picker, location))">
-                    <LeadingContent>
-                        <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" EntityType="location" EntityId="@location.Id" Size="24" />
-                    </LeadingContent>
-                </PickerOptionButton>
-            }
+            <EntityImage Name="@ActiveLocation.Name" Image="@ImageFor(ActiveLocation.ImageId)" EntityType="location" EntityId="@ActiveLocation.Id" Size="24" />
         }
-    </Content>
-</AnchoredPopover>
+    </LeadingContent>
+    <EmptyContent>No locations are available.</EmptyContent>
+    <ChildContent Context="picker">
+        @foreach (var location in Locations)
+        {
+            var selected = location.IsActive;
+            <PickerOptionButton @key="location.Id"
+                                Title="@location.Name"
+                                Subtitle="@location.Summary"
+                                Selected="@selected"
+                                Disabled="@selected"
+                                TooltipText="@($"Use {location.Name}")"
+                                AriaLabel="@($"Use {location.Name}")"
+                                OnClick="@(() => SelectLocation(picker, location))">
+                <LeadingContent>
+                    <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" EntityType="location" EntityId="@location.Id" Size="24" />
+                </LeadingContent>
+            </PickerOptionButton>
+        }
+    </ChildContent>
+</SidebarActivePicker>
 
 @code {
     string? ErrorMessage;
@@ -66,6 +50,18 @@
 
     GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
 
+    protected override void OnInitialized()
+    {
+        Session.Chat.Locations.Changed += OnStoreChanged;
+        Session.Chat.Images.Changed += OnStoreChanged;
+    }
+
+    Task OnStoreChanged()
+    {
+        ErrorMessage = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
     async Task SelectLocation(AnchoredPopoverContext picker, RpLocation location)
     {
         ErrorMessage = null;
@@ -78,5 +74,11 @@
         {
             ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {location.Name} as the current location failed.", exception);
         }
+    }
+
+    public void Dispose()
+    {
+        Session.Chat.Locations.Changed -= OnStoreChanged;
+        Session.Chat.Images.Changed -= OnStoreChanged;
     }
 }

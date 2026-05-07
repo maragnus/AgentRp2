@@ -201,7 +201,7 @@
 @if (ConfirmClear)
 {
     <ConfirmDialog Title="Clear assistant transcript?"
-                   Body="Clear the Story Assistant chat and provider thread. Story entities will stay unchanged."
+                   Body="Clear the Story Assistant conversation and provider thread. Story entities will stay unchanged."
                    Icon="eraser"
                    ConfirmText="Clear"
                    ConfirmVariant="rose"
@@ -224,7 +224,7 @@
         ? "No reasoning model"
         : string.IsNullOrWhiteSpace(ActiveModel.Model.DisplayName) ? ActiveModel.Model.Id : ActiveModel.Model.DisplayName;
     string RestartMessage => string.IsNullOrWhiteSpace(Session.Chat.StoryAssistant.State.RemoteThreadError)
-        ? "The provider no longer has the saved assistant thread. Story entities and chat are unchanged."
+        ? "The provider no longer has the saved assistant thread. Story entities and story are unchanged."
         : Session.Chat.StoryAssistant.State.RemoteThreadError;
     bool ShowBusyPlaceholder => Session.Chat.StoryAssistant.IsBusy
         && !HasLoadingAssistantMessage()

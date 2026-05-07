@@ -1,0 +1,38 @@
+<div class="include-list @Class">
+    @foreach (var item in Items)
+    {
+        var selected = SelectedIds.Contains(item.Id);
+        var indeterminate = IndeterminateIds.Contains(item.Id);
+        <SelectableButton @key="item.Id" Class="@($"include-row {(selected ? "is-active" : "")}")" OnClick="@(_ => OnToggle.InvokeAsync(item.Id))">
+            <span class="export-check @(selected ? "is-active" : "")">
+                @if (selected)
+                {
+                    <FaIcon Name="check" />
+                }
+                else if (indeterminate)
+                {
+                    <span></span>
+                }
+            </span>
+            <span class="include-icon"><FaIcon Name="@item.Icon" /></span>
+            <span class="include-main"><strong>@item.Label</strong><small>@item.Note</small></span>
+            @if (!string.IsNullOrWhiteSpace(item.Count))
+            {
+                <code>@item.Count</code>
+            }
+        </SelectableButton>
+        @if (NoteContent is not null)
+        {
+            @NoteContent(new(item, selected, indeterminate))
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<IncludeChecklistItem> Items { get; set; } = [];
+    [Parameter] public IReadOnlySet<string> SelectedIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+    [Parameter] public IReadOnlySet<string> IndeterminateIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+    [Parameter] public RenderFragment<IncludeChecklistRowContext>? NoteContent { get; set; }
+}

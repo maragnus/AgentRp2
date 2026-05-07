@@ -1,0 +1,224 @@
+@implements IDisposable
+
+<ModalShell Title="Direction" Icon="book-open" MaxWidth="900px" BodyClass="is-flush" OnClose="Close">
+    <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="620px" RailWidth="164px" Class="chat-direction-tabs">
+        <RailHeader>
+            <div class="chat-direction-rail-header">
+                <label for="chat-direction-title">Story Title</label>
+                <input id="chat-direction-title" class="chat-direction-title-field" value="@DraftTitle" @onchange="SetDraftTitle" />
+            </div>
+        </RailHeader>
+        <ChildContent>
+            <ModalTab Id="mood" Title="Mood" Summary="@MoodSummary" Dirty="@IsMoodDirty()">
+                <LeadingContent><FaIcon Name="sparkle" /></LeadingContent>
+            </ModalTab>
+            <ModalTab Id="shape" Title="Shape" Summary="@ShapeSummary" Dirty="@IsShapeDirty()">
+                <LeadingContent><FaIcon Name="branch" /></LeadingContent>
+            </ModalTab>
+            <ModalTab Id="limits" Title="Limits" Summary="@LimitsSummary" Dirty="@IsLimitsDirty()">
+                <LeadingContent><FaIcon Name="warning" /></LeadingContent>
+            </ModalTab>
+            <ModalTab Id="world" Title="World" Summary="@WorldSummary" Dirty="@IsWorldDirty()">
+                <LeadingContent><FaIcon Name="map-pin" /></LeadingContent>
+            </ModalTab>
+        </ChildContent>
+        <RailFooter>
+            <div class="prompt-rail-note">
+                <div class="divider"></div>
+                <p>Direction is attached to this story and rendered into planning, selection, appearance, and prose prompts.</p>
+            </div>
+        </RailFooter>
+        <MainContent>
+            <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack chat-direction-tab-body">
+                <Header>
+                    <ModalPaneToolbar Class="tuning-toolbar">
+                        <strong>@ActiveTabTitle</strong>
+                        <span class="toolbar-spacer"></span>
+                        <Badge Tone="@ActiveBadgeTone">@ActiveTabSummary</Badge>
+                    </ModalPaneToolbar>
+                </Header>
+                <ChildContent>
+                    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                    {
+                        <div class="modal-error">@ErrorMessage</div>
+                    }
+
+                    @if (ActiveTab == "mood")
+                    {
+                        <OptionGrid Title="Genres" Hint="@($"Pick up to {ChatDirectionService.MaxGenres}")" Columns="2" Items="@Library.Genres" MultiValues="@Draft.Genres" Max="@ChatDirectionService.MaxGenres" OnToggle="@(id => ToggleLimited(Draft.Genres, id, ChatDirectionService.MaxGenres))" />
+                        <OptionGrid Title="Tone" Hint="@($"Pick up to {ChatDirectionService.MaxTones}")" Columns="2" Items="@Library.Tones" MultiValues="@Draft.Tones" Max="@ChatDirectionService.MaxTones" OnToggle="@(id => ToggleLimited(Draft.Tones, id, ChatDirectionService.MaxTones))" />
+                        <OptionGrid Title="Themes" Hint="@($"Pick up to {ChatDirectionService.MaxThemes}")" Columns="2" Items="@Library.Themes" MultiValues="@Draft.Themes" Max="@ChatDirectionService.MaxThemes" OnToggle="@(id => ToggleLimited(Draft.Themes, id, ChatDirectionService.MaxThemes))" />
+                    }
+                    else if (ActiveTab == "shape")
+                    {
+                        <OptionGrid Title="Pacing" Hint="@($"Pick up to {ChatDirectionService.MaxPacing}")" Columns="2" Items="@Library.Pacing" MultiValues="@Draft.Pacing" Max="@ChatDirectionService.MaxPacing" OnToggle="@(id => ToggleLimited(Draft.Pacing, id, ChatDirectionService.MaxPacing))" />
+                        <OptionGrid Title="Focus" Hint="@($"Pick up to {ChatDirectionService.MaxStoryFocus}")" Columns="2" Items="@Library.StoryFocus" MultiValues="@Draft.StoryFocus" Max="@ChatDirectionService.MaxStoryFocus" OnToggle="@(id => ToggleLimited(Draft.StoryFocus, id, ChatDirectionService.MaxStoryFocus))" />
+                    }
+                    else if (ActiveTab == "limits")
+                    {
+                        <ContentIntensityControl Label="Explicit Content" Value="@Draft.ExplicitContent" ValueChanged="@(value => Draft.ExplicitContent = value)" />
+                        <ContentIntensityControl Label="Violent Content" Value="@Draft.ViolentContent" ValueChanged="@(value => Draft.ViolentContent = value)" />
+                        <OptionGrid Title="Boundaries" Hint="@($"Pick up to {ChatDirectionService.MaxBoundaries}")" Columns="2" Items="@Library.Boundaries" MultiValues="@Draft.Boundaries" Max="@ChatDirectionService.MaxBoundaries" OnToggle="@(id => ToggleLimited(Draft.Boundaries, id, ChatDirectionService.MaxBoundaries))" />
+                    }
+                    else
+                    {
+                        <FieldRow Label="Setting">
+                            <textarea class="field" rows="5" @bind="Draft.Setting" placeholder="Where this story lives, socially and physically."></textarea>
+                        </FieldRow>
+                        <FieldRow Label="Premise">
+                            <textarea class="field" rows="5" @bind="Draft.Premise" placeholder="The current story promise or direction."></textarea>
+                        </FieldRow>
+                        <FieldRow Label="Custom Guidance">
+                            <textarea class="field" rows="5" @bind="Draft.CustomGuidance" placeholder="Any extra direction this story should consistently honor."></textarea>
+                        </FieldRow>
+                    }
+                </ChildContent>
+                <Footer>
+                    <AppButton Variant="secondary" OnClick="Close">Cancel</AppButton>
+                    <BusyButton OnClick="Save"><FaIcon Name="check" />Save</BusyButton>
+                </Footer>
+            </ModalStackLayout>
+        </MainContent>
+    </ModalTabGroup>
+</ModalShell>
+
+@code {
+    ChatDirectionState Draft = ChatDirectionState.CreateDefault();
+    ChatDirectionState Saved = ChatDirectionState.CreateDefault();
+    ChatDirectionLibrary Library => ChatDirectionService.Library;
+    string ErrorMessage = "";
+    string ActiveTab = "mood";
+    string DraftTitle = "";
+    string SavedTitle = "";
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    string MoodSummary => CountSummary(Draft.Genres.Count + Draft.Tones.Count + Draft.Themes.Count);
+    string ShapeSummary => CountSummary(Draft.Pacing.Count + Draft.StoryFocus.Count);
+    string LimitsSummary => $"{ChatDirectionService.FormatIntensityLabel(Draft.ExplicitContent)} / {ChatDirectionService.FormatIntensityLabel(Draft.ViolentContent)}";
+    string WorldSummary => CountSummary(HasText(Draft.Setting), HasText(Draft.Premise), HasText(Draft.CustomGuidance));
+    string ActiveTabTitle => ActiveTab switch
+    {
+        "shape" => "Story Shape",
+        "limits" => "Limits",
+        "world" => "World",
+        _ => "Mood"
+    };
+    string ActiveTabSummary => ActiveTab switch
+    {
+        "shape" => ShapeSummary,
+        "limits" => LimitsSummary,
+        "world" => WorldSummary,
+        _ => MoodSummary
+    };
+    string ActiveBadgeTone => ActiveTab switch
+    {
+        "shape" => "blue",
+        "limits" => "rose",
+        "world" => "emerald",
+        _ => "violet"
+    };
+
+    protected override void OnInitialized()
+    {
+        LoadDraft();
+        Session.Chat.ChatDirection.Changed += OnStoreChanged;
+    }
+
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    void LoadDraft()
+    {
+        Saved = SessionCloner.Clone(Session.Chat.ChatDirection.State);
+        Draft = SessionCloner.Clone(Saved);
+        SavedTitle = Session.Chats.Active?.Title ?? "";
+        DraftTitle = SavedTitle;
+    }
+
+    void SetActiveTab(string? id) => ActiveTab = id ?? ActiveTab;
+
+    async Task Save()
+    {
+        ErrorMessage = "";
+        try
+        {
+            Session.Chat.ChatDirection.SetTitle(DraftTitle);
+            CopyInto(Session.Chat.ChatDirection.State, Draft);
+            await Session.Chat.ChatDirection.MarkChangedAsync();
+            await Session.Chats.RefreshAsync();
+            await Close();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Saving story direction failed.", exception);
+        }
+    }
+
+    Task Close() => OnClose.InvokeAsync();
+
+    bool IsMoodDirty() =>
+        !SameValues(Draft.Genres, Saved.Genres) ||
+        !SameValues(Draft.Tones, Saved.Tones) ||
+        !SameValues(Draft.Themes, Saved.Themes);
+
+    bool IsShapeDirty() =>
+        !SameValues(Draft.Pacing, Saved.Pacing) ||
+        !SameValues(Draft.StoryFocus, Saved.StoryFocus);
+
+    bool IsLimitsDirty() =>
+        !SameValues(Draft.Boundaries, Saved.Boundaries) ||
+        Draft.ExplicitContent != Saved.ExplicitContent ||
+        Draft.ViolentContent != Saved.ViolentContent;
+
+    bool IsWorldDirty() =>
+        DraftTitle != SavedTitle ||
+        Draft.Setting != Saved.Setting ||
+        Draft.Premise != Saved.Premise ||
+        Draft.CustomGuidance != Saved.CustomGuidance;
+
+    void SetDraftTitle(ChangeEventArgs args) => DraftTitle = args.Value?.ToString() ?? "";
+
+    static Task ToggleLimited(List<string> values, string value, int max)
+    {
+        if (!values.Remove(value) && values.Count < max)
+            values.Add(value);
+
+        return Task.CompletedTask;
+    }
+
+    static bool HasText(string value) => !string.IsNullOrWhiteSpace(value);
+
+    static string CountSummary(int count) => count == 1 ? "1 choice" : $"{count} choices";
+
+    static string CountSummary(params bool[] values)
+    {
+        var count = values.Count(value => value);
+        return count == 1 ? "1 field" : $"{count} fields";
+    }
+
+    static bool SameValues(IReadOnlyList<string> left, IReadOnlyList<string> right) =>
+        left.SequenceEqual(right, StringComparer.Ordinal);
+
+    static void CopyInto(ChatDirectionState target, ChatDirectionState source)
+    {
+        var normalized = ChatDirectionService.NormalizeState(source);
+        target.SchemaVersion = normalized.SchemaVersion;
+        target.Genres = normalized.Genres;
+        target.Tones = normalized.Tones;
+        target.Themes = normalized.Themes;
+        target.Pacing = normalized.Pacing;
+        target.StoryFocus = normalized.StoryFocus;
+        target.Boundaries = normalized.Boundaries;
+        target.ExplicitContent = normalized.ExplicitContent;
+        target.ViolentContent = normalized.ViolentContent;
+        target.Setting = normalized.Setting;
+        target.Premise = normalized.Premise;
+        target.CustomGuidance = normalized.CustomGuidance;
+    }
+
+    public void Dispose()
+    {
+        Session.Chat.ChatDirection.Changed -= OnStoreChanged;
+    }
+}

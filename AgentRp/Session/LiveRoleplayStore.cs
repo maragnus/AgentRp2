@@ -14,6 +14,7 @@ public enum RoleplayStoreArea
     Images,
     Transcript,
     StoryAssistant,
+    ChatDirection,
     NarratorProfile,
     PromptLibrary,
     CharacterTraitLibrary,
@@ -32,7 +33,7 @@ public interface ILiveRoleplayStore
     Task<RpChatDocument> OpenChatAsync(Guid sessionId, string chatId, CancellationToken cancellationToken = default);
     void ReleaseChat(Guid sessionId, string? chatId);
     Task<RpChatDocument> GetChatSnapshotAsync(string chatId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, string location, RpChatDocument? template, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default);
     Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default);
     Task ReplaceChatAreaAsync(Guid originSessionId, string chatId, RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken = default);
 }
@@ -170,31 +171,38 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         return await OpenChatAsync(Guid.Empty, chatId, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, string location, RpChatDocument? template, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default)
     {
         await LoadChatsAsync(cancellationToken);
         RpChat chat;
         RpChatDocument document;
         long version;
+        var location = options.CopyLocations ? template?.Chat.Location ?? "" : "";
 
         lock (_gate)
         {
-            chat = new() { Id = NextChatId(), Title = "Untitled Scene", Updated = RelativeDateFormatter.FormatDate(DateTime.UtcNow), Location = location };
+            chat = new() { Id = NextChatId(), Title = "Untitled Story", Updated = RelativeDateFormatter.FormatDate(DateTime.UtcNow), Location = location };
             _chats!.Insert(0, chat);
             _chatListVersion++;
             version = _chatListVersion;
             document = new()
             {
                 Chat = SessionCloner.Clone(chat),
-                Characters = template?.Characters.Select(SessionCloner.Clone).ToList() ?? [],
-                Locations = template?.Locations.Select(SessionCloner.Clone).ToList() ?? [],
-                Items = template?.Items.Select(SessionCloner.Clone).ToList() ?? [],
-                Timeline = template?.Timeline.Select(SessionCloner.Clone).ToList() ?? [],
-                Images = template?.Images.Select(SessionCloner.Clone).ToList() ?? [],
+                Characters = options.CopyCharacters && template is not null ? template.Characters.Select(SessionCloner.Clone).ToList() : [],
+                Locations = options.CopyLocations && template is not null ? template.Locations.Select(SessionCloner.Clone).ToList() : [],
+                Items = options.CopyItems && template is not null ? template.Items.Select(SessionCloner.Clone).ToList() : [],
+                Timeline = options.CopyTimeline && template is not null ? template.Timeline.Select(SessionCloner.Clone).ToList() : [],
+                Images = options.CopyImages && template is not null ? template.Images.Select(SessionCloner.Clone).ToList() : [],
                 Transcript = new(),
                 StoryAssistant = new(),
-                NarratorProfile = template is null ? NarratorProfileState.CreateDefault() : SessionCloner.Clone(template.NarratorProfile)
+                ChatDirection = options.CopyStoryDirection && template is not null ? SessionCloner.Clone(template.ChatDirection) : ChatDirectionState.CreateDefault(),
+                NarratorProfile = options.CopyNarratorProfile && template is not null ? SessionCloner.Clone(template.NarratorProfile) : NarratorProfileState.CreateDefault(),
+                PromptLibrary = options.CopyPromptLibrary && template is not null ? SessionCloner.Clone(template.PromptLibrary) : PromptLibraryState.CreateDefault(),
+                CharacterTraitLibrary = options.CopyCharacters && template is not null ? SessionCloner.Clone(template.CharacterTraitLibrary) : CharacterTraitLibraryState.CreateDefault()
             };
+            if (!options.CopyImages)
+                ClearImageReferences(document);
+
             document.Transcript.RootScene.LocationName = location;
             document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault(item => item.Name == location)?.Id
                 ?? document.Locations.FirstOrDefault(locationItem => locationItem.IsActive)?.Id
@@ -217,6 +225,16 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         QueueSaveDocument(document);
         await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, version));
         return await LoadChatsAsync(cancellationToken);
+    }
+
+    static void ClearImageReferences(RpChatDocument document)
+    {
+        foreach (var character in document.Characters)
+            character.ImageId = "";
+        foreach (var location in document.Locations)
+            location.ImageId = "";
+        foreach (var item in document.Items)
+            item.ImageId = "";
     }
 
     public async Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default)
@@ -259,7 +277,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         }
 
         QueueSaveDocument(snapshot);
-        if (area is RoleplayStoreArea.Characters or RoleplayStoreArea.Locations or RoleplayStoreArea.Images or RoleplayStoreArea.Transcript)
+        if (area is RoleplayStoreArea.Characters or RoleplayStoreArea.Locations or RoleplayStoreArea.Images or RoleplayStoreArea.Transcript or RoleplayStoreArea.ChatDirection)
         {
             QueueSaveChats();
             await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, _chatListVersion));
@@ -316,6 +334,10 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 break;
             case RoleplayStoreArea.StoryAssistant:
                 target.StoryAssistant = SessionCloner.Clone(source.StoryAssistant);
+                break;
+            case RoleplayStoreArea.ChatDirection:
+                target.ChatDirection = SessionCloner.Clone(source.ChatDirection);
+                target.Chat.Title = source.Chat.Title;
                 break;
             case RoleplayStoreArea.NarratorProfile:
                 target.NarratorProfile = SessionCloner.Clone(source.NarratorProfile);

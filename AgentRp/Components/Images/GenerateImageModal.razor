@@ -254,7 +254,7 @@
         try
         {
             await ImageGenerationService.SaveSettingsAsync(new(ModelKey, Size, Quality, ReferenceDetail, ArtStyleKey), generationCancellation.Token);
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no chat is open.");
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no story is open.");
             await foreach (var update in ImageGenerationService.GenerateStreamingAsync(
                 document,
                 Session.Providers.Items,

@@ -18,22 +18,17 @@
             </Section>
 
             <Section Title="Include">
-                <div class="include-list">
-                    @foreach (var item in IncludeItems)
-                    {
-                        var checkedItem = Included[item.Id];
-                        <SelectableButton @key="item.Id" Class="@($"include-row {(checkedItem ? "is-active" : "")}")" OnClick="@(_ => Toggle(item.Id))">
-                            <span class="export-check @(checkedItem ? "is-active" : "")">@if (checkedItem) { <FaIcon Name="check" /> } else if (item.Id == "transcript" && TranscriptIndeterminate) { <span></span> }</span>
-                            <span class="include-icon"><FaIcon Name="@item.Icon" /></span>
-                            <span class="include-main"><strong>@item.Label</strong><small>@item.Note</small></span>
-                            <code>@Counts[item.Id]</code>
-                        </SelectableButton>
-                        @if (item.Id == "transcript" && checkedItem)
+                <IncludeChecklist Items="@IncludeChecklistItems"
+                                  SelectedIds="@SelectedIncludeIds"
+                                  IndeterminateIds="@IndeterminateIncludeIds"
+                                  OnToggle="Toggle">
+                    <NoteContent Context="row">
+                        @if (row.Item.Id == "transcript" && row.Selected)
                         {
                             <div class="transcript-note"><FaIcon Name="zap" />All sections below are required for a full transcript export</div>
                         }
-                    }
-                </div>
+                    </NoteContent>
+                </IncludeChecklist>
             </Section>
 
             <Section Title="Images">
@@ -98,7 +93,7 @@
 
     readonly (string Id, string Label, string Icon, string Note)[] IncludeItems =
     [
-        ("transcript", "Chat Transcript", "message-sq", "Full message history"),
+        ("transcript", "Story Transcript", "message-sq", "Full message history"),
         ("timeline", "History / Timeline", "clock", "Chronological events"),
         ("characters", "Characters", "users", "Profiles & context"),
         ("locations", "Locations", "map-pin", "Descriptions & details"),
@@ -122,7 +117,7 @@
 
     Dictionary<string, string> Counts => new()
     {
-        ["transcript"] = ActiveChat is null ? $"{Chats.Count} chats" : "1 chat",
+        ["transcript"] = ActiveChat is null ? $"{Chats.Count} stories" : "1 story",
         ["timeline"] = $"{Timeline.Count} events",
         ["characters"] = $"{Characters.Count} characters",
         ["locations"] = $"{Locations.Count} locations",
@@ -130,6 +125,11 @@
     };
 
     (string Id, string Label, string Ext, string Icon) SelectedFormat => Formats.First(format => format.Id == Format);
+    IReadOnlyList<IncludeChecklistItem> IncludeChecklistItems => IncludeItems
+        .Select(item => new IncludeChecklistItem(item.Id, item.Label, item.Icon, item.Note, Counts[item.Id]))
+        .ToList();
+    IReadOnlySet<string> SelectedIncludeIds => Included.Where(pair => pair.Value).Select(pair => pair.Key).ToHashSet(StringComparer.Ordinal);
+    IReadOnlySet<string> IndeterminateIncludeIds => TranscriptIndeterminate ? new HashSet<string>(["transcript"], StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal);
     bool AllSubChecked => Included["timeline"] && Included["characters"] && Included["locations"] && Included["items"];
     bool SomeSubChecked => Included["timeline"] || Included["characters"] || Included["locations"] || Included["items"];
     bool TranscriptIndeterminate => !Included["transcript"] && SomeSubChecked && !AllSubChecked;

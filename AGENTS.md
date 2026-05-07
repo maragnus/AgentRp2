@@ -171,3 +171,5 @@ Your context window is finite, so make sure the codebase is optimized for that f
 - Always double check that a solution is a DRY implementation, that existence of existing behavior has been checked. It's always in best interest to increase scope to reuse and expand existing components and logic than to recreate it.
 
 - Always suggest breaking large or complex files logically as part of a plan that will be touching that file.
+
+- Never start the application, leave that to the user. You're free to `build` and `test`, just not `run` or `watch`.

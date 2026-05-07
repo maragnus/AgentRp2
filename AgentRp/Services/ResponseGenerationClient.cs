@@ -89,7 +89,7 @@ public sealed class ModelAssistantThreadLostException(
     string modelId,
     string previousResponseId,
     Exception innerException) : InvalidOperationException(
-        $"Story Assistant needs a fresh thread because {providerName} no longer has the saved response '{previousResponseId}' for '{modelId}'. Clear and restart the Story Assistant; your story entities and chat are unchanged.",
+        $"Story Assistant needs a fresh thread because {providerName} no longer has the saved response '{previousResponseId}' for '{modelId}'. Clear and restart the Story Assistant; your story entities and story are unchanged.",
         innerException);
 
 public interface IModelGenerationClient

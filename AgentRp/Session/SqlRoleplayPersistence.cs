@@ -66,6 +66,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             Images = Deserialize(row.ImagesJson, new List<GalleryImage>()),
             Transcript = Deserialize(row.MessagesJson, new RpTranscriptState()),
             StoryAssistant = Deserialize(row.StoryAssistantJson, new StoryAssistantState()),
+            ChatDirection = Deserialize(row.ChatDirectionJson, ChatDirectionState.CreateDefault()),
             NarratorProfile = Deserialize(row.NarratorProfileJson, NarratorProfileState.CreateDefault()),
             PromptLibrary = Deserialize(row.PromptLibraryJson, PromptLibraryState.CreateDefault()),
             CharacterTraitLibrary = Deserialize(row.CharacterTraitLibraryJson, CharacterTraitLibraryState.CreateDefault()),
@@ -193,6 +194,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         TranscriptProjector.Apply(document, now);
         row.MessagesJson = Serialize(document.Transcript);
         row.StoryAssistantJson = Serialize(document.StoryAssistant);
+        row.ChatDirectionJson = Serialize(ChatDirectionService.NormalizeState(document.ChatDirection));
         row.NarratorProfileJson = Serialize(NarratorProfileService.NormalizeState(document.NarratorProfile));
         row.PromptLibraryJson = Serialize(document.PromptLibrary);
         row.CharacterTraitLibraryJson = Serialize(document.CharacterTraitLibrary);

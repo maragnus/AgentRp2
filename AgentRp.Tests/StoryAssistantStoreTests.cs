@@ -142,7 +142,8 @@ public sealed class StoryAssistantStoreTests
         var liveStore = new TestLiveRoleplayStore(document);
         var registry = new ChatRegistry(Guid.NewGuid(), liveStore, activeChat);
         var providers = new ProviderStore(Guid.NewGuid(), liveStore);
-        return new(activeChat, registry, providers, new ScriptedStoryAssistantService(script, clearScript));
+        var transcript = new TranscriptStore(activeChat, registry, providers, NullTextGenerationService.Instance, new SceneTransitionService());
+        return new(activeChat, registry, providers, transcript, new ScriptedStoryAssistantService(script, clearScript));
     }
 
     static RpChatDocument CreateDocument() => new()
@@ -198,7 +199,7 @@ public sealed class StoryAssistantStoreTests
         public Task<RpChatDocument> GetChatSnapshotAsync(string chatId, CancellationToken cancellationToken = default) =>
             Task.FromResult(document);
 
-        public Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, string location, RpChatDocument? template, CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RpChat>>([document.Chat]);
 
         public Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>

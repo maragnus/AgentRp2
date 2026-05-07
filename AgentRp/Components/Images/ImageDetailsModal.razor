@@ -164,7 +164,7 @@
         ErrorMessage = "";
         try
         {
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading image details failed because no chat is open.");
+            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading image details failed because no story is open.");
             Details = await ImageDetailsService.GetAsync(document, ImageId);
         }
         catch (Exception exception)

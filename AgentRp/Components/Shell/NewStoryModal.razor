@@ -1,0 +1,249 @@
+<ModalShell Title="New Story"
+            Subtitle="Choose how this story should start"
+            Icon="book-open"
+            MaxWidth="860px"
+            Height="560px"
+            BodyClass="is-flush"
+            CloseDisabled="@IsCreating"
+            OnClose="OnClose">
+    <ModalSplitLayout Class="new-story-layout" RailClass="new-story-rail" RailWidth="250px" RailAtEnd>
+        <MainContent>
+            <ModalStackLayout BodyClass="modal-form-stack new-story-main">
+                <ChildContent>
+                    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                    {
+                        <div class="modal-error">@ErrorMessage</div>
+                    }
+
+                    <Section Title="Start With" Class="new-story-section">
+                        <div class="decision-option-list">
+                            <DecisionOptionCard Icon="file"
+                                                Title="Blank Story"
+                                                BadgeText="Empty"
+                                                BadgeTone="blue"
+                                                Active="@(Mode == NewStoryStartMode.Blank)"
+                                                Disabled="@IsCreating"
+                                                Description="Start with no entities, direction, gallery, history, or messages."
+                                                Guidance="Best when the next story should not inherit the current setup."
+                                                OnClick="@(_ => Mode = NewStoryStartMode.Blank)" />
+                            <DecisionOptionCard Icon="sparkles"
+                                                Title="Story Assistant"
+                                                BadgeText="Guided"
+                                                BadgeTone="violet"
+                                                Active="@(Mode == NewStoryStartMode.Assistant)"
+                                                Disabled="@IsCreating"
+                                                Description="Start blank, then open the assistant to build the setup."
+                                                Guidance="Best when you want help creating characters, places, items, and premise."
+                                                OnClick="@(_ => Mode = NewStoryStartMode.Assistant)" />
+                            <DecisionOptionCard Icon="copy"
+                                                Title="Copy Current Story"
+                                                BadgeText="Selective"
+                                                BadgeTone="amber"
+                                                Active="@(Mode == NewStoryStartMode.Copy)"
+                                                Disabled="@(ActiveStory is null || IsCreating)"
+                                                DisabledReason="Open a story before copying its setup."
+                                                Description="Choose which setup sections to bring into the new story."
+                                                Guidance="Messages and snapshots are never copied here."
+                                                OnClick="@(_ => SelectCopyMode())" />
+                        </div>
+                    </Section>
+
+                    @if (Mode == NewStoryStartMode.Copy)
+                    {
+                        <Section Title="Copy From Current Story" Class="new-story-section">
+                            <IncludeChecklist Items="@CopyItems"
+                                              SelectedIds="@SelectedCopyIds"
+                                              OnToggle="ToggleCopySection" />
+                        </Section>
+                    }
+                </ChildContent>
+                <Footer>
+                    <span class="modal-action-spacer"></span>
+                    <span class="modal-action-group">
+                        <AppButton Variant="secondary" Disabled="@IsCreating" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
+                        <BusyButton Disabled="@(!CanCreate)" OnClick="Create"><FaIcon Name="plus" />Create Story</BusyButton>
+                    </span>
+                </Footer>
+            </ModalStackLayout>
+        </MainContent>
+        <RailContent>
+            <Section Title="Summary" Class="new-story-summary" BodyClass="new-story-summary-body">
+                <div class="snapshot-delete-subject">
+                    <span class="narrator-avatar snapshot-avatar"><FaIcon Name="@SummaryIcon" /></span>
+                    <span>
+                        <strong>@SummaryTitle</strong>
+                        <small>@SummarySubtitle</small>
+                    </span>
+                </div>
+
+                <div class="snapshot-delete-impact-list">
+                    @foreach (var line in SummaryLines)
+                    {
+                        <div @key="line.Text">
+                            <FaIcon Name="@line.Icon" />
+                            <span><strong>@line.Text</strong><small>@line.Detail</small></span>
+                        </div>
+                    }
+                </div>
+
+                <div class="divider"></div>
+                <div class="snapshot-delete-summary">
+                    <FaIcon Name="message-sq" />
+                    <span>Messages, branches, and snapshots are not copied by this flow.</span>
+                </div>
+            </Section>
+        </RailContent>
+    </ModalSplitLayout>
+</ModalShell>
+
+@code {
+    const string Characters = "characters";
+    const string Locations = "locations";
+    const string Items = "items";
+    const string Timeline = "timeline";
+    const string Direction = "direction";
+    const string Narrator = "narrator";
+    const string PromptLibrary = "promptLibrary";
+    const string Images = "images";
+
+    NewStoryStartMode Mode;
+    bool IsCreating;
+    string ErrorMessage = "";
+    HashSet<string> SelectedCopyIds = new(StringComparer.Ordinal)
+    {
+        Characters,
+        Locations,
+        Items,
+        Direction,
+        Narrator,
+        PromptLibrary,
+        Images
+    };
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnOpenAssistant { get; set; }
+
+    RpChat? ActiveStory => Session.Chats.Active;
+    bool CanCreate => !IsCreating && (Mode != NewStoryStartMode.Copy || ActiveStory is not null);
+    string SummaryIcon => Mode switch
+    {
+        NewStoryStartMode.Assistant => "sparkles",
+        NewStoryStartMode.Copy => "copy",
+        _ => "file"
+    };
+    string SummaryTitle => Mode switch
+    {
+        NewStoryStartMode.Assistant => "Assistant setup",
+        NewStoryStartMode.Copy => "Selective copy",
+        _ => "Blank story"
+    };
+    string SummarySubtitle => Mode switch
+    {
+        NewStoryStartMode.Assistant => "Starts empty, then opens Assistant",
+        NewStoryStartMode.Copy => $"{SelectedCopyIds.Count} setup sections selected",
+        _ => "No setup copied"
+    };
+    IReadOnlyList<IncludeChecklistItem> CopyItems =>
+    [
+        new(Characters, "Characters", "users", "People and relationship context", CountText(Session.Chat.Characters.Items.Count, "character")),
+        new(Locations, "Locations", "map-pin", "Places and current location state", CountText(Session.Chat.Locations.Items.Count, "location")),
+        new(Items, "Items", "box", "Props, objects, and in-scene state", CountText(Session.Chat.Items.Items.Count, "item")),
+        new(Timeline, "History / Timeline", "clock", "Chronological story events", CountText(Session.Chat.Timeline.Items.Count, "event")),
+        new(Direction, "Story Direction", "flag", "Mood, shape, limits, and world guidance"),
+        new(Narrator, "Narrator Profile", "book-open", "Narration style and narrator voice selections"),
+        new(PromptLibrary, "Prompt Library", "feather", "Story prompt templates and turn shapes"),
+        new(Images, "Gallery Images", "image", "Saved gallery images and entity portraits", CountText(Session.Chat.Images.Items.Count, "image"))
+    ];
+    IReadOnlyList<SummaryLine> SummaryLines => BuildSummaryLines();
+
+    void SelectCopyMode()
+    {
+        if (ActiveStory is null)
+            return;
+
+        Mode = NewStoryStartMode.Copy;
+    }
+
+    void ToggleCopySection(string id)
+    {
+        if (!SelectedCopyIds.Remove(id))
+            SelectedCopyIds.Add(id);
+    }
+
+    async Task Create()
+    {
+        if (!CanCreate)
+            return;
+
+        IsCreating = true;
+        ErrorMessage = "";
+        try
+        {
+            await Session.Chats.AddAsync(BuildOptions());
+            if (Mode == NewStoryStartMode.Assistant)
+                await OnOpenAssistant.InvokeAsync();
+            else
+                await OnClose.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Creating a new story failed.", exception);
+        }
+        finally
+        {
+            IsCreating = false;
+        }
+    }
+
+    StoryCreationOptions BuildOptions() => Mode == NewStoryStartMode.Copy
+        ? new()
+        {
+            CopyCharacters = SelectedCopyIds.Contains(Characters),
+            CopyLocations = SelectedCopyIds.Contains(Locations),
+            CopyItems = SelectedCopyIds.Contains(Items),
+            CopyTimeline = SelectedCopyIds.Contains(Timeline),
+            CopyImages = SelectedCopyIds.Contains(Images),
+            CopyStoryDirection = SelectedCopyIds.Contains(Direction),
+            CopyNarratorProfile = SelectedCopyIds.Contains(Narrator),
+            CopyPromptLibrary = SelectedCopyIds.Contains(PromptLibrary)
+        }
+        : StoryCreationOptions.Blank();
+
+    IReadOnlyList<SummaryLine> BuildSummaryLines()
+    {
+        if (Mode == NewStoryStartMode.Blank)
+            return [new("file", "Starts from scratch", "No setup sections are copied.")];
+        if (Mode == NewStoryStartMode.Assistant)
+            return
+            [
+                new("file", "Starts from scratch", "No setup sections are copied."),
+                new("sparkles", "Opens Story Assistant", "Assistant starts after the story is created.")
+            ];
+
+        var selected = CopyItems
+            .Where(item => SelectedCopyIds.Contains(item.Id))
+            .Select(item => new SummaryLine(item.Icon, item.Label, string.IsNullOrWhiteSpace(item.Count) ? item.Note : item.Count))
+            .ToList();
+        return selected.Count == 0
+            ? [new("file", "No setup copied", "This will create an empty story.")]
+            : selected;
+    }
+
+    static string CountText(int count, string singular)
+    {
+        var plural = singular.EndsWith("y", StringComparison.Ordinal)
+            ? $"{singular[..^1]}ies"
+            : $"{singular}s";
+        return count == 1 ? $"1 {singular}" : $"{count} {plural}";
+    }
+
+    enum NewStoryStartMode
+    {
+        Blank,
+        Assistant,
+        Copy
+    }
+
+    sealed record SummaryLine(string Icon, string Text, string Detail);
+}

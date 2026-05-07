@@ -13,11 +13,51 @@ public sealed class RpChatDocument
     public List<GalleryImage> Images { get; set; } = [];
     public RpTranscriptState Transcript { get; set; } = new();
     public StoryAssistantState StoryAssistant { get; set; } = new();
+    public ChatDirectionState ChatDirection { get; set; } = ChatDirectionState.CreateDefault();
     public NarratorProfileState NarratorProfile { get; set; } = NarratorProfileState.CreateDefault();
     public PromptLibraryState PromptLibrary { get; set; } = PromptLibraryState.CreateDefault();
     public CharacterTraitLibraryState CharacterTraitLibrary { get; set; } = CharacterTraitLibraryState.CreateDefault();
     public ModelTuningState ModelTuning { get; set; } = ModelTuningState.CreateDefault();
     public ActiveModelSelectionsState ActiveModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
+}
+
+public sealed class StoryCreationOptions
+{
+    public bool CopyCharacters { get; set; }
+    public bool CopyLocations { get; set; }
+    public bool CopyItems { get; set; }
+    public bool CopyTimeline { get; set; }
+    public bool CopyImages { get; set; }
+    public bool CopyStoryDirection { get; set; }
+    public bool CopyNarratorProfile { get; set; }
+    public bool CopyPromptLibrary { get; set; }
+
+    public static StoryCreationOptions Blank() => new();
+}
+
+public enum ContentIntensity
+{
+    Forbidden,
+    Allowed,
+    Encouraged
+}
+
+public sealed class ChatDirectionState
+{
+    public int SchemaVersion { get; set; } = 1;
+    public List<string> Genres { get; set; } = [];
+    public List<string> Tones { get; set; } = [];
+    public List<string> Themes { get; set; } = [];
+    public List<string> Pacing { get; set; } = [];
+    public List<string> StoryFocus { get; set; } = [];
+    public List<string> Boundaries { get; set; } = [];
+    public ContentIntensity ExplicitContent { get; set; } = ContentIntensity.Allowed;
+    public ContentIntensity ViolentContent { get; set; } = ContentIntensity.Allowed;
+    public string Setting { get; set; } = "";
+    public string Premise { get; set; } = "";
+    public string CustomGuidance { get; set; } = "";
+
+    public static ChatDirectionState CreateDefault() => ChatDirectionService.CreateDefaultState();
 }
 
 public sealed class ActiveModelSelectionsState

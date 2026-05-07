@@ -22,7 +22,7 @@ public sealed class ImageCropService(IDbContextFactory<RpDbContext> dbContextFac
             .FirstOrDefaultAsync(image => image.ChatId == document.Chat.Id && image.Id == imageId, cancellationToken);
 
         if (row is null && galleryImage is null)
-            throw new InvalidOperationException("Cropping the image failed because the image could not be found in this chat.");
+            throw new InvalidOperationException("Cropping the image failed because the image could not be found in this story.");
 
         var crop = row is null
             ? ImageAvatarCropView.From(galleryImage!)

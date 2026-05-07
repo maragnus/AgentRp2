@@ -206,6 +206,7 @@ static class SessionCloner
         Images = value.Images.Select(Clone).ToList(),
         Transcript = Clone(value.Transcript),
         StoryAssistant = Clone(value.StoryAssistant),
+        ChatDirection = Clone(value.ChatDirection),
         NarratorProfile = Clone(value.NarratorProfile),
         PromptLibrary = Clone(value.PromptLibrary),
         CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
@@ -222,6 +223,22 @@ static class SessionCloner
     {
         ProviderId = value.ProviderId,
         ModelId = value.ModelId
+    };
+
+    public static ChatDirectionState Clone(ChatDirectionState value) => new()
+    {
+        SchemaVersion = value.SchemaVersion,
+        Genres = [.. value.Genres],
+        Tones = [.. value.Tones],
+        Themes = [.. value.Themes],
+        Pacing = [.. value.Pacing],
+        StoryFocus = [.. value.StoryFocus],
+        Boundaries = [.. value.Boundaries],
+        ExplicitContent = value.ExplicitContent,
+        ViolentContent = value.ViolentContent,
+        Setting = value.Setting,
+        Premise = value.Premise,
+        CustomGuidance = value.CustomGuidance
     };
 
     public static NarratorProfileState Clone(NarratorProfileState value) => new()

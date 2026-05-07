@@ -1,0 +1,39 @@
+<FieldRow Label="@Label">
+    <LabelAction>
+        <span class="field-status-pill">@DisplayLabel</span>
+    </LabelAction>
+    <ChildContent>
+        <RangeSlider Value="@SliderValue"
+                     ValueChanged="SetValue"
+                     Min="0"
+                     Max="2"
+                     Step="1"
+                     StartLabel="Forbidden"
+                     EndLabel="Encouraged"
+                     AriaLabel="@Label" />
+        <div class="tuning-inline-note">@Description</div>
+    </ChildContent>
+</FieldRow>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public ContentIntensity Value { get; set; }
+    [Parameter] public EventCallback<ContentIntensity> ValueChanged { get; set; }
+
+    double SliderValue => Value switch
+    {
+        ContentIntensity.Forbidden => 0d,
+        ContentIntensity.Encouraged => 2d,
+        _ => 1d
+    };
+
+    string DisplayLabel => ChatDirectionService.FormatIntensityLabel(Value);
+    string Description => ChatDirectionService.FormatIntensity(Value);
+
+    Task SetValue(double value) => ValueChanged.InvokeAsync(value switch
+    {
+        <= 0d => ContentIntensity.Forbidden,
+        >= 2d => ContentIntensity.Encouraged,
+        _ => ContentIntensity.Allowed
+    });
+}

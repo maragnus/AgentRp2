@@ -628,6 +628,80 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal("profile: \n  traits: \n    - guarded\n    - dry-wit", StoryEntityPatchService.FormatDiffValue(node));
     }
 
+    [Fact]
+    public async Task SetSceneRequiresReviewAndCallsNarratorTransition()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        document.Locations.Add(new() { Id = "l1", Name = "Library" });
+        document.Items.Add(new() { Id = "i1", Name = "Lantern" });
+        var callbacks = new TestCallbacks();
+        callbacks.SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.");
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "set_scene",
+            """{"locationId":"l1","characterIds":["c1","c2"],"itemIds":["i1"],"reason":"Open in the library."}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(1, callbacks.ReviewCount);
+        Assert.Equal(1, callbacks.SceneTransitionCount);
+        Assert.Equal(StoryAssistantItemStatus.Accepted, callbacks.ToolItems.Single().Status);
+        Assert.Contains(callbacks.ToolItems.Single().Diffs, diff => diff.Field == "locationName");
+        Assert.Equal("turn-1", json.RootElement.GetProperty("narratorTurnId").GetString());
+        Assert.Equal("The library waits in lamplight.", json.RootElement.GetProperty("narratorMessage").GetString());
+    }
+
+    [Fact]
+    public async Task RejectedSetSceneDoesNotCallNarratorTransition()
+    {
+        var document = CreateDocument();
+        document.Locations.Add(new() { Id = "l1", Name = "Library" });
+        var callbacks = new TestCallbacks { Decision = new(StoryAssistantDecisionKind.Reject, "Not yet.") };
+        callbacks.SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.");
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "set_scene",
+            """{"locationId":"l1","characterIds":["c1"],"itemIds":[]}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("rejected", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(0, callbacks.SceneTransitionCount);
+        Assert.Equal(StoryAssistantItemStatus.Rejected, callbacks.ToolItems.Single().Status);
+    }
+
+    [Fact]
+    public async Task SetSceneUnknownIdsTellModelToReadEntities()
+    {
+        var document = CreateDocument();
+        document.Locations.Add(new() { Id = "l1", Name = "Library" });
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "set_scene",
+            """{"locationId":"l1","characterIds":["missing"],"itemIds":[]}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("get_story_entities", json.RootElement.GetProperty("nextStep").GetProperty("tool").GetString());
+        Assert.Empty(callbacks.ToolItems);
+    }
+
     static RpChatDocument CreateDocument() => new()
     {
         Chat = new() { Id = "ch1" },
@@ -652,7 +726,9 @@ public sealed class StoryEntityPatchServiceTests
     {
         public StoryAssistantDecision Decision { get; set; } = new(StoryAssistantDecisionKind.Accept, "");
         public List<StoryAssistantTranscriptItem> ToolItems { get; } = [];
+        public Func<SceneTransitionRequest, SceneTransitionResult>? SceneTransition { get; set; }
         public int ReviewCount { get; private set; }
+        public int SceneTransitionCount { get; private set; }
 
         public Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -671,6 +747,15 @@ public sealed class StoryEntityPatchServiceTests
         }
 
         public Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken) => Task.FromResult("Answer");
+
+        public Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
+        {
+            SceneTransitionCount++;
+            if (SceneTransition is null)
+                throw new NotSupportedException();
+
+            return Task.FromResult(SceneTransition(request));
+        }
 
         public Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken) => Task.CompletedTask;
 

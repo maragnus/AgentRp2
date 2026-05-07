@@ -15,6 +15,7 @@ public interface IStoryAssistantCallbacks
     Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
     Task<StoryAssistantDecision> ReviewChangeAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
     Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
+    Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken);
     Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken);
     Task SaveAssistantStateAsync(CancellationToken cancellationToken);
 }
@@ -34,7 +35,7 @@ public interface IStoryAssistantService
         CancellationToken cancellationToken = default);
 }
 
-public sealed class StoryAssistantService(
+public sealed partial class StoryAssistantService(
     IModelGenerationClient generationClient,
     IModelCapabilityCatalog capabilityCatalog,
     StoryEntityPatchService patchService) : IStoryAssistantService
@@ -163,159 +164,15 @@ Use tools for durable changes. Prefer partial updates: only send fields you inte
 Ask focused questions when a choice materially changes story direction. Prefer 1-3 multiple-choice options; use an open-ended question when choices would over-constrain the user.
 When editing relationships, treat them as directional. Use clear thinking like "how Character A sees Character B" and "how Character B sees Character A".
 Before setting controlled character profile fields, call get_character_profile_options for the fields you need. If a character tool fails with nextStep.tool = get_character_profile_options, call it before retrying.
+Before setting controlled chat direction fields, call get_chat_direction_options for the fields you need. If a chat direction tool fails with nextStep.tool = get_chat_direction_options, call it before retrying.
+Use set_scene only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. The set_scene tool stages existing canon only; call get_story_entities first if any ids are uncertain, and create missing canon with existing entity tools or ask the user before setting the scene.
+Do not use set_scene to resolve major plot outcomes, relationship changes, defeats, losses, off-screen decisions, or irreversible consequences unless the user explicitly requested those outcomes. If unsure whether a change is staging or a plot consequence, ask the user.
+When using set_scene, provide state and intent only. Preserve narrator creative freedom; do not write the scene prose yourself.
 Before making a broad or identity-level change, briefly explain the intent and then use a tool. The app will show every tool call to the user for audit.
 """;
-
-    public static IReadOnlyList<ModelAssistantTool> BuildTools(RpChatDocument document) =>
-    [
-        Tool("get_story_entities", "Read the current JSON model for all story entities and character relationships.", ObjectSchema()),
-        Tool("get_story_transcript", "Read the current active story chat transcript, including private intents.", ObjectSchema()),
-        Tool("get_character_profile_options", "Read valid ids and limits for controlled character profile fields. Call this before setting controlled fields in create_character, update_character, or update_character_relationship.", CharacterProfileRules.ProfileOptionsSchema()),
-        Tool("create_character", "Create a new character from provided fields. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema()),
-        Tool("update_character", "Patch only the provided fields on an existing character. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema(needsId: true)),
-        Tool("create_location", "Create a new location from provided canon fields. The location name is required.", LocationEntityPatchSchema(requiredField: "name")),
-        Tool("update_location", "Patch only the provided fields on an existing location. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", LocationEntityPatchSchema(needsId: true)),
-        Tool("create_item", "Create a new item from provided canon fields. The item name is required.", ItemEntityPatchSchema(requiredField: "name")),
-        Tool("update_item", "Patch only the provided fields on an existing item. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", ItemEntityPatchSchema(needsId: true)),
-        Tool("create_timeline_entry", "Create a new timeline entry from provided canon fields. The timeline title is required.", TimelineEntityPatchSchema(requiredField: "title")),
-        Tool("update_timeline_entry", "Patch only the provided fields on an existing timeline entry. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", TimelineEntityPatchSchema(needsId: true)),
-        Tool("update_character_relationship", "Patch the directional relationship between two characters with explicit source/target meaning. Before setting relationshipType or privateTension, call get_character_profile_options.", CharacterProfileRules.RelationshipSchema()),
-        Tool("ask_user", "Ask the user a multiple-choice or open-ended question and wait for their answer.", QuestionSchema())
-    ];
-
-    static ModelAssistantTool Tool(string name, string description, JsonObject schema) => new(name, description, schema);
-
-    static JsonObject ObjectSchema() => new()
-    {
-        ["type"] = "object",
-        ["properties"] = new JsonObject(),
-        ["additionalProperties"] = false
-    };
-
-    static JsonObject LocationEntityPatchSchema(bool needsId = false, string requiredField = "") =>
-        EntityPatchSchema(new()
-        {
-            ["name"] = StringSchema("Location name. Required when creating a location."),
-            ["summary"] = StringSchema("Short scannable location summary."),
-            ["description"] = StringSchema("Physical description and story-relevant details."),
-            ["atmosphere"] = StringSchema("Mood, energy, or emotional tone of the place."),
-            ["features"] = StringSchema("Notable features, landmarks, rooms, exits, hazards, or resources.")
-        }, needsId, requiredField);
-
-    static JsonObject ItemEntityPatchSchema(bool needsId = false, string requiredField = "") =>
-        EntityPatchSchema(new()
-        {
-            ["name"] = StringSchema("Item name. Required when creating an item."),
-            ["summary"] = StringSchema("Short scannable item summary."),
-            ["description"] = StringSchema("Appearance and concrete details."),
-            ["history"] = StringSchema("Backstory, ownership, provenance, or emotional baggage."),
-            ["properties"] = StringSchema("Useful properties, powers, constraints, contents, or current known facts.")
-        }, needsId, requiredField);
-
-    static JsonObject TimelineEntityPatchSchema(bool needsId = false, string requiredField = "") =>
-        EntityPatchSchema(new()
-        {
-            ["title"] = StringSchema("Timeline entry title. Required when creating a timeline entry."),
-            ["date"] = StringSchema("In-world date, relative date, era, or sequence marker."),
-            ["description"] = StringSchema("What happened."),
-            ["significance"] = StringSchema("Why this event matters to canon or future scenes."),
-            ["characters"] = new JsonObject
-            {
-                ["type"] = "array",
-                ["description"] = "Character names or ids from get_story_entities that are involved in this event.",
-                ["items"] = new JsonObject { ["type"] = "string" },
-                ["uniqueItems"] = true
-            }
-        }, needsId, requiredField);
-
-    static JsonObject EntityPatchSchema(JsonObject updateProperties, bool needsId, string requiredField)
-    {
-        var properties = new JsonObject
-        {
-            ["updates"] = new JsonObject
-            {
-                ["type"] = "object",
-                ["description"] = "Only the fields to set or replace. Do not resend unchanged fields.",
-                ["properties"] = updateProperties,
-                ["additionalProperties"] = false
-            },
-            ["reason"] = new JsonObject { ["type"] = "string" }
-        };
-        var required = new JsonArray { "updates" };
-        if (!string.IsNullOrWhiteSpace(requiredField) && properties["updates"] is JsonObject updates)
-            updates["required"] = new JsonArray { requiredField };
-
-        if (needsId)
-        {
-            properties["entityId"] = new JsonObject { ["type"] = "string", ["description"] = "Existing entity id from get_story_entities." };
-            required.Add("entityId");
-        }
-
-        return new()
-        {
-            ["type"] = "object",
-            ["properties"] = properties,
-            ["required"] = required,
-            ["additionalProperties"] = false
-        };
-    }
-
-    static JsonObject StringSchema(string description) => new()
-    {
-        ["type"] = "string",
-        ["description"] = description
-    };
-
-    static JsonObject CharacterEntityPatchSchema(bool needsId = false)
-    {
-        var properties = new JsonObject
-        {
-            ["updates"] = CharacterProfileRules.CharacterPatchSchema(),
-            ["reason"] = new JsonObject { ["type"] = "string" }
-        };
-        var required = new JsonArray { "updates" };
-        if (needsId)
-        {
-            properties["entityId"] = new JsonObject { ["type"] = "string" };
-            required.Add("entityId");
-        }
-
-        return new()
-        {
-            ["type"] = "object",
-            ["properties"] = properties,
-            ["required"] = required,
-            ["additionalProperties"] = false
-        };
-    }
-
-    static JsonObject QuestionSchema() => new()
-    {
-        ["type"] = "object",
-        ["properties"] = new JsonObject
-        {
-            ["prompt"] = new JsonObject { ["type"] = "string" },
-            ["allowsFreeform"] = new JsonObject { ["type"] = "boolean" },
-            ["choices"] = new JsonObject
-            {
-                ["type"] = "array",
-                ["items"] = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["id"] = new JsonObject { ["type"] = "string" },
-                        ["label"] = new JsonObject { ["type"] = "string" }
-                    }
-                }
-            }
-        },
-        ["required"] = new JsonArray { "prompt" },
-        ["additionalProperties"] = false
-    };
 }
 
-public sealed class StoryEntityPatchService
+public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransitionService = null)
 {
     static readonly string[] LocationFields = ["name", "summary", "description", "atmosphere", "features"];
     static readonly string[] ItemFields = ["name", "summary", "description", "history", "properties"];
@@ -336,9 +193,11 @@ public sealed class StoryEntityPatchService
                 "get_story_entities" => await ReadToolAsync(toolCallId, toolName, "Read story entities", argumentsJson, callbacks, new { entities = BuildEntities(document) }, cancellationToken),
                 "get_story_transcript" => await ReadToolAsync(toolCallId, toolName, "Read story transcript", argumentsJson, callbacks, new { transcript = BuildTranscript(document) }, cancellationToken),
                 "get_character_profile_options" => await ReadProfileOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
+                "get_chat_direction_options" => await ReadChatDirectionOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "ask_user" => await AskUserAsync(toolCallId, argumentsJson, callbacks, cancellationToken),
                 "create_character" => await CreateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "update_character" => await UpdateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
+                "update_chat_direction" => await UpdateChatDirectionAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "create_location" => await CreateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "update_location" => await UpdateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "create_item" => await CreateItemAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
@@ -346,6 +205,7 @@ public sealed class StoryEntityPatchService
                 "create_timeline_entry" => await CreateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "update_timeline_entry" => await UpdateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 "update_character_relationship" => await UpdateRelationshipAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
+                "set_scene" => await SetSceneAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
                 _ => Output("failed", new { reason = $"Unknown tool '{toolName}'." })
             };
         }
@@ -366,6 +226,19 @@ public sealed class StoryEntityPatchService
                 }
             });
         }
+        catch (ChatDirectionValidationException exception)
+        {
+            return Output("failed", new
+            {
+                reason = exception.Message,
+                nextStep = new
+                {
+                    tool = "get_chat_direction_options",
+                    fields = exception.Fields,
+                    instruction = "Call get_chat_direction_options for the invalid field, then retry with valid ids, limits, and intensity values."
+                }
+            });
+        }
         catch (StoryAssistantEntityLookupException exception)
         {
             return Output("failed", new
@@ -375,6 +248,18 @@ public sealed class StoryEntityPatchService
                 {
                     tool = "get_story_entities",
                     instruction = "Call get_story_entities, choose the correct entity id from the result, then retry with that entityId."
+                }
+            });
+        }
+        catch (SceneTransitionValidationException exception)
+        {
+            return Output("failed", new
+            {
+                reason = exception.Message,
+                nextStep = new
+                {
+                    tool = "get_story_entities",
+                    instruction = "Call get_story_entities, choose existing canon ids, create missing canon with the appropriate entity tool or ask the user, then retry set_scene."
                 }
             });
         }
@@ -403,6 +288,7 @@ public sealed class StoryEntityPatchService
             locations = document.Locations.Select(LocationShape),
             items = document.Items.Select(ItemShape),
             timeline = document.Timeline.Select(TimelineShape),
+            chatDirection = ChatDirectionRules.Context(document.ChatDirection),
             characterTraitLibrary = CharacterProfileRules.Context(library),
             relationships = document.Characters.Select(character => new
             {
@@ -506,6 +392,15 @@ public sealed class StoryEntityPatchService
         return await ReadToolAsync(callId, toolName, "Read character profile options", argumentsJson, callbacks, new { characterProfileOptions = CharacterProfileRules.ProfileOptions(document.CharacterTraitLibrary, fields) }, cancellationToken);
     }
 
+    static async Task<string> ReadChatDirectionOptionsAsync(RpChatDocument document, string callId, string toolName, string argumentsJson, IStoryAssistantCallbacks callbacks, CancellationToken cancellationToken)
+    {
+        using var json = Parse(argumentsJson);
+        var fields = json.RootElement.TryGetProperty("fields", out var fieldArray) && fieldArray.ValueKind == JsonValueKind.Array
+            ? fieldArray.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
+            : [];
+        return await ReadToolAsync(callId, toolName, "Read chat direction options", argumentsJson, callbacks, new { chatDirectionOptions = ChatDirectionRules.Options(document.ChatDirection, fields) }, cancellationToken);
+    }
+
     async Task<string> AskUserAsync(string callId, string argumentsJson, IStoryAssistantCallbacks callbacks, CancellationToken cancellationToken)
     {
         using var doc = Parse(argumentsJson);
@@ -551,6 +446,20 @@ public sealed class StoryEntityPatchService
         var risk = updates.TryGetProperty("name", out _) || updates.TryGetProperty("backstory", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "character", id, after.Name, args, CharacterJsonObject(before, document.CharacterTraitLibrary), CharacterJsonObject(after, document.CharacterTraitLibrary), risk);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, existing), CharacterJsonObject(existing, document.CharacterTraitLibrary), token);
+    }
+
+    async Task<string> UpdateChatDirectionAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    {
+        using var json = Parse(args);
+        var before = SessionCloner.Clone(document.ChatDirection);
+        var after = SessionCloner.Clone(document.ChatDirection);
+        var updates = Updates(json.RootElement);
+        ChatDirectionRules.ValidatePatch(updates);
+        ChatDirectionRules.Apply(after, updates);
+        after = ChatDirectionService.NormalizeState(after);
+        var risk = ChatDirectionRules.Risk(updates);
+        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, "Update chat direction", "chatDirection", document.Chat.Id, "Chat Direction", args, ChatDirectionRules.JsonObject(before), ChatDirectionRules.JsonObject(after), risk);
+        return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.ChatDirection, () => document.ChatDirection = after, ChatDirectionRules.JsonObject(document.ChatDirection), token);
     }
 
     async Task<string> CreateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
@@ -660,6 +569,33 @@ public sealed class StoryEntityPatchService
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, source), RelationshipJsonObject(source), token);
     }
 
+    async Task<string> SetSceneAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    {
+        using var json = Parse(args);
+        var root = json.RootElement;
+        var request = new SceneTransitionRequest(
+            RequiredString(root, "locationId"),
+            StringList(root, "characterIds"),
+            StringList(root, "itemIds"),
+            String(root, "elapsedTime"),
+            String(root, "transitionNote"),
+            String(root, "reason"));
+        var transition = (sceneTransitionService ?? new SceneTransitionService()).Build(document, request);
+        var item = MutationItem(
+            callId,
+            toolName,
+            StoryAssistantOperationKind.Update,
+            transition.IsOpeningScene ? $"Set opening scene at {transition.TargetScene.LocationName}" : $"Set scene at {transition.TargetScene.LocationName}",
+            "scene",
+            document.Chat.Id,
+            transition.TargetScene.LocationName,
+            args,
+            SceneJsonObject(transition.PreviousScene, document),
+            SceneTransitionJsonObject(transition, document),
+            SceneTransitionRisk(transition));
+        return await ResolveSceneTransitionAsync(document, item, callbacks, request, transition, token);
+    }
+
     async Task<string> ResolveMutationAsync(
         RpChatDocument document,
         StoryAssistantTranscriptItem item,
@@ -698,6 +634,64 @@ public sealed class StoryEntityPatchService
         await callbacks.SaveEntityAreaAsync(area, cancellationToken);
         await callbacks.UpdateToolCallAsync(item, cancellationToken);
         return Output("accepted", new { entityType = item.EntityType, entityId = item.EntityId, resultingEntity = item.After });
+    }
+
+    async Task<string> ResolveSceneTransitionAsync(
+        RpChatDocument document,
+        StoryAssistantTranscriptItem item,
+        IStoryAssistantCallbacks callbacks,
+        SceneTransitionRequest request,
+        SceneTransitionPlan transition,
+        CancellationToken cancellationToken)
+    {
+        item.Diffs = Diff(item.Before, item.After);
+        await callbacks.RecordToolCallAsync(item, cancellationToken);
+        var shouldReview = RequiresSceneReview(transition) || ShouldReview(document.StoryAssistant.ReviewMode, item.Risk);
+        if (shouldReview)
+        {
+            item.Status = StoryAssistantItemStatus.NeedsReview;
+            await callbacks.UpdateToolCallAsync(item, cancellationToken);
+            var decision = await callbacks.ReviewChangeAsync(item, cancellationToken);
+            item.DecisionReason = decision.Reason;
+            if (decision.Kind == StoryAssistantDecisionKind.TryAgain)
+            {
+                item.Status = StoryAssistantItemStatus.RetryRequested;
+                await callbacks.UpdateToolCallAsync(item, cancellationToken);
+                return Output("retry_requested", new { currentScene = item.Before, userGuidance = decision.Reason });
+            }
+
+            if (decision.Kind == StoryAssistantDecisionKind.Reject)
+            {
+                item.Status = StoryAssistantItemStatus.Rejected;
+                await callbacks.UpdateToolCallAsync(item, cancellationToken);
+                return Output("rejected", new { currentScene = item.Before, rejectionReason = decision.Reason });
+            }
+        }
+
+        try
+        {
+            var generated = await callbacks.GenerateSceneTransitionAsync(request, cancellationToken);
+            item.After = SceneTransitionJsonObject(generated.Plan, document);
+            item.Diffs = Diff(item.Before, item.After);
+            item.Status = shouldReview ? StoryAssistantItemStatus.Accepted : StoryAssistantItemStatus.Applied;
+            await callbacks.UpdateToolCallAsync(item, cancellationToken);
+            return Output("accepted", new
+            {
+                entityType = item.EntityType,
+                entityId = item.EntityId,
+                resultingScene = item.After,
+                narratorInstruction = generated.Plan.NarratorInstruction,
+                narratorTurnId = generated.NarratorTurnId,
+                narratorMessage = generated.NarratorMessage
+            });
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            item.Status = StoryAssistantItemStatus.Failed;
+            item.DecisionReason = UserFacingErrorMessageBuilder.Build("Setting the scene failed.", exception);
+            await callbacks.UpdateToolCallAsync(item, cancellationToken);
+            return Output("failed", new { reason = item.DecisionReason, currentScene = item.Before });
+        }
     }
 
     static StoryAssistantTranscriptItem BaseItem(string callId, string toolName, string title, string args)
@@ -744,6 +738,9 @@ public sealed class StoryEntityPatchService
     static string RequiredEntityId(JsonElement root) => String(root, "entityId") is { Length: > 0 } value ? value : throw new StoryAssistantEntityLookupException("The tool call was missing 'entityId'.");
     static string String(JsonElement root, string name, string fallback = "") => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : fallback;
     static bool Bool(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+    static List<string> StringList(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
+        ? value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
+        : [];
 
     static void ValidatePatch(JsonElement updates, IReadOnlyCollection<string> allowedFields, string entityName)
     {
@@ -936,7 +933,7 @@ public sealed class StoryEntityPatchService
         return value.ToJsonString(AppJsonSerializerOptions.Web).Trim('"');
     }
 
-    static JsonObject ToJsonObject<T>(T value) =>
+    public static JsonObject ToJsonObject<T>(T value) =>
         JsonSerializer.SerializeToNode(value, AppJsonSerializerOptions.Web)?.AsObject() ?? new();
 
     static JsonObject CharacterJsonObject(RpCharacter character, CharacterTraitLibraryState library) => ToJsonObject(CharacterShape(character, CharacterTraitLibraryService.NormalizeState(library)));
@@ -950,6 +947,53 @@ public sealed class StoryEntityPatchService
     static JsonObject LocationJsonObject(RpLocation location) => ToJsonObject(LocationShape(location));
     static JsonObject ItemJsonObject(RpItem item) => ToJsonObject(ItemShape(item));
     static JsonObject TimelineJsonObject(RpTimelineEntry entry) => ToJsonObject(TimelineShape(entry));
+    static JsonObject SceneJsonObject(RpSceneFrame scene, RpChatDocument document) => ToJsonObject(new
+    {
+        locationId = scene.LocationId,
+        locationName = ResolveLocationName(scene, document),
+        characterIds = scene.InSceneCharacterIds,
+        characters = ResolveNames(scene.InSceneCharacterIds, document.Characters.Select(character => (character.Id, character.Name))),
+        itemIds = scene.InSceneItemIds,
+        items = ResolveNames(scene.InSceneItemIds, document.Items.Select(item => (item.Id, item.Name)))
+    });
+
+    static JsonObject SceneTransitionJsonObject(SceneTransitionPlan transition, RpChatDocument document) => ToJsonObject(new
+    {
+        isOpeningScene = transition.IsOpeningScene,
+        isLocationTransition = transition.IsLocationTransition,
+        isTimeSkip = transition.IsTimeSkip,
+        locationId = transition.TargetScene.LocationId,
+        locationName = ResolveLocationName(transition.TargetScene, document),
+        characterIds = transition.TargetScene.InSceneCharacterIds,
+        characters = ResolveNames(transition.TargetScene.InSceneCharacterIds, document.Characters.Select(character => (character.Id, character.Name))),
+        itemIds = transition.TargetScene.InSceneItemIds,
+        items = ResolveNames(transition.TargetScene.InSceneItemIds, document.Items.Select(item => (item.Id, item.Name))),
+        addedCharacters = transition.AddedCharacters.Select(item => item.Name),
+        removedCharacters = transition.RemovedCharacters.Select(item => item.Name),
+        stayingCharacters = transition.StayingCharacters.Select(item => item.Name),
+        addedItems = transition.AddedItems.Select(item => item.Name),
+        removedItems = transition.RemovedItems.Select(item => item.Name),
+        stayingItems = transition.StayingItems.Select(item => item.Name)
+    });
+
+    static string ResolveLocationName(RpSceneFrame scene, RpChatDocument document) =>
+        document.Locations.FirstOrDefault(location => location.Id == scene.LocationId)?.Name ?? scene.LocationName;
+
+    static List<string> ResolveNames(IEnumerable<string> ids, IEnumerable<(string Id, string Name)> entities)
+    {
+        var byId = entities.ToDictionary(pair => pair.Id, pair => pair.Name, StringComparer.Ordinal);
+        return ids.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+    }
+
+    static StoryAssistantChangeRisk SceneTransitionRisk(SceneTransitionPlan transition) =>
+        RequiresSceneReview(transition) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
+
+    static bool RequiresSceneReview(SceneTransitionPlan transition) =>
+        transition.IsOpeningScene
+        || transition.IsLocationTransition
+        || transition.IsTimeSkip
+        || transition.RemovedCharacters.Count > 0
+        || transition.RemovedItems.Count > 0;
 
     static string Output(string status, object value)
     {

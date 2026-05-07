@@ -8,6 +8,7 @@ public sealed class RoleplaySession(
     IModelCapabilityCatalog? capabilityCatalog = null,
     ITextGenerationService? textGenerationService = null,
     IMessageSpeechService? messageSpeechService = null,
+    SceneTransitionService? sceneTransitionService = null,
     IStoryAssistantService? storyAssistantService = null,
     IAiProviderCapabilityPipeline? capabilityPipeline = null,
     IAiProviderWidgetService? providerWidgetService = null,
@@ -39,7 +40,7 @@ public sealed class RoleplaySession(
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
         Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
-        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, messageSpeechService, storyAssistantService, _entityNotifier);
+        Chat = new(ActiveChat, Registry, Providers, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier);
         liveStore.Changed += OnLiveStoreChanged;
 
         await Chats.LoadAsync();
@@ -157,6 +158,7 @@ public sealed class ChatWorkspace
         ChatRegistry registry,
         ProviderStore providers,
         ITextGenerationService textGenerationService,
+        SceneTransitionService sceneTransitionService,
         IMessageSpeechService? messageSpeechService,
         IStoryAssistantService? storyAssistantService,
         IEntityNotifier entityNotifier)
@@ -166,8 +168,9 @@ public sealed class ChatWorkspace
         Items = new(activeChat, registry, entityNotifier);
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry, entityNotifier);
-        Transcript = new(activeChat, registry, providers, textGenerationService, messageSpeechService);
-        StoryAssistant = new(activeChat, registry, providers, storyAssistantService);
+        Transcript = new(activeChat, registry, providers, textGenerationService, sceneTransitionService, messageSpeechService);
+        StoryAssistant = new(activeChat, registry, providers, Transcript, storyAssistantService);
+        ChatDirection = new(activeChat, registry);
         NarratorProfile = new(activeChat, registry);
         PromptLibrary = new(activeChat, registry);
         CharacterTraitLibrary = new(activeChat, registry);
@@ -181,6 +184,7 @@ public sealed class ChatWorkspace
         Images.Start();
         Transcript.Start();
         StoryAssistant.Start();
+        ChatDirection.Start();
         NarratorProfile.Start();
         PromptLibrary.Start();
         CharacterTraitLibrary.Start();
@@ -195,6 +199,7 @@ public sealed class ChatWorkspace
     public ImageStore Images { get; }
     public TranscriptStore Transcript { get; }
     public StoryAssistantStore StoryAssistant { get; }
+    public ChatDirectionStore ChatDirection { get; }
     public NarratorProfileStore NarratorProfile { get; }
     public PromptLibraryStore PromptLibrary { get; }
     public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
@@ -227,9 +232,9 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
     public RoleplaySession? ActiveSession { get; set; }
 
-    public async Task<RpChat> AddAsync(string location)
+    public async Task<RpChat> AddAsync(StoryCreationOptions options)
     {
-        var chats = await liveStore.AddChatAsync(sessionId, location, activeChat.Current);
+        var chats = await liveStore.AddChatAsync(sessionId, options, activeChat.Current);
         _items.Clear();
         _items.AddRange(chats.Select(SessionCloner.Clone));
         var chat = _items.First();

@@ -53,8 +53,9 @@ public sealed class TranscriptPromptContextBuilder
         var charactersText = FormatCharactersInScene(presentCharacters, actor, characterAppearances, traitLibrary);
         var otherCharactersText = FormatOtherKnownCharacters(otherCharacters);
         var objectsText = FormatObjectsInScene(presentItems);
+        var chatDirection = ChatDirectionService.NormalizeState(document.ChatDirection);
         var storyContextText = FormatStoryContext(document);
-        var contentGuidanceText = FormatContentGuidance();
+        var contentGuidanceText = ChatDirectionService.BuildContentGuidance(chatDirection);
         var historySummaryText = FormatHistorySummary(document);
         var snapshotText = snapshot is null ? "No pinned snapshot yet." : snapshot.Summary;
         var transcriptText = FormatTranscript(transcriptTurns);
@@ -85,6 +86,8 @@ public sealed class TranscriptPromptContextBuilder
             ObjectsText: objectsText,
             StoryContextText: storyContextText,
             ContentGuidanceText: contentGuidanceText,
+            ExplicitContentLabel: ChatDirectionService.FormatIntensityLabel(chatDirection.ExplicitContent),
+            ViolentContentLabel: ChatDirectionService.FormatIntensityLabel(chatDirection.ViolentContent),
             HistorySummaryText: historySummaryText,
             SnapshotText: snapshotText,
             TranscriptText: transcriptText,
@@ -150,8 +153,8 @@ public sealed class TranscriptPromptContextBuilder
         var actorName = context.Actor?.Name ?? "Narrator";
         return new(StringComparer.Ordinal)
         {
-            ["{content.explicitLabel}"] = "Allowed",
-            ["{content.violentLabel}"] = "Allowed",
+            ["{content.explicitLabel}"] = context.ExplicitContentLabel,
+            ["{content.violentLabel}"] = context.ViolentContentLabel,
             ["{appearance.characters}"] = context.AppearanceCharactersText,
             ["{appearance.transcript}"] = context.AppearanceTranscriptText,
             ["{selection.activeSpeakerName}"] = context.ActiveSpeakerName,
@@ -437,6 +440,9 @@ public sealed class TranscriptPromptContextBuilder
         builder.AppendLine("**Story context:**");
         AppendField(builder, "Title", document.Chat.Title);
         AppendField(builder, "Chat location", document.Chat.Location);
+        var direction = ChatDirectionService.BuildStoryContext(document.ChatDirection);
+        if (!string.IsNullOrWhiteSpace(direction))
+            builder.AppendLine(direction);
         if (document.Timeline.Count > 0)
         {
             builder.AppendLine("- Timeline:");
@@ -446,13 +452,6 @@ public sealed class TranscriptPromptContextBuilder
 
         return builder.ToString().TrimEnd();
     }
-
-    static string FormatContentGuidance() =>
-        """
-        **Content guidance:**
-        - Explicit content: Allowed when naturally supported by the scene.
-        - Violent content: Allowed when naturally supported by the scene.
-        """;
 
     static string FormatHistorySummary(RpChatDocument document)
     {
@@ -679,6 +678,8 @@ public sealed record TurnPromptContext(
     string ObjectsText,
     string StoryContextText,
     string ContentGuidanceText,
+    string ExplicitContentLabel,
+    string ViolentContentLabel,
     string HistorySummaryText,
     string SnapshotText,
     string TranscriptText,

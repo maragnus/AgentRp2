@@ -15,7 +15,7 @@
                 <div class="providers-empty-state is-compact">
                     <FaIcon Name="flag" />
                     <strong>Snapshot unavailable</strong>
-                    <span>This snapshot is no longer in the active chat.</span>
+                    <span>This snapshot is no longer in the active story.</span>
                 </div>
             </ChildContent>
             <Footer>
@@ -44,7 +44,7 @@
                                                     Active="@(Method == SnapshotDeleteMethod.Unwrap)"
                                                     Disabled="@(!Impact.CanUnwrap || IsDeleting)"
                                                     DisabledReason="@Impact.UnwrapDisabledReason"
-                                                    Description="@($"Restore {CoveredTurnText} to the chat log and remove only the snapshot row.")"
+                                                    Description="@($"Restore {CoveredTurnText} to the story log and remove only the snapshot row.")"
                                                     Guidance="Choose this when the summarized scene should become readable transcript again."
                                                     OnClick="@(_ => SelectMethod(SnapshotDeleteMethod.Unwrap))" />
 
@@ -174,7 +174,7 @@
     string LaterSnapshotText => CountText(Impact?.LaterSnapshotCount ?? 0, "later snapshot");
     string BranchText => CountText(Impact?.CoveredBranchCount ?? 0, "linked continuation");
     string MessageImpactText => Method == SnapshotDeleteMethod.Unwrap
-        ? "Returned to the chat log"
+        ? "Returned to the story log"
         : "Removed from the transcript";
     string TimelineImpactText => Impact?.LinkedTimelineEntryCount == 0
         ? "No timeline changes"

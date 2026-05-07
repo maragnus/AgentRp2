@@ -1,0 +1,87 @@
+<SidebarActivePicker Label="Stories"
+                     Title="@ActiveStoryTitle"
+                     Subtitle="@ActiveStorySubtitle"
+                     Tooltip="Switch current story"
+                     PopoverClass="sidebar-picker-popover sidebar-story-popover"
+                     DebugName="Sidebar active story picker"
+                     ErrorMessage="@ErrorMessage"
+                     Empty="false">
+    <LeadingContent>
+        <span class="sidebar-story-trigger-avatars" aria-label="@ActiveAvatarSummary">
+            @foreach (var character in ActiveVisibleSceneCharacters)
+            {
+                <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" EntityType="character" EntityId="@character.Id" ChatId="@ActiveStory?.Id" Size="22" Class="sidebar-chat-avatar" />
+            }
+            @if (ActiveVisibleSceneCharacters.Count == 0)
+            {
+                <span class="sidebar-row-icon"><FaIcon Name="book-open" /></span>
+            }
+        </span>
+    </LeadingContent>
+    <EmptyContent>No stories are available.</EmptyContent>
+    <ChildContent Context="picker">
+        <PickerOptionButton Class="sidebar-story-new-option"
+                            Title="New Story"
+                            TooltipText="New Story"
+                            AriaLabel="New Story"
+                            OnClick="@(() => OpenNewStory(picker))">
+            <LeadingContent>
+                <span class="sidebar-row-icon"><FaIcon Name="plus" /></span>
+            </LeadingContent>
+        </PickerOptionButton>
+        <div class="divider"></div>
+        @if (Stories.Count == 0)
+        {
+            <div class="sidebar-picker-empty">No stories are available.</div>
+        }
+        else
+        {
+            @foreach (var story in Stories)
+            {
+                <SidebarStoryRow @key="story.Id"
+                                 Story="story"
+                                 Active="@(ActiveStory?.Id == story.Id)"
+                                 OnClick="@(() => SelectStory(picker, story))" />
+            }
+        }
+    </ChildContent>
+</SidebarActivePicker>
+
+@code {
+    string? ErrorMessage;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback OnNewStory { get; set; }
+
+    IReadOnlyList<RpChat> Stories => Session.Chats.Items;
+    RpChat? ActiveStory => Session.Chats.Active;
+    IReadOnlyList<RpChatSceneCharacter> ActiveVisibleSceneCharacters => ActiveStory?.SceneCharacters.Take(3).ToList() ?? [];
+    string ActiveStoryTitle => ActiveStory?.Title ?? "No story";
+    string ActiveStorySubtitle => ActiveStory is null
+        ? ""
+        : string.Join(" · ", new[] { ActiveStory.Location, ActiveStory.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string ActiveAvatarSummary => ActiveStory is null || ActiveStory.SceneCharacters.Count == 0
+        ? "No characters in scene"
+        : $"In scene: {string.Join(", ", ActiveStory.SceneCharacters.Take(3).Select(character => character.Name))}";
+
+    async Task OpenNewStory(AnchoredPopoverContext picker)
+    {
+        ErrorMessage = null;
+        await picker.Close();
+        await OnNewStory.InvokeAsync();
+    }
+
+    async Task SelectStory(AnchoredPopoverContext picker, RpChat story)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Session.Chats.SelectAsync(story.Id);
+            await picker.Close();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Opening {story.Title} failed.", exception);
+        }
+    }
+}
