@@ -10,6 +10,8 @@ public interface IMarkdownRenderer
 public sealed class MarkdownRenderer : IMarkdownRenderer
 {
     readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
+        .DisableHtml()
+        .UseAudioTags()
         .UseSoftlineBreakAsHardlineBreak()
         .Build();
 

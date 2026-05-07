@@ -64,6 +64,16 @@
                              TranscriptBusy="TranscriptBusy"
                              SubsequentCount="subsequentCount" />
             }
+            @if (ActiveDraftTurn is not null)
+            {
+                <ChatMessage @key="ActiveDraftTurn.Id"
+                             Message="ActiveDraftTurn"
+                             Characters="Characters"
+                             ShowAppearance="false"
+                             ShowProcess="false"
+                             TranscriptBusy="true"
+                             SubsequentCount="0" />
+            }
             @if (ActiveTrace is not null)
             {
                 <ProcessTrace @key="ActiveTrace.StartedUtc" Trace="ActiveTrace" IsLive="true" AutoExpand="Options.ShowProcessTraces" />
@@ -144,6 +154,7 @@
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
+    RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
 
     bool IsGuided => Draft.Trim().Length > 0;
     string SpeakerName => Session.SpeakingAs?.Name ?? "Narrator";

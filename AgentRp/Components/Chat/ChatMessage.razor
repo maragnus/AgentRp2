@@ -98,7 +98,7 @@
                 <span class="v-divider"></span>
                 @if (CanUseStructuredFeatures)
                 {
-                    <AppButton Icon="flag" TooltipText="Create snapshot here" Disabled="@TranscriptBusy" OnClick="@(_ => CreateSnapshot())" />
+                    <AppButton Icon="scissors" TooltipText="Create snapshot here" Disabled="@TranscriptBusy" OnClick="@(_ => CreateSnapshot())" />
                 }
                 <AppButton Icon="copy" TooltipText="Copy message" OnClick="@CopyMessage" />
                 <AppButton Icon="trash" TooltipText="Delete message" Disabled="@TranscriptBusy" OnClick="@(_ => ConfirmDelete = true)" />

@@ -20,7 +20,6 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
-builder.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
 builder.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
 builder.Services.AddSingleton<IModelClientFactory, ModelClientFactory>();

@@ -18,6 +18,7 @@ public sealed class TranscriptStore(
     public bool IsBusy { get; private set; }
     public string BusyMessage { get; private set; } = "";
     public RpTurnTrace? ActiveTrace { get; private set; }
+    public RpTranscriptTurn? ActiveDraftTurn { get; private set; }
 
     readonly object _operationLock = new();
 
@@ -369,7 +370,7 @@ public sealed class TranscriptStore(
                     requestedActor?.Id ?? "",
                     requestedActor?.Name ?? "",
                     requestedNarrator),
-                new(UpdateActiveTraceAsync));
+                new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
             result.Trace.Data["actorName"] = result.ActorName;
             var now = DateTime.UtcNow;
             var turn = new RpTranscriptTurn
@@ -391,12 +392,14 @@ public sealed class TranscriptStore(
                 Scene = SessionCloner.Clone(result.Scene),
                 Trace = SessionCloner.Clone(result.Trace)
             };
+            ClearActiveDraft();
             CommitTurn(turn, now);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
         }
         catch (TranscriptGenerationException exception)
         {
+            ClearActiveDraft();
             PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, exception.Trace);
             CaptureBackgroundError(exception);
             await SaveTranscriptAsync();
@@ -404,6 +407,7 @@ public sealed class TranscriptStore(
         }
         catch (Exception exception)
         {
+            ClearActiveDraft();
             CaptureBackgroundError(exception);
             if (mode == "regenerated")
             {
@@ -421,6 +425,34 @@ public sealed class TranscriptStore(
     {
         ActiveTrace = SessionCloner.Clone(trace);
         await NotifyChangedAsync();
+    }
+
+    async Task UpdateActiveDraftAsync(TranscriptProseUpdate update)
+    {
+        var now = DateTime.UtcNow;
+        var existing = ActiveDraftTurn;
+        ActiveDraftTurn = new()
+        {
+            Id = existing?.Id ?? "__draft-turn",
+            ParentTurnId = update.ParentTurnId,
+            CreatedUtc = existing?.CreatedUtc ?? now,
+            UpdatedUtc = now,
+            Mode = NormalizeMode(update.Mode),
+            AuthorCharacterId = update.ActorCharacterId,
+            AuthorName = string.IsNullOrWhiteSpace(update.ActorName) ? "Narrator" : update.ActorName,
+            ActorCharacterId = update.ActorCharacterId,
+            ActorName = update.ActorName,
+            Guidance = update.Guidance.Trim(),
+            Body = update.Body,
+            Plan = SessionCloner.Clone(update.Plan),
+            Scene = SessionCloner.Clone(update.Scene)
+        };
+        await NotifyChangedAsync();
+    }
+
+    void ClearActiveDraft()
+    {
+        ActiveDraftTurn = null;
     }
 
     async Task ClearActiveTraceAsync()

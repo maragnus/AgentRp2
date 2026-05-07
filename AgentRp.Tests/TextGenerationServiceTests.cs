@@ -57,6 +57,36 @@ public sealed class TextGenerationServiceTests
     }
 
     [Fact]
+    public async Task ProseStreamingReportsPartialTextBeforeFinalResult()
+    {
+        var client = new FakeModelGenerationClient { StreamingTextDeltas = ["Generated ", "prose"] };
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var proseReports = new List<TranscriptProseUpdate>();
+
+        var result = await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "Keep moving.", "Brief", "", ""),
+            new(_ => Task.CompletedTask, update =>
+            {
+                proseReports.Add(update);
+                return Task.CompletedTask;
+            }));
+
+        Assert.Equal("Generated prose", result.Body);
+        Assert.Equal(["", "Generated ", "Generated prose"], proseReports.Select(report => report.Body));
+        Assert.All(proseReports, report =>
+        {
+            Assert.Equal("turn-3", report.ParentTurnId);
+            Assert.Equal("automatic", report.Mode);
+            Assert.Equal("Keep moving.", report.Guidance);
+            Assert.Equal("Gemma", report.ActorName);
+            Assert.Equal("Brief", report.Plan.TurnShape);
+        });
+    }
+
+    [Fact]
     public async Task DumbProseGenerationReportsOnlyProseProgress()
     {
         var client = new FakeModelGenerationClient();
@@ -397,6 +427,7 @@ public sealed class TextGenerationServiceTests
     {
         public List<string> StructuredCalls { get; } = [];
         public List<ModelGenerationRequest> GenerationRequests { get; } = [];
+        public IReadOnlyList<string> StreamingTextDeltas { get; init; } = ["Generated prose"];
         public int StreamingTextCalls { get; private set; }
         public bool FailStreamingText { get; init; }
 
@@ -414,13 +445,41 @@ public sealed class TextGenerationServiceTests
             return Task.FromResult(new ModelTextCompletion("Generated prose", 3, 4, "text-response"));
         }
 
-        public Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
+        public async Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
         {
+            var text = "";
+            var inputTokens = 0;
+            var outputTokens = 0;
+            var responseId = "";
+            await foreach (var update in GenerateStreamingTextUpdatesAsync(request, cancellationToken))
+            {
+                text += update.TextDelta;
+                if (!update.Completed)
+                    continue;
+
+                inputTokens = update.InputTokens;
+                outputTokens = update.OutputTokens;
+                responseId = update.ResponseId;
+            }
+
+            return new(text, inputTokens, outputTokens, responseId);
+        }
+
+        public async IAsyncEnumerable<ModelTextStreamingUpdate> GenerateStreamingTextUpdatesAsync(ModelGenerationRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            GenerationRequests.Add(request);
             StreamingTextCalls++;
             if (FailStreamingText)
                 throw new InvalidOperationException("Streaming failed for test.");
 
-            return GenerateTextAsync(request, cancellationToken);
+            foreach (var delta in StreamingTextDeltas)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Task.Yield();
+                yield return new(TextDelta: delta);
+            }
+
+            yield return new(InputTokens: 3, OutputTokens: 4, ResponseId: "text-response", Completed: true);
         }
 
         public async IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)

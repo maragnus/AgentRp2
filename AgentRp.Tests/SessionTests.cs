@@ -226,7 +226,6 @@ public sealed class SessionTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
-        context.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         await using var liveStore = NewLiveStore();
         var sessionA = NewSession(liveStore);
@@ -246,7 +245,6 @@ public sealed class SessionTests
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
-        context.Services.AddSingleton<ITranscriptBodyRenderer, TranscriptBodyRenderer>();
         context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
         var generation = new BlockingTextGenerationService();
         await using var liveStore = NewLiveStore();
@@ -283,6 +281,42 @@ public sealed class SessionTests
         component.WaitForAssertion(() =>
         {
             Assert.Empty(component.FindAll(".process-row.is-live"));
+            Assert.Contains(BlockingTextGenerationService.GeneratedBody, component.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task ChatAreaStreamsDraftTranscriptTurnUntilFinalCommit()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var component = context.Render<ChatArea>(parameters => parameters.AddCascadingValue(session));
+
+        var operation = session.Chat.Transcript.GenerateAsync("", null, false, "automatic", "Brief");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        component.WaitForAssertion(() =>
+        {
+            Assert.NotNull(session.Chat.Transcript.ActiveDraftTurn);
+            Assert.Equal(BlockingTextGenerationService.PartialBody, session.Chat.Transcript.ActiveDraftTurn?.Body);
+            Assert.DoesNotContain(session.Chat.Transcript.Items, turn => turn.Body == BlockingTextGenerationService.PartialBody);
+            Assert.Contains(BlockingTextGenerationService.PartialBody, component.Markup, StringComparison.Ordinal);
+        });
+
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        component.WaitForAssertion(() =>
+        {
+            Assert.Null(session.Chat.Transcript.ActiveDraftTurn);
+            Assert.DoesNotContain(session.Chat.Transcript.Items, turn => turn.Body == BlockingTextGenerationService.PartialBody);
+            Assert.Contains(session.Chat.Transcript.Items, turn => turn.Body == BlockingTextGenerationService.GeneratedBody);
             Assert.Contains(BlockingTextGenerationService.GeneratedBody, component.Markup, StringComparison.Ordinal);
         });
     }
@@ -406,6 +440,21 @@ public sealed class SessionTests
         Assert.NotNull(session.Chat.Transcript.LastBackgroundError);
     }
 
+    [Fact]
+    public async Task TranscriptStoreClearsFailedDraftWithoutPersistingPartialBody()
+    {
+        var generation = new FailingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+
+        await session.Chat.Transcript.GenerateAsync("", null, true, "automatic", "Brief");
+
+        Assert.Null(session.Chat.Transcript.ActiveDraftTurn);
+        Assert.DoesNotContain(session.Chat.Transcript.Items, turn => turn.Body == FailingTextGenerationService.PartialBody);
+        Assert.NotNull(session.Chat.Transcript.LastBackgroundError);
+    }
+
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
 
@@ -415,6 +464,7 @@ public sealed class SessionTests
     sealed class BlockingTextGenerationService : ITextGenerationService
     {
         public const string GeneratedBody = "Generated while lock is held.";
+        public const string PartialBody = "Partial streamed body.";
         int _generateCalls;
 
         public int GenerateCalls => _generateCalls;
@@ -441,7 +491,18 @@ public sealed class SessionTests
                 ]
             };
             if (progress is not null)
+            {
                 await progress.ReportAsync(trace);
+                await progress.ReportProseAsync(new(
+                    request.ParentTurnId,
+                    request.Mode,
+                    request.Guidance,
+                    "",
+                    "Narrator",
+                    new() { TurnShape = request.RequestedTurnShape },
+                    CloneScene(document.Transcript.RootScene),
+                    PartialBody));
+            }
 
             Entered.TrySetResult();
             await Release.Task.WaitAsync(cancellationToken);
@@ -477,6 +538,8 @@ public sealed class SessionTests
 
     sealed class FailingTextGenerationService : ITextGenerationService
     {
+        public const string PartialBody = "Failed partial streamed body.";
+
         public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
@@ -491,7 +554,24 @@ public sealed class SessionTests
                 ]
             };
             if (progress is not null)
+            {
                 await progress.ReportAsync(trace);
+                await progress.ReportProseAsync(new(
+                    request.ParentTurnId,
+                    request.Mode,
+                    request.Guidance,
+                    request.RequestedActorCharacterId,
+                    string.IsNullOrWhiteSpace(request.RequestedActorName) ? "Narrator" : request.RequestedActorName,
+                    new() { TurnShape = request.RequestedTurnShape },
+                    new()
+                    {
+                        LocationId = document.Transcript.RootScene.LocationId,
+                        LocationName = document.Transcript.RootScene.LocationName,
+                        InSceneCharacterIds = [.. document.Transcript.RootScene.InSceneCharacterIds],
+                        InSceneItemIds = [.. document.Transcript.RootScene.InSceneItemIds]
+                    },
+                    PartialBody));
+            }
 
             trace.Status = "failed";
             trace.CompletedUtc = DateTime.UtcNow;

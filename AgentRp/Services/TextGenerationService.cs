@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using AgentRp.Models;
 using AgentRp.Serialization;
@@ -35,15 +36,26 @@ public sealed record GeneratedSnapshotResult(
     RpSceneFrame Scene,
     RpTurnTrace Trace);
 
+public sealed record TranscriptProseUpdate(
+    string ParentTurnId,
+    string Mode,
+    string Guidance,
+    string ActorCharacterId,
+    string ActorName,
+    RpTurnPlan Plan,
+    RpSceneFrame Scene,
+    string Body);
+
 public interface ITextGenerationService
 {
     Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
-public sealed record TranscriptGenerationProgress(Func<RpTurnTrace, Task> OnChanged)
+public sealed record TranscriptGenerationProgress(Func<RpTurnTrace, Task> OnChanged, Func<TranscriptProseUpdate, Task>? OnProseChanged = null)
 {
     public Task ReportAsync(RpTurnTrace trace) => OnChanged(trace);
+    public Task ReportProseAsync(TranscriptProseUpdate update) => OnProseChanged?.Invoke(update) ?? Task.CompletedTask;
 }
 
 public sealed class TranscriptGenerationException(string message, RpTurnTrace trace) : Exception(message)
@@ -103,7 +115,7 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
                 request.RequestedNarrator);
             var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, selection, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
             trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -116,16 +128,7 @@ public sealed class TextGenerationService(
             return new(
                 selectedActor.Id,
                 selectedActor.Name,
-                new RpTurnPlan
-                {
-                    TurnShape = ResolveTurnShape(plan.TurnShape, context.RequestedTurnShape),
-                    Beat = plan.Beat,
-                    Intent = plan.Intent,
-                    ImmediateGoal = plan.ImmediateGoal,
-                    WhyNow = plan.WhyNow,
-                    ChangeIntroduced = plan.ChangeIntroduced,
-                    Guardrails = plan.Guardrails
-                },
+                CreateTurnPlan(plan, context.RequestedTurnShape),
                 appearance,
                 privateIntents,
                 scene,
@@ -223,7 +226,7 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
-        var prose = await RunProseStepAsync(document, providers, selection, context, actor, plan, trace, progress, cancellationToken);
+        var prose = await RunProseStepAsync(document, providers, selection, request, context, actor, plan, trace, progress, cancellationToken);
         trace.Data["actorName"] = actor.Name;
         FinalizeTrace(trace, "completed");
         await ReportProgressAsync(progress, trace);
@@ -232,16 +235,7 @@ public sealed class TextGenerationService(
         return new(
             actor.Id,
             actor.Name,
-            new RpTurnPlan
-            {
-                TurnShape = ResolveTurnShape(plan.TurnShape, context.RequestedTurnShape),
-                Beat = plan.Beat,
-                Intent = plan.Intent,
-                ImmediateGoal = plan.ImmediateGoal,
-                WhyNow = plan.WhyNow,
-                ChangeIntroduced = plan.ChangeIntroduced,
-                Guardrails = plan.Guardrails
-            },
+            CreateTurnPlan(plan, context.RequestedTurnShape),
             [],
             [],
             scene,
@@ -384,6 +378,7 @@ public sealed class TextGenerationService(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelection selection,
+        GenerateTurnRequest request,
         TurnPromptContext context,
         (string Id, string Name) actor,
         PlanningResponse plan,
@@ -412,7 +407,17 @@ public sealed class TextGenerationService(
         var userPrompt = AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "prose", selection, startedUtc, progress);
-        var completion = await SendStreamingTextAsync(selection, tuning, systemPrompt, userPrompt, "Writing transcript prose", cancellationToken);
+        var turnPlan = CreateTurnPlan(plan, context.RequestedTurnShape);
+        var scene = SessionCloner.Clone(TranscriptGraph.GetActiveScene(document.Transcript));
+        await ReportProseProgressAsync(progress, request, actor, turnPlan, scene, "");
+        var completion = await SendStreamingTextAsync(
+            selection,
+            tuning,
+            systemPrompt,
+            userPrompt,
+            "Writing transcript prose",
+            async body => await ReportProseProgressAsync(progress, request, actor, turnPlan, scene, body),
+            cancellationToken);
         await CompleteStepAsync(trace, CreateStepTrace(
             "prose",
             "Prose",
@@ -425,6 +430,28 @@ public sealed class TextGenerationService(
             "",
             ""), progress);
         return completion.Text.Trim();
+    }
+
+    static async Task ReportProseProgressAsync(
+        TranscriptGenerationProgress? progress,
+        GenerateTurnRequest request,
+        (string Id, string Name) actor,
+        RpTurnPlan plan,
+        RpSceneFrame scene,
+        string body)
+    {
+        if (progress is null)
+            return;
+
+        await progress.ReportProseAsync(new(
+            request.ParentTurnId,
+            request.Mode,
+            request.Guidance,
+            actor.Id,
+            actor.Name,
+            SessionCloner.Clone(plan),
+            SessionCloner.Clone(scene),
+            body));
     }
 
     static PlanningResponse CreateDumbProsePlan(TurnPromptContext context, GenerateTurnRequest request)
@@ -477,17 +504,51 @@ public sealed class TextGenerationService(
         string systemPrompt,
         string userPrompt,
         string operationName,
+        Func<string, Task> textChanged,
         CancellationToken cancellationToken)
     {
-        return await generationClient.GenerateStreamingTextAsync(new(
+        var request = new ModelGenerationRequest(
             selection.Provider,
             selection.Model,
             selection.Capabilities,
             tuning,
             systemPrompt,
             userPrompt,
-            operationName), cancellationToken);
+            operationName);
+        var text = new StringBuilder();
+        var inputTokens = 0;
+        var outputTokens = 0;
+        var responseId = "";
+        await foreach (var update in generationClient.GenerateStreamingTextUpdatesAsync(request, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!string.IsNullOrEmpty(update.TextDelta))
+            {
+                text.Append(update.TextDelta);
+                await textChanged(text.ToString());
+            }
+
+            if (!update.Completed)
+                continue;
+
+            inputTokens = update.InputTokens;
+            outputTokens = update.OutputTokens;
+            responseId = update.ResponseId;
+        }
+
+        return new(text.ToString(), inputTokens, outputTokens, responseId);
     }
+
+    static RpTurnPlan CreateTurnPlan(PlanningResponse plan, string requestedTurnShape) => new()
+    {
+        TurnShape = ResolveTurnShape(plan.TurnShape, requestedTurnShape),
+        Beat = plan.Beat,
+        Intent = plan.Intent,
+        ImmediateGoal = plan.ImmediateGoal,
+        WhyNow = plan.WhyNow,
+        ChangeIntroduced = plan.ChangeIntroduced,
+        Guardrails = plan.Guardrails
+    };
 
     static RpTurnTraceStep CreateStepTrace(
         string id,

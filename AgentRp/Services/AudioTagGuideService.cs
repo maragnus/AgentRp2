@@ -43,6 +43,7 @@ public sealed class AudioTagGuideService : IAudioTagGuideService
         - Pacing and hesitation examples: [pause], [short pause], [long pause], [hesitates], [stammers], [drawn out], [trails off], [interrupts], [overlapping], [beat].
         - Accent and voice color examples: [British accent], [Southern accent], [French accent], [Irish accent], [New York accent], [tired], [hoarse], [warmly], [coldly].
         - Sound effect examples: [door creaks], [phone buzzes], [footsteps approach], [rain patters], [glass clinks], [distant thunder], [chair scrapes], [keys jingle].
+        - Do not combine tags into a single block. Use separate tags for each. For example, use [rushed, breathless] pick the best one.
         - Strong examples:
           [whispers] "Don't move."
           [sighs] "I thought we were past this."

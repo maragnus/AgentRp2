@@ -1,6 +1,7 @@
 #pragma warning disable OPENAI001
 
 using System.ClientModel;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Runtime.CompilerServices;
 using AgentRp.Models;
@@ -37,6 +38,8 @@ public record ModelTextCompletion(string Text, int InputTokens, int OutputTokens
 
 public sealed record ModelStructuredCompletion<T>(T Value, string Text, int InputTokens, int OutputTokens, string ResponseId)
     : ModelTextCompletion(Text, InputTokens, OutputTokens, ResponseId);
+
+public sealed record ModelTextStreamingUpdate(string TextDelta = "", int InputTokens = 0, int OutputTokens = 0, string ResponseId = "", bool Completed = false);
 
 public sealed record ResponseImageStreamingUpdate(byte[]? ImageBytes, string ContentType, string? RevisedPrompt, int InputTokens, int OutputTokens, string ResponseId, bool Completed);
 
@@ -84,6 +87,7 @@ public interface IModelGenerationClient
     Task<ModelStructuredCompletion<T>> GenerateStructuredAsync<T>(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<ModelTextCompletion> GenerateTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<ModelTextStreamingUpdate> GenerateStreamingTextUpdatesAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default);
     Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ModelAssistantStreamingUpdate> GenerateAssistantStreamingAsync(ModelAssistantRequest request, CancellationToken cancellationToken = default);
     IAsyncEnumerable<ResponseImageStreamingUpdate> GenerateStreamingImageAsync(ResponseImageGenerationRequest request, CancellationToken cancellationToken = default);
@@ -130,8 +134,35 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
 
     public async Task<ModelTextCompletion> GenerateStreamingTextAsync(ModelGenerationRequest request, CancellationToken cancellationToken = default)
     {
+        var text = new StringBuilder();
+        var inputTokens = 0;
+        var outputTokens = 0;
+        var responseId = "";
+        await foreach (var update in GenerateStreamingTextUpdatesAsync(request, cancellationToken))
+        {
+            text.Append(update.TextDelta);
+            if (!update.Completed)
+                continue;
+
+            inputTokens = update.InputTokens;
+            outputTokens = update.OutputTokens;
+            responseId = update.ResponseId;
+        }
+
+        return new(text.ToString(), inputTokens, outputTokens, responseId);
+    }
+
+    public async IAsyncEnumerable<ModelTextStreamingUpdate> GenerateStreamingTextUpdatesAsync(
+        ModelGenerationRequest request,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         if (!request.Capabilities.CanGenerateStreamingText)
-            return await GenerateTextAsync(request, cancellationToken);
+        {
+            var textCompletion = await GenerateTextAsync(request, cancellationToken);
+            yield return new(TextDelta: textCompletion.Text);
+            yield return new(InputTokens: textCompletion.InputTokens, OutputTokens: textCompletion.OutputTokens, ResponseId: textCompletion.ResponseId, Completed: true);
+            yield break;
+        }
 
         var updates = new List<ChatResponseUpdate>();
         await foreach (var update in clientFactory.GetChatClient(request.Provider, request.Model).GetStreamingResponseAsync(
@@ -141,9 +172,12 @@ public sealed class OpenAiModelGenerationClient(IModelClientFactory clientFactor
         {
             cancellationToken.ThrowIfCancellationRequested();
             updates.Add(update);
+            if (!string.IsNullOrEmpty(update.Text))
+                yield return new(TextDelta: update.Text);
         }
 
-        return ToCompletion(await EnumerateUpdates(updates, cancellationToken).ToChatResponseAsync(cancellationToken));
+        var completion = ToCompletion(await EnumerateUpdates(updates, cancellationToken).ToChatResponseAsync(cancellationToken));
+        yield return new(InputTokens: completion.InputTokens, OutputTokens: completion.OutputTokens, ResponseId: completion.ResponseId, Completed: true);
     }
 
     public async Task<string> CreateAssistantConversationAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default)

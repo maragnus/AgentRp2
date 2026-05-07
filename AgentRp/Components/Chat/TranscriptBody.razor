@@ -1,6 +1,6 @@
-@inject ITranscriptBodyRenderer Renderer
+@inject IMarkdownRenderer MarkdownRenderer
 
-<div class="@CssClass">@((MarkupString)Renderer.Render(Body))</div>
+<div class="@CssClass">@((MarkupString)MarkdownRenderer.Render(Body))</div>
 
 @code {
     [Parameter] public string Body { get; set; } = "";

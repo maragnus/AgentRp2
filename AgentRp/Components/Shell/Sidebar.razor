@@ -8,7 +8,6 @@
         </div>
         <div>
             <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-            <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
         </div>
     </div>
 
@@ -20,6 +19,7 @@
     <div class="sidebar-scroll">
         <Section Title="AI Model" Compact="true">
             <RightContent>
+                <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
                 <AppButton Icon="wrench" TooltipText="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
                 <AppButton Icon="settings" TooltipText="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
             </RightContent>
