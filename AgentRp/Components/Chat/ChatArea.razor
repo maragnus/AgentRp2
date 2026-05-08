@@ -4,13 +4,18 @@
 @inject DialogHelper Dialogs
 
 <main class="chat claude-chat">
+    @if (HasActiveStory)
+    {
     <header class="claude-chat-head">
         <div>
             <h1>@Chat.Title</h1>
             <div class="claude-chat-meta">
-                <FaIcon Name="map-pin" />
-                <span>@Chat.Location</span>
-                <span>·</span>
+                @if (!string.IsNullOrWhiteSpace(Chat.Location))
+                {
+                    <FaIcon Name="map-pin" />
+                    <span>@Chat.Location</span>
+                    <span>&middot;</span>
+                }
                 <span>@Chat.Messages messages</span>
             </div>
         </div>
@@ -175,6 +180,17 @@
             </div>
         </div>
     </section>
+    }
+    else
+    {
+        <section class="claude-chat-scroll no-story-onboarding">
+            <EmptyState Icon="book-open"
+                        Title="Start your first story"
+                        Message="Create a story to begin chatting, planning, and building context.">
+                <AppButton Variant="primary" Size="lg" Icon="plus" Text="Add Story" TooltipText="Add Story" OnClick="@(_ => OnNewStory.InvokeAsync())" />
+            </EmptyState>
+        </section>
+    }
 </main>
 
 @if (SnapshotModalOpen)
@@ -205,10 +221,11 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+    [Parameter] public EventCallback OnNewStory { get; set; }
 
     IMessageSpeechService? MessageSpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
     ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
-    RpChat Chat => Session.Chats.Active ?? new() { Title = "Loading", Location = "" };
+    RpChat Chat => Session.Chats.Active!;
     RpTranscriptOptionsState Options => Session.Chat.Transcript.Options;
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
@@ -217,6 +234,7 @@
     IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();
 
     bool IsGuided => Draft.Trim().Length > 0;
+    bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
     RpCharacter? CurrentSpeaker => Session.SpeakingAs is null
         ? null
         : Characters.FirstOrDefault(character => character.Id == Session.SpeakingAs.Id) ?? Session.SpeakingAs;
@@ -274,7 +292,7 @@
 
     protected override void OnInitialized()
     {
-        ActiveChatId = Chat.Id;
+        ActiveChatId = Session.Chats.Active?.Id ?? "";
         KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
         Session.Changed += OnSessionChanged;
         Session.Chats.Changed += OnSessionChanged;
@@ -287,7 +305,7 @@
 
     async Task OnSessionChanged()
     {
-        var chatId = Chat.Id;
+        var chatId = Session.Chats.Active?.Id ?? "";
         if (!string.Equals(ActiveChatId, chatId, StringComparison.Ordinal))
         {
             ActiveChatId = chatId;

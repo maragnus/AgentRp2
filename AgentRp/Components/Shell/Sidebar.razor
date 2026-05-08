@@ -21,65 +21,71 @@
 
         <Section Title="Story" Compact="true">
             <RightContent>
-                <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
-                <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-                <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
-                <AppButton Icon="download" TooltipText="Export story" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
+                @if (HasActiveStory)
+                {
+                    <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
+                    <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
+                    <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+                    <AppButton Icon="download" TooltipText="Export story" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
+                }
             </RightContent>
         </Section>
         <ActiveStoryPicker @key="@($"story:{ActiveStoryKey}")" OnNewStory="@(() => OnOpenModal.InvokeAsync("newStory"))" />
 
-        <div class="divider"></div>
-
-        <Section Title="Location" Compact="true">
-            <RightContent>
-            <AppButton Icon="edit" TooltipText="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
-            </RightContent>
-        </Section>
-        <ActiveLocationPicker @key="@($"location:{ActiveStoryKey}")" />
-
-        <div class="divider"></div>
-
-        <Section Title="Characters" Compact="true">
-            <RightContent>
-            <AppButton Icon="edit" TooltipText="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
-            </RightContent>
-        </Section>
-        <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" OnSelect="@(_ => SetSpeakingAs(null))">
-            <Actions>
-                <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
-            </Actions>
-        </SidebarSpeakerRow>
-        @foreach (var character in Characters)
+        @if (HasActiveStory)
         {
-            <SidebarSpeakerRow @key="character.Id"
-                               Name="@character.Name"
-                               Active="@(Session.SpeakingAs?.Id == character.Id)"
-                               InScene="@character.InScene"
-                               OnSelect="@(_ => SetSpeakingAs(character))">
-                <AvatarContent>
-                    <EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="24" />
-                </AvatarContent>
+            <div class="divider"></div>
+
+            <Section Title="Location" Compact="true">
+                <RightContent>
+                <AppButton Icon="edit" TooltipText="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
+                </RightContent>
+            </Section>
+            <ActiveLocationPicker @key="@($"location:{ActiveStoryKey}")" />
+
+            <div class="divider"></div>
+
+            <Section Title="Characters" Compact="true">
+                <RightContent>
+                <AppButton Icon="edit" TooltipText="Edit characters" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", null)))" />
+                </RightContent>
+            </Section>
+            <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" OnSelect="@(_ => SetSpeakingAs(null))">
                 <Actions>
-                <AppButton Icon="eye" TooltipText="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
-                <AppButton Icon="edit" TooltipText="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
+                    <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
                 </Actions>
             </SidebarSpeakerRow>
-        }
+            @foreach (var character in Characters)
+            {
+                <SidebarSpeakerRow @key="character.Id"
+                                   Name="@character.Name"
+                                   Active="@(Session.SpeakingAs?.Id == character.Id)"
+                                   InScene="@character.InScene"
+                                   OnSelect="@(_ => SetSpeakingAs(character))">
+                    <AvatarContent>
+                        <EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="24" />
+                    </AvatarContent>
+                    <Actions>
+                    <AppButton Icon="eye" TooltipText="Toggle in scene" Active="@character.InScene" OnClick="@(_ => Session.Chat.Characters.ToggleInSceneAsync(character.Id))" />
+                    <AppButton Icon="edit" TooltipText="Edit character" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", character.Id)))" />
+                    </Actions>
+                </SidebarSpeakerRow>
+            }
 
-        <div class="divider"></div>
+            <div class="divider"></div>
 
-        <Section Title="Items" Compact="true">
-            <RightContent>
-            <AppButton Icon="edit" TooltipText="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
-            </RightContent>
-        </Section>
-        @foreach (var item in Items)
-        {
-            <div @key="item.Id" class="row" @onclick="@(() => OnOpenEntities.InvokeAsync(("items", item.Id)))">
-                <FaIcon Name="box" />
-                <span class="row-title">@item.Name</span>
-            </div>
+            <Section Title="Items" Compact="true">
+                <RightContent>
+                <AppButton Icon="edit" TooltipText="Edit items" OnClick="@(_ => OnOpenEntities.InvokeAsync(("items", null)))" />
+                </RightContent>
+            </Section>
+            @foreach (var item in Items)
+            {
+                <div @key="item.Id" class="row" @onclick="@(() => OnOpenEntities.InvokeAsync(("items", item.Id)))">
+                    <FaIcon Name="box" />
+                    <span class="row-title">@item.Name</span>
+                </div>
+            }
         }
     </div>
 </aside>
@@ -92,6 +98,7 @@
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<RpItem> Items => Session.Chat.Items.Items;
     string ActiveStoryKey => Session.Chats.Active?.Id ?? "";
+    bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
 
     GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 

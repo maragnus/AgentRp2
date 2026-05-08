@@ -8,7 +8,7 @@
     <div class="app-shell">
         <Sidebar OnOpenModal="OpenModal" OnOpenEntities="OpenEntities" />
 
-        <ChatArea OnOpenEntities="OpenEntities" />
+        <ChatArea OnOpenEntities="OpenEntities" OnNewStory="OpenNewStory" />
 
         @switch (Modal)
         {
@@ -94,6 +94,8 @@
 
         Modal = name;
     }
+
+    Task OpenNewStory() => OpenModal("newStory");
 
     async Task OpenEntities((string Type, string? Id) value)
     {

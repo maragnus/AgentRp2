@@ -56,12 +56,12 @@
     IReadOnlyList<RpChat> Stories => Session.Chats.Items;
     RpChat? ActiveStory => Session.Chats.Active;
     IReadOnlyList<RpChatSceneCharacter> ActiveVisibleSceneCharacters => ActiveStory?.SceneCharacters.Take(3).ToList() ?? [];
-    string ActiveStoryTitle => ActiveStory?.Title ?? "No story";
+    string ActiveStoryTitle => ActiveStory?.Title ?? (Stories.Count == 0 ? "Add Story" : "Choose Story");
     string ActiveStorySubtitle => ActiveStory is null
-        ? ""
+        ? (Stories.Count == 0 ? "No stories yet" : "No story loaded")
         : string.Join(" · ", new[] { ActiveStory.Location, ActiveStory.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
     string ActiveAvatarSummary => ActiveStory is null || ActiveStory.SceneCharacters.Count == 0
-        ? "No characters in scene"
+        ? "No active story"
         : $"In scene: {string.Join(", ", ActiveStory.SceneCharacters.Take(3).Select(character => character.Name))}";
 
     async Task OpenNewStory(AnchoredPopoverContext picker)

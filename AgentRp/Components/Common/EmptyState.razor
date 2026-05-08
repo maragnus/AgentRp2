@@ -1,0 +1,32 @@
+<div class="@CssClass">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <span class="empty-state-icon" aria-hidden="true"><FaIcon Name="@Icon" /></span>
+    }
+    <div class="empty-state-copy">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <strong>@Title</strong>
+        }
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <p>@Message</p>
+        }
+    </div>
+    @if (ChildContent is not null)
+    {
+        <div class="empty-state-actions">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Message { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CssClass => string.Join(" ", new[] { "empty-state", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+}
