@@ -9,6 +9,74 @@ namespace AgentRp.Tests;
 public sealed class StoryAssistantStoreTests
 {
     [Fact]
+    public void DefaultStateCreatesAndSelectsOneAssistantChat()
+    {
+        var document = CreateDocument();
+        var store = CreateStore(document, (_, _) => Task.CompletedTask);
+
+        var state = store.State;
+
+        Assert.Single(state.Chats);
+        Assert.Equal(state.Chats[0].Id, state.ActiveChatId);
+        Assert.Same(state.Chats[0], store.ActiveAssistantChat);
+        Assert.Equal("New chat", store.ActiveAssistantChat.Title);
+    }
+
+    [Fact]
+    public async Task ChatCommandsCreateSelectRenameAndDeleteWithoutDeletingFinalChat()
+    {
+        var document = CreateDocument();
+        var store = CreateStore(document, (_, _) => Task.CompletedTask);
+        var firstChatId = store.ActiveAssistantChat.Id;
+
+        await store.CreateChatAsync();
+        var secondChatId = store.ActiveAssistantChat.Id;
+        await store.RenameChatAsync(secondChatId, "  Cast planning  ");
+        await store.SelectChatAsync(firstChatId);
+        await store.DeleteChatAsync(firstChatId);
+
+        Assert.Equal(secondChatId, store.ActiveAssistantChat.Id);
+        Assert.Equal("Cast planning", store.ActiveAssistantChat.Title);
+        Assert.Single(store.Chats);
+
+        await store.DeleteChatAsync(secondChatId);
+
+        Assert.Single(store.Chats);
+        Assert.Equal(secondChatId, store.ActiveAssistantChat.Id);
+    }
+
+    [Fact]
+    public async Task SendingInOneAssistantChatDoesNotMutateAnotherChat()
+    {
+        var document = CreateDocument();
+        var turn = 0;
+        var store = CreateStore(document, async (request, callbacks, cancellationToken) =>
+        {
+            turn++;
+            document.StoryAssistant.LastResponseId = $"resp-{turn}";
+            document.StoryAssistant.ResponseIds.Add($"resp-{turn}");
+            await callbacks.AppendAssistantTextAsync($"Reply to {request.DisplayMessage}", cancellationToken);
+            if (request.DisplayMessage == "Second chat prompt.")
+                await callbacks.RecordWorkItemAsync(PendingQuestionWorkItem(), cancellationToken);
+        });
+        var firstChat = store.ActiveAssistantChat;
+
+        await store.SendAsync("First chat prompt.");
+        await store.CreateChatAsync();
+        var secondChat = store.ActiveAssistantChat;
+        await store.SendAsync("Second chat prompt.");
+
+        Assert.Equal("resp-1", firstChat.LastResponseId);
+        Assert.Equal("resp-2", secondChat.LastResponseId);
+        Assert.Contains(firstChat.Items, item => item.Text == "First chat prompt.");
+        Assert.DoesNotContain(firstChat.Items, item => item.Text.Contains("Second chat", StringComparison.Ordinal));
+        Assert.Contains(secondChat.Items, item => item.Text == "Second chat prompt.");
+        Assert.DoesNotContain(secondChat.Items, item => item.Text.Contains("First chat", StringComparison.Ordinal));
+        Assert.Empty(firstChat.WorkItems);
+        Assert.Single(secondChat.WorkItems);
+    }
+
+    [Fact]
     public async Task SendStartsWithThinkingPlaceholderAndToolFirstReplacesIt()
     {
         var document = CreateDocument();
@@ -485,7 +553,7 @@ public sealed class StoryAssistantStoreTests
 
         public Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken) =>
+        public Task<SceneTransitionResult> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken) => Task.CompletedTask;

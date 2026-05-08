@@ -46,6 +46,10 @@ public sealed partial class PromptLibraryService
         + "Every action must include an explicit subject pronoun or character name when potentially ambiguous, such as *She trembles* or *Bella looks away*. "
         + "Do not write bare action fragments like *trembles* or *eyes pleading*. Never output unwrapped output.";
 
+    public const string NarratorProseFormatReminder =
+        "Format reminder: Write narration only. Do not include quoted character speech, speaker labels, internal monologue, or character-turn reactions. "
+        + "Wrap visible narration and staging in *asterisks* and stop once the scene is ready for a character to react.";
+
     const string LegacyProseFormatRule = "Format: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
     const string LegacyProseFormatReminder = "Format reminder: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
 
@@ -321,14 +325,30 @@ public sealed partial class PromptLibraryService
 
     public static string WithProseFormatReminder(string userPrompt)
     {
-        var body = userPrompt.Replace("\r\n", "\n", StringComparison.Ordinal);
-        body = RemoveProseFormatReminderLine(body, LegacyProseFormatRule);
-        body = RemoveProseFormatReminderLine(body, LegacyProseFormatReminder);
-        body = RemoveProseFormatReminderLine(body, ProseFormatReminder).TrimEnd();
+        var body = RemoveProseFormatReminders(userPrompt).TrimEnd();
 
         return string.IsNullOrWhiteSpace(body)
             ? ProseFormatReminder
             : $"{body}\n\n{ProseFormatReminder}";
+    }
+
+    public static string WithNarratorProseFormatReminder(string userPrompt)
+    {
+        var body = RemoveProseFormatReminders(userPrompt).TrimEnd();
+
+        return string.IsNullOrWhiteSpace(body)
+            ? NarratorProseFormatReminder
+            : $"{body}\n\n{NarratorProseFormatReminder}";
+    }
+
+    static string RemoveProseFormatReminders(string userPrompt)
+    {
+        var body = userPrompt.Replace("\r\n", "\n", StringComparison.Ordinal);
+        body = RemoveProseFormatReminderLine(body, LegacyProseFormatRule);
+        body = RemoveProseFormatReminderLine(body, LegacyProseFormatReminder);
+        body = RemoveProseFormatReminderLine(body, ProseFormatReminder);
+        body = RemoveProseFormatReminderLine(body, NarratorProseFormatReminder);
+        return body;
     }
 
     public static string RenderPrompt(PromptLibraryState state, string stageId, string field, IReadOnlyDictionary<string, string> values)
@@ -470,6 +490,18 @@ public sealed partial class PromptLibraryService
             """,
         _ => string.Empty
     };
+
+    public static string BuildDefaultNarratorProseTurnShape(string requestedTurnShape) =>
+        $"""
+        Narrator turn shape:
+        - Treat "{FormatTurnShapeLabel(requestedTurnShape)}" as a length and pacing request only, never as permission for dialogue or character turns.
+        - For compact or brief, write one short staging paragraph.
+        - For extended or monologue, write up to three concise staging paragraphs.
+        - For silent shapes, keep the narration visual, atmospheric, and physical.
+        - Summarize transition, elapsed time, travel, logistics, current positions, clothing, visible state, atmosphere, and present items as needed.
+        - Do not include quoted speech, internal monologue, new character reactions, or the next dramatic exchange.
+        - Stop once the scene is ready for a character to react.
+        """;
 
     static string RenderTemplate(string template, IReadOnlyDictionary<string, string> values)
     {

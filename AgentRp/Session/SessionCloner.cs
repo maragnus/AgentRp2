@@ -34,7 +34,6 @@ static class SessionCloner
         Personality = value.Personality,
         Appearance = value.Appearance,
         AppearanceProfile = Clone(value.AppearanceProfile),
-        Relationships = value.Relationships,
         Backstory = value.Backstory,
         Voice = value.Voice,
         Notes = value.Notes,
@@ -54,7 +53,6 @@ static class SessionCloner
         StressPattern = value.StressPattern,
         SoftSpots = [.. value.SoftSpots],
         AvoidPatterns = [.. value.AvoidPatterns],
-        ProfileRelationships = value.ProfileRelationships.Select(Clone).ToList(),
         VoiceSelections = value.VoiceSelections.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal)
     };
 
@@ -80,9 +78,11 @@ static class SessionCloner
         UpdatedUtc = value.UpdatedUtc
     };
 
-    static RpRelationship Clone(RpRelationship value) => new()
+    public static RpCharacterRelationship Clone(RpCharacterRelationship value) => new()
     {
-        CharacterId = value.CharacterId,
+        Id = value.Id,
+        CharacterAId = value.CharacterAId,
+        CharacterBId = value.CharacterBId,
         Bonds = [.. value.Bonds],
         Dynamics = [.. value.Dynamics],
         NoteAtoB = value.NoteAtoB,
@@ -200,6 +200,7 @@ static class SessionCloner
     {
         Chat = Clone(value.Chat),
         Characters = value.Characters.Select(Clone).ToList(),
+        CharacterRelationships = value.CharacterRelationships.Select(Clone).ToList(),
         Locations = value.Locations.Select(Clone).ToList(),
         Items = value.Items.Select(Clone).ToList(),
         Timeline = value.Timeline.Select(Clone).ToList(),
@@ -257,6 +258,16 @@ static class SessionCloner
     {
         SchemaVersion = value.SchemaVersion,
         ReviewMode = value.ReviewMode,
+        ActiveChatId = value.ActiveChatId,
+        Chats = value.Chats.Select(Clone).ToList()
+    };
+
+    static StoryAssistantChat Clone(StoryAssistantChat value) => new()
+    {
+        Id = value.Id,
+        Title = value.Title,
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
         LastResponseId = value.LastResponseId,
         ResponseIds = value.ResponseIds.ToList(),
         ResponseProviderId = value.ResponseProviderId,

@@ -109,7 +109,7 @@ public sealed partial class TranscriptStore(
             mode);
     });
 
-    public async Task<SceneTransitionResult?> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken = default)
+    public async Task<SceneTransitionResult?> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken = default)
     {
         SceneTransitionPlan? transition = null;
         RpTranscriptTurn? narratorTurn = null;
@@ -119,33 +119,14 @@ public sealed partial class TranscriptStore(
                 return;
 
             transition = sceneTransitionService.Build(Document, request);
-            var plan = new RpTurnPlan
-            {
-                TurnShape = "Brief",
-                Beat = "Set the scene",
-                Intent = "Orient the story around the requested scene state.",
-                ImmediateGoal = transition.IsOpeningScene
-                    ? "Establish the opening scene from the provided starting state."
-                    : "Bridge into the requested scene state and make the new moment playable.",
-                WhyNow = string.IsNullOrWhiteSpace(request.Reason)
-                    ? "The user requested a scene setup or transition."
-                    : request.Reason.Trim(),
-                ChangeIntroduced = transition.IsOpeningScene
-                    ? "The story begins in the requested location with the requested scene contents."
-                    : "The story moves to the requested scene state.",
-                Guardrails = "Do not invent major off-screen consequences, relationship resolutions, losses, victories, or irreversible plot outcomes unless the user explicitly requested them."
-            };
-            narratorTurn = await GenerateProseFromPlanCoreAsync(new(
-                Document.Transcript.ActiveLeafTurnId,
-                "scene-transition",
-                transition.NarratorInstruction,
-                "",
-                "Narrator",
-                true,
-                plan,
-                new Dictionary<string, string>(StringComparer.Ordinal),
-                new Dictionary<string, string>(StringComparer.Ordinal),
-                transition.TargetScene));
+            narratorTurn = await GenerateTurnCoreAsync(
+                parentTurnId: Document.Transcript.ActiveLeafTurnId,
+                guidance: transition.NarratorInstruction,
+                requestedActor: null,
+                requestedNarrator: true,
+                turnShape: "Brief",
+                mode: "scene-transition",
+                sceneOverride: transition.TargetScene);
             if (narratorTurn is null)
                 throw new InvalidOperationException("Setting the scene failed while generating the narrator transition.", LastBackgroundError);
         });
@@ -165,9 +146,7 @@ public sealed partial class TranscriptStore(
             return;
 
         var requestedNarrator = requestedActor is null && string.IsNullOrWhiteSpace(original.ActorCharacterId);
-        var actor = requestedNarrator
-            ? null
-            : Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId) ?? requestedActor;
+        var actor = ResolveBranchActor(original, requestedActor, requestedNarrator);
         var plan = BuildRegenerationPlan(original.Plan, turnShape);
         SelectRegenerationParent(original.ParentTurnId);
         await NotifyChangedAsync();
@@ -179,6 +158,40 @@ public sealed partial class TranscriptStore(
                 requestedNarrator,
                 plan));
     });
+
+    public async Task ReplanAsync(string turnId, string guidance, RpCharacter? requestedActor, string turnShape) => await RunExclusiveAsync("Planning new branch...", async () =>
+    {
+        if (Document is null)
+            return;
+
+        var original = TranscriptGraph.FindTurn(Document.Transcript, turnId);
+        if (original is null)
+            return;
+
+        var requestedNarrator = requestedActor is null && string.IsNullOrWhiteSpace(original.ActorCharacterId);
+        var actor = ResolveBranchActor(original, requestedActor, requestedNarrator);
+        var requestedTurnShape = string.IsNullOrWhiteSpace(turnShape) ? original.Plan.TurnShape : turnShape;
+        SelectRegenerationParent(original.ParentTurnId);
+        await NotifyChangedAsync();
+        await GeneratePlanAndProseCoreAsync(new(
+            original.ParentTurnId,
+            "replanned",
+            guidance,
+            requestedTurnShape,
+            actor?.Id ?? "",
+            requestedNarrator ? "Narrator" : actor?.Name ?? original.ActorName,
+            requestedNarrator,
+            original.AppearanceByCharacterId,
+            original.Scene));
+    });
+
+    RpCharacter? ResolveBranchActor(RpTranscriptTurn original, RpCharacter? requestedActor, bool requestedNarrator)
+    {
+        if (Document is null || requestedNarrator)
+            return null;
+
+        return Document.Characters.FirstOrDefault(character => character.Id == original.ActorCharacterId) ?? requestedActor;
+    }
 
     static RpTurnPlan BuildRegenerationPlan(RpTurnPlan source, string turnShape)
     {
@@ -404,10 +417,10 @@ public sealed partial class TranscriptStore(
         }
     }
 
-    async Task GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string turnShape, string mode)
+    async Task<RpTranscriptTurn?> GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string turnShape, string mode, RpSceneFrame? sceneOverride = null)
     {
         if (Document is null)
-            return;
+            return null;
 
         ClearBackgroundError();
         try
@@ -423,31 +436,34 @@ public sealed partial class TranscriptStore(
                     turnShape,
                     requestedActor?.Id ?? "",
                     requestedActor?.Name ?? "",
-                    requestedNarrator),
+                    requestedNarrator,
+                    sceneOverride),
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
-            await CommitGeneratedTurnAsync(parentTurnId, guidance, mode, result);
+            return await CommitGeneratedTurnAsync(parentTurnId, guidance, mode, result);
         }
         catch (TranscriptGenerationException exception)
         {
             ClearActiveDraft();
-            PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, exception.Trace);
+            PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, exception.Trace, scene: sceneOverride);
             CaptureBackgroundError(exception);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
+            return null;
         }
         catch (Exception exception)
         {
             ClearActiveDraft();
             CaptureBackgroundError(exception);
-            if (mode == "regenerated")
+            if (mode is "regenerated" or "replanned")
             {
-                PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, BuildUnhandledFailureTrace(exception));
+                PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, BuildUnhandledFailureTrace(exception), scene: sceneOverride);
                 await SaveTranscriptAsync();
             }
             else
                 await NotifyChangedAsync();
 
             await ClearActiveTraceAsync();
+            return null;
         }
     }
 
@@ -503,6 +519,60 @@ public sealed partial class TranscriptStore(
                 request.AppearanceByCharacterId,
                 request.PrivateIntentByCharacterId,
                 request.Scene);
+            await SaveTranscriptAsync();
+            await ClearActiveTraceAsync();
+            return null;
+        }
+    }
+
+    async Task<RpTranscriptTurn?> GeneratePlanAndProseCoreAsync(GeneratePlanAndProseRequest request)
+    {
+        if (Document is null)
+            return null;
+
+        ClearBackgroundError();
+        try
+        {
+            var result = await textGenerationService.GeneratePlanAndProseAsync(
+                Document,
+                providers.Items.ToList(),
+                modelSelection.State,
+                request,
+                new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
+            return await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
+        }
+        catch (TranscriptGenerationException exception)
+        {
+            ClearActiveDraft();
+            PersistFailedTurn(
+                request.ParentTurnId,
+                request.Guidance,
+                request.RequestedNarrator ? null : new() { Id = request.ActorCharacterId, Name = request.ActorName },
+                request.RequestedNarrator,
+                request.Mode,
+                request.RequestedTurnShape,
+                exception.Trace,
+                appearances: request.AppearanceByCharacterId,
+                scene: request.Scene);
+            CaptureBackgroundError(exception);
+            await SaveTranscriptAsync();
+            await ClearActiveTraceAsync();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            ClearActiveDraft();
+            CaptureBackgroundError(exception);
+            PersistFailedTurn(
+                request.ParentTurnId,
+                request.Guidance,
+                request.RequestedNarrator ? null : new() { Id = request.ActorCharacterId, Name = request.ActorName },
+                request.RequestedNarrator,
+                request.Mode,
+                request.RequestedTurnShape,
+                BuildUnhandledFailureTrace(exception),
+                appearances: request.AppearanceByCharacterId,
+                scene: request.Scene);
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
             return null;
@@ -760,6 +830,7 @@ public sealed partial class TranscriptStore(
         "guided" => "guided",
         "automatic" => "automatic",
         "regenerated" => "regenerated",
+        "replanned" => "replanned",
         "edited" => "edited",
         _ => "manual"
     };

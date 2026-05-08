@@ -30,7 +30,52 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal("Lucia", document.Characters[0].Name);
         Assert.Equal("Sharper summary", document.Characters[0].Summary);
         Assert.Equal("Keeps the old backstory.", document.Characters[0].Backstory);
+        var reconciliation = json.RootElement.GetProperty("relationshipReconciliation");
+        Assert.Equal("c1", reconciliation.GetProperty("characterId").GetString());
+        Assert.Equal(1, reconciliation.GetProperty("incompleteCount").GetInt32());
+        Assert.Contains("Inspect every relationship", reconciliation.GetProperty("instruction").GetString(), StringComparison.Ordinal);
+        Assert.Contains("do not update the same relationshipId twice", reconciliation.GetProperty("instruction").GetString(), StringComparison.Ordinal);
+        var relationship = reconciliation.GetProperty("relationships")[0];
+        Assert.Equal("relationship-c1-c2", relationship.GetProperty("relationshipId").GetString());
+        Assert.True(relationship.GetProperty("shouldUpdate").GetBoolean());
         Assert.Contains(callbacks.ToolItems.Single().Diffs, diff => diff.Field == "summary");
+    }
+
+    [Fact]
+    public async Task CompleteRelationshipReconciliationDoesNotRequestDuplicateUpdate()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        document.CharacterRelationships.Add(new()
+        {
+            Id = "relationship-c1-c2",
+            CharacterAId = "c1",
+            CharacterBId = "c2",
+            NoteAtoB = "Lucia trusts Gemma.",
+            NoteBtoA = "Gemma trusts Lucia.",
+            NoteExternal = "Trusted partners",
+            Bonds = ["Ally"],
+            Dynamics = ["Protective"]
+        });
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c2","updates":{"summary":"Sharper Gemma summary"}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        var reconciliation = json.RootElement.GetProperty("relationshipReconciliation");
+        var relationship = reconciliation.GetProperty("relationships")[0];
+
+        Assert.Equal(0, reconciliation.GetProperty("incompleteCount").GetInt32());
+        Assert.Equal("relationship-c1-c2", relationship.GetProperty("relationshipId").GetString());
+        Assert.False(relationship.GetProperty("shouldUpdate").GetBoolean());
+        Assert.True(relationship.GetProperty("isComplete").GetBoolean());
     }
 
     [Fact]
@@ -163,16 +208,98 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "update_character_relationship",
-            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia trusts Gemma with maps.","howTargetSeesSource":"Gemma thinks Lucia is reckless.","publicDynamic":"Friendly rivals","privateTension":"Unspoken tension","relationshipType":"Rival"}""",
+            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia trusts Gemma with maps.","howTargetSeesSource":"Gemma thinks Lucia is reckless.","publicDynamic":"Friendly rivals","privateTensions":["Unspoken tension"],"relationshipTypes":["Rival"]}""",
             callbacks,
             CancellationToken.None);
 
-        var relationship = document.Characters[0].ProfileRelationships.Single(item => item.CharacterId == "c2");
+        var relationship = document.CharacterRelationships.Single(item => item.CharacterAId == "c1" && item.CharacterBId == "c2");
         Assert.Equal("Lucia trusts Gemma with maps.", relationship.NoteAtoB);
         Assert.Equal("Gemma thinks Lucia is reckless.", relationship.NoteBtoA);
         Assert.Equal("Friendly rivals", relationship.NoteExternal);
         Assert.Contains("Unspoken tension", relationship.Dynamics);
         Assert.Contains("Rival", relationship.Bonds);
+    }
+
+    [Fact]
+    public async Task RelationshipPatchReviewUsesFlatRelationshipFields()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character_relationship",
+            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia trusts Gemma with maps.","howTargetSeesSource":"Gemma thinks Lucia is reckless.","publicDynamic":"Friendly rivals","privateTensions":["Unspoken tension"],"relationshipTypes":["Rival"]}""",
+            callbacks,
+            CancellationToken.None);
+
+        var workItem = callbacks.WorkItems.Single();
+
+        Assert.False(workItem.Before.TryGetPropertyValue("profileRelationships", out _));
+        Assert.False(workItem.After.TryGetPropertyValue("profileRelationships", out _));
+        Assert.False(workItem.After.TryGetPropertyValue("relationships", out _));
+        Assert.Contains(workItem.Diffs, diff => diff.Field == "howSourceSeesTarget" && diff.Label == "How Source Sees Target");
+        Assert.Contains(workItem.Diffs, diff => diff.Field == "relationshipTypes" && diff.Label == "Relationship Types");
+        Assert.Contains(workItem.Diffs, diff => diff.Field == "privateTensions" && diff.Label == "Private Tensions");
+    }
+
+    [Fact]
+    public async Task RelationshipPatchRejectsIncompleteFieldsBeforeMutating()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character_relationship",
+            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia trusts Gemma.","relationshipTypes":["Ally"]}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("every relationship field", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal("get_character_profile_options", json.RootElement.GetProperty("nextStep").GetProperty("tool").GetString());
+        Assert.Empty(document.CharacterRelationships);
+        Assert.Empty(callbacks.ToolItems);
+    }
+
+    [Fact]
+    public async Task ReverseRelationshipPatchUpdatesSameCanonicalRecord()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character_relationship",
+            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia trusts Gemma.","howTargetSeesSource":"Gemma worries about Lucia.","publicDynamic":"Careful allies","relationshipTypes":["Ally"],"privateTensions":["Protective"]}""",
+            callbacks,
+            CancellationToken.None);
+
+        await service.ExecuteAsync(
+            document,
+            "call-2",
+            "update_character_relationship",
+            """{"sourceCharacterId":"c2","targetCharacterId":"c1","howSourceSeesTarget":"Gemma trusts Lucia back.","howTargetSeesSource":"Lucia knows Gemma will challenge her.","publicDynamic":"Hard-won partners","relationshipTypes":["Rival"],"privateTensions":["Unspoken tension"]}""",
+            callbacks,
+            CancellationToken.None);
+
+        var relationship = document.CharacterRelationships.Single();
+        Assert.Equal("relationship-c1-c2", relationship.Id);
+        Assert.Equal("Lucia knows Gemma will challenge her.", relationship.NoteAtoB);
+        Assert.Equal("Gemma trusts Lucia back.", relationship.NoteBtoA);
+        Assert.Equal("Hard-won partners", relationship.NoteExternal);
+        Assert.Equal(["Rival"], relationship.Bonds);
+        Assert.Equal(["Unspoken tension"], relationship.Dynamics);
     }
 
     [Fact]
@@ -232,6 +359,32 @@ public sealed class StoryEntityPatchServiceTests
     }
 
     [Fact]
+    public async Task ReadStoryEntitiesIncludesEveryCharacterPairRelationshipCoverage()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "get_story_entities",
+            "{}",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        var relationship = json.RootElement.GetProperty("entities").GetProperty("relationships")[0];
+
+        Assert.Equal("c1", relationship.GetProperty("sourceCharacterId").GetString());
+        Assert.Equal("c2", relationship.GetProperty("targetCharacterId").GetString());
+        Assert.Equal("relationship-c1-c2", relationship.GetProperty("relationshipId").GetString());
+        Assert.False(relationship.GetProperty("isComplete").GetBoolean());
+        Assert.Contains(relationship.GetProperty("missingFields").EnumerateArray(), item => item.GetString() == "howSourceSeesTarget");
+        Assert.Contains(relationship.GetProperty("missingFields").EnumerateArray(), item => item.GetString() == "relationshipTypes");
+    }
+
+    [Fact]
     public async Task GetCharacterProfileOptionsReturnsRequestedFields()
     {
         var document = CreateDocument();
@@ -282,12 +435,15 @@ public sealed class StoryEntityPatchServiceTests
     public async Task ReadStoryEntitiesOmitsLegacyRelationshipSummary()
     {
         var document = CreateDocument();
-        document.Characters[0].Relationships = "Legacy summary that should not be sent to the assistant.";
-        document.Characters[0].ProfileRelationships.Add(new()
+        document.CharacterRelationships.Add(new()
         {
-            CharacterId = "c2",
+            Id = "relationship-c1-c2",
+            CharacterAId = "c1",
+            CharacterBId = "c2",
             NoteAtoB = "Lucia trusts Gemma.",
-            NoteBtoA = "Gemma worries about Lucia."
+            NoteBtoA = "Gemma worries about Lucia.",
+            Bonds = ["Ally"],
+            Dynamics = ["Protective"]
         });
         var callbacks = new TestCallbacks();
         var service = new StoryEntityPatchService();
@@ -304,8 +460,15 @@ public sealed class StoryEntityPatchServiceTests
         var character = json.RootElement.GetProperty("entities").GetProperty("characters")[0];
         Assert.False(character.TryGetProperty("relationships", out _));
         Assert.False(character.TryGetProperty("profileRelationships", out _));
-        var relationship = json.RootElement.GetProperty("entities").GetProperty("relationships")[0].GetProperty("relationships")[0];
+        var relationship = json.RootElement.GetProperty("entities").GetProperty("relationships")[0];
+        Assert.False(relationship.TryGetProperty("relationships", out _));
+        Assert.Equal("c1", relationship.GetProperty("sourceCharacterId").GetString());
+        Assert.Equal("Lucia", relationship.GetProperty("sourceCharacterName").GetString());
+        Assert.Equal("c2", relationship.GetProperty("targetCharacterId").GetString());
+        Assert.Equal("Gemma", relationship.GetProperty("targetCharacterName").GetString());
         Assert.Equal("Lucia trusts Gemma.", relationship.GetProperty("howSourceSeesTarget").GetString());
+        Assert.Equal("Ally", relationship.GetProperty("relationshipTypes")[0].GetString());
+        Assert.Equal("Protective", relationship.GetProperty("privateTensions")[0].GetString());
     }
 
     [Fact]
@@ -655,10 +818,9 @@ public sealed class StoryEntityPatchServiceTests
     }
 
     [Fact]
-    public async Task CharacterPatchDoesNotApplyLegacyRelationshipSummary()
+    public async Task CharacterPatchDoesNotCreateLocalRelationshipState()
     {
         var document = CreateDocument();
-        document.Characters[0].Relationships = "Original legacy summary.";
         document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
         var callbacks = new TestCallbacks();
         var service = new StoryEntityPatchService();
@@ -673,8 +835,8 @@ public sealed class StoryEntityPatchServiceTests
 
         using var json = JsonDocument.Parse(result);
         Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
-        Assert.Equal("Original legacy summary.", document.Characters[0].Relationships);
         Assert.Equal("New summary", document.Characters[0].Summary);
+        Assert.Empty(document.CharacterRelationships);
     }
 
     [Fact]
@@ -800,14 +962,14 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "update_character_relationship",
-            """{"sourceCharacterId":"c1","targetCharacterId":"c2","relationshipType":"rivals","privateTension":"custom dynamic"}""",
+            """{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Lucia pushes Gemma.","howTargetSeesSource":"Gemma pushes back.","publicDynamic":"Open rivals","relationshipTypes":["rivals"],"privateTensions":["custom dynamic"]}""",
             callbacks,
             CancellationToken.None);
 
         using var json = JsonDocument.Parse(result);
         Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
-        Assert.Contains("relationship type contains invalid value 'rivals'", json.RootElement.GetProperty("reason").GetString());
-        Assert.Empty(document.Characters[0].ProfileRelationships);
+        Assert.Contains("relationship types contains invalid value 'rivals'", json.RootElement.GetProperty("reason").GetString());
+        Assert.Empty(document.CharacterRelationships);
     }
 
     [Fact]
@@ -849,7 +1011,7 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "set_scene",
-            """{"locationId":"l1","characterIds":["c1","c2"],"itemIds":["i1"],"reason":"Open in the library."}""",
+            """{"locationId":"l1","characterIds":["c1","c2"],"itemIds":["i1"],"narratorGuidance":{"purpose":"opening_scene","guidance":"Open in the library."}}""",
             callbacks,
             CancellationToken.None);
 
@@ -887,7 +1049,7 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "set_scene",
-            """{"locationId":"l1","characterIds":["c1"],"itemIds":[]}""",
+            """{"locationId":"l1","characterIds":["c1"],"itemIds":[],"narratorGuidance":{"purpose":"opening_scene","guidance":"Open in the library."}}""",
             callbacks,
             CancellationToken.None);
 
@@ -919,7 +1081,7 @@ public sealed class StoryEntityPatchServiceTests
             document,
             "call-1",
             "set_scene",
-            """{"locationId":"l1","characterIds":["missing"],"itemIds":[]}""",
+            """{"locationId":"l1","characterIds":["missing"],"itemIds":[],"narratorGuidance":{"purpose":"opening_scene","guidance":"Open in the library."}}""",
             callbacks,
             CancellationToken.None);
 
@@ -969,7 +1131,7 @@ public sealed class StoryEntityPatchServiceTests
         public StoryAssistantDecision Decision { get; set; } = new(StoryAssistantDecisionKind.Accept, "");
         public List<StoryAssistantTranscriptItem> ToolItems { get; } = [];
         public List<StoryAssistantWorkItem> WorkItems { get; } = [];
-        public Func<SceneTransitionRequest, SceneTransitionResult>? SceneTransition { get; set; }
+        public Func<SetSceneRequest, SceneTransitionResult>? SceneTransition { get; set; }
         public int ReviewCount { get; private set; }
         public int SceneTransitionCount { get; private set; }
 
@@ -992,7 +1154,7 @@ public sealed class StoryEntityPatchServiceTests
 
         public Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
+        public Task<SceneTransitionResult> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken)
         {
             SceneTransitionCount++;
             if (SceneTransition is null)

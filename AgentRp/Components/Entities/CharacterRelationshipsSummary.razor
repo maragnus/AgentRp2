@@ -1,0 +1,94 @@
+@if (Relationships.Count == 0)
+{
+    <span class="summary-empty">No relationships yet.</span>
+}
+else
+{
+    <div class="character-relationships-summary">
+        @foreach (var relationship in Relationships)
+        {
+            <article @key="relationship.Relationship.Id" class="character-relationship-summary-row">
+                <div class="character-relationship-summary-head">
+                    <Avatar Name="@relationship.TargetCharacterName" Size="30" />
+                    <div class="character-relationship-summary-title">
+                        <strong>@relationship.TargetCharacterName</strong>
+                        <div class="character-relationship-summary-badges">
+                            @BadgeList(relationship.RelationshipTypes, "amber")
+                            @BadgeList(relationship.PrivateTensions, "violet")
+                        </div>
+                    </div>
+                </div>
+                <div class="character-relationship-summary-notes">
+                    @if (!string.IsNullOrWhiteSpace(relationship.PublicDynamic))
+                    {
+                        <p>@relationship.PublicDynamic</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(relationship.HowSourceSeesTarget))
+                    {
+                        <dl>
+                            <div>
+                                <dt>@SourceName</dt>
+                                <dd>@relationship.HowSourceSeesTarget</dd>
+                            </div>
+                        </dl>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(relationship.HowTargetSeesSource))
+                    {
+                        <dl>
+                            <div>
+                                <dt>@relationship.TargetCharacterName</dt>
+                                <dd>@relationship.HowTargetSeesSource</dd>
+                            </div>
+                        </dl>
+                    }
+                    @if (string.IsNullOrWhiteSpace(relationship.PublicDynamic)
+                        && string.IsNullOrWhiteSpace(relationship.HowSourceSeesTarget)
+                        && string.IsNullOrWhiteSpace(relationship.HowTargetSeesSource))
+                    {
+                        <span class="summary-empty">No details yet.</span>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public RpChatDocument? Document { get; set; }
+    [Parameter] public RpCharacter Character { get; set; } = new();
+
+    string SourceName => string.IsNullOrWhiteSpace(Character.Name) ? "This character" : Character.Name;
+
+    IReadOnlyList<CharacterRelationshipView> Relationships
+    {
+        get
+        {
+            if (Document is null || string.IsNullOrWhiteSpace(Character.Id))
+                return [];
+
+            var characterNames = Document.Characters.ToDictionary(
+                character => character.Id,
+                character => string.IsNullOrWhiteSpace(character.Name) ? "Unnamed" : character.Name);
+
+            return CharacterRelationshipGraph.ViewsForCharacter(Document, Character.Id, characterNames)
+                .Where(relationship => !string.IsNullOrWhiteSpace(relationship.TargetCharacterName))
+                .OrderBy(relationship => relationship.TargetCharacterName, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+    }
+
+    RenderFragment BadgeList(IReadOnlyCollection<string> values, string tone) => builder =>
+    {
+        var sequence = 0;
+        foreach (var value in values)
+        {
+            builder.OpenComponent<Badge>(sequence++);
+            builder.AddAttribute(sequence++, "Tone", tone);
+            builder.AddAttribute(sequence++, "ChildContent", (RenderFragment)(child =>
+            {
+                child.AddContent(0, value);
+            }));
+            builder.CloseComponent();
+        }
+    };
+}

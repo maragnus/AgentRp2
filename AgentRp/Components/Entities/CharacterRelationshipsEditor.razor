@@ -1,0 +1,127 @@
+@if (OtherCharacters.Count == 0)
+{
+    <div class="character-wizard-empty">
+        <FaIcon Name="users" />
+        <span>No other characters yet.<br />Relationships can be added later from the character editor.</span>
+    </div>
+}
+else
+{
+    <div class="character-wizard-relationships">
+        <p class="character-wizard-help">Toggle the characters this character knows, then define the dynamic from each direction.</p>
+        @foreach (var other in OtherCharacters)
+        {
+            var rel = GetRelationship(other);
+            var known = rel is not null;
+            var expanded = ExpandedRelationships.Contains(other.Id);
+            <article @key="other.Id" class="character-relationship @(known ? "is-known" : "")">
+                <SelectableButton Class="character-relationship-head" OnClick="@(_ => ToggleRelationshipRow(other))">
+                    <span class="character-relationship-check @(known ? "is-selected" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleRelationship(other)">
+                        @if (known)
+                        {
+                            <FaIcon Name="check" />
+                        }
+                    </span>
+                    <Avatar Name="@other.Name" Size="30" />
+                    <span class="character-relationship-copy">
+                        <strong>@other.Name</strong>
+                        @if (!string.IsNullOrWhiteSpace(other.Summary))
+                        {
+                            <small>@other.Summary</small>
+                        }
+                    </span>
+                    @if (known)
+                    {
+                        <span class="character-relationship-meta">
+                            @foreach (var bond in rel!.Bonds.Take(1))
+                            {
+                                <span @key="bond">@bond</span>
+                            }
+                            <FaIcon Name="@(expanded ? "chevron-up" : "chevron-down")" />
+                        </span>
+                    }
+                </SelectableButton>
+                @if (known && expanded)
+                {
+                    <div class="character-relationship-detail">
+                        <Section Title="Bond Type">
+                            <div class="character-wizard-chip-list">
+                                @foreach (var bond in BondTypes)
+                                {
+                                    var selected = rel!.Bonds.Contains(bond);
+                                    <SelectableButton @key="bond" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Bonds, bond))">@bond</SelectableButton>
+                                }
+                            </div>
+                        </Section>
+                        <Section Title="Shared Dynamic">
+                            <div class="character-wizard-chip-list">
+                                @foreach (var dynamic in Dynamics)
+                                {
+                                    var selected = rel!.Dynamics.Contains(dynamic);
+                                    <SelectableButton @key="dynamic" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Dynamics, dynamic))">@dynamic</SelectableButton>
+                                }
+                            </div>
+                        </Section>
+                        <Section Title="@($"How {SelfName} sees {other.Name}")">
+                            <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.HowSourceSeesTarget" @bind:event="oninput"></textarea>
+                        </Section>
+                        <Section Title="@($"How {other.Name} sees {SelfName}")">
+                            <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.HowTargetSeesSource" @bind:event="oninput"></textarea>
+                        </Section>
+                        <Section Title="External Perception">
+                            <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.PublicDynamic" @bind:event="oninput"></textarea>
+                        </Section>
+                    </div>
+                }
+            </article>
+        }
+    </div>
+}
+
+@code {
+    readonly HashSet<string> ExpandedRelationships = [];
+
+    [Parameter] public RpChatDocument Document { get; set; } = new();
+    [Parameter] public RpCharacter Character { get; set; } = new();
+    [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
+    [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+
+    IReadOnlyList<RpCharacter> OtherCharacters => ExistingCharacters.Where(character => character.Id != Character.Id).ToList();
+    IReadOnlyList<string> BondTypes => Library.BondTypes;
+    IReadOnlyList<string> Dynamics => Library.Dynamics;
+    string SelfName => string.IsNullOrWhiteSpace(Character.Name) ? "this character" : Character.Name;
+
+    CharacterRelationshipView? GetRelationship(RpCharacter other) =>
+        CharacterRelationshipGraph.View(Document, Character.Id, Character.Name, other.Id, other.Name);
+
+    void ToggleRelationship(RpCharacter other)
+    {
+        if (GetRelationship(other) is not null)
+        {
+            CharacterRelationshipGraph.Remove(Document, Character.Id, other.Id);
+            ExpandedRelationships.Remove(other.Id);
+            return;
+        }
+
+        CharacterRelationshipGraph.GetOrCreate(Document, Character.Id, other.Id);
+        ExpandedRelationships.Add(other.Id);
+    }
+
+    void ToggleRelationshipRow(RpCharacter other)
+    {
+        if (GetRelationship(other) is null)
+        {
+            ToggleRelationship(other);
+            return;
+        }
+
+        if (!ExpandedRelationships.Remove(other.Id))
+            ExpandedRelationships.Add(other.Id);
+    }
+
+    static void ToggleText(List<string> values, string value)
+    {
+        if (!values.Remove(value))
+            values.Add(value);
+    }
+}

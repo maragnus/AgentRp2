@@ -24,6 +24,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
         Items.RemoveAll(character => character.Id == id);
         if (Document is not null)
         {
+            CharacterRelationshipGraph.RemoveCharacter(Document, id);
             RemoveCharacterReferences(Document.Transcript.RootScene, id);
             RemoveCharacterReferences(Document.Transcript.WorkingScene.Scene, id);
             foreach (var turn in Document.Transcript.Turns)
@@ -431,6 +432,7 @@ public sealed class StoryAssistantStore(
         get
         {
             var state = Document?.StoryAssistant ?? new();
+            state.EnsureActiveChat();
             SyncWorkItemTranscriptItems(state);
             if (!IsBusy)
                 RecoverIdleStreamingMessages(state);
@@ -439,6 +441,8 @@ public sealed class StoryAssistantStore(
         }
     }
     public IReadOnlyList<StoryAssistantTranscriptItem> Items => State.Items;
+    public IReadOnlyList<StoryAssistantChat> Chats => State.Chats;
+    public StoryAssistantChat ActiveAssistantChat => State.ActiveChat;
     public bool IsBusy { get; private set; }
     public string BusyMessage { get; private set; } = "";
 
@@ -463,7 +467,74 @@ public sealed class StoryAssistantStore(
         await NotifyChangedAsync();
     }
 
-    public async Task ClearAsync()
+    public async Task CreateChatAsync()
+    {
+        var state = State;
+        var now = DateTime.UtcNow;
+        var chat = new StoryAssistantChat
+        {
+            Id = $"assistant-chat-{Guid.NewGuid():N}",
+            Title = "New chat",
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        state.Chats.Insert(0, chat);
+        state.ActiveChatId = chat.Id;
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public async Task SelectChatAsync(string chatId)
+    {
+        var state = State;
+        if (!state.Chats.Any(chat => chat.Id == chatId))
+            return;
+
+        state.ActiveChatId = chatId;
+        if (RecoverIdleStreamingMessages(state))
+            await SaveAssistantStateAsync(CancellationToken.None);
+
+        await NotifyChangedAsync();
+    }
+
+    public async Task RenameChatAsync(string chatId, string title)
+    {
+        var chat = State.Chats.FirstOrDefault(chat => chat.Id == chatId);
+        if (chat is null)
+            return;
+
+        chat.Title = CleanTitle(title);
+        chat.UpdatedUtc = DateTime.UtcNow;
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public async Task DeleteChatAsync(string chatId)
+    {
+        if (Document is null)
+            return;
+
+        var state = State;
+        if (state.Chats.Count <= 1)
+            return;
+
+        var chat = state.Chats.FirstOrDefault(chat => chat.Id == chatId);
+        if (chat is null)
+            return;
+
+        ClearBackgroundError();
+        await ClearRemoteStateForChatAsync(chat);
+        state.Chats.Remove(chat);
+        if (state.ActiveChatId == chat.Id)
+            state.ActiveChatId = state.Chats.OrderByDescending(chat => chat.UpdatedUtc).First().Id;
+
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public Task ClearAsync() => ClearActiveChatAsync();
+
+    public async Task ClearActiveChatAsync()
     {
         if (Document is null)
             return;
@@ -481,6 +552,7 @@ public sealed class StoryAssistantStore(
 
         State.Items.Clear();
         State.WorkItems.Clear();
+        State.ActiveChat.UpdatedUtc = DateTime.UtcNow;
         StoryAssistantService.ClearResponseChain(State);
         await SaveAssistantStateAsync(CancellationToken.None);
         await NotifyChangedAsync();
@@ -488,6 +560,9 @@ public sealed class StoryAssistantStore(
 
     public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
         SendAsync(text, text, cancellationToken);
+
+    public Task SendWithModelInputAsync(string displayMessage, string modelInput, CancellationToken cancellationToken = default) =>
+        SendAsync(displayMessage, modelInput, cancellationToken);
 
     public Task SendWorkflowAsync(string workflowId, CancellationToken cancellationToken = default)
     {
@@ -542,6 +617,7 @@ public sealed class StoryAssistantStore(
         }
 
         ClearBackgroundError();
+        AutoTitleActiveChat(displayMessage);
         var retry = new StoryAssistantRetryContext
         {
             DisplayMessage = displayMessage.Trim(),
@@ -553,6 +629,7 @@ public sealed class StoryAssistantStore(
         assistantItem.Retry = Clone(retry);
         assistantItem.Diagnostics = BuildDiagnostics("Running", "Story Assistant turn started.", displayMessage);
         State.Items.Add(assistantItem);
+        State.ActiveChat.UpdatedUtc = DateTime.UtcNow;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
 
@@ -649,6 +726,46 @@ public sealed class StoryAssistantStore(
         await NotifyChangedAsync();
     }
 
+    async Task ClearRemoteStateForChatAsync(StoryAssistantChat chat)
+    {
+        if (Document is null || storyAssistantService is null)
+            return;
+
+        var state = Document.StoryAssistant;
+        var previousChatId = state.ActiveChatId;
+        try
+        {
+            state.ActiveChatId = chat.Id;
+            await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            CaptureBackgroundError(exception);
+        }
+        finally
+        {
+            state.ActiveChatId = previousChatId;
+        }
+    }
+
+    void AutoTitleActiveChat(string displayMessage)
+    {
+        var chat = State.ActiveChat;
+        if (!string.Equals(chat.Title, "New chat", StringComparison.Ordinal) || chat.Items.Count > 0)
+            return;
+
+        chat.Title = CleanTitle(displayMessage);
+    }
+
+    static string CleanTitle(string title)
+    {
+        var clean = string.Join(' ', title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(clean))
+            return "New chat";
+
+        return clean.Length <= 44 ? clean : $"{clean[..41]}...";
+    }
+
     public async Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(delta))
@@ -663,6 +780,7 @@ public sealed class StoryAssistantStore(
 
         item.Text += delta;
         item.UpdatedUtc = DateTime.UtcNow;
+        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
     }
@@ -672,6 +790,7 @@ public sealed class StoryAssistantStore(
         CloseTrailingAssistantMessage();
         item.UpdatedUtc = DateTime.UtcNow;
         State.Items.Add(item);
+        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
     }
@@ -679,6 +798,7 @@ public sealed class StoryAssistantStore(
     public async Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
     {
         item.UpdatedUtc = DateTime.UtcNow;
+        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
     }
@@ -689,6 +809,7 @@ public sealed class StoryAssistantStore(
         workItem.UpdatedUtc = DateTime.UtcNow;
         State.WorkItems.Add(workItem);
         State.Items.Add(TranscriptItemFor(workItem));
+        State.ActiveChat.UpdatedUtc = workItem.UpdatedUtc;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
     }
@@ -706,6 +827,7 @@ public sealed class StoryAssistantStore(
         if (transcriptItem is not null)
             SyncTranscriptItem(transcriptItem, workItem);
 
+        State.ActiveChat.UpdatedUtc = workItem.UpdatedUtc;
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
     }
@@ -806,9 +928,9 @@ public sealed class StoryAssistantStore(
         runCancellation.Dispose();
     }
 
-    public async Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
+    public async Task<SceneTransitionResult> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken)
     {
-        var transition = await transcript.GenerateSceneTransitionAsync(request, cancellationToken)
+        var transition = await transcript.SetSceneAsync(request, cancellationToken)
             ?? throw new InvalidOperationException("Setting the scene failed because no active chat is loaded.");
         return transition;
     }

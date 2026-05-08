@@ -11,12 +11,6 @@
             </SelectableButton>
         }
     </div>
-    @if (Type == "assistant")
-    {
-        <StoryAssistantPanel />
-    }
-    else
-    {
     <EntityListEditor TItem="EntityEntry"
                       Items="Entries"
                       SelectedId="@SelectedId"
@@ -131,7 +125,7 @@
             }
             else if (Type == "characters" && SelectedCharacter is not null)
             {
-                <CharacterEditor Character="SelectedCharacter" Library="Session.Chat.CharacterTraitLibrary.State" />
+                <CharacterEditor Document="Session.ActiveChat.Current" Character="SelectedCharacter" Library="Session.Chat.CharacterTraitLibrary.State" />
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
@@ -156,7 +150,6 @@
             <div class="empty-preview"><FaIcon Name="@ActiveIcon" /><span>Select an entity to edit, or add a new one</span><AppButton Variant="secondary" OnClick="@(_ => AddEntity())"><FaIcon Name="plus" />Add @ActiveSingular</AppButton></div>
         </EmptySelectionTemplate>
     </EntityListEditor>
-    }
 </ModalShell>
 
 @if (CharacterWizardOpen && SelectedCharacter is not null)
@@ -187,8 +180,7 @@
         ("characters", "Characters", "users"),
         ("locations", "Locations", "map-pin"),
         ("items", "Items", "box"),
-        ("timeline", "Timeline", "clock"),
-        ("assistant", "Assistant", "sparkles")
+        ("timeline", "Timeline", "clock")
     ];
 
     [Parameter] public string InitialType { get; set; } = "characters";
@@ -265,7 +257,7 @@
     void SelectType(string type)
     {
         Type = type;
-        SelectedId = type == "assistant" ? null : Entries.FirstOrDefault()?.Id;
+        SelectedId = Entries.FirstOrDefault()?.Id;
     }
 
     void SetSelected(string? id) => SelectedId = id;
@@ -326,7 +318,7 @@
         "locations" => Locations.Count,
         "items" => Items.Count,
         "timeline" => Timeline.Count,
-        _ => Session.Chat.StoryAssistant.Items.Count
+        _ => 0
     };
 
     async Task DeleteSelected()

@@ -147,7 +147,7 @@
                         <Badge Tone="@ToneFor(item.Status)">@StatusText(item.Status)</Badge>
                     }
                 </div>
-                @if (item.Diffs.Count > 0 && item.Operation == StoryAssistantOperationKind.Create)
+                @if (item.Diffs.Count > 0 && ShowAfterOnlyDiffs(item))
                 {
                     <details class="story-tool-details">
                         <summary>@item.Diffs.Count field@(item.Diffs.Count == 1 ? "" : "s")</summary>
@@ -276,6 +276,10 @@
         && (item.Retry.CanRetry || item.Diagnostics.HasDetails);
 
     static bool ShowStatusBadge(StoryAssistantTranscriptItem item) => item.Status != StoryAssistantItemStatus.Read;
+
+    static bool ShowAfterOnlyDiffs(StoryAssistantTranscriptItem item) =>
+        item.Operation == StoryAssistantOperationKind.Create
+        || item.Diffs.All(diff => string.IsNullOrWhiteSpace(diff.Before));
 
     static string IconFor(StoryAssistantTranscriptItem item) => item.EntityType switch
     {

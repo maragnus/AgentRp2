@@ -470,6 +470,10 @@ namespace AgentRp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("CharacterRelationshipsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ChatDirectionJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");

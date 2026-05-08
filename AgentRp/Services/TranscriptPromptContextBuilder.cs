@@ -50,9 +50,10 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         var activeSpeakerName = ResolveActiveSpeakerName(activePath.LastOrDefault());
         var requestedShape = string.IsNullOrWhiteSpace(requestedTurnShape) ? "Brief" : requestedTurnShape.Trim();
         var currentLocation = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId);
-        var actorText = FormatActor(actor, document.NarratorProfile, requestedNarrator, traitLibrary);
+        var characterNames = document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
+        var actorText = FormatActor(actor, document.NarratorProfile, requestedNarrator, traitLibrary, document.CharacterRelationships, characterNames);
         var locationText = FormatLocation(currentLocation, scene);
-        var charactersText = FormatCharactersInScene(presentCharacters, actor, characterAppearances, traitLibrary);
+        var charactersText = FormatCharactersInScene(presentCharacters, actor, characterAppearances, traitLibrary, document.CharacterRelationships, characterNames);
         var otherCharactersText = FormatOtherKnownCharacters(otherCharacters);
         var objectsText = FormatObjectsInScene(presentItems);
         var chatDirection = ChatDirectionService.NormalizeState(document.ChatDirection);
@@ -108,7 +109,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             PlanningTurnShapeDefinitions: FormatTurnShapeDefinitions(document, PromptLibraryStageIds.Planning),
             ProseInSceneNames: FormatProseInSceneNames(presentCharacters, actor),
             NarratorGuidance: requestedNarrator ? NarratorProfileService.BuildPromptGuidance(document.NarratorProfile) : "",
-            TurnScopeRules: BuildTurnScopeRules(requestedNarrator ? "Narrator" : actor?.Name ?? "Narrator"));
+            TurnScopeRules: requestedNarrator ? BuildNarratorTurnScopeRules() : BuildTurnScopeRules(actor?.Name ?? "Narrator"));
     }
 
     public SnapshotPromptContext BuildSnapshotContext(RpChatDocument document, string turnId)
@@ -211,9 +212,11 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         tokens["{speaker.name}"] = speaker;
         tokens["{prose.inSceneNames}"] = context.ProseInSceneNames;
         tokens["{prose.turnShapeSystem}"] = turnShapeSystem;
-        tokens["{prose.turnShapeUser}"] = PromptLibraryService.GetTurnShapeTemplate(promptLibrary, PromptLibraryStageIds.Prose, turnShape);
+        tokens["{prose.turnShapeUser}"] = isNarrator
+            ? PromptLibraryService.BuildDefaultNarratorProseTurnShape(turnShape)
+            : PromptLibraryService.GetTurnShapeTemplate(promptLibrary, PromptLibraryStageIds.Prose, turnShape);
         tokens["{prose.narratorSystem}"] = isNarrator
-            ? $"You are speaking as the story narrator guiding the narrative. Write natural prose narration instead of dialogue, without speaker labels or meta text.{Environment.NewLine}{context.NarratorGuidance}{Environment.NewLine}"
+            ? BuildNarratorProseRules(context.NarratorGuidance)
             : string.Empty;
         tokens["{prose.characterOnlySystem}"] = isNarrator
             ? string.Empty
@@ -335,7 +338,13 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
                 .Select(line => $"- {CollapseWhitespace(line)}"));
     }
 
-    static string FormatActor(RpCharacter? actor, NarratorProfileState narratorProfile, bool requestedNarrator, CharacterTraitLibraryState library)
+    static string FormatActor(
+        RpCharacter? actor,
+        NarratorProfileState narratorProfile,
+        bool requestedNarrator,
+        CharacterTraitLibraryState library,
+        IReadOnlyList<RpCharacterRelationship> relationships,
+        IReadOnlyDictionary<string, string> characterNames)
     {
         if (actor is null)
         {
@@ -352,7 +361,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         AppendField(builder, "Personality", actor.Personality);
         AppendField(builder, "Appearance", CharacterAppearanceFormatter.FormatBase(actor, library));
         AppendField(builder, "Voice", actor.Voice);
-        AppendField(builder, "Relationships", actor.Relationships);
+        AppendField(builder, "Relationships", FormatRelationshipContext(actor.Id, relationships, characterNames));
         AppendField(builder, "Backstory", actor.Backstory);
         AppendField(builder, "Core drive", actor.CoreDrive);
         AppendField(builder, "Core fear", actor.CoreFear);
@@ -371,6 +380,39 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         AppendList(builder, "Avoid patterns", actor.AvoidPatterns);
         AppendField(builder, "Notes", actor.Notes);
         return builder.ToString().TrimEnd();
+    }
+
+    static string FormatRelationshipContext(
+        string sourceCharacterId,
+        IReadOnlyList<RpCharacterRelationship> relationships,
+        IReadOnlyDictionary<string, string> characterNames)
+    {
+        var lines = CharacterRelationshipGraph.ViewsForCharacter(relationships, sourceCharacterId, characterNames)
+            .Where(relationship => !string.IsNullOrWhiteSpace(relationship.TargetCharacterName))
+            .OrderBy(relationship => relationship.TargetCharacterName, StringComparer.OrdinalIgnoreCase)
+            .Select(FormatRelationshipLine)
+            .ToList();
+
+        return lines.Count == 0 ? "" : string.Join(Environment.NewLine, lines);
+    }
+
+    static string FormatRelationshipLine(CharacterRelationshipView relationship)
+    {
+        var details = new List<string>();
+        if (relationship.RelationshipTypes.Count > 0)
+            details.Add($"types: {string.Join(", ", relationship.RelationshipTypes)}");
+        if (relationship.PrivateTensions.Count > 0)
+            details.Add($"dynamics: {string.Join(", ", relationship.PrivateTensions)}");
+        if (!string.IsNullOrWhiteSpace(relationship.HowSourceSeesTarget))
+            details.Add($"they see {relationship.TargetCharacterName}: {relationship.HowSourceSeesTarget}");
+        if (!string.IsNullOrWhiteSpace(relationship.HowTargetSeesSource))
+            details.Add($"{relationship.TargetCharacterName} sees them: {relationship.HowTargetSeesSource}");
+        if (!string.IsNullOrWhiteSpace(relationship.PublicDynamic))
+            details.Add($"public: {relationship.PublicDynamic}");
+
+        return details.Count == 0
+            ? $"- {relationship.TargetCharacterName}"
+            : $"- {relationship.TargetCharacterName}: {string.Join("; ", details)}";
     }
 
     static string FormatLocation(RpLocation? location, RpSceneFrame scene)
@@ -392,7 +434,13 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         return builder.ToString().TrimEnd();
     }
 
-    static string FormatCharactersInScene(IEnumerable<RpCharacter> characters, RpCharacter? actor, IReadOnlyDictionary<string, string> appearances, CharacterTraitLibraryState library)
+    static string FormatCharactersInScene(
+        IEnumerable<RpCharacter> characters,
+        RpCharacter? actor,
+        IReadOnlyDictionary<string, string> appearances,
+        CharacterTraitLibraryState library,
+        IReadOnlyList<RpCharacterRelationship> relationships,
+        IReadOnlyDictionary<string, string> characterNames)
     {
         var values = characters.ToList();
         if (values.Count == 0)
@@ -412,7 +460,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
                 appearances.TryGetValue(character.Id, out var appearance) ? appearance : ""));
             AppendField(builder, "  Voice", character.Voice);
             AppendField(builder, "  Personality", character.Personality);
-            AppendField(builder, "  Relationships", character.Relationships);
+            AppendField(builder, "  Relationships", FormatRelationshipContext(character.Id, relationships, characterNames));
             AppendField(builder, "  Core drive", character.CoreDrive);
             AppendField(builder, "  Core fear", character.CoreFear);
             AppendField(builder, "  Hidden truth", character.HiddenTruth);
@@ -626,6 +674,39 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         - Avoid empty turns that only restate rules or repeat the current tension.
         - Keep it grounded and playable.
         """;
+
+    static string BuildNarratorTurnScopeRules() =>
+        """
+        Turn scope rules:
+        - Narrator staging only.
+        - Choose one immediate summary or staging beat, not a sequence of character turns.
+        - You may bridge elapsed time, travel, mundane logistics, low-stakes positioning, and already-established or user-approved offscreen continuity.
+        - Preserve tension as setup, atmosphere, or physical arrangement without making any character react.
+        - Do not write dialogue, internal monologue, new emotional reactions, new conflict moves, confessions, reveals, jokes, threats, attacks, or decisions for characters.
+        - Stop once the scene is staged for the next character response.
+        """;
+
+    static string BuildNarratorProseRules(string narratorGuidance)
+    {
+        var guidance = string.IsNullOrWhiteSpace(narratorGuidance)
+            ? ""
+            : $"{Environment.NewLine}{narratorGuidance.Trim()}";
+        return
+            $"""
+            Narrator contract:
+            - You are the narrator, not a character.
+            - NEVER speak as, quote, roleplay, decide for, or take a turn as any character.
+            - Do not write character dialogue, internal monologue, new emotional reactions, jokes, threats, confessions, reveals, attacks, or decisions.
+            - Do not continue the whole scene or write the next dramatic exchange.
+            - You may summarize transitional action, elapsed time, travel, mundane logistics, and already-established or user-approved offscreen continuity.
+            - You may resolve low-stakes positioning needed to reach the requested scene, such as who enters, where characters stand, who sits where, what they carry, and what they are visibly wearing.
+            - You may preserve obvious tension as atmosphere, physical arrangement, or visible setup, but do not make a character react to it.
+            - Focus on location, atmosphere, current mode, character positions, clothing, visible state, present items, and how the transition into this scene happened.
+            - End with the scene staged so a character can react next.
+            - Write narration only, with no speaker labels, no meta commentary, and no tool/schema language.
+            {guidance}
+            """;
+    }
 
     static string BuildProseRules(string speaker) =>
         $"""

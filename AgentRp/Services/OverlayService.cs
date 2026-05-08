@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace AgentRp.Services;
 
-public sealed class OverlayService(ILogger<OverlayService> logger)
+public sealed class OverlayService
 {
     readonly Dictionary<Guid, OverlayEntry> entries = [];
 

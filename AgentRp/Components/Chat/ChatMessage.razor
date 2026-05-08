@@ -79,6 +79,8 @@
                 <AppButton Icon="edit" TooltipText="Edit message" Disabled="@TranscriptBusy" OnClick="@(_ => OpenEditBody())" />
                 <span class="v-divider"></span>
                 <div class="regen-group">
+                    <AppButton Icon="sparkle" TooltipText="Edit guidance and create branch" Disabled="@TranscriptBusy" OnClick="@(_ => OpenNewPlan())" />
+                    <span class="regen-divider" aria-hidden="true"></span>
                     <AppButton Icon="refresh" TooltipText="Regenerate from saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => Regenerate())" />
                     <span class="regen-divider" aria-hidden="true"></span>
                     <AnchoredPopover Placement="OverlayPlacement.TopCenter" Class="message-popover shape-popover">
@@ -274,6 +276,15 @@
     </ModalShell>
 }
 
+@if (NewPlan)
+{
+    <ChatMessageNewPlanModal InitialGuidance="@Message.Guidance"
+                             Subtitle="@($"{DisplayAuthorName} Â· {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")"
+                             TranscriptBusy="@TranscriptBusy"
+                             OnClose="@CloseNewPlan"
+                             OnSubmit="@SubmitNewPlan" />
+}
+
 @if (EditBody)
 {
     <ModalShell Title="Edit Message" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
@@ -292,6 +303,7 @@
 @code {
     bool ConfirmDelete;
     bool EditPlan;
+    bool NewPlan;
     bool EditBody;
     bool SpeechInputLoading;
     string ActivePlanTab = "appearance";
@@ -330,6 +342,7 @@
         "guided" => "is-guided",
         "automatic" => "is-auto",
         "regenerated" => "is-guided",
+        "replanned" => "is-guided",
         "edited" => "is-manual",
         _ => "is-manual"
     };
@@ -339,6 +352,7 @@
         "guided" => "Guided AI",
         "automatic" => "Automatic AI",
         "regenerated" => "Regenerated",
+        "replanned" => "New Plan",
         "edited" => "Edited",
         _ => "Manual"
     };
@@ -446,6 +460,28 @@
             SelectedTurnShape = turnShape;
 
         await Session.Chat.Transcript.RegenerateAsync(Message.Id, Message.Guidance, actor, turnShape);
+    }
+
+    void OpenNewPlan()
+    {
+        NewPlan = true;
+    }
+
+    Task CloseNewPlan()
+    {
+        NewPlan = false;
+        return Task.CompletedTask;
+    }
+
+    async Task SubmitNewPlan(string guidance)
+    {
+        var actor = Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId);
+        NewPlan = false;
+        await Session.Chat.Transcript.ReplanAsync(
+            Message.Id,
+            guidance,
+            actor,
+            TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape));
     }
 
     async Task OpenPlanEditor()

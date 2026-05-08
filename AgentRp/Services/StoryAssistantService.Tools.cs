@@ -8,12 +8,12 @@ public sealed partial class StoryAssistantService
 {
     public static IReadOnlyList<ModelAssistantTool> BuildTools(RpChatDocument document) =>
     [
-        Tool("get_story_entities", "Read the current JSON model for all story entities and character relationships.", ObjectSchema()),
-        Tool("get_story_transcript", "Read the current active story chat transcript, including private intents.", ObjectSchema()),
+        Tool("get_story_entities", "Read the current JSON model for all story entities and character relationships. This is required to unlock the ability to create or update any entities.", ObjectSchema()),
+        Tool("get_story_transcript", "Read the current active story chat transcript, including private intents. This will provide valid context on the story so far.", ObjectSchema()),
         Tool("get_character_profile_options", "Read valid ids and limits for controlled character profile fields. Call this before setting controlled fields in create_character, update_character, or update_character_relationship.", CharacterProfileRules.ProfileOptionsSchema()),
         Tool("get_chat_direction_options", "Read valid ids, limits, intensity values, and current values for controlled chat direction fields. Call this before setting controlled fields in update_chat_direction.", ChatDirectionRules.OptionsSchema()),
         Tool("create_character", "Create a new character from provided fields. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema()),
-        Tool("update_character", "Update fields on an existing character. Eagerly complete missing profile details when useful; before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema(needsId: true)),
+        Tool("update_character", "Update fields on an existing character. Eagerly complete missing profile details when useful; before setting controlled profile fields, call get_character_profile_options for those fields. After any successful character update, inspect relationshipReconciliation and update only incomplete or contradicted canonical relationshipIds.", CharacterEntityPatchSchema(needsId: true)),
         Tool("update_chat_direction", "Update fields on this chat's direction. Before setting controlled direction fields, call get_chat_direction_options for those fields.", ChatDirectionRules.PatchSchema()),
         Tool("create_location", "Create a new location from provided canon fields. The location name is required.", LocationEntityPatchSchema(requiredField: "name")),
         Tool("update_location", "Update fields on an existing location. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", LocationEntityPatchSchema(needsId: true)),
@@ -21,8 +21,8 @@ public sealed partial class StoryAssistantService
         Tool("update_item", "Update fields on an existing item. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", ItemEntityPatchSchema(needsId: true)),
         Tool("create_timeline_entry", "Create a new timeline entry from provided canon fields. The timeline title is required.", TimelineEntityPatchSchema(requiredField: "title")),
         Tool("update_timeline_entry", "Update fields on an existing timeline entry. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", TimelineEntityPatchSchema(needsId: true)),
-        Tool("update_character_relationship", "Patch the directional relationship between two characters with explicit source/target meaning. Before setting relationshipType or privateTension, call get_character_profile_options.", CharacterProfileRules.RelationshipSchema()),
-        Tool("set_scene", "Set the starting scene or transition scene using existing canon ids, then ask the narrator to set the scene. Use only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. Do not resolve major plot outcomes through this tool.", SceneTransitionSchema()),
+        Tool("update_character_relationship", "Update the relationship between two characters. This is a bidirectional update and updates both characters together with one call. Every relationship field is required and must be non-empty. Before setting relationshipTypes or privateTensions, call get_character_profile_options.", CharacterProfileRules.RelationshipSchema()),
+        Tool("set_scene", "Set the starting scene or transition scene using existing canon ids, then run the normal narrator pipeline with required scene guidance. Use only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. Do not resolve major plot outcomes through this tool.", SceneTransitionSchema()),
         Tool("ask_user", "Ask the user one focused question and wait for their answer. Use this for onboarding interviews instead of writing prose questions. Supports single choice, multi-select, and optional freeform answers.", QuestionSchema())
     ];
 
@@ -177,11 +177,29 @@ public sealed partial class StoryAssistantService
             ["locationId"] = new JsonObject { ["type"] = "string", ["description"] = "Existing location id from get_story_entities." },
             ["characterIds"] = IdArraySchema("Existing character ids that should be present in the resulting scene."),
             ["itemIds"] = IdArraySchema("Existing item ids that should be present in the resulting scene. Use an empty array if no items are present."),
-            ["elapsedTime"] = new JsonObject { ["type"] = "string", ["description"] = "Optional skipped time, such as 'two hours later'." },
-            ["transitionNote"] = new JsonObject { ["type"] = "string", ["description"] = "Optional user-approved staging or transition context. Do not include unapproved major outcomes." },
-            ["reason"] = new JsonObject { ["type"] = "string", ["description"] = "Why the scene is being set now." }
+            ["narratorGuidance"] = new JsonObject
+            {
+                ["type"] = "object",
+                ["description"] = "Required guidance for the narrator. Guide setting the scene, not controlling characters.",
+                ["properties"] = new JsonObject
+                {
+                    ["purpose"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["enum"] = new JsonArray { "opening_scene", "location_transition", "time_skip", "scene_reset" },
+                        ["description"] = "What kind of scene-setting job the narrator is handling."
+                    },
+                    ["guidance"] = new JsonObject
+                    {
+                        ["type"] = "string",
+                        ["description"] = "What the narrator should establish about how the scene starts or how the story arrived here. Do not write prose, dialogue, private thoughts, reactions, decisions, attacks, reveals, or other character turns."
+                    }
+                },
+                ["required"] = new JsonArray { "purpose", "guidance" },
+                ["additionalProperties"] = false
+            }
         },
-        ["required"] = new JsonArray { "locationId", "characterIds" },
+        ["required"] = new JsonArray { "locationId", "characterIds", "itemIds", "narratorGuidance" },
         ["additionalProperties"] = false
     };
 

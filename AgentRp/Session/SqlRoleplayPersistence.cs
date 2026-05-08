@@ -60,6 +60,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         {
             Chat = ToModel(row.Chat),
             Characters = Deserialize(row.CharactersJson, new List<RpCharacter>()),
+            CharacterRelationships = Deserialize(row.CharacterRelationshipsJson, new List<RpCharacterRelationship>()),
             Locations = Deserialize(row.LocationsJson, new List<RpLocation>()),
             Items = Deserialize(row.ItemsJson, new List<RpItem>()),
             Timeline = Deserialize(row.TimelineJson, new List<RpTimelineEntry>()),
@@ -186,6 +187,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         }
 
         row.CharactersJson = Serialize(document.Characters);
+        row.CharacterRelationshipsJson = Serialize(document.CharacterRelationships);
         row.LocationsJson = Serialize(document.Locations);
         row.ItemsJson = Serialize(document.Items);
         row.TimelineJson = Serialize(document.Timeline);

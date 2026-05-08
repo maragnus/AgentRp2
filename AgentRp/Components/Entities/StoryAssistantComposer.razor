@@ -1,6 +1,26 @@
 <div class="story-assistant-composer">
+    @if (ContextChips.Count > 0)
+    {
+        <div class="story-context-chips">
+            @foreach (var chip in ContextChips)
+            {
+                <span @key="@($"{chip.EntityType}:{chip.EntityId}")" class="story-context-chip">
+                    <FaIcon Name="@IconFor(chip.EntityType)" />
+                    <span>@chip.Name</span>
+                    <AppButton Icon="x" TooltipText="Remove context" AriaLabel="Remove context" OnClick="@(_ => OnRemoveContext.InvokeAsync(chip))" />
+                </span>
+            }
+        </div>
+    }
     <AppTextarea Rows="3" Value="@Draft" ValueChanged="value => Draft = value" Placeholder="Ask the assistant to build or revise story entities" />
     <div class="story-assistant-actions">
+        @if (ContextChips.Count > 0)
+        {
+            <label class="story-context-pin">
+                <input type="checkbox" checked="@KeepContext" @onchange="SetKeepContext" />
+                <span>Keep context</span>
+            </label>
+        }
         @if (IsBusy)
         {
             <span class="toolbar-spacer"></span>
@@ -24,8 +44,12 @@
     [Parameter] public bool CanRun { get; set; }
     [Parameter] public bool NeedsRestart { get; set; }
     [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public IReadOnlyList<StoryAssistantContextChip> ContextChips { get; set; } = [];
+    [Parameter] public bool KeepContext { get; set; }
     [Parameter] public EventCallback<string> OnSend { get; set; }
     [Parameter] public EventCallback OnStop { get; set; }
+    [Parameter] public EventCallback<StoryAssistantContextChip> OnRemoveContext { get; set; }
+    [Parameter] public EventCallback<bool> KeepContextChanged { get; set; }
 
     bool CanSend => CanRun && !NeedsRestart && !string.IsNullOrWhiteSpace(Draft);
 
@@ -35,4 +59,18 @@
         Draft = "";
         await OnSend.InvokeAsync(text);
     }
+
+    Task SetKeepContext(ChangeEventArgs args) =>
+        KeepContextChanged.InvokeAsync(args.Value is bool value
+            ? value
+            : string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
+
+    static string IconFor(string entityType) => entityType switch
+    {
+        "character" or "narrator" => "user",
+        "location" => "map-pin",
+        "item" => "box",
+        "timeline" => "clock",
+        _ => "tag"
+    };
 }

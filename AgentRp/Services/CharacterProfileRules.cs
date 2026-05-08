@@ -69,8 +69,8 @@ public static class CharacterProfileRules
         "bodyProportions",
         "presentation",
         "attractiveness",
-        "relationshipType",
-        "privateTension"
+        "relationshipTypes",
+        "privateTensions"
     ];
 
     public static JsonObject CharacterPatchSchema() => new()
@@ -118,18 +118,19 @@ public static class CharacterProfileRules
     public static JsonObject RelationshipSchema() => new()
     {
         ["type"] = "object",
+        ["description"] = "Flat directional relationship fields to set between two characters. Every relationship update must populate every field; use complete arrays for relationshipTypes and privateTensions.",
         ["properties"] = new JsonObject
         {
-            ["sourceCharacterId"] = new JsonObject { ["type"] = "string" },
-            ["targetCharacterId"] = new JsonObject { ["type"] = "string" },
-            ["howSourceSeesTarget"] = new JsonObject { ["type"] = "string" },
-            ["howTargetSeesSource"] = new JsonObject { ["type"] = "string" },
-            ["publicDynamic"] = new JsonObject { ["type"] = "string" },
-            ["privateTension"] = ControlledString("Shared dynamic value. Call get_character_profile_options with fields ['privateTension'] before setting."),
-            ["relationshipType"] = ControlledString("Bond type value. Call get_character_profile_options with fields ['relationshipType'] before setting."),
+            ["sourceCharacterId"] = StringField("Character id for the point-of-view/source side of the relationship."),
+            ["targetCharacterId"] = StringField("Character id for the target/other side of the relationship."),
+            ["howSourceSeesTarget"] = StringField("How the source character perceives, feels about, or treats the target character."),
+            ["howTargetSeesSource"] = StringField("How the target character perceives, feels about, or treats the source character."),
+            ["publicDynamic"] = StringField("How others would summarize the visible dynamic between these characters."),
+            ["privateTensions"] = ControlledStringArray("Controlled relationship dynamic values. Call get_character_profile_options with fields ['privateTensions'] before setting."),
+            ["relationshipTypes"] = ControlledStringArray("Controlled bond type values. Call get_character_profile_options with fields ['relationshipTypes'] before setting."),
             ["reason"] = new JsonObject { ["type"] = "string" }
         },
-        ["required"] = new JsonArray { "sourceCharacterId", "targetCharacterId" },
+        ["required"] = new JsonArray(CharacterRelationshipRules.RequiredPatchFields.Select(field => (JsonNode?)JsonValue.Create(field)).ToArray()),
         ["additionalProperties"] = false
     };
 
@@ -255,8 +256,12 @@ public static class CharacterProfileRules
     public static void ValidateRelationshipPatch(JsonElement root, CharacterTraitLibraryState library)
     {
         var normalized = CharacterTraitLibraryService.NormalizeState(library);
-        ValidateStringValue(root, "relationshipType", "relationship type", normalized.BondTypes);
-        ValidateStringValue(root, "privateTension", "relationship dynamic", normalized.Dynamics);
+        var missing = CharacterRelationshipRules.MissingPatchFields(root);
+        if (missing.Count > 0)
+            throw CharacterProfileValidationException.ForFields(missing, $"Updating a character relationship needs every relationship field populated. Add {JoinFieldList(missing)}.");
+
+        ValidateStringArrayValue(root, "relationshipTypes", "relationship types", normalized.BondTypes);
+        ValidateStringArrayValue(root, "privateTensions", "relationship dynamics", normalized.Dynamics);
     }
 
     static JsonObject StringField(string description) => new()
@@ -315,20 +320,30 @@ public static class CharacterProfileRules
         }
     }
 
-    static void ValidateStringValue(JsonElement root, string field, string label, IReadOnlyList<string> values)
+    static void ValidateStringArrayValue(JsonElement root, string field, string label, IReadOnlyList<string> values)
     {
         if (!root.TryGetProperty(field, out var value))
             return;
 
-        if (value.ValueKind != JsonValueKind.String)
-            throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} must be a string.");
+        if (value.ValueKind != JsonValueKind.Array)
+            throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} must be an array of strings.");
 
-        var text = value.GetString() ?? "";
-        if (string.IsNullOrWhiteSpace(text))
-            return;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+                throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} must be an array of strings.");
 
-        if (!values.Contains(text, StringComparer.Ordinal))
-            throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} contains invalid value '{text}'. Controlled relationship fields must use valid values.");
+            var text = item.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            if (!seen.Add(text))
+                throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} contains duplicate value '{text}'.");
+
+            if (!values.Contains(text, StringComparer.Ordinal))
+                throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} contains invalid value '{text}'. Controlled relationship fields must use valid values.");
+        }
     }
 
     static void ValidateAppearancePatch(JsonElement root, CharacterTraitLibraryState library)
@@ -458,6 +473,14 @@ public static class CharacterProfileRules
         ["description"] = description
     };
 
+    static JsonObject ControlledStringArray(string description) => new()
+    {
+        ["type"] = "array",
+        ["description"] = description,
+        ["uniqueItems"] = true,
+        ["items"] = new JsonObject { ["type"] = "string" }
+    };
+
     static JsonObject ControlledArray(string description, int max, IReadOnlyList<CharacterOption>? options = null)
     {
         var items = new JsonObject { ["type"] = "string" };
@@ -501,8 +524,8 @@ public static class CharacterProfileRules
         "bodyProportions" => new { maxItems = MaxBodyProportions, options = Options(library.BodyProportions), instruction = AppearancePolicy },
         "presentation" => new { maxItems = MaxPresentation, options = Options(library.Presentations), instruction = AppearancePolicy },
         "attractiveness" => new { options = Options(library.AttractivenessLevels), allowsEmpty = true, instruction = AppearancePolicy },
-        "relationshipType" => new { options = library.BondTypes },
-        "privateTension" => new { options = library.Dynamics },
+        "relationshipTypes" => new { options = library.BondTypes },
+        "privateTensions" => new { options = library.Dynamics },
         _ => throw CharacterProfileValidationException.ForField(field, $"Reading character profile options failed because '{field}' is not a supported controlled profile field.")
     };
 }
@@ -522,8 +545,10 @@ public sealed class CharacterProfileValidationException(string message, IReadOnl
         "soft spots" => "softSpots",
         "avoid patterns" => "avoidPatterns",
         "appearance profile" => "appearanceProfile",
-        "relationship type" => "relationshipType",
-        "relationship dynamic" => "privateTension",
+        "relationship type" => "relationshipTypes",
+        "relationship types" => "relationshipTypes",
+        "relationship dynamic" => "privateTensions",
+        "relationship dynamics" => "privateTensions",
         _ => field
     };
 }

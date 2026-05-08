@@ -18,6 +18,7 @@ public sealed class UiCompositionPolicyTests
     static readonly HashSet<string> InlineStyleAllowList = new(StringComparer.OrdinalIgnoreCase)
     {
         Normalize("AgentRp/Components/Common/Avatar.razor"),
+        Normalize("AgentRp/Components/Common/Columns.razor"),
         Normalize("AgentRp/Components/Common/EntityImage.razor"),
         Normalize("AgentRp/Components/Common/ImagePlaceholder.razor"),
         Normalize("AgentRp/Components/Common/ModalShell.razor"),
@@ -103,6 +104,31 @@ public sealed class UiCompositionPolicyTests
         Assert.DoesNotContain("Top-P", component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Primary User", component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Admin", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SidebarExposesStoryAssistantWhenStoryIsActive()
+    {
+        using var context = new BunitContext();
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
+        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
+        context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<Sidebar>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.OnOpenModal, _ => Task.CompletedTask)
+            .Add(item => item.OnOpenEntities, _ => Task.CompletedTask));
+
+        var storyIndex = component.Markup.IndexOf("Switch current story", StringComparison.Ordinal);
+        var assistantIndex = component.Markup.IndexOf("Story Assistant", StringComparison.Ordinal);
+        Assert.True(storyIndex >= 0);
+        Assert.True(assistantIndex > storyIndex);
+        Assert.NotNull(component.Find(".sidebar-assistant-entry"));
     }
 
     [Fact]
@@ -340,6 +366,29 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
+    public async Task EntityManagerDoesNotRenderStoryAssistantTab()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddScoped<OverlayService>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
+        context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<EntityManagerModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.InitialType, "characters")
+            .Add(item => item.OnSelectEntityImage, _ => Task.CompletedTask)
+            .Add(item => item.OnClose, () => Task.CompletedTask));
+
+        var tabs = component.FindAll(".entity-tab").Select(tab => tab.TextContent).ToList();
+        Assert.DoesNotContain(tabs, tab => tab.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task EntityManagerWrapsSelectedHeaderInModalPaneChrome()
     {
         using var context = new BunitContext();
@@ -389,6 +438,27 @@ public sealed class UiCompositionPolicyTests
 
         Assert.DoesNotContain("Prepare a New Story", componentWithTranscript.Markup, StringComparison.Ordinal);
         Assert.Contains("Existing assistant transcript.", componentWithTranscript.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StoryAssistantModalUsesSharedSplitAndStackPrimitives()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<StoryAssistantModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.OnClose, () => Task.CompletedTask));
+
+        Assert.NotNull(component.Find(".modal-split.story-assistant-modal"));
+        Assert.NotNull(component.Find(".modal-stack.story-assistant-workspace"));
+        Assert.Contains("Chats", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Chat", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Entities", component.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

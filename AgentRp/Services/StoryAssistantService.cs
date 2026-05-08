@@ -35,7 +35,7 @@ public interface IStoryAssistantCallbacks
     Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
     Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken);
     Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken);
-    Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken);
+    Task<SceneTransitionResult> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken);
     Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken);
     Task SaveAssistantStateAsync(CancellationToken cancellationToken);
 }
@@ -393,6 +393,18 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         var controlledFields = exception.Fields
             .Where(field => CharacterProfileRules.ControlledCharacterFields.Contains(field, StringComparer.Ordinal))
             .ToList();
+
+        if (toolName == "update_character_relationship")
+            return new
+            {
+                tool = controlledFields.Count > 0 ? "get_character_profile_options" : toolName,
+                fields = exception.Fields,
+                controlledFields,
+                instruction = controlledFields.Count > 0
+                    ? "Read valid relationshipTypes and privateTensions options, then retry update_character_relationship with every relationship field populated."
+                    : "Retry update_character_relationship with every required relationship field populated."
+            };
+
         if (controlledFields.Count > 0)
             return new
             {
@@ -420,21 +432,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
             timeline = document.Timeline.Select(TimelineShape),
             chatDirection = ChatDirectionRules.Context(document.ChatDirection),
             characterTraitLibrary = CharacterProfileRules.Context(library),
-            relationships = document.Characters.Select(character => new
-            {
-                character.Id,
-                character.Name,
-                relationships = character.ProfileRelationships.Select(relationship => new
-                {
-                    sourceCharacterId = character.Id,
-                    targetCharacterId = relationship.CharacterId,
-                    howSourceSeesTarget = relationship.NoteAtoB,
-                    howTargetSeesSource = relationship.NoteBtoA,
-                    publicDynamic = relationship.NoteExternal,
-                    relationship.Bonds,
-                    relationship.Dynamics
-                })
-            })
+            relationships = CharacterRelationshipRules.Coverage(document)
         };
     }
 
@@ -488,6 +486,22 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         character.StressPattern,
         character.SoftSpots,
         character.AvoidPatterns
+    };
+
+    static object RelationshipShape(CharacterRelationshipView relationship) =>
+        RelationshipShape(relationship, relationship.SourceCharacterId, relationship.SourceCharacterName, relationship.TargetCharacterId, relationship.TargetCharacterName);
+
+    static object RelationshipShape(CharacterRelationshipView? relationship, string sourceId, string sourceName, string targetId, string targetName) => new
+    {
+        sourceCharacterId = sourceId,
+        sourceCharacterName = sourceName,
+        targetCharacterId = targetId,
+        targetCharacterName = targetName,
+        howSourceSeesTarget = relationship?.HowSourceSeesTarget ?? "",
+        howTargetSeesSource = relationship?.HowTargetSeesSource ?? "",
+        publicDynamic = relationship?.PublicDynamic ?? "",
+        relationshipTypes = relationship?.RelationshipTypes ?? [],
+        privateTensions = relationship?.PrivateTensions ?? []
     };
 
     static object LocationShape(RpLocation location) => new
@@ -702,36 +716,20 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         var source = document.Characters.FirstOrDefault(item => item.Id == sourceId) ?? throw new StoryAssistantEntityLookupException($"No source character with id '{sourceId}' exists.");
         var target = document.Characters.FirstOrDefault(item => item.Id == targetId) ?? throw new StoryAssistantEntityLookupException($"No target character with id '{targetId}' exists.");
         CharacterProfileRules.ValidateRelationshipPatch(json.RootElement, document.CharacterTraitLibrary);
-        var before = Clone(source);
-        var after = Clone(source);
-        var relationship = after.ProfileRelationships.FirstOrDefault(item => item.CharacterId == targetId);
-        if (relationship is null)
-        {
-            relationship = new() { CharacterId = targetId };
-            after.ProfileRelationships.Add(relationship);
-        }
+        var preview = SessionCloner.Clone(document);
+        var before = RelationshipJsonObject(document, source.Id, source.Name, target.Id, target.Name);
+        ApplyRelationship(preview, json.RootElement);
+        var after = RelationshipJsonObject(preview, source.Id, source.Name, target.Id, target.Name);
 
-        relationship.NoteAtoB = String(json.RootElement, "howSourceSeesTarget", relationship.NoteAtoB);
-        relationship.NoteBtoA = String(json.RootElement, "howTargetSeesSource", relationship.NoteBtoA);
-        relationship.NoteExternal = String(json.RootElement, "publicDynamic", relationship.NoteExternal);
-        AddDistinct(relationship.Dynamics, String(json.RootElement, "privateTension"));
-        AddDistinct(relationship.Bonds, String(json.RootElement, "relationshipType"));
-
-        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {source.Name} and {target.Name}", "relationship", source.Id, source.Name, args, RelationshipJsonObject(before), RelationshipJsonObject(after), StoryAssistantChangeRisk.Major);
-        return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, source), RelationshipJsonObject(source), token);
+        var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {source.Name} and {target.Name}", "relationship", source.Id, source.Name, args, before, after, StoryAssistantChangeRisk.Major);
+        return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => ApplyRelationship(document, json.RootElement), RelationshipJsonObject(document, source.Id, source.Name, target.Id, target.Name), token);
     }
 
     async Task<StoryAssistantToolExecutionResult> SetSceneAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var root = json.RootElement;
-        var request = new SceneTransitionRequest(
-            RequiredString(root, "locationId"),
-            StringList(root, "characterIds"),
-            StringList(root, "itemIds"),
-            String(root, "elapsedTime"),
-            String(root, "transitionNote"),
-            String(root, "reason"));
+        var request = BuildSetSceneRequest(root);
         var transition = (sceneTransitionService ?? new SceneTransitionService()).Build(document, request);
         var item = MutationItem(
             callId,
@@ -747,6 +745,13 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
             SceneTransitionRisk(transition));
         return await ResolveSceneTransitionAsync(document, item, callbacks, request, transition, token);
     }
+
+    static SetSceneRequest BuildSetSceneRequest(JsonElement root) =>
+        new(
+            RequiredString(root, "locationId"),
+            StringList(root, "characterIds"),
+            StringList(root, "itemIds"),
+            ParseNarratorGuidance(root));
 
     async Task<StoryAssistantToolExecutionResult> ResolveMutationAsync(
         RpChatDocument document,
@@ -771,14 +776,46 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         apply();
         await callbacks.SaveEntityAreaAsync(area, cancellationToken);
         await callbacks.UpdateToolCallAsync(item, cancellationToken);
-        return StoryAssistantToolExecutionResult.Completed(Output("accepted", new { entityType = item.EntityType, entityId = item.EntityId, resultingEntity = item.After }));
+        return StoryAssistantToolExecutionResult.Completed(AcceptedMutationOutput(document, item));
+    }
+
+    static string AcceptedMutationOutput(RpChatDocument document, StoryAssistantTranscriptItem item)
+    {
+        var payload = new JsonObject
+        {
+            ["entityType"] = item.EntityType,
+            ["entityId"] = item.EntityId,
+            ["resultingEntity"] = item.After.DeepClone()
+        };
+
+        if (item.ToolName is "create_character" or "update_character")
+            payload["relationshipReconciliation"] = ToJsonObject(CharacterRelationshipRules.ReconciliationFor(document, item.EntityId));
+
+        payload["status"] = "accepted";
+        return payload.ToJsonString(AppJsonSerializerOptions.Web);
+    }
+
+    static string AcceptedMutationOutput(RpChatDocument document, StoryAssistantWorkItem workItem)
+    {
+        var payload = new JsonObject
+        {
+            ["entityType"] = workItem.EntityType,
+            ["entityId"] = workItem.EntityId,
+            ["resultingEntity"] = workItem.After.DeepClone()
+        };
+
+        if (workItem.ToolName is "create_character" or "update_character")
+            payload["relationshipReconciliation"] = ToJsonObject(CharacterRelationshipRules.ReconciliationFor(document, workItem.EntityId));
+
+        payload["status"] = "accepted";
+        return payload.ToJsonString(AppJsonSerializerOptions.Web);
     }
 
     async Task<StoryAssistantToolExecutionResult> ResolveSceneTransitionAsync(
         RpChatDocument document,
         StoryAssistantTranscriptItem item,
         IStoryAssistantCallbacks callbacks,
-        SceneTransitionRequest request,
+        SetSceneRequest request,
         SceneTransitionPlan transition,
         CancellationToken cancellationToken)
     {
@@ -795,7 +832,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         {
             item.Status = StoryAssistantItemStatus.Applied;
             await callbacks.RecordToolCallAsync(item, cancellationToken);
-            var generated = await callbacks.GenerateSceneTransitionAsync(request, cancellationToken);
+            var generated = await callbacks.SetSceneAsync(request, cancellationToken);
             item.After = SceneTransitionJsonObject(generated.Plan, document);
             item.Diffs = Diff(item.Before, item.After);
             await callbacks.UpdateToolCallAsync(item, cancellationToken);
@@ -885,7 +922,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
 
             ApplyAcceptedMutation(document, workItem);
             workItem.Status = StoryAssistantWorkItemStatus.Completed;
-            workItem.ResultJson = Output("accepted", new { entityType = workItem.EntityType, entityId = workItem.EntityId, resultingEntity = workItem.After });
+            workItem.ResultJson = AcceptedMutationOutput(document, workItem);
             workItem.UpdatedUtc = DateTime.UtcNow;
             await callbacks.SaveEntityAreaAsync(AreaFor(workItem), cancellationToken);
             await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
@@ -907,7 +944,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         CancellationToken cancellationToken)
     {
         var request = SceneRequest(workItem.ArgumentsJson);
-        var generated = await callbacks.GenerateSceneTransitionAsync(request, cancellationToken);
+        var generated = await callbacks.SetSceneAsync(request, cancellationToken);
         workItem.After = SceneTransitionJsonObject(generated.Plan, document);
         workItem.Diffs = Diff(workItem.Before, workItem.After);
         workItem.Status = StoryAssistantWorkItemStatus.Completed;
@@ -927,7 +964,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
     JsonObject CurrentWorkItemState(RpChatDocument document, StoryAssistantWorkItem workItem) => workItem.EntityType switch
     {
         "character" => document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character ? CharacterJsonObject(character, document.CharacterTraitLibrary) : new(),
-        "relationship" => document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character ? RelationshipJsonObject(character) : new(),
+        "relationship" => CurrentRelationshipState(document, workItem),
         "chatDirection" => ChatDirectionRules.JsonObject(document.ChatDirection),
         "location" => document.Locations.FirstOrDefault(item => item.Id == workItem.EntityId) is { } location ? LocationJsonObject(location) : new(),
         "item" => document.Items.FirstOrDefault(item => item.Id == workItem.EntityId) is { } item ? ItemJsonObject(item) : new(),
@@ -935,6 +972,22 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         "scene" => SceneJsonObject(TranscriptGraph.GetActiveScene(document.Transcript), document),
         _ => new()
     };
+
+    static JsonObject CurrentRelationshipState(RpChatDocument document, StoryAssistantWorkItem workItem)
+    {
+        using var json = Parse(workItem.ArgumentsJson);
+        var root = json.RootElement;
+        var sourceId = String(root, "sourceCharacterId", workItem.EntityId);
+        var targetId = String(root, "targetCharacterId");
+        var source = document.Characters.FirstOrDefault(item => item.Id == sourceId);
+        if (source is null || string.IsNullOrWhiteSpace(targetId))
+            return new();
+
+        var target = document.Characters.FirstOrDefault(item => item.Id == targetId);
+        return target is null
+            ? new()
+            : RelationshipJsonObject(document, source.Id, source.Name, target.Id, target.Name);
+    }
 
     void ApplyAcceptedMutation(RpChatDocument document, StoryAssistantWorkItem workItem)
     {
@@ -999,32 +1052,13 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
     {
         var sourceId = RequiredString(root, "sourceCharacterId");
         var targetId = RequiredString(root, "targetCharacterId");
-        var source = document.Characters.First(item => item.Id == sourceId);
-        var relationship = source.ProfileRelationships.FirstOrDefault(item => item.CharacterId == targetId);
-        if (relationship is null)
-        {
-            relationship = new() { CharacterId = targetId };
-            source.ProfileRelationships.Add(relationship);
-        }
-
-        relationship.NoteAtoB = String(root, "howSourceSeesTarget", relationship.NoteAtoB);
-        relationship.NoteBtoA = String(root, "howTargetSeesSource", relationship.NoteBtoA);
-        relationship.NoteExternal = String(root, "publicDynamic", relationship.NoteExternal);
-        AddDistinct(relationship.Dynamics, String(root, "privateTension"));
-        AddDistinct(relationship.Bonds, String(root, "relationshipType"));
+        CharacterRelationshipGraph.ApplyPatch(document, sourceId, targetId, root);
     }
 
-    static SceneTransitionRequest SceneRequest(string args)
+    static SetSceneRequest SceneRequest(string args)
     {
         using var json = Parse(args);
-        var root = json.RootElement;
-        return new(
-            RequiredString(root, "locationId"),
-            StringList(root, "characterIds"),
-            StringList(root, "itemIds"),
-            String(root, "elapsedTime"),
-            String(root, "transitionNote"),
-            String(root, "reason"));
+        return BuildSetSceneRequest(json.RootElement);
     }
 
     static RoleplayStoreArea AreaFor(StoryAssistantWorkItem workItem) =>
@@ -1121,6 +1155,24 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
     static string String(JsonElement root, string name, string fallback = "") => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : fallback;
     static bool Bool(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
     static int Int(JsonElement root, string name, int fallback) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : fallback;
+    static SceneNarratorGuidance ParseNarratorGuidance(JsonElement root)
+    {
+        if (!root.TryGetProperty("narratorGuidance", out var guidanceElement) || guidanceElement.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("The tool call was missing 'narratorGuidance'.");
+
+        var purpose = RequiredString(guidanceElement, "purpose");
+        return new(ParseNarratorPurpose(purpose), RequiredString(guidanceElement, "guidance"));
+    }
+
+    static SceneNarratorGuidancePurpose ParseNarratorPurpose(string value) => value.Trim() switch
+    {
+        "opening_scene" => SceneNarratorGuidancePurpose.OpeningScene,
+        "location_transition" => SceneNarratorGuidancePurpose.LocationTransition,
+        "time_skip" => SceneNarratorGuidancePurpose.TimeSkip,
+        "scene_reset" => SceneNarratorGuidancePurpose.SceneReset,
+        _ => throw new InvalidOperationException($"The tool call had unsupported narrator guidance purpose '{value}'.")
+    };
+
     static List<string> StringList(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
         ? value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
         : [];
@@ -1225,12 +1277,6 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
             setter(value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").Where(item => !string.IsNullOrWhiteSpace(item)).ToList());
     }
 
-    static void AddDistinct(List<string> values, string value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase))
-            values.Add(value);
-    }
-
     static List<StoryAssistantFieldDiff> Diff(JsonObject before, JsonObject after)
     {
         var fields = before.Select(pair => pair.Key).Concat(after.Select(pair => pair.Key)).Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal);
@@ -1251,6 +1297,13 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         "noteAtoB" => "How source sees target",
         "noteBtoA" => "How target sees source",
         "noteExternal" => "Public dynamic",
+        "howSourceSeesTarget" => "How Source Sees Target",
+        "howTargetSeesSource" => "How Target Sees Source",
+        "publicDynamic" => "Public Dynamic",
+        "relationshipTypes" => "Relationship Types",
+        "privateTensions" => "Private Tensions",
+        "sourceCharacterName" => "Source Character",
+        "targetCharacterName" => "Target Character",
         "extraAppearanceDetails" => "Extra Appearance Details",
         "hairColor" => "Hair Color",
         "hairStyles" => "Hair Styles",
@@ -1329,12 +1382,9 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         JsonSerializer.SerializeToNode(value, AppJsonSerializerOptions.Web)?.AsObject() ?? new();
 
     static JsonObject CharacterJsonObject(RpCharacter character, CharacterTraitLibraryState library) => ToJsonObject(CharacterShape(character, CharacterTraitLibraryService.NormalizeState(library)));
-    static JsonObject RelationshipJsonObject(RpCharacter character) => ToJsonObject(new
-    {
-        character.Id,
-        character.Name,
-        character.ProfileRelationships
-    });
+
+    static JsonObject RelationshipJsonObject(RpChatDocument document, string sourceId, string sourceName, string targetId, string targetName) =>
+        ToJsonObject(RelationshipShape(CharacterRelationshipGraph.View(document, sourceId, sourceName, targetId, targetName), sourceId, sourceName, targetId, targetName));
 
     static JsonObject LocationJsonObject(RpLocation location) => ToJsonObject(LocationShape(location));
     static JsonObject ItemJsonObject(RpItem item) => ToJsonObject(ItemShape(item));
@@ -1351,21 +1401,12 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
 
     static JsonObject SceneTransitionJsonObject(SceneTransitionPlan transition, RpChatDocument document) => ToJsonObject(new
     {
-        isOpeningScene = transition.IsOpeningScene,
-        isLocationTransition = transition.IsLocationTransition,
-        isTimeSkip = transition.IsTimeSkip,
         locationId = transition.TargetScene.LocationId,
         locationName = ResolveLocationName(transition.TargetScene, document),
         characterIds = transition.TargetScene.InSceneCharacterIds,
         characters = ResolveNames(transition.TargetScene.InSceneCharacterIds, document.Characters.Select(character => (character.Id, character.Name))),
         itemIds = transition.TargetScene.InSceneItemIds,
-        items = ResolveNames(transition.TargetScene.InSceneItemIds, document.Items.Select(item => (item.Id, item.Name))),
-        addedCharacters = transition.AddedCharacters.Select(item => item.Name),
-        removedCharacters = transition.RemovedCharacters.Select(item => item.Name),
-        stayingCharacters = transition.StayingCharacters.Select(item => item.Name),
-        addedItems = transition.AddedItems.Select(item => item.Name),
-        removedItems = transition.RemovedItems.Select(item => item.Name),
-        stayingItems = transition.StayingItems.Select(item => item.Name)
+        items = ResolveNames(transition.TargetScene.InSceneItemIds, document.Items.Select(item => (item.Id, item.Name)))
     });
 
     static string ResolveLocationName(RpSceneFrame scene, RpChatDocument document) =>
@@ -1384,6 +1425,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         transition.IsOpeningScene
         || transition.IsLocationTransition
         || transition.IsTimeSkip
+        || transition.IsSceneReset
         || transition.RemovedCharacters.Count > 0
         || transition.RemovedItems.Count > 0;
 

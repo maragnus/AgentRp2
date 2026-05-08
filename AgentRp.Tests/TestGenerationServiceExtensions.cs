@@ -24,6 +24,15 @@ internal static class TestGenerationServiceExtensions
         CancellationToken cancellationToken = default) =>
         service.GenerateProseFromPlanAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, progress, cancellationToken);
 
+    public static Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
+        this TextGenerationService service,
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        GeneratePlanAndProseRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default) =>
+        service.GeneratePlanAndProseAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, progress, cancellationToken);
+
     public static Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
         this TextGenerationService service,
         RpChatDocument document,

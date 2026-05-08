@@ -492,6 +492,71 @@ public sealed class TranscriptFeatureTests
                 trace));
         }
 
+        public Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
+            RpChatDocument document,
+            IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
+            GeneratePlanAndProseRequest request,
+            TranscriptGenerationProgress? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            var now = DateTime.UtcNow;
+            var actorName = request.RequestedNarrator ? "Narrator" : request.ActorName;
+            return Task.FromResult(new GeneratedTurnResult(
+                request.ActorCharacterId,
+                actorName,
+                new RpTurnPlan
+                {
+                    TurnShape = request.RequestedTurnShape,
+                    Beat = "Test replanned beat",
+                    Intent = "Test replanned intent",
+                    ImmediateGoal = "Test replanned goal",
+                    WhyNow = "Test replanned why now",
+                    ChangeIntroduced = "Test replanned change",
+                    Guardrails = "Test replanned guardrails"
+                },
+                request.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                string.IsNullOrWhiteSpace(request.ActorCharacterId)
+                    ? new Dictionary<string, string>(StringComparer.Ordinal)
+                    : new Dictionary<string, string>(StringComparer.Ordinal) { [request.ActorCharacterId] = $"{actorName} test replanned private intent" },
+                CloneScene(request.Scene),
+                $"Replanned for {actorName}: {request.Guidance}".Trim(),
+                new RpTurnTrace
+                {
+                    Summary = $"Completed Â· {actorName} Â· Planning -> Prose",
+                    Status = "completed",
+                    StartedUtc = now,
+                    CompletedUtc = now.AddSeconds(1),
+                    DurationSeconds = 1,
+                    ProviderId = "fake",
+                    ProviderName = "Fake",
+                    ModelId = "fake-model",
+                    Steps =
+                    [
+                        new()
+                        {
+                            Id = "planning",
+                            Label = "Planning",
+                            Status = "completed",
+                            StartedUtc = now,
+                            CompletedUtc = now.AddSeconds(1),
+                            DurationSeconds = 1,
+                            RawOutput = "{}"
+                        },
+                        new()
+                        {
+                            Id = "prose",
+                            Label = "Prose",
+                            Status = "completed",
+                            StartedUtc = now,
+                            CompletedUtc = now.AddSeconds(1),
+                            DurationSeconds = 1,
+                            RawOutput = "{}"
+                        }
+                    ]
+                }));
+        }
+
         public Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,

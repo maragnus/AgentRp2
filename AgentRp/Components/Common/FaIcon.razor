@@ -1,9 +1,15 @@
-<i class="fa-regular @Class" aria-hidden="true"></i>
+<i class="@CssClass" aria-hidden="true"></i>
 
 @code {
     [Parameter] public string Name { get; set; } = "circle";
 
-    string Class => Name switch
+    string CssClass => Name switch
+    {
+        "story-assistant" or "fairy" => "fa-duotone fa-solid fa-person-fairy",
+        _ => $"fa-regular {RegularClass}"
+    };
+
+    string RegularClass => Name switch
     {
         "plus" => "fa-plus",
         "x" => "fa-xmark",

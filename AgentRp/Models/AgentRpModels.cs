@@ -12,7 +12,6 @@ public sealed class RpCharacter
     public string Personality { get; set; } = "";
     public string Appearance { get; set; } = "";
     public CharacterAppearanceState AppearanceProfile { get; set; } = new();
-    public string Relationships { get; set; } = "";
     public string Backstory { get; set; } = "";
     public string Voice { get; set; } = "";
     public string Notes { get; set; } = "";
@@ -32,7 +31,6 @@ public sealed class RpCharacter
     public string StressPattern { get; set; } = "";
     public List<string> SoftSpots { get; set; } = [];
     public List<string> AvoidPatterns { get; set; } = [];
-    public List<RpRelationship> ProfileRelationships { get; set; } = [];
     public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
 }
 
@@ -58,9 +56,11 @@ public sealed class CharacterVoiceSelection
     public DateTime UpdatedUtc { get; set; }
 }
 
-public sealed class RpRelationship
+public sealed class RpCharacterRelationship
 {
-    public string CharacterId { get; set; } = "";
+    public string Id { get; set; } = "";
+    public string CharacterAId { get; set; } = "";
+    public string CharacterBId { get; set; } = "";
     public List<string> Bonds { get; set; } = [];
     public List<string> Dynamics { get; set; } = [];
     public string NoteAtoB { get; set; } = "";

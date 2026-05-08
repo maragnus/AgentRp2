@@ -48,6 +48,46 @@ public sealed class CharacterProfileRulesTests
     }
 
     [Fact]
+    public void RelationshipToolSchemaUsesFlatRelationshipFields()
+    {
+        var tool = StoryAssistantService.BuildTools(new()).Single(tool => tool.Name == "update_character_relationship");
+
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        var properties = json.RootElement.GetProperty("properties");
+
+        Assert.True(properties.TryGetProperty("howSourceSeesTarget", out _));
+        Assert.True(properties.TryGetProperty("howTargetSeesSource", out _));
+        Assert.True(properties.TryGetProperty("publicDynamic", out _));
+        Assert.True(properties.TryGetProperty("relationshipTypes", out var relationshipTypes));
+        Assert.True(properties.TryGetProperty("privateTensions", out var privateTensions));
+        var required = json.RootElement.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToList();
+        Assert.Contains("howSourceSeesTarget", required);
+        Assert.Contains("howTargetSeesSource", required);
+        Assert.Contains("publicDynamic", required);
+        Assert.Contains("relationshipTypes", required);
+        Assert.Contains("privateTensions", required);
+        Assert.Equal("array", relationshipTypes.GetProperty("type").GetString());
+        Assert.Equal("array", privateTensions.GetProperty("type").GetString());
+        Assert.False(properties.TryGetProperty("profileRelationships", out _));
+        Assert.False(properties.TryGetProperty("relationshipType", out _));
+        Assert.False(properties.TryGetProperty("privateTension", out _));
+    }
+
+    [Fact]
+    public void RelationshipPatchRequiresEveryRelationshipField()
+    {
+        using var json = JsonDocument.Parse("""{"sourceCharacterId":"c1","targetCharacterId":"c2","howSourceSeesTarget":"Trusts her.","relationshipTypes":["Ally"]}""");
+
+        var exception = Assert.Throws<CharacterProfileValidationException>(() =>
+            CharacterProfileRules.ValidateRelationshipPatch(json.RootElement, CharacterTraitLibraryService.CreateDefaultState()));
+
+        Assert.Contains("every relationship field", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("howTargetSeesSource", exception.Fields);
+        Assert.Contains("publicDynamic", exception.Fields);
+        Assert.Contains("privateTensions", exception.Fields);
+    }
+
+    [Fact]
     public void ProfileOptionsToolReturnsCustomizedTraitLibraryValues()
     {
         var document = new RpChatDocument
@@ -83,6 +123,20 @@ public sealed class CharacterProfileRulesTests
         Assert.True(fields.TryGetProperty("eyeColor", out _));
         Assert.True(fields.TryGetProperty("bodyProportions", out _));
         Assert.True(fields.TryGetProperty("attractiveness", out _));
+    }
+
+    [Fact]
+    public void ProfileOptionsForRelationshipFieldsUseFlatNames()
+    {
+        var options = CharacterProfileRules.ProfileOptions(CharacterTraitLibraryService.CreateDefaultState(), ["relationshipTypes", "privateTensions"]);
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(options, AppJsonSerializerOptions.Web));
+        var fields = json.RootElement.GetProperty("fields");
+
+        Assert.True(fields.TryGetProperty("relationshipTypes", out _));
+        Assert.True(fields.TryGetProperty("privateTensions", out _));
+        Assert.False(fields.TryGetProperty("relationshipType", out _));
+        Assert.False(fields.TryGetProperty("privateTension", out _));
     }
 
     [Fact]

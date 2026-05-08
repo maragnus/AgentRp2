@@ -1,0 +1,53 @@
+@using AgentRp.Services
+
+<ModalShell Title="New Plan" Subtitle="@Subtitle" Icon="sparkle" MaxWidth="680px" CloseDisabled="@TranscriptBusy" OnClose="Close">
+    <ChildContent>
+        <Section Title="Guidance" Hint="Creates a new branch from this message.">
+            <AppTextarea Rows="8"
+                         Value="@GuidanceDraft"
+                         ValueChanged="SetGuidance"
+                         Placeholder="Guide the revised turn." />
+        </Section>
+    </ChildContent>
+    <Footer>
+        <AppButton Variant="secondary" Disabled="@TranscriptBusy" OnClick="@(_ => Close())">Cancel</AppButton>
+        <BusyButton Variant="primary" Disabled="@TranscriptBusy" OnClick="Submit">
+            <FaIcon Name="sparkle" />New Plan
+        </BusyButton>
+    </Footer>
+</ModalShell>
+
+@code {
+    string GuidanceDraft = "";
+    string LoadedInitialGuidance = "";
+
+    [Parameter] public string InitialGuidance { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public bool TranscriptBusy { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnSubmit { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (string.Equals(LoadedInitialGuidance, InitialGuidance, StringComparison.Ordinal))
+            return;
+
+        LoadedInitialGuidance = InitialGuidance;
+        GuidanceDraft = InitialGuidance;
+    }
+
+    void SetGuidance(string value) => GuidanceDraft = value;
+
+    async Task Close()
+    {
+        if (TranscriptBusy)
+            return;
+
+        await OnClose.InvokeAsync();
+    }
+
+    async Task Submit()
+    {
+        await OnSubmit.InvokeAsync(GuidanceDraft.Trim());
+    }
+}

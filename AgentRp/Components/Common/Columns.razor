@@ -1,0 +1,21 @@
+<div class="@CssClass" style="@Style">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string MinWidth { get; set; } = "150px";
+    [Parameter] public int? Count { get; set; }
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "columns",
+        Count.HasValue ? "has-fixed-count" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    string Style => Count.HasValue
+        ? $"--columns-count:{Math.Max(1, Count.Value)};"
+        : $"--columns-min-width:{MinWidth};";
+}

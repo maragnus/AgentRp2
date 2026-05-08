@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace AgentRp.Models;
 
@@ -64,8 +65,54 @@ public enum StoryAssistantQuestionSelectionMode
 
 public sealed class StoryAssistantState
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public StoryAssistantReviewMode ReviewMode { get; set; } = StoryAssistantReviewMode.ReviewAll;
+    public string ActiveChatId { get; set; } = "";
+    public List<StoryAssistantChat> Chats { get; set; } = [];
+
+    [JsonIgnore] public StoryAssistantChat ActiveChat => EnsureActiveChat();
+    [JsonIgnore] public string LastResponseId { get => ActiveChat.LastResponseId; set => ActiveChat.LastResponseId = value; }
+    [JsonIgnore] public List<string> ResponseIds { get => ActiveChat.ResponseIds; set => ActiveChat.ResponseIds = value; }
+    [JsonIgnore] public string ResponseProviderId { get => ActiveChat.ResponseProviderId; set => ActiveChat.ResponseProviderId = value; }
+    [JsonIgnore] public string ResponseModelId { get => ActiveChat.ResponseModelId; set => ActiveChat.ResponseModelId = value; }
+    [JsonIgnore] public bool RemoteThreadLost { get => ActiveChat.RemoteThreadLost; set => ActiveChat.RemoteThreadLost = value; }
+    [JsonIgnore] public string RemoteThreadError { get => ActiveChat.RemoteThreadError; set => ActiveChat.RemoteThreadError = value; }
+    [JsonIgnore] public List<StoryAssistantTranscriptItem> Items { get => ActiveChat.Items; set => ActiveChat.Items = value; }
+    [JsonIgnore] public List<StoryAssistantWorkItem> WorkItems { get => ActiveChat.WorkItems; set => ActiveChat.WorkItems = value; }
+
+    public StoryAssistantChat EnsureActiveChat()
+    {
+        if (Chats.Count == 0)
+        {
+            var now = DateTime.UtcNow;
+            var chat = new StoryAssistantChat
+            {
+                Id = $"assistant-chat-{Guid.NewGuid():N}",
+                Title = "New chat",
+                CreatedUtc = now,
+                UpdatedUtc = now
+            };
+            Chats.Add(chat);
+            ActiveChatId = chat.Id;
+            return chat;
+        }
+
+        var active = Chats.FirstOrDefault(chat => chat.Id == ActiveChatId);
+        if (active is not null)
+            return active;
+
+        active = Chats.OrderByDescending(chat => chat.UpdatedUtc).First();
+        ActiveChatId = active.Id;
+        return active;
+    }
+}
+
+public sealed class StoryAssistantChat
+{
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "New chat";
+    public DateTime CreatedUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
     public string LastResponseId { get; set; } = "";
     public List<string> ResponseIds { get; set; } = [];
     public string ResponseProviderId { get; set; } = "";

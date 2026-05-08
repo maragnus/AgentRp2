@@ -74,6 +74,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
         {
             Chat = SessionCloner.Clone(chat),
             Characters = SeedData.Characters().Select(SessionCloner.Clone).ToList(),
+            CharacterRelationships = SeedData.CharacterRelationships().Select(SessionCloner.Clone).ToList(),
             Locations = SeedData.Locations().Select(SessionCloner.Clone).ToList(),
             Items = SeedData.Items().Select(SessionCloner.Clone).ToList(),
             Timeline = SeedData.Timeline().Select(SessionCloner.Clone).ToList(),

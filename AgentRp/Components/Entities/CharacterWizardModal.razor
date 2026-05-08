@@ -159,86 +159,10 @@
                     }
                     else
                     {
-                        var others = ExistingCharacters.Where(c => c.Id != Character.Id).ToList();
-                        @if (others.Count == 0)
-                        {
-                            <div class="character-wizard-empty">
-                                <FaIcon Name="users" />
-                                <span>No other characters yet.<br />Relationships can be added later from the character editor.</span>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="character-wizard-relationships">
-                                <p class="character-wizard-help">Toggle the characters this character knows, then define the dynamic from each direction.</p>
-                                @foreach (var other in others)
-                                {
-                                    var rel = GetRelationship(other.Id);
-                                    var known = rel is not null;
-                                    var expanded = ExpandedRelationships.Contains(other.Id);
-                                    <article @key="other.Id" class="character-relationship @(known ? "is-known" : "")">
-                                        <SelectableButton Class="character-relationship-head" OnClick="@(_ => ToggleRelationshipRow(other.Id))">
-                                            <span class="character-relationship-check @(known ? "is-selected" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleRelationship(other.Id)">
-                                                @if (known)
-                                                {
-                                                    <FaIcon Name="check" />
-                                                }
-                                            </span>
-                                            <Avatar Name="@other.Name" Size="30" />
-                                            <span class="character-relationship-copy">
-                                                <strong>@other.Name</strong>
-                                                @if (!string.IsNullOrWhiteSpace(other.Summary))
-                                                {
-                                                    <small>@other.Summary</small>
-                                                }
-                                            </span>
-                                            @if (known)
-                                            {
-                                                <span class="character-relationship-meta">
-                                                    @foreach (var bond in rel!.Bonds.Take(1))
-                                                    {
-                                                        <span @key="bond">@bond</span>
-                                                    }
-                                                    <FaIcon Name="@(expanded ? "chevron-up" : "chevron-down")" />
-                                                </span>
-                                            }
-                                        </SelectableButton>
-                                        @if (known && expanded)
-                                        {
-                                            <div class="character-relationship-detail">
-                                                <Section Title="Bond Type">
-                                                    <div class="character-wizard-chip-list">
-                                                        @foreach (var bond in BondTypes)
-                                                        {
-                                                            var selected = rel!.Bonds.Contains(bond);
-                                                            <SelectableButton @key="bond" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Bonds, bond))">@bond</SelectableButton>
-                                                        }
-                                                    </div>
-                                                </Section>
-                                                <Section Title="Shared Dynamic">
-                                                    <div class="character-wizard-chip-list">
-                                                        @foreach (var dynamic in Dynamics)
-                                                        {
-                                                            var selected = rel!.Dynamics.Contains(dynamic);
-                                                            <SelectableButton @key="dynamic" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Dynamics, dynamic))">@dynamic</SelectableButton>
-                                                        }
-                                                    </div>
-                                                </Section>
-                                                <Section Title="@($"How {SelfName} sees {other.Name}")">
-                                                    <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.NoteAtoB" @bind:event="oninput"></textarea>
-                                                </Section>
-                                                <Section Title="@($"How {other.Name} sees {SelfName}")">
-                                                    <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.NoteBtoA" @bind:event="oninput"></textarea>
-                                                </Section>
-                                                <Section Title="External Perception">
-                                                    <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.NoteExternal" @bind:event="oninput"></textarea>
-                                                </Section>
-                                            </div>
-                                        }
-                                    </article>
-                                }
-                            </div>
-                        }
+                        <CharacterRelationshipsEditor Document="Session.ActiveChat.Current!"
+                                                      Character="Character"
+                                                      ExistingCharacters="ExistingCharacters"
+                                                      Library="TraitLibrary" />
                     }
                     </ChildContent>
 
@@ -268,7 +192,6 @@
 
 @code {
     int Step;
-    HashSet<string> ExpandedRelationships { get; } = [];
 
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
@@ -292,8 +215,6 @@
     IReadOnlyList<CharacterOption> StressPatterns => TraitLibrary.StressPatterns;
     IReadOnlyList<CharacterOption> SoftSpots => TraitLibrary.SoftSpots;
     IReadOnlyList<CharacterOption> AvoidPatterns => TraitLibrary.AvoidPatterns;
-    IReadOnlyList<string> BondTypes => TraitLibrary.BondTypes;
-    IReadOnlyList<string> Dynamics => TraitLibrary.Dynamics;
 
     static readonly WizardStep[] Steps =
     [
@@ -309,7 +230,6 @@
     int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
     bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Character.Name);
     bool IsComplete => DoneCount == Steps.Length;
-    string SelfName => string.IsNullOrWhiteSpace(Character.Name) ? "this character" : Character.Name;
 
     bool StepDone(int step) => step switch
     {
@@ -384,34 +304,6 @@
                 Character.StressPattern = next;
                 break;
         }
-    }
-
-    RpRelationship? GetRelationship(string characterId) => Character.ProfileRelationships.FirstOrDefault(r => r.CharacterId == characterId);
-
-    void ToggleRelationship(string characterId)
-    {
-        var rel = GetRelationship(characterId);
-        if (rel is not null)
-        {
-            Character.ProfileRelationships.Remove(rel);
-            ExpandedRelationships.Remove(characterId);
-            return;
-        }
-
-        Character.ProfileRelationships.Add(new() { CharacterId = characterId });
-        ExpandedRelationships.Add(characterId);
-    }
-
-    void ToggleRelationshipRow(string characterId)
-    {
-        if (GetRelationship(characterId) is null)
-        {
-            ToggleRelationship(characterId);
-            return;
-        }
-
-        if (!ExpandedRelationships.Remove(characterId))
-            ExpandedRelationships.Add(characterId);
     }
 
     async Task GoToStep(int step)

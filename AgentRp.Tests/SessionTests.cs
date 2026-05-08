@@ -416,6 +416,43 @@ public sealed class SessionTests
     }
 
     [Fact]
+    public async Task SetSceneRunsNormalNarratorGenerationWithSceneOverride()
+    {
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var location = session.Chat.Locations.Items.Last();
+        var characterIds = session.Chat.Characters.Items.Take(2).Select(character => character.Id).ToList();
+        var request = new SetSceneRequest(
+            location.Id,
+            characterIds,
+            [],
+            new(SceneNarratorGuidancePurpose.LocationTransition, "Guide the narrator into the next room without resolving the argument."));
+
+        var operation = session.Chat.Transcript.SetSceneAsync(request);
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var generationRequest = generation.Requests.Single();
+        Assert.Empty(generation.ProseRequests);
+        Assert.True(generationRequest.RequestedNarrator);
+        Assert.Equal("scene-transition", generationRequest.Mode);
+        Assert.Equal(location.Id, generationRequest.SceneOverride?.LocationId);
+        Assert.Equal(characterIds, generationRequest.SceneOverride?.InSceneCharacterIds);
+        Assert.Contains("Scene setting purpose: location transition", generationRequest.Guidance, StringComparison.Ordinal);
+        Assert.Contains("Guide the narrator into the next room", generationRequest.Guidance, StringComparison.Ordinal);
+
+        generation.Release.SetResult();
+        var result = await operation.WaitAsync(TimeSpan.FromSeconds(5));
+        var turn = session.Chat.Transcript.Items.Last();
+        Assert.NotNull(result);
+        Assert.Equal("", turn.ActorCharacterId);
+        Assert.Equal("Narrator", turn.ActorName);
+        Assert.Equal(location.Id, turn.Scene.LocationId);
+        Assert.Equal(characterIds, turn.Scene.InSceneCharacterIds);
+    }
+
+    [Fact]
     public void TurnShapePickerOptionsNormalizeKnownLabels()
     {
         Assert.Equal("Brief", TurnShapePickerOptions.Normalize("brief"));
@@ -520,6 +557,42 @@ public sealed class SessionTests
     }
 
     [Fact]
+    public async Task ReplanCommitsSiblingWithoutAppearanceOrSelection()
+    {
+        var generation = new BlockingTextGenerationService();
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, generation);
+        await session.InitializeAsync();
+        var original = session.Chat.Transcript.Items.Last();
+        var actorId = original.ActorCharacterId;
+        original.AppearanceByCharacterId[actorId] = "Saved appearance";
+
+        var operation = session.Chat.Transcript.ReplanAsync(original.Id, "Make a sharper plan.", null, "Extended");
+        await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(session.Chat.Transcript.IsBusy);
+        Assert.Equal("Planning new branch...", session.Chat.Transcript.BusyMessage);
+        Assert.DoesNotContain(session.Chat.Transcript.ActiveTrace?.Steps ?? [], step => step.Id is "appearance" or "selection");
+        Assert.Contains(session.Chat.Transcript.ActiveTrace?.Steps ?? [], step => step.Id == "planning");
+        Assert.Contains(session.Chat.Transcript.ActiveTrace?.Steps ?? [], step => step.Id == "prose");
+
+        generation.Release.SetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var request = generation.PlanAndProseRequests.Single();
+        var replanned = session.Chat.Transcript.Items.Last();
+        Assert.Empty(generation.Requests);
+        Assert.Empty(generation.ProseRequests);
+        Assert.NotEqual(original.Id, replanned.Id);
+        Assert.Equal(original.ParentTurnId, replanned.ParentTurnId);
+        Assert.Equal("replanned", replanned.Mode);
+        Assert.Equal("Extended", request.RequestedTurnShape);
+        Assert.Equal("Saved appearance", request.AppearanceByCharacterId[actorId]);
+        Assert.Equal("Saved appearance", replanned.AppearanceByCharacterId[actorId]);
+        Assert.Equal(2, session.Chat.Transcript.SiblingsFor(replanned.Id).Count);
+    }
+
+    [Fact]
     public async Task FailedRegenerationCommitsFailedSiblingAndKeepsOriginalHidden()
     {
         var generation = new FailingTextGenerationService();
@@ -597,6 +670,7 @@ public sealed class SessionTests
 
         public int GenerateCalls => _generateCalls;
         public List<GenerateTurnRequest> Requests { get; } = [];
+        public List<GeneratePlanAndProseRequest> PlanAndProseRequests { get; } = [];
         public List<GenerateProseFromPlanRequest> ProseRequests { get; } = [];
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -629,7 +703,7 @@ public sealed class SessionTests
                     "",
                     "Narrator",
                     new() { TurnShape = request.RequestedTurnShape },
-                    CloneScene(document.Transcript.RootScene),
+                    CloneScene(request.SceneOverride ?? document.Transcript.RootScene),
                     PartialBody));
             }
 
@@ -648,7 +722,58 @@ public sealed class SessionTests
                 new() { TurnShape = request.RequestedTurnShape },
                 [],
                 [],
-                CloneScene(document.Transcript.RootScene),
+                CloneScene(request.SceneOverride ?? document.Transcript.RootScene),
+                GeneratedBody,
+                trace);
+        }
+
+        public async Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _generateCalls);
+            PlanAndProseRequests.Add(request);
+            var startedUtc = DateTime.UtcNow;
+            var trace = new RpTurnTrace
+            {
+                Summary = "Generating Â· Planning -> Prose",
+                Status = "running",
+                StartedUtc = startedUtc,
+                Steps =
+                [
+                    new() { Id = "planning", Label = "Planning", Status = "running", StartedUtc = startedUtc },
+                    new() { Id = "prose", Label = "Prose", Status = "pending" }
+                ]
+            };
+            var plan = new RpTurnPlan { TurnShape = request.RequestedTurnShape };
+            if (progress is not null)
+            {
+                await progress.ReportAsync(trace);
+                await progress.ReportProseAsync(new(
+                    request.ParentTurnId,
+                    request.Mode,
+                    request.Guidance,
+                    request.ActorCharacterId,
+                    string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName,
+                    ClonePlan(plan),
+                    CloneScene(request.Scene),
+                    PartialBody));
+            }
+
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            trace.Status = "completed";
+            trace.CompletedUtc = DateTime.UtcNow;
+            trace.DurationSeconds = (trace.CompletedUtc - trace.StartedUtc).TotalSeconds;
+            trace.Steps[0].Status = "completed";
+            trace.Steps[0].CompletedUtc = trace.CompletedUtc;
+            trace.Steps[0].DurationSeconds = trace.DurationSeconds;
+
+            return new(
+                request.ActorCharacterId,
+                string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName,
+                plan,
+                request.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                [],
+                CloneScene(request.Scene),
                 GeneratedBody,
                 trace);
         }
@@ -756,13 +881,7 @@ public sealed class SessionTests
                     request.RequestedActorCharacterId,
                     string.IsNullOrWhiteSpace(request.RequestedActorName) ? "Narrator" : request.RequestedActorName,
                     new() { TurnShape = request.RequestedTurnShape },
-                    new()
-                    {
-                        LocationId = document.Transcript.RootScene.LocationId,
-                        LocationName = document.Transcript.RootScene.LocationName,
-                        InSceneCharacterIds = [.. document.Transcript.RootScene.InSceneCharacterIds],
-                        InSceneItemIds = [.. document.Transcript.RootScene.InSceneItemIds]
-                    },
+                    CloneScene(request.SceneOverride ?? document.Transcript.RootScene),
                     PartialBody));
             }
 
@@ -775,6 +894,45 @@ public sealed class SessionTests
             trace.Steps[0].DurationSeconds = trace.DurationSeconds;
             trace.Steps[0].Error = "Prose failed for test.";
             throw new TranscriptGenerationException("Prose failed for test.", trace);
+        }
+
+        public async Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
+        {
+            var startedUtc = DateTime.UtcNow;
+            var trace = new RpTurnTrace
+            {
+                Summary = "Generating Â· Planning -> Prose",
+                Status = "running",
+                StartedUtc = startedUtc,
+                Steps =
+                [
+                    new() { Id = "planning", Label = "Planning", Status = "running", StartedUtc = startedUtc },
+                    new() { Id = "prose", Label = "Prose", Status = "pending" }
+                ]
+            };
+            if (progress is not null)
+            {
+                await progress.ReportAsync(trace);
+                await progress.ReportProseAsync(new(
+                    request.ParentTurnId,
+                    request.Mode,
+                    request.Guidance,
+                    request.ActorCharacterId,
+                    string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName,
+                    new() { TurnShape = request.RequestedTurnShape },
+                    CloneScene(request.Scene),
+                    PartialBody));
+            }
+
+            trace.Status = "failed";
+            trace.CompletedUtc = DateTime.UtcNow;
+            trace.DurationSeconds = (trace.CompletedUtc - trace.StartedUtc).TotalSeconds;
+            trace.Data["error"] = "Planning failed for test.";
+            trace.Steps[0].Status = "failed";
+            trace.Steps[0].CompletedUtc = trace.CompletedUtc;
+            trace.Steps[0].DurationSeconds = trace.DurationSeconds;
+            trace.Steps[0].Error = "Planning failed for test.";
+            throw new TranscriptGenerationException("Planning failed for test.", trace);
         }
 
         public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
@@ -824,6 +982,15 @@ public sealed class SessionTests
 
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        static RpSceneFrame CloneScene(RpSceneFrame scene) => new()
+        {
+            LocationId = scene.LocationId,
+            LocationName = scene.LocationName,
+            InSceneCharacterIds = [.. scene.InSceneCharacterIds],
+            InSceneItemIds = [.. scene.InSceneItemIds],
+            Data = scene.Data.DeepClone().AsObject()
+        };
     }
 
     sealed class TestModelCapabilityCatalog : IModelCapabilityCatalog

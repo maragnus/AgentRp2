@@ -1,0 +1,168 @@
+@implements IDisposable
+
+<ModalSplitLayout Height="100%" RailWidth="280px" Class="story-entity-browser" MainClass="story-entity-browser-main">
+    <RailHeader>
+        <div class="story-entity-browser-head">
+            <input class="field" value="@Search" @oninput="SearchChanged" placeholder="Search entities" />
+        </div>
+    </RailHeader>
+    <RailContent>
+        @foreach (var group in Groups)
+        {
+            if (group.Items.Count == 0)
+                continue;
+
+            <div @key="group.Key" class="story-entity-group">
+                <div class="story-entity-group-title">@group.Label</div>
+                @foreach (var entry in group.Items)
+                {
+                    <SidebarListRow @key="@($"{entry.Type}:{entry.Id}")"
+                                    Title="@entry.Title"
+                                    Summary="@entry.Summary"
+                                    Active="@(SelectedKey == entry.Key)"
+                                    Class="story-entity-row"
+                                    OnClick="@(_ => Select(entry))">
+                        <LeadingContent>
+                            <span class="entity-list-icon">
+                                <FaIcon Name="@entry.Icon" />
+                            </span>
+                        </LeadingContent>
+                        <TrailingContent>
+                            <span @onclick:stopPropagation="true">
+                                <AppButton Icon="plus" TooltipText="Attach to chat" AriaLabel="Attach to chat" OnClick="@(_ => Attach(entry))" />
+                            </span>
+                        </TrailingContent>
+                    </SidebarListRow>
+                }
+            </div>
+        }
+    </RailContent>
+    <MainContent>
+        <ModalStackLayout BodyClass="modal-form-stack" Header="@DetailHeader">
+            <ChildContent>
+                @if (SelectedEntry is null)
+                {
+                    <div class="empty-preview"><FaIcon Name="sparkles" /><span>Select an entity to inspect or attach</span></div>
+                }
+                else if (SelectedEntry.Type == "narrator")
+                {
+                    <NarratorEditor Profile="Session.Chat.NarratorProfile.State" />
+                }
+                else if (SelectedEntry.Type == "character" && SelectedCharacter is not null)
+                {
+                    <CharacterEditor Document="Session.ActiveChat.Current" Character="SelectedCharacter" Library="Session.Chat.CharacterTraitLibrary.State" />
+                }
+                else if (SelectedEntry.Type == "location" && SelectedLocation is not null)
+                {
+                    <LocationEditor Location="SelectedLocation" OnChanged="Changed" />
+                }
+                else if (SelectedEntry.Type == "item" && SelectedItem is not null)
+                {
+                    <ItemEditor Item="SelectedItem" OnChanged="Changed" />
+                }
+                else if (SelectedEntry.Type == "timeline" && SelectedTimeline is not null)
+                {
+                    <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" />
+                }
+            </ChildContent>
+        </ModalStackLayout>
+    </MainContent>
+</ModalSplitLayout>
+
+@code {
+    string Search = "";
+    string SelectedKey = "";
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback<StoryAssistantContextChip> OnAttach { get; set; }
+
+    BrowserEntry? SelectedEntry => AllEntries.FirstOrDefault(entry => entry.Key == SelectedKey);
+    RpCharacter? SelectedCharacter => Session.Chat.Characters.Items.FirstOrDefault(character => character.Id == SelectedEntry?.Id);
+    RpLocation? SelectedLocation => Session.Chat.Locations.Items.FirstOrDefault(location => location.Id == SelectedEntry?.Id);
+    RpItem? SelectedItem => Session.Chat.Items.Items.FirstOrDefault(item => item.Id == SelectedEntry?.Id);
+    RpTimelineEntry? SelectedTimeline => Session.Chat.Timeline.Items.FirstOrDefault(entry => entry.Id == SelectedEntry?.Id);
+
+    IReadOnlyList<BrowserEntry> AllEntries =>
+    [
+        new("narrator", "__narrator", "Narrator", NarratorProfileService.VoiceLabel(Session.Chat.NarratorProfile.State.VoicePreset), "book-open"),
+        .. Session.Chat.Characters.Items.Select(character => new BrowserEntry("character", character.Id, character.Name, character.Summary, "user")),
+        .. Session.Chat.Locations.Items.Select(location => new BrowserEntry("location", location.Id, location.Name, location.Summary, "map-pin")),
+        .. Session.Chat.Items.Items.Select(item => new BrowserEntry("item", item.Id, item.Name, item.Summary, "box")),
+        .. Session.Chat.Timeline.Items.Select(entry => new BrowserEntry("timeline", entry.Id, entry.Title, entry.Date, "clock"))
+    ];
+
+    IReadOnlyList<BrowserGroup> Groups =>
+    [
+        Group("narrator", "Narrator"),
+        Group("character", "Characters"),
+        Group("location", "Locations"),
+        Group("item", "Items"),
+        Group("timeline", "Timeline")
+    ];
+
+    RenderFragment? DetailHeader => SelectedEntry is null ? null : @<ModalPaneHeader>
+        <EntityHeader Name="@SelectedEntry.Title" Subtitle="@SelectedEntry.Summary" ImageSize="40">
+            <Actions>
+                <AppButton Variant="secondary" OnClick="@(_ => Attach(SelectedEntry))"><FaIcon Name="plus" /> Attach</AppButton>
+            </Actions>
+        </EntityHeader>
+    </ModalPaneHeader>;
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.Characters.Changed += OnStoreChanged;
+        Session.Chat.Locations.Changed += OnStoreChanged;
+        Session.Chat.Items.Changed += OnStoreChanged;
+        Session.Chat.Timeline.Changed += OnStoreChanged;
+        Session.Chat.NarratorProfile.Changed += OnStoreChanged;
+        SelectedKey = AllEntries.FirstOrDefault()?.Key ?? "";
+    }
+
+    BrowserGroup Group(string type, string label) =>
+        new(type, label, FilteredEntries.Where(entry => entry.Type == type).ToList());
+
+    IEnumerable<BrowserEntry> FilteredEntries => string.IsNullOrWhiteSpace(Search)
+        ? AllEntries
+        : AllEntries.Where(entry =>
+            entry.Title.Contains(Search, StringComparison.OrdinalIgnoreCase)
+            || entry.Summary.Contains(Search, StringComparison.OrdinalIgnoreCase));
+
+    void Select(BrowserEntry entry) => SelectedKey = entry.Key;
+
+    Task Attach(BrowserEntry entry) =>
+        OnAttach.InvokeAsync(new(entry.Type, entry.Id, entry.Title));
+
+    Task Changed() => SelectedEntry?.Type switch
+    {
+        "narrator" => Session.Chat.NarratorProfile.MarkChangedAsync(),
+        "character" => Session.Chat.Characters.MarkChangedAsync(),
+        "location" => Session.Chat.Locations.MarkChangedAsync(),
+        "item" => Session.Chat.Items.MarkChangedAsync(),
+        _ => Session.Chat.Timeline.MarkChangedAsync()
+    };
+
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    void SearchChanged(ChangeEventArgs args)
+    {
+        Search = args.Value?.ToString() ?? "";
+        if (SelectedEntry is null)
+            SelectedKey = FilteredEntries.FirstOrDefault()?.Key ?? "";
+    }
+
+    public void Dispose()
+    {
+        Session.Chat.Characters.Changed -= OnStoreChanged;
+        Session.Chat.Locations.Changed -= OnStoreChanged;
+        Session.Chat.Items.Changed -= OnStoreChanged;
+        Session.Chat.Timeline.Changed -= OnStoreChanged;
+        Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
+    }
+
+    sealed record BrowserEntry(string Type, string Id, string Title, string Summary, string Icon)
+    {
+        public string Key => $"{Type}:{Id}";
+    }
+
+    sealed record BrowserGroup(string Key, string Label, IReadOnlyList<BrowserEntry> Items);
+}

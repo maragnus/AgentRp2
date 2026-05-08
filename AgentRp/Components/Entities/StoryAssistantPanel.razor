@@ -3,7 +3,7 @@
 <div class="story-assistant">
     <div class="story-assistant-toolbar">
         <div class="story-assistant-model">
-            <FaIcon Name="sparkles" />
+            <FaIcon Name="story-assistant" />
             <span>@ModelStatus</span>
         </div>
         <AppSelect Size="sm" Value="@Session.Chat.StoryAssistant.State.ReviewMode.ToString()" ValueChanged="SetReviewMode" Class="story-assistant-review">
@@ -50,6 +50,10 @@
     <StoryAssistantComposer CanRun="@CanRun"
                             NeedsRestart="@NeedsRestart"
                             IsBusy="@Session.Chat.StoryAssistant.IsBusy"
+                            ContextChips="ContextChips"
+                            KeepContext="@KeepContext"
+                            KeepContextChanged="value => KeepContext = value"
+                            OnRemoveContext="OnRemoveContext"
                             OnSend="Send"
                             OnStop="Stop" />
 </div>
@@ -70,6 +74,11 @@
     int TranscriptRenderVersion;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public IReadOnlyList<StoryAssistantContextChip> ContextChips { get; set; } = [];
+    [Parameter] public EventCallback<StoryAssistantContextChip> OnRemoveContext { get; set; }
+    [Parameter] public EventCallback OnClearContext { get; set; }
+
+    bool KeepContext;
 
     ActiveModelSelection? ActiveModel => Session.ModelSelection.Resolve(AiModelRole.Reasoning);
 
@@ -101,7 +110,18 @@
         StateHasChanged();
     });
 
-    Task Send(string text) => Session.Chat.StoryAssistant.SendAsync(text);
+    async Task Send(string text)
+    {
+        if (ContextChips.Count == 0)
+        {
+            await Session.Chat.StoryAssistant.SendAsync(text);
+            return;
+        }
+
+        await Session.Chat.StoryAssistant.SendWithModelInputAsync(text, BuildContextMessage(text));
+        if (!KeepContext)
+            await OnClearContext.InvokeAsync();
+    }
 
     Task StartWorkflow(string workflowId) => Session.Chat.StoryAssistant.SendWorkflowAsync(workflowId);
 
@@ -118,6 +138,20 @@
     }
 
     Task Stop() => Session.Chat.StoryAssistant.StopAsync();
+
+    string BuildContextMessage(string text)
+    {
+        var context = string.Join(Environment.NewLine, ContextChips.Select(chip => $"- {chip.EntityType} {chip.EntityId}: {chip.Name}"));
+        return $"""
+            Use this attached story context as the user's selected focus. If details may be stale, call get_story_entities before changing canon.
+
+            Context:
+            {context}
+
+            Request:
+            {text}
+            """;
+    }
 
     bool HasLoadingAssistantMessage() => Session.Chat.StoryAssistant.Items.Any(item =>
         item.Kind == StoryAssistantItemKind.AssistantMessage

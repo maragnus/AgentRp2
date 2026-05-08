@@ -45,6 +45,9 @@
             case "promptLibrary":
                 <PromptLibraryModal OnClose="CloseModal" />
                 break;
+            case "storyAssistant":
+                <StoryAssistantModal OnClose="CloseModal" />
+                break;
             case "chatDirection":
                 <ChatDirectionModal OnClose="CloseModal" />
                 break;
@@ -108,9 +111,7 @@
     async Task OpenStoryAssistant()
     {
         await Overlays.CloseAllAsync("Opening Story Assistant");
-        EntityType = "assistant";
-        EntityId = null;
-        Modal = "entities";
+        Modal = "storyAssistant";
     }
 
     async Task CloseModal()

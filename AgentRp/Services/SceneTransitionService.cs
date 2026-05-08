@@ -4,13 +4,23 @@ using AgentRp.Session;
 
 namespace AgentRp.Services;
 
-public sealed record SceneTransitionRequest(
+public enum SceneNarratorGuidancePurpose
+{
+    OpeningScene,
+    LocationTransition,
+    TimeSkip,
+    SceneReset
+}
+
+public sealed record SceneNarratorGuidance(
+    SceneNarratorGuidancePurpose Purpose,
+    string Guidance);
+
+public sealed record SetSceneRequest(
     string LocationId,
     IReadOnlyList<string> CharacterIds,
     IReadOnlyList<string> ItemIds,
-    string ElapsedTime = "",
-    string TransitionNote = "",
-    string Reason = "");
+    SceneNarratorGuidance NarratorGuidance);
 
 public sealed record SceneTransitionEntity(string Id, string Name);
 
@@ -46,12 +56,11 @@ public sealed record SceneTransitionPlan(
     bool IsOpeningScene,
     bool IsLocationTransition,
     bool IsTimeSkip,
+    bool IsSceneReset,
     IReadOnlyList<SceneTransitionEntity> AddedCharacters,
     IReadOnlyList<SceneTransitionEntity> RemovedCharacters,
-    IReadOnlyList<SceneTransitionEntity> StayingCharacters,
     IReadOnlyList<SceneTransitionEntity> AddedItems,
     IReadOnlyList<SceneTransitionEntity> RemovedItems,
-    IReadOnlyList<SceneTransitionEntity> StayingItems,
     string NarratorInstruction);
 
 public sealed record SceneTransitionResult(
@@ -124,8 +133,9 @@ public sealed class SceneTransitionService
         return string.Join(Environment.NewLine, lines);
     }
 
-    public SceneTransitionPlan Build(RpChatDocument document, SceneTransitionRequest request)
+    public SceneTransitionPlan Build(RpChatDocument document, SetSceneRequest request)
     {
+        ValidateNarratorGuidance(request.NarratorGuidance);
         var location = document.Locations.FirstOrDefault(item => item.Id == request.LocationId)
             ?? throw new SceneTransitionValidationException($"Setting the scene failed because no location with id '{request.LocationId}' exists.");
         var characterIds = DistinctIds(request.CharacterIds);
@@ -144,26 +154,21 @@ public sealed class SceneTransitionService
         var isOpening = TranscriptGraph.GetActivePath(document.Transcript).Count == 0;
         var locationChanged = !string.Equals(previous.LocationId, target.LocationId, StringComparison.Ordinal);
         var isLocationTransition = !isOpening && locationChanged;
-        var isTimeSkip = !string.IsNullOrWhiteSpace(request.ElapsedTime);
+        var isTimeSkip = request.NarratorGuidance.Purpose == SceneNarratorGuidancePurpose.TimeSkip;
+        var isSceneReset = request.NarratorGuidance.Purpose == SceneNarratorGuidancePurpose.SceneReset;
+        var delta = BuildDelta(document, previous, target);
         var addedCharacters = Added(target.InSceneCharacterIds, previous.InSceneCharacterIds, document.Characters);
         var removedCharacters = Removed(previous.InSceneCharacterIds, target.InSceneCharacterIds, document.Characters);
-        var stayingCharacters = Staying(target.InSceneCharacterIds, previous.InSceneCharacterIds, document.Characters);
         var addedItems = Added(target.InSceneItemIds, previous.InSceneItemIds, document.Items);
         var removedItems = Removed(previous.InSceneItemIds, target.InSceneItemIds, document.Items);
-        var stayingItems = Staying(target.InSceneItemIds, previous.InSceneItemIds, document.Items);
         var instruction = BuildNarratorInstruction(
+            document,
             previous,
             target,
             isOpening,
             isLocationTransition,
-            isTimeSkip,
             request,
-            addedCharacters,
-            removedCharacters,
-            stayingCharacters,
-            addedItems,
-            removedItems,
-            stayingItems);
+            delta);
 
         return new(
             previous,
@@ -171,12 +176,11 @@ public sealed class SceneTransitionService
             isOpening,
             isLocationTransition,
             isTimeSkip,
+            isSceneReset,
             addedCharacters,
             removedCharacters,
-            stayingCharacters,
             addedItems,
             removedItems,
-            stayingItems,
             instruction);
     }
 
@@ -277,13 +281,6 @@ public sealed class SceneTransitionService
         where T : class =>
         Difference(previousIds, targetIds, entities);
 
-    static List<SceneTransitionEntity> Staying<T>(IEnumerable<string> targetIds, IEnumerable<string> previousIds, IEnumerable<T> entities)
-        where T : class
-    {
-        var previous = previousIds.ToHashSet(StringComparer.Ordinal);
-        return ResolveEntities(targetIds.Where(previous.Contains), entities);
-    }
-
     static List<SceneTransitionEntity> Difference<T>(IEnumerable<string> sourceIds, IEnumerable<string> excludeIds, IEnumerable<T> entities)
         where T : class
     {
@@ -312,22 +309,23 @@ public sealed class SceneTransitionService
         _ => ""
     };
 
-    static string BuildNarratorInstruction(
+    string BuildNarratorInstruction(
+        RpChatDocument document,
         RpSceneFrame previous,
         RpSceneFrame target,
         bool isOpening,
         bool isLocationTransition,
-        bool isTimeSkip,
-        SceneTransitionRequest request,
-        IReadOnlyList<SceneTransitionEntity> addedCharacters,
-        IReadOnlyList<SceneTransitionEntity> removedCharacters,
-        IReadOnlyList<SceneTransitionEntity> stayingCharacters,
-        IReadOnlyList<SceneTransitionEntity> addedItems,
-        IReadOnlyList<SceneTransitionEntity> removedItems,
-        IReadOnlyList<SceneTransitionEntity> stayingItems)
+        SetSceneRequest request,
+        SceneTransitionDelta delta)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("Set the scene with creative freedom using this starting state.");
+        builder.AppendLine($"Scene setting purpose: {FormatPurpose(request.NarratorGuidance.Purpose)}.");
+        builder.AppendLine($"Narrator guidance: {request.NarratorGuidance.Guidance.Trim()}");
+        builder.AppendLine("Stage the requested scene through the normal narrator pipeline.");
+        builder.AppendLine("Focus on location, atmosphere, current mode, elapsed time, travel, mundane logistics, character positions, visible clothing/state, present items, and the transition into this moment.");
+        builder.AppendLine("You may summarize already-established or user-approved offscreen continuity, and you may resolve low-stakes positioning needed to reach this scene.");
+        builder.AppendLine("Do not create the next playable character beat: no dialogue, internal monologue, new emotional reactions, jokes, threats, confessions, reveals, attacks, or decisions for characters.");
+        builder.AppendLine("End with the scene staged so a character can react next.");
         if (isOpening)
             builder.AppendLine("This is the opening scene.");
         else if (isLocationTransition)
@@ -335,31 +333,42 @@ public sealed class SceneTransitionService
         else
             builder.AppendLine("Refresh the current scene state without treating it as a major location change.");
 
-        if (isTimeSkip)
-            builder.AppendLine($"Elapsed time: {request.ElapsedTime.Trim()}.");
-
-        AppendOptional(builder, "Transition note", request.TransitionNote);
-        AppendOptional(builder, "Reason", request.Reason);
         if (!isOpening && isLocationTransition)
             builder.AppendLine($"Previous location: {previous.LocationName}.");
 
-        builder.AppendLine($"Current location: {target.LocationName}.");
-        AppendList(builder, "Added characters", addedCharacters);
-        AppendList(builder, "Removed characters", removedCharacters);
-        AppendList(builder, "Staying characters", stayingCharacters);
-        AppendList(builder, "Added items", addedItems);
-        AppendList(builder, "Removed items", removedItems);
-        AppendList(builder, "Staying items", stayingItems);
+        var transitionSummary = FormatForTranscript(delta);
+        if (!string.IsNullOrWhiteSpace(transitionSummary))
+        {
+            builder.AppendLine("Scene delta:");
+            builder.AppendLine(transitionSummary.Trim());
+        }
+
+        builder.AppendLine("Target scene:");
+        builder.AppendLine($"Location: {target.LocationName}.");
+        AppendList(builder, "Characters in scene", ResolveEntities(target.InSceneCharacterIds, document.Characters));
+        AppendList(builder, "Items in scene", ResolveEntities(target.InSceneItemIds, document.Items));
         builder.AppendLine("Do not invent major off-screen consequences, relationship resolutions, losses, victories, or irreversible plot outcomes unless the user explicitly requested them.");
-        builder.AppendLine("Write narration only, with no meta commentary and no tool/schema language.");
+        builder.AppendLine("Write narration only, with no character speech, no meta commentary, and no tool/schema language.");
         return builder.ToString().Trim();
     }
 
-    static void AppendOptional(StringBuilder builder, string label, string value)
+    static void ValidateNarratorGuidance(SceneNarratorGuidance guidance)
     {
-        if (!string.IsNullOrWhiteSpace(value))
-            builder.AppendLine($"{label}: {value.Trim()}.");
+        if (!Enum.IsDefined(guidance.Purpose))
+            throw new SceneTransitionValidationException("Setting the scene failed because narrator guidance has an unsupported purpose.");
+
+        if (string.IsNullOrWhiteSpace(guidance.Guidance))
+            throw new SceneTransitionValidationException("Setting the scene failed because narrator guidance is required.");
     }
+
+    static string FormatPurpose(SceneNarratorGuidancePurpose purpose) => purpose switch
+    {
+        SceneNarratorGuidancePurpose.OpeningScene => "opening scene",
+        SceneNarratorGuidancePurpose.LocationTransition => "location transition",
+        SceneNarratorGuidancePurpose.TimeSkip => "time skip",
+        SceneNarratorGuidancePurpose.SceneReset => "scene reset",
+        _ => "scene setup"
+    };
 
     static void AppendList(StringBuilder builder, string label, IReadOnlyList<SceneTransitionEntity> entities)
     {

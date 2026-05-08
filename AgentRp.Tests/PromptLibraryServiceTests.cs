@@ -161,6 +161,9 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains("flat appearance fields", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("complete visual profile", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("relationshipReconciliation", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Do not update the same relationshipId twice", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Never leave any relationship field empty", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Introduce Characters", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceCharacters].User, StringComparison.Ordinal);

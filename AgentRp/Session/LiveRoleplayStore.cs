@@ -188,6 +188,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             {
                 Chat = SessionCloner.Clone(chat),
                 Characters = options.CopyCharacters && template is not null ? template.Characters.Select(SessionCloner.Clone).ToList() : [],
+                CharacterRelationships = options.CopyCharacters && template is not null ? template.CharacterRelationships.Select(SessionCloner.Clone).ToList() : [],
                 Locations = options.CopyLocations && template is not null ? template.Locations.Select(SessionCloner.Clone).ToList() : [],
                 Items = options.CopyItems && template is not null ? template.Items.Select(SessionCloner.Clone).ToList() : [],
                 Timeline = options.CopyTimeline && template is not null ? template.Timeline.Select(SessionCloner.Clone).ToList() : [],
@@ -314,6 +315,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         {
             case RoleplayStoreArea.Characters:
                 target.Characters = source.Characters.Select(SessionCloner.Clone).ToList();
+                target.CharacterRelationships = source.CharacterRelationships.Select(SessionCloner.Clone).ToList();
                 break;
             case RoleplayStoreArea.Locations:
                 target.Locations = source.Locations.Select(SessionCloner.Clone).ToList();

@@ -13,7 +13,8 @@ public sealed record GenerateTurnRequest(
     string RequestedTurnShape,
     string RequestedActorCharacterId,
     string RequestedActorName,
-    bool RequestedNarrator = false);
+    bool RequestedNarrator = false,
+    RpSceneFrame? SceneOverride = null);
 
 public sealed record GenerateProseFromPlanRequest(
     string ParentTurnId,
@@ -25,6 +26,17 @@ public sealed record GenerateProseFromPlanRequest(
     RpTurnPlan Plan,
     IReadOnlyDictionary<string, string> AppearanceByCharacterId,
     IReadOnlyDictionary<string, string> PrivateIntentByCharacterId,
+    RpSceneFrame Scene);
+
+public sealed record GeneratePlanAndProseRequest(
+    string ParentTurnId,
+    string Mode,
+    string Guidance,
+    string RequestedTurnShape,
+    string ActorCharacterId,
+    string ActorName,
+    bool RequestedNarrator,
+    IReadOnlyDictionary<string, string> AppearanceByCharacterId,
     RpSceneFrame Scene);
 
 public sealed record GenerateSnapshotRequest(string TurnId);
@@ -57,6 +69,7 @@ public sealed record TranscriptProseUpdate(
 public interface ITextGenerationService
 {
     Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
@@ -109,7 +122,8 @@ public sealed class TextGenerationService(
                 request.Guidance,
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId),
-                request.RequestedNarrator);
+                request.RequestedNarrator,
+                request.SceneOverride);
             SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText);
             await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
@@ -123,9 +137,11 @@ public sealed class TextGenerationService(
                 request.Guidance,
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
-                request.RequestedNarrator);
+                request.RequestedNarrator,
+                request.SceneOverride,
+                appearance);
             var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken, progressSceneOverride: request.SceneOverride);
             trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -134,7 +150,7 @@ public sealed class TextGenerationService(
             if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(selectedActor.Id))
                 privateIntents[selectedActor.Id] = plan.PrivateIntent;
 
-            var scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
+            var scene = SessionCloner.Clone(request.SceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
             return new(
                 selectedActor.Id,
                 selectedActor.Name,
@@ -142,6 +158,83 @@ public sealed class TextGenerationService(
                 appearance,
                 privateIntents,
                 scene,
+                prose,
+                trace);
+        }
+        catch (Exception exception) when (exception is not TranscriptGenerationException)
+        {
+            FailRunningStep(trace, exception.Message);
+            FinalizeTrace(trace, "failed");
+            trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
+            throw new TranscriptGenerationException(exception.Message, trace);
+        }
+    }
+
+    public async Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GeneratePlanAndProseRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers, modelSelections);
+        var trace = new RpTurnTrace
+        {
+            Status = "running",
+            StartedUtc = DateTime.UtcNow,
+            ProviderId = selection.Provider.Id,
+            ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
+            ModelId = selection.Model.Id
+        };
+        try
+        {
+            if (!selection.Capabilities.CanGenerateStructuredText)
+                throw new InvalidOperationException("Planning a new branch failed because the reasoning model has structured output disabled.");
+
+            (string Id, string Name) actor = request.RequestedNarrator
+                ? ("", "Narrator")
+                : (request.ActorCharacterId, string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName);
+            var turnRequest = new GenerateTurnRequest(
+                request.ParentTurnId,
+                request.Mode,
+                request.Guidance,
+                request.RequestedTurnShape,
+                actor.Id,
+                actor.Name,
+                request.RequestedNarrator,
+                request.Scene);
+            var context = promptContextBuilder.BuildTurnContext(
+                document,
+                request.ParentTurnId,
+                request.Guidance,
+                request.RequestedTurnShape,
+                document.Characters.FirstOrDefault(character => character.Id == actor.Id),
+                request.RequestedNarrator,
+                request.Scene,
+                request.AppearanceByCharacterId);
+            SeedPlanningAndProseSteps(trace, selection);
+            await ReportProgressAsync(progress, trace);
+            var plan = await RunPlanningStepAsync(document, selection, context, actor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.Scene);
+            trace.Data["actorName"] = actor.Name;
+            FinalizeTrace(trace, "completed");
+            await ReportProgressAsync(progress, trace);
+
+            var privateIntents = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(actor.Id))
+                privateIntents[actor.Id] = plan.PrivateIntent;
+
+            return new(
+                actor.Id,
+                actor.Name,
+                CreateTurnPlan(plan, context.RequestedTurnShape),
+                CloneMap(request.AppearanceByCharacterId),
+                privateIntents,
+                SessionCloner.Clone(request.Scene),
                 prose,
                 trace);
         }
@@ -187,7 +280,8 @@ public sealed class TextGenerationService(
                 plan.TurnShape,
                 actor.Id,
                 actor.Name,
-                request.RequestedNarrator);
+                request.RequestedNarrator,
+                request.Scene);
             var context = promptContextBuilder.BuildTurnContext(
                 document,
                 request.ParentTurnId,
@@ -298,12 +392,12 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
-        var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, context, actor, plan, trace, progress, cancellationToken);
+        var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.SceneOverride);
         trace.Data["actorName"] = actor.Name;
         FinalizeTrace(trace, "completed");
         await ReportProgressAsync(progress, trace);
 
-        var scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
+        var scene = SessionCloner.Clone(request.SceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
         return new(
             actor.Id,
             actor.Name,
@@ -479,7 +573,10 @@ public sealed class TextGenerationService(
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
         var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers, modelSelections);
         var systemPrompt = AppendPromptBlock(prompt.SystemPrompt, audioTagGuide.SystemGuide);
-        var userPrompt = PromptLibraryService.WithProseFormatReminder(AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder));
+        var userPromptBody = AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder);
+        var userPrompt = context.Actor is null
+            ? PromptLibraryService.WithNarratorProseFormatReminder(userPromptBody)
+            : PromptLibraryService.WithProseFormatReminder(userPromptBody);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "prose", selection, startedUtc, progress);
         var turnPlan = progressPlanOverride is null ? CreateTurnPlan(plan, context.RequestedTurnShape) : SessionCloner.Clone(progressPlanOverride);
@@ -683,6 +780,14 @@ public sealed class TextGenerationService(
             ? new[] { ("appearance", "Appearance"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
             : new[] { ("prose", "Prose") };
 
+        SeedSteps(trace, selection, steps);
+    }
+
+    static void SeedPlanningAndProseSteps(RpTurnTrace trace, ActiveModelSelection selection) =>
+        SeedSteps(trace, selection, [("planning", "Planning"), ("prose", "Prose")]);
+
+    static void SeedSteps(RpTurnTrace trace, ActiveModelSelection selection, IReadOnlyList<(string Id, string Label)> steps)
+    {
         foreach (var (id, label) in steps)
             trace.Steps.Add(new()
             {

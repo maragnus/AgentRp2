@@ -1,6 +1,6 @@
 namespace AgentRp.Services;
 
-public sealed class DialogHelper(ILogger<DialogHelper> logger)
+public sealed class DialogHelper
 {
     readonly Queue<DialogRequest> pending = [];
     DialogRequest? current;

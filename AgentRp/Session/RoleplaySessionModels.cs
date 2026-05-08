@@ -7,6 +7,7 @@ public sealed class RpChatDocument
 {
     public RpChat Chat { get; set; } = new();
     public List<RpCharacter> Characters { get; set; } = [];
+    public List<RpCharacterRelationship> CharacterRelationships { get; set; } = [];
     public List<RpLocation> Locations { get; set; } = [];
     public List<RpItem> Items { get; set; } = [];
     public List<RpTimelineEntry> Timeline { get; set; } = [];

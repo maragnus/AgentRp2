@@ -37,6 +37,7 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.HasKey(x => x.ChatId);
             builder.Property(x => x.ChatId).HasMaxLength(80);
             builder.Property(x => x.CharactersJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.CharacterRelationshipsJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.LocationsJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.ItemsJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.TimelineJson).HasColumnType("nvarchar(max)");
@@ -203,6 +204,7 @@ public sealed class RpChatDocumentRow
 {
     public string ChatId { get; set; } = "";
     public string CharactersJson { get; set; } = "[]";
+    public string CharacterRelationshipsJson { get; set; } = "[]";
     public string LocationsJson { get; set; } = "[]";
     public string ItemsJson { get; set; } = "[]";
     public string TimelineJson { get; set; } = "[]";
