@@ -6,6 +6,7 @@ using AgentRp.Serialization;
 using AgentRp.Services;
 using AgentRp.Session;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AgentRp.Tests;
 
@@ -28,7 +29,7 @@ public sealed class ImageGenerationServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var client = new FakeModelGenerationClient();
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" }
@@ -88,7 +89,7 @@ public sealed class ImageGenerationServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var client = new FakeModelGenerationClient();
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" }
@@ -119,7 +120,7 @@ public sealed class ImageGenerationServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var client = new FakeModelGenerationClient();
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" }
@@ -150,9 +151,10 @@ public sealed class ImageGenerationServiceTests
     public async Task ImageRequestWiresSettingsAndExplicitReferenceMetadata()
     {
         var dbFactory = new TestDbContextFactory();
-        await SeedReferenceImageAsync(dbFactory, "chat-1", "ref-1");
+        var blobStorage = new TestImageBlobStorage();
+        await SeedReferenceImageAsync(dbFactory, blobStorage, "chat-1", "ref-1");
         var client = new FakeModelGenerationClient();
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client, blobStorage);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" },
@@ -213,7 +215,7 @@ public sealed class ImageGenerationServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var client = new FakeModelGenerationClient { EmitPartialPreview = true };
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" }
@@ -255,9 +257,10 @@ public sealed class ImageGenerationServiceTests
     public async Task ImageDetailsServiceShowsExplicitReferencesWithoutAmbientLocation()
     {
         var dbFactory = new TestDbContextFactory();
-        await SeedReferenceImageAsync(dbFactory, "chat-1", "ref-1");
+        var blobStorage = new TestImageBlobStorage();
+        await SeedReferenceImageAsync(dbFactory, blobStorage, "chat-1", "ref-1");
         var client = new FakeModelGenerationClient();
-        var generationService = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var generationService = BuildService(dbFactory, client, blobStorage);
         var detailsService = new ImageDetailsService(dbFactory);
         var document = new RpChatDocument
         {
@@ -309,7 +312,7 @@ public sealed class ImageGenerationServiceTests
         {
             StructuredPrompt = new("Composed portrait prompt.", "Used Gemma's appearance.")
         };
-        var service = new ImageGenerationService(dbFactory, client, new NoOpCapabilityCatalog());
+        var service = BuildService(dbFactory, client);
         var document = new RpChatDocument
         {
             Chat = new() { Id = "chat-1", Title = "Test chat" },
@@ -422,20 +425,43 @@ public sealed class ImageGenerationServiceTests
 
     public sealed record ImagePromptResult(string FinalPrompt, string Rationale);
 
-    static async Task SeedReferenceImageAsync(TestDbContextFactory dbFactory, string chatId, string imageId)
+    static ImageGenerationService BuildService(
+        TestDbContextFactory dbFactory,
+        FakeModelGenerationClient client,
+        TestImageBlobStorage? blobStorage = null,
+        IImageOptimizer? imageOptimizer = null)
     {
-        await using var dbContext = await dbFactory.CreateDbContextAsync();
-        dbContext.ImageAssets.Add(new()
-        {
-            Id = imageId,
-            ChatId = chatId,
-            Bytes = PngBytes,
-            ContentType = "image/png",
-            FileName = "reference.png",
-            Title = "Reference Pose",
-            CreatedUtc = DateTime.UtcNow
-        });
-        await dbContext.SaveChangesAsync();
+        var storedImageService = new StoredImageService(
+            dbFactory,
+            imageOptimizer ?? new TestImageOptimizer(),
+            blobStorage ?? new TestImageBlobStorage(),
+            NullLogger<StoredImageService>.Instance);
+        return new(client, new NoOpCapabilityCatalog(), storedImageService);
+    }
+
+    static async Task SeedReferenceImageAsync(TestDbContextFactory dbFactory, TestImageBlobStorage blobStorage, string chatId, string imageId)
+    {
+        var storedImageService = new StoredImageService(
+            dbFactory,
+            new TestImageOptimizer(),
+            blobStorage,
+            NullLogger<StoredImageService>.Instance);
+        await storedImageService.StoreAsync(new(
+            chatId,
+            imageId,
+            PngBytes,
+            "image/png",
+            "reference.png",
+            "Reference Pose",
+            1,
+            1,
+            "",
+            "",
+            new(),
+            "",
+            "",
+            "",
+            DateTime.UtcNow));
     }
 
     sealed class NoOpCapabilityCatalog : IModelCapabilityCatalog

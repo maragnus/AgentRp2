@@ -1,12 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Json;
-using AgentRp.Data;
 using AgentRp.Models;
-using AgentRp.Serialization;
 using AgentRp.Session;
-using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Services;
 
@@ -49,9 +45,9 @@ public interface IImageGenerationService
 }
 
 public sealed class ImageGenerationService(
-    IDbContextFactory<RpDbContext> dbContextFactory,
     IModelGenerationClient generationClient,
     IModelCapabilityCatalog capabilityCatalog,
+    IStoredImageService? storedImageService = null,
     IAppSettingsService? appSettingsService = null) : IImageGenerationService
 {
     const int MaxImageBytes = 10 * 1024 * 1024;
@@ -253,26 +249,24 @@ public sealed class ImageGenerationService(
         var now = DateTime.UtcNow;
         var metadata = BuildGenerationMetadata(document, request, size, quality, referenceDetail, prompt.Rationale, revisedPrompt, finalUpdate);
 
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        dbContext.ImageAssets.Add(new ImageAssetRow
-        {
-            Id = imageId,
-            ChatId = document.Chat.Id,
-            Bytes = generated.Bytes,
-            ContentType = generated.ContentType,
-            FileName = generated.FileName,
-            Title = title,
-            Width = dimensions?.Width,
-            Height = dimensions?.Height,
-            UserPrompt = request.Prompt.Trim(),
-            FinalPrompt = prompt.FinalPrompt,
-            GenerationMetadataJson = JsonSerializer.Serialize(metadata, AppJsonSerializerOptions.Web),
-            ProviderId = model.ImageProvider.Id,
-            ProviderName = model.ImageProvider.Name,
-            ProviderModelId = model.ImageModel.Id,
-            CreatedUtc = now
-        });
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var imageStorage = storedImageService
+            ?? throw new InvalidOperationException("Saving the generated image failed because image storage is not configured.");
+        await imageStorage.StoreAsync(new(
+            document.Chat.Id,
+            imageId,
+            generated.Bytes,
+            generated.ContentType,
+            generated.FileName,
+            title,
+            dimensions?.Width,
+            dimensions?.Height,
+            request.Prompt.Trim(),
+            prompt.FinalPrompt,
+            metadata,
+            model.ImageProvider.Id,
+            model.ImageProvider.Name,
+            model.ImageModel.Id,
+            now), cancellationToken);
 
         var galleryImage = new GalleryImage
         {
@@ -367,12 +361,12 @@ public sealed class ImageGenerationService(
         if (imageIds.Count == 0)
             return [];
 
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        return await dbContext.ImageAssets
-            .AsNoTracking()
-            .Where(image => image.ChatId == chatId && imageIds.Contains(image.Id))
+        var imageStorage = storedImageService
+            ?? throw new InvalidOperationException("Loading reference images failed because image storage is not configured.");
+        var contents = await imageStorage.LoadContentAsync(chatId, imageIds, cancellationToken);
+        return contents
             .Select(image => new ResponseImageInput(image.Bytes, image.ContentType))
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     static ImageAssetGenerationMetadata BuildGenerationMetadata(

@@ -66,9 +66,12 @@ public sealed class ImageCropServiceTests
         {
             Id = imageId,
             ChatId = chatId,
-            Bytes = PngBytes,
-            ContentType = "image/png",
-            FileName = "image.png",
+            BlobName = $"images/{chatId}/{imageId}.png",
+            StoredContentType = "image/png",
+            StoredFileName = "image.png",
+            OriginalContentType = "image/png",
+            OriginalByteLength = PngBytes.Length,
+            StoredByteLength = PngBytes.Length,
             Title = "Gemma",
             CreatedUtc = DateTime.UtcNow
         });

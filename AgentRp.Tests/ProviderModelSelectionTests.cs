@@ -145,7 +145,7 @@ public sealed class ProviderModelSelectionTests
     [Fact]
     public void ImageSelectionRequiresUserImageEnablementAndImageCapability()
     {
-        var service = new ImageGenerationService(null!, null!, new NoOpCapabilityCatalog());
+        var service = new ImageGenerationService(null!, new NoOpCapabilityCatalog());
         var providers = new List<AiProvider>
         {
             new()

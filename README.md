@@ -48,7 +48,10 @@ If you want to use hosted OpenAI, configure the AppHost secrets like this:
 ```bash
 dotnet user-secrets --project AgentRp.AppHost set "Parameters:openai-api-key" "YOUR_OPENAI_API_KEY"
 dotnet user-secrets --project AgentRp.AppHost set "Parameters:openai-model" "gpt-5.4"
+dotnet user-secrets --project AgentRp.AppHost set "Parameters:tinify-api-key" "YOUR_TINIFY_API_KEY"
 ```
+
+The Tinify key is optional. When it is not configured, generated images are stored without AVIF optimization.
 
 If you want to use a local or custom endpoint, configure the custom parameters instead. This is meant for an OpenAI-compatible local endpoint such as LM Studio or an Ollama-compatible gateway.
 

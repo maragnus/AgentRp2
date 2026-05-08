@@ -1,7 +1,13 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+var tinifyApiKey = builder.AddParameter("tinify-api-key", secret: true);
+var storage = builder.AddAzureStorage("storage")
+    .RunAsEmulator(emulator => emulator.WithDataVolume());
+var blobs = storage.AddBlobs("blobs");
+
 var app = builder.AddProject<Projects.AgentRp>("app")
-    .WithExternalHttpEndpoints();
+    .WithExternalHttpEndpoints()
+    .WithEnvironment("Tinify__ApiKey", tinifyApiKey);
 
 var database = builder.AddAzureSqlServer("sql")
     .RunAsContainer(c => c
@@ -12,6 +18,9 @@ var database = builder.AddAzureSqlServer("sql")
         .WithImage("azure-sql-edge"))
     .AddDatabase("db", "agentrp2");
 
-app.WaitFor(database).WithReference(database);
+app.WaitFor(database)
+    .WithReference(database)
+    .WaitFor(blobs)
+    .WithReference(blobs);
 
 builder.Build().Run();

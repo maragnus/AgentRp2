@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgentRp.Migrations
 {
     [DbContext(typeof(RpDbContext))]
-    [Migration("20260507142156_AddImageAvatarCrop")]
-    partial class AddImageAvatarCrop
+    [Migration("20260508034619_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -359,27 +359,18 @@ namespace AgentRp.Migrations
                     b.Property<int?>("AvatarZoomPercent")
                         .HasColumnType("int");
 
-                    b.Property<byte[]>("Bytes")
+                    b.Property<string>("BlobName")
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("ChatId")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("FinalPrompt")
                         .IsRequired()
@@ -393,6 +384,33 @@ namespace AgentRp.Migrations
 
                     b.Property<int?>("Height")
                         .HasColumnType("int");
+
+                    b.Property<bool>("OptimizationAttempted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OptimizationError")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OptimizationProvider")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("OptimizationSucceeded")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("OptimizedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("OriginalByteLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OriginalContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ProviderId")
                         .IsRequired()
@@ -408,6 +426,19 @@ namespace AgentRp.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("StoredByteLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoredContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("StoredFileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -434,15 +465,15 @@ namespace AgentRp.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
-                    b.Property<string>("ActiveModelSelectionsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("CharacterTraitLibraryJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("CharactersJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ChatDirectionJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 

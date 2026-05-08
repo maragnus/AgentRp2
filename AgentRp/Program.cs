@@ -15,12 +15,18 @@ builder.Services.AddDbContextFactory<RpDbContext>((serviceProvider, options) =>
     options.UseSqlServer(connectionString);
 });
 
+// Aspire's BlobContainerClient registration requires an explicit container name when using a storage-account
+// connection string (ConnectionStrings:blobs). Production supplies an account connection string, not a
+// container-scoped connection string, so set the container name here.
+builder.AddAzureBlobContainerClient("blobs", settings => settings.BlobContainerName = "agentrp");
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddTransient<ExternalApiLoggingHandler>();
 builder.Services.AddHttpClient();
 builder.Services.ConfigureHttpClientDefaults(http => http.AddHttpMessageHandler<ExternalApiLoggingHandler>());
+builder.Services.AddTinify();
 builder.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
 builder.Services.AddSingleton<IModelCapabilityCatalog, ModelCapabilityCatalog>();
 builder.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
@@ -42,6 +48,8 @@ builder.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>()
 builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
 builder.Services.AddSingleton<IGlobalModelSelectionStore, GlobalModelSelectionStore>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
+builder.Services.AddScoped<IImageBlobStorage, AzureImageBlobStorage>();
+builder.Services.AddScoped<IStoredImageService, StoredImageService>();
 builder.Services.AddScoped<IImageDetailsService, ImageDetailsService>();
 builder.Services.AddScoped<IImageCropService, ImageCropService>();
 builder.Services.AddScoped<DialogHelper>();
@@ -79,22 +87,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 
 app.UseAntiforgery();
 
-app.MapGet("/story-images/{imageId}", async (
-    string imageId,
-    IDbContextFactory<RpDbContext> dbContextFactory,
-    CancellationToken cancellationToken) =>
-{
-    await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-    var image = await dbContext.ImageAssets
-        .AsNoTracking()
-        .Where(x => x.Id == imageId)
-        .Select(x => new { x.Bytes, x.ContentType, x.FileName })
-        .FirstOrDefaultAsync(cancellationToken);
-
-    return image is null
-        ? Results.NotFound()
-        : Results.File(image.Bytes, image.ContentType, image.FileName, enableRangeProcessing: true);
-});
+app.MapStoryImageEndpoints();
 
 app.MapGet("/story-audio/{voiceMessageId}", async (
     string voiceMessageId,
