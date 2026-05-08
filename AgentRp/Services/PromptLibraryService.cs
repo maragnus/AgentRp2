@@ -11,12 +11,24 @@ public static class PromptLibraryStageIds
     public const string Selection = "selection";
     public const string Planning = "planning";
     public const string Prose = "prose";
+    public const string StoryAssistantBase = "storyAssistantBase";
+    public const string StoryAssistantPrepareStory = "storyAssistantPrepareStory";
+    public const string StoryAssistantIntroduceCharacters = "storyAssistantIntroduceCharacters";
+    public const string StoryAssistantIntroduceLocation = "storyAssistantIntroduceLocation";
+    public const string StoryAssistantChangeScene = "storyAssistantChangeScene";
+}
+
+public static class PromptLibraryStageGroups
+{
+    public const string Generation = "Generation";
+    public const string StoryAssistant = "Story Assistant";
 }
 
 public sealed record PromptLibraryStageDefinition(
     string Id,
     string Label,
-    bool HasTurnShapes);
+    bool HasTurnShapes,
+    string Group);
 
 public sealed record PromptLibraryPlaceholderDefinition(
     string Token,
@@ -39,11 +51,16 @@ public sealed partial class PromptLibraryService
 
     static readonly IReadOnlyList<PromptLibraryStageDefinition> StageDefinitions =
     [
-        new(PromptLibraryStageIds.Snapshot, "Snapshot", false),
-        new(PromptLibraryStageIds.Appearance, "Appearance", false),
-        new(PromptLibraryStageIds.Selection, "Selection", false),
-        new(PromptLibraryStageIds.Planning, "Planning", true),
-        new(PromptLibraryStageIds.Prose, "Prose", true)
+        new(PromptLibraryStageIds.Snapshot, "Snapshot", false, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.Appearance, "Appearance", false, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.Selection, "Selection", false, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.Planning, "Planning", true, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.Prose, "Prose", true, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.StoryAssistantBase, "Assistant Base", false, PromptLibraryStageGroups.StoryAssistant),
+        new(PromptLibraryStageIds.StoryAssistantPrepareStory, "Prepare Story", false, PromptLibraryStageGroups.StoryAssistant),
+        new(PromptLibraryStageIds.StoryAssistantIntroduceCharacters, "Introduce Characters", false, PromptLibraryStageGroups.StoryAssistant),
+        new(PromptLibraryStageIds.StoryAssistantIntroduceLocation, "Introduce Location", false, PromptLibraryStageGroups.StoryAssistant),
+        new(PromptLibraryStageIds.StoryAssistantChangeScene, "Change Scene", false, PromptLibraryStageGroups.StoryAssistant)
     ];
 
     static readonly IReadOnlyList<PromptLibraryPlaceholderDefinition> PlaceholderDefinitions =
@@ -162,6 +179,31 @@ public sealed partial class PromptLibraryService
             {
                 System = DefaultProseSystemPromptTemplate,
                 User = DefaultProseUserPromptTemplate
+            },
+            [PromptLibraryStageIds.StoryAssistantBase] = new()
+            {
+                System = DefaultStoryAssistantBaseSystemPrompt,
+                User = ""
+            },
+            [PromptLibraryStageIds.StoryAssistantPrepareStory] = new()
+            {
+                System = "",
+                User = DefaultStoryAssistantPrepareStoryPrompt
+            },
+            [PromptLibraryStageIds.StoryAssistantIntroduceCharacters] = new()
+            {
+                System = "",
+                User = DefaultStoryAssistantIntroduceCharactersPrompt
+            },
+            [PromptLibraryStageIds.StoryAssistantIntroduceLocation] = new()
+            {
+                System = "",
+                User = DefaultStoryAssistantIntroduceLocationPrompt
+            },
+            [PromptLibraryStageIds.StoryAssistantChangeScene] = new()
+            {
+                System = "",
+                User = DefaultStoryAssistantChangeScenePrompt
             }
         },
         TurnShapes = new(StringComparer.Ordinal)

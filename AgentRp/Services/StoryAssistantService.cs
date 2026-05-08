@@ -6,18 +6,63 @@ using AgentRp.Session;
 
 namespace AgentRp.Services;
 
-public sealed record StoryAssistantTurnRequest(string UserMessage);
+public enum StoryAssistantTurnRequestKind
+{
+    UserMessage,
+    WorkItemResume
+}
+
+public sealed record StoryAssistantTurnRequest(
+    StoryAssistantTurnRequestKind Kind,
+    string ModelInput,
+    string DisplayMessage,
+    string ToolCallId = "",
+    string PreviousResponseId = "")
+{
+    public static StoryAssistantTurnRequest Start(string modelInput, string displayMessage) =>
+        new(StoryAssistantTurnRequestKind.UserMessage, modelInput, displayMessage);
+
+    public static StoryAssistantTurnRequest Resume(StoryAssistantWorkItem workItem) =>
+        new(StoryAssistantTurnRequestKind.WorkItemResume, workItem.ResultJson, workItem.Title, workItem.ToolCallId, workItem.AwaitingResponseId);
+
+    public string UserMessage => ModelInput;
+}
 
 public interface IStoryAssistantCallbacks
 {
     Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken);
     Task RecordToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
     Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
-    Task<StoryAssistantDecision> ReviewChangeAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
-    Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken);
+    Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken);
+    Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken);
     Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken);
     Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken);
     Task SaveAssistantStateAsync(CancellationToken cancellationToken);
+}
+
+public enum StoryAssistantToolExecutionStatus
+{
+    Completed,
+    Pending
+}
+
+public sealed record StoryAssistantToolExecutionResult(
+    StoryAssistantToolExecutionStatus Status,
+    string OutputJson,
+    StoryAssistantWorkItem? WorkItem)
+{
+    public static StoryAssistantToolExecutionResult Completed(string outputJson) =>
+        new(StoryAssistantToolExecutionStatus.Completed, outputJson, null);
+
+    public static StoryAssistantToolExecutionResult Pending(StoryAssistantWorkItem workItem) =>
+        new(StoryAssistantToolExecutionStatus.Pending, Output("pending", new { workItemId = workItem.Id, toolCallId = workItem.ToolCallId }), workItem);
+
+    static string Output(string status, object value)
+    {
+        var node = JsonSerializer.SerializeToNode(value, AppJsonSerializerOptions.Web)?.AsObject() ?? new();
+        node["status"] = status;
+        return node.ToJsonString(AppJsonSerializerOptions.Web);
+    }
 }
 
 public interface IStoryAssistantService
@@ -34,6 +79,13 @@ public interface IStoryAssistantService
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState modelSelections,
+        CancellationToken cancellationToken = default);
+
+    Task ResolveWorkItemAsync(
+        RpChatDocument document,
+        StoryAssistantWorkItem workItem,
+        StoryAssistantWorkItemResolution resolution,
+        IStoryAssistantCallbacks callbacks,
         CancellationToken cancellationToken = default);
 }
 
@@ -56,7 +108,13 @@ public sealed partial class StoryAssistantService(
         if (!selection.Capabilities.CanGenerateText || !selection.Capabilities.Tools)
             throw new InvalidOperationException($"Starting the Story Assistant failed because reasoning model '{selection.Model.Id}' must support text and tools.");
 
-        if (!ResponseChainMatches(document.StoryAssistant, selection))
+        if (request.Kind == StoryAssistantTurnRequestKind.WorkItemResume && string.IsNullOrWhiteSpace(request.PreviousResponseId))
+            throw new InvalidOperationException("Resuming Story Assistant failed because the saved action is missing its Responses continuation.");
+
+        if (request.Kind == StoryAssistantTurnRequestKind.WorkItemResume && !ResponseChainMatches(document.StoryAssistant, selection))
+            throw new InvalidOperationException($"Resuming Story Assistant failed because the saved action belongs to '{document.StoryAssistant.ResponseModelId}', but the active reasoning model is '{selection.Model.Id}'.");
+
+        if (request.Kind == StoryAssistantTurnRequestKind.UserMessage && !ResponseChainMatches(document.StoryAssistant, selection))
         {
             await ClearRemoteStateAsync(document, providers, modelSelections, cancellationToken);
             ClearResponseChain(document.StoryAssistant);
@@ -65,17 +123,24 @@ public sealed partial class StoryAssistantService(
 
         document.StoryAssistant.RemoteThreadLost = false;
         document.StoryAssistant.RemoteThreadError = "";
-        var inputs = new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.UserMessage.Trim()) };
+        var previousResponseId = request.Kind == StoryAssistantTurnRequestKind.WorkItemResume
+            ? request.PreviousResponseId
+            : document.StoryAssistant.LastResponseId;
+        var inputs = request.Kind == StoryAssistantTurnRequestKind.WorkItemResume
+            ? new List<ModelAssistantInput> { new(ModelAssistantInputKind.FunctionCallOutput, request.ModelInput, request.ToolCallId) }
+            : new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.ModelInput.Trim()) };
+        var instructions = Instructions(document.PromptLibrary);
         for (var pass = 0; pass < 16; pass++)
         {
             var toolOutputs = new List<ModelAssistantInput>();
+            StoryAssistantWorkItem? pendingWorkItem = null;
             await foreach (var update in generationClient.GenerateAssistantStreamingAsync(new(
                 selection.Provider,
                 selection.Model,
                 selection.Capabilities,
                 new(),
-                Instructions(),
-                document.StoryAssistant.LastResponseId,
+                instructions,
+                previousResponseId,
                 inputs,
                 BuildTools(document),
                 "Running Story Assistant"), cancellationToken))
@@ -85,22 +150,39 @@ public sealed partial class StoryAssistantService(
                     await callbacks.AppendAssistantTextAsync(update.TextDelta, cancellationToken);
                 else if (update.Kind == ModelAssistantStreamingUpdateKind.ToolCall)
                 {
-                    var output = await patchService.ExecuteAsync(document, update.ToolCallId, update.ToolName, update.ToolArgumentsJson, callbacks, cancellationToken);
-                    toolOutputs.Add(new(ModelAssistantInputKind.FunctionCallOutput, output, update.ToolCallId));
+                    var execution = await patchService.ExecuteToolAsync(document, update.ToolCallId, update.ToolName, update.ToolArgumentsJson, callbacks, cancellationToken);
+                    if (execution.Status == StoryAssistantToolExecutionStatus.Pending)
+                        pendingWorkItem = execution.WorkItem;
+                    else
+                        toolOutputs.Add(new(ModelAssistantInputKind.FunctionCallOutput, execution.OutputJson, update.ToolCallId));
                 }
                 else if (update.Kind == ModelAssistantStreamingUpdateKind.Completed)
                 {
                     if (!string.IsNullOrWhiteSpace(update.ResponseId))
+                    {
                         RecordResponse(document.StoryAssistant, selection, update.ResponseId);
+                        if (pendingWorkItem is not null)
+                        {
+                            pendingWorkItem.AwaitingResponseId = update.ResponseId;
+                            pendingWorkItem.ResponseProviderId = selection.Provider.Id;
+                            pendingWorkItem.ResponseModelId = selection.Model.Id;
+                            pendingWorkItem.UpdatedUtc = DateTime.UtcNow;
+                            await callbacks.UpdateWorkItemAsync(pendingWorkItem, cancellationToken);
+                        }
+                    }
 
                     await callbacks.SaveAssistantStateAsync(cancellationToken);
                 }
             }
 
+            if (pendingWorkItem is not null)
+                return;
+
             if (toolOutputs.Count == 0)
                 return;
 
             inputs = toolOutputs;
+            previousResponseId = document.StoryAssistant.LastResponseId;
         }
 
         throw new InvalidOperationException("Running the Story Assistant stopped because too many tool rounds were requested in one turn.");
@@ -128,6 +210,14 @@ public sealed partial class StoryAssistantService(
 
         await generationClient.DeleteAssistantResponsesAsync(provider, model, responseIds, cancellationToken);
     }
+
+    public Task ResolveWorkItemAsync(
+        RpChatDocument document,
+        StoryAssistantWorkItem workItem,
+        StoryAssistantWorkItemResolution resolution,
+        IStoryAssistantCallbacks callbacks,
+        CancellationToken cancellationToken = default) =>
+        patchService.ResolveWorkItemAsync(document, workItem, resolution, callbacks, cancellationToken);
 
     void ApplyCapabilities(IReadOnlyList<AiProvider> providers)
     {
@@ -161,19 +251,10 @@ public sealed partial class StoryAssistantService(
         state.RemoteThreadError = "";
     }
 
-    static string Instructions() => """
-You are the Story Entities Assistant for AgentRp. Help the user bootstrap and maintain story canon through concise collaboration.
+    static string Instructions(PromptLibraryState promptLibrary) =>
+        PromptLibraryService.RenderStage(promptLibrary, PromptLibraryStageIds.StoryAssistantBase, EmptyPromptValues).SystemPrompt;
 
-Use tools for durable changes. Prefer partial updates: only send fields you intend to change. Never resend a whole existing entity unless creating it.
-Ask focused questions when a choice materially changes story direction. Prefer 1-3 multiple-choice options; use an open-ended question when choices would over-constrain the user.
-When editing relationships, treat them as directional. Use clear thinking like "how Character A sees Character B" and "how Character B sees Character A".
-Before setting controlled character profile fields, call get_character_profile_options for the fields you need. If a character tool fails with nextStep.tool = get_character_profile_options, call it before retrying.
-Before setting controlled chat direction fields, call get_chat_direction_options for the fields you need. If a chat direction tool fails with nextStep.tool = get_chat_direction_options, call it before retrying.
-Use set_scene only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. The set_scene tool stages existing canon only; call get_story_entities first if any ids are uncertain, and create missing canon with existing entity tools or ask the user before setting the scene.
-Do not use set_scene to resolve major plot outcomes, relationship changes, defeats, losses, off-screen decisions, or irreversible consequences unless the user explicitly requested those outcomes. If unsure whether a change is staging or a plot consequence, ask the user.
-When using set_scene, provide state and intent only. Preserve narrator creative freedom; do not write the scene prose yourself.
-Before making a broad or identity-level change, briefly explain the intent and then use a tool. The app will show every tool call to the user for audit.
-""";
+    static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransitionService = null)
@@ -190,28 +271,57 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         IStoryAssistantCallbacks callbacks,
         CancellationToken cancellationToken)
     {
+        var result = await ExecuteToolAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+        return result.OutputJson;
+    }
+
+    public async Task<StoryAssistantToolExecutionResult> ExecuteToolAsync(
+        RpChatDocument document,
+        string toolCallId,
+        string toolName,
+        string argumentsJson,
+        IStoryAssistantCallbacks callbacks,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            return toolName switch
+            switch (toolName)
             {
-                "get_story_entities" => await ReadToolAsync(toolCallId, toolName, "Read story entities", argumentsJson, callbacks, new { entities = BuildEntities(document) }, cancellationToken),
-                "get_story_transcript" => await ReadToolAsync(toolCallId, toolName, "Read story transcript", argumentsJson, callbacks, new { transcript = BuildTranscript(document) }, cancellationToken),
-                "get_character_profile_options" => await ReadProfileOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "get_chat_direction_options" => await ReadChatDirectionOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "ask_user" => await AskUserAsync(toolCallId, argumentsJson, callbacks, cancellationToken),
-                "create_character" => await CreateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_character" => await UpdateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_chat_direction" => await UpdateChatDirectionAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "create_location" => await CreateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_location" => await UpdateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "create_item" => await CreateItemAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_item" => await UpdateItemAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "create_timeline_entry" => await CreateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_timeline_entry" => await UpdateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "update_character_relationship" => await UpdateRelationshipAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                "set_scene" => await SetSceneAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken),
-                _ => Output("failed", new { reason = $"Unknown tool '{toolName}'." })
-            };
+                case "get_story_entities":
+                    return StoryAssistantToolExecutionResult.Completed(await ReadToolAsync(toolCallId, toolName, "Read story entities", argumentsJson, callbacks, new { entities = BuildEntities(document) }, cancellationToken));
+                case "get_story_transcript":
+                    return StoryAssistantToolExecutionResult.Completed(await ReadToolAsync(toolCallId, toolName, "Read story transcript", argumentsJson, callbacks, new { transcript = BuildTranscript(document) }, cancellationToken));
+                case "get_character_profile_options":
+                    return StoryAssistantToolExecutionResult.Completed(await ReadProfileOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken));
+                case "get_chat_direction_options":
+                    return StoryAssistantToolExecutionResult.Completed(await ReadChatDirectionOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken));
+                case "ask_user":
+                    return await AskUserAsync(toolCallId, argumentsJson, callbacks, cancellationToken);
+                case "create_character":
+                    return await CreateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_character":
+                    return await UpdateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_chat_direction":
+                    return await UpdateChatDirectionAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "create_location":
+                    return await CreateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_location":
+                    return await UpdateLocationAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "create_item":
+                    return await CreateItemAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_item":
+                    return await UpdateItemAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "create_timeline_entry":
+                    return await CreateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_timeline_entry":
+                    return await UpdateTimelineAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "update_character_relationship":
+                    return await UpdateRelationshipAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                case "set_scene":
+                    return await SetSceneAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
+                default:
+                    return StoryAssistantToolExecutionResult.Completed(Output("failed", new { reason = $"Unknown tool '{toolName}'." }));
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -219,20 +329,15 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         }
         catch (CharacterProfileValidationException exception)
         {
-            return Output("failed", new
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new
             {
                 reason = exception.Message,
-                nextStep = new
-                {
-                    tool = "get_character_profile_options",
-                    fields = exception.Fields,
-                    instruction = "Call get_character_profile_options for the invalid field, then retry with valid ids and limits."
-                }
-            });
+                nextStep = CharacterProfileNextStep(toolName, exception)
+            }));
         }
         catch (ChatDirectionValidationException exception)
         {
-            return Output("failed", new
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new
             {
                 reason = exception.Message,
                 nextStep = new
@@ -241,11 +346,11 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
                     fields = exception.Fields,
                     instruction = "Call get_chat_direction_options for the invalid field, then retry with valid ids, limits, and intensity values."
                 }
-            });
+            }));
         }
         catch (StoryAssistantEntityLookupException exception)
         {
-            return Output("failed", new
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new
             {
                 reason = exception.Message,
                 nextStep = new
@@ -253,11 +358,11 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
                     tool = "get_story_entities",
                     instruction = "Call get_story_entities, choose the correct entity id from the result, then retry with that entityId."
                 }
-            });
+            }));
         }
         catch (SceneTransitionValidationException exception)
         {
-            return Output("failed", new
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new
             {
                 reason = exception.Message,
                 nextStep = new
@@ -265,11 +370,11 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
                     tool = "get_story_entities",
                     instruction = "Call get_story_entities, choose existing canon ids, create missing canon with the appropriate entity tool or ask the user, then retry set_scene."
                 }
-            });
+            }));
         }
         catch (Exception exception)
         {
-            return Output("failed", new { reason = exception.Message });
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new { reason = exception.Message }));
         }
     }
 
@@ -281,6 +386,27 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         item.ResultJson = Output("accepted", payload);
         await callbacks.RecordToolCallAsync(item, cancellationToken);
         return item.ResultJson;
+    }
+
+    static object CharacterProfileNextStep(string toolName, CharacterProfileValidationException exception)
+    {
+        var controlledFields = exception.Fields
+            .Where(field => CharacterProfileRules.ControlledCharacterFields.Contains(field, StringComparer.Ordinal))
+            .ToList();
+        if (controlledFields.Count > 0)
+            return new
+            {
+                tool = "get_character_profile_options",
+                fields = controlledFields,
+                instruction = "Read valid controlled profile options, then retry with a complete and useful character profile."
+            };
+
+        return new
+        {
+            tool = toolName,
+            fields = exception.Fields,
+            instruction = "Retry with the missing character fields filled in."
+        };
     }
 
     static object BuildEntities(RpChatDocument document)
@@ -331,9 +457,18 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         character.ImageId,
         character.Summary,
         character.Personality,
-        character.Appearance,
-        character.AppearanceProfile,
-        AppearanceSummary = CharacterAppearanceFormatter.FormatBase(character, library),
+        extraAppearanceDetails = character.Appearance,
+        character.AppearanceProfile.HairColor,
+        character.AppearanceProfile.HairStyles,
+        character.AppearanceProfile.EyeColor,
+        character.AppearanceProfile.FaceShape,
+        character.AppearanceProfile.SkinTone,
+        character.AppearanceProfile.Complexion,
+        character.AppearanceProfile.Height,
+        character.AppearanceProfile.Build,
+        character.AppearanceProfile.BodyProportions,
+        character.AppearanceProfile.Presentation,
+        character.AppearanceProfile.Attractiveness,
         character.Backstory,
         character.Voice,
         character.Notes,
@@ -405,39 +540,50 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ReadToolAsync(callId, toolName, "Read chat direction options", argumentsJson, callbacks, new { chatDirectionOptions = ChatDirectionRules.Options(document.ChatDirection, fields) }, cancellationToken);
     }
 
-    async Task<string> AskUserAsync(string callId, string argumentsJson, IStoryAssistantCallbacks callbacks, CancellationToken cancellationToken)
+    async Task<StoryAssistantToolExecutionResult> AskUserAsync(string callId, string argumentsJson, IStoryAssistantCallbacks callbacks, CancellationToken cancellationToken)
     {
         using var doc = Parse(argumentsJson);
         var root = doc.RootElement;
-        var item = BaseItem(callId, "ask_user", "Question", argumentsJson);
-        item.Kind = StoryAssistantItemKind.Question;
-        item.Status = StoryAssistantItemStatus.Pending;
-        item.Operation = StoryAssistantOperationKind.Question;
-        item.Question.Prompt = String(root, "prompt");
-        item.Question.AllowsFreeform = Bool(root, "allowsFreeform");
-        item.Question.Choices = root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
+        var workItem = BaseWorkItem(callId, "ask_user", "Question", argumentsJson, StoryAssistantWorkItemKind.Question);
+        workItem.Operation = StoryAssistantOperationKind.Question;
+        workItem.Question.Prompt = String(root, "prompt");
+        workItem.Question.AllowsFreeform = Bool(root, "allowsFreeform");
+        workItem.Question.SelectionMode = String(root, "selectionMode").Equals("multiple", StringComparison.OrdinalIgnoreCase)
+            ? StoryAssistantQuestionSelectionMode.Multiple
+            : StoryAssistantQuestionSelectionMode.Single;
+        workItem.Question.MinSelections = Math.Max(0, Int(root, "minSelections", workItem.Question.SelectionMode == StoryAssistantQuestionSelectionMode.Multiple ? 0 : 1));
+        workItem.Question.MaxSelections = Math.Max(1, Int(root, "maxSelections", workItem.Question.SelectionMode == StoryAssistantQuestionSelectionMode.Multiple ? 3 : 1));
+        if (workItem.Question.SelectionMode == StoryAssistantQuestionSelectionMode.Single)
+        {
+            workItem.Question.MinSelections = 1;
+            workItem.Question.MaxSelections = 1;
+        }
+
+        workItem.Question.Choices = root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
             ? choices.EnumerateArray().Select((choice, index) => new StoryAssistantQuestionChoice
             {
                 Id = String(choice, "id", $"choice-{index + 1}"),
-                Label = String(choice, "label")
+                Label = String(choice, "label"),
+                Description = String(choice, "description")
             }).Where(choice => !string.IsNullOrWhiteSpace(choice.Label)).ToList()
             : [];
-        var answer = await callbacks.AskQuestionAsync(item, cancellationToken);
-        return Output("accepted", new { answer });
+        await callbacks.RecordWorkItemAsync(workItem, cancellationToken);
+        return StoryAssistantToolExecutionResult.Pending(workItem);
     }
 
-    async Task<string> CreateCharacterAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> CreateCharacterAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var character = new RpCharacter { Id = NextId(document.Characters.Select(item => item.Id), "c"), Name = "New Character" };
         var updates = Updates(json.RootElement);
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(character, updates);
+        CharacterProfileRules.ValidateCreatedCharacter(character);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {character.Name}", "character", character.Id, character.Name, args, new(), CharacterJsonObject(character, document.CharacterTraitLibrary), StoryAssistantChangeRisk.Low);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => document.Characters.Insert(0, character), new(), token);
     }
 
-    async Task<string> UpdateCharacterAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateCharacterAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var id = RequiredEntityId(json.RootElement);
@@ -447,12 +593,14 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         var updates = Updates(json.RootElement);
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(after, updates);
+        if (CharacterProfileRules.HasAppearancePatch(updates))
+            CharacterProfileRules.ValidateCompleteAppearance(after);
         var risk = updates.TryGetProperty("name", out _) || updates.TryGetProperty("backstory", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "character", id, after.Name, args, CharacterJsonObject(before, document.CharacterTraitLibrary), CharacterJsonObject(after, document.CharacterTraitLibrary), risk);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, existing), CharacterJsonObject(existing, document.CharacterTraitLibrary), token);
     }
 
-    async Task<string> UpdateChatDirectionAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateChatDirectionAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var before = SessionCloner.Clone(document.ChatDirection);
@@ -466,7 +614,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.ChatDirection, () => document.ChatDirection = after, ChatDirectionRules.JsonObject(document.ChatDirection), token);
     }
 
-    async Task<string> CreateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> CreateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var updates = Updates(json.RootElement);
@@ -478,7 +626,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Locations, () => document.Locations.Add(location), new(), token);
     }
 
-    async Task<string> UpdateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateLocationAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var id = RequiredEntityId(json.RootElement);
@@ -493,7 +641,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Locations, () => Copy(after, existing), LocationJsonObject(existing), token);
     }
 
-    async Task<string> CreateItemAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> CreateItemAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var updates = Updates(json.RootElement);
@@ -505,7 +653,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Items, () => document.Items.Add(itemEntity), new(), token);
     }
 
-    async Task<string> UpdateItemAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateItemAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var id = RequiredEntityId(json.RootElement);
@@ -520,7 +668,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Items, () => Copy(after, existing), ItemJsonObject(existing), token);
     }
 
-    async Task<string> CreateTimelineAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> CreateTimelineAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var updates = Updates(json.RootElement);
@@ -532,7 +680,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => document.Timeline.Add(entry), new(), token);
     }
 
-    async Task<string> UpdateTimelineAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateTimelineAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var id = RequiredEntityId(json.RootElement);
@@ -546,7 +694,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => Copy(after, existing), TimelineJsonObject(existing), token);
     }
 
-    async Task<string> UpdateRelationshipAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> UpdateRelationshipAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var sourceId = RequiredString(json.RootElement, "sourceCharacterId");
@@ -573,7 +721,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Characters, () => Copy(after, source), RelationshipJsonObject(source), token);
     }
 
-    async Task<string> SetSceneAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
+    async Task<StoryAssistantToolExecutionResult> SetSceneAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
         var root = json.RootElement;
@@ -600,7 +748,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         return await ResolveSceneTransitionAsync(document, item, callbacks, request, transition, token);
     }
 
-    async Task<string> ResolveMutationAsync(
+    async Task<StoryAssistantToolExecutionResult> ResolveMutationAsync(
         RpChatDocument document,
         StoryAssistantTranscriptItem item,
         IStoryAssistantCallbacks callbacks,
@@ -610,37 +758,23 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         CancellationToken cancellationToken)
     {
         item.Diffs = Diff(item.Before, item.After);
-        await callbacks.RecordToolCallAsync(item, cancellationToken);
         var shouldReview = ShouldReview(document.StoryAssistant.ReviewMode, item.Risk);
         if (shouldReview)
         {
-            item.Status = StoryAssistantItemStatus.NeedsReview;
-            await callbacks.UpdateToolCallAsync(item, cancellationToken);
-            var decision = await callbacks.ReviewChangeAsync(item, cancellationToken);
-            item.DecisionReason = decision.Reason;
-            if (decision.Kind == StoryAssistantDecisionKind.TryAgain)
-            {
-                item.Status = StoryAssistantItemStatus.RetryRequested;
-                await callbacks.UpdateToolCallAsync(item, cancellationToken);
-                return Output("retry_requested", new { currentEntity, userGuidance = decision.Reason });
-            }
-
-            if (decision.Kind == StoryAssistantDecisionKind.Reject)
-            {
-                item.Status = StoryAssistantItemStatus.Rejected;
-                await callbacks.UpdateToolCallAsync(item, cancellationToken);
-                return Output("rejected", new { currentEntity, rejectionReason = decision.Reason });
-            }
+            var workItem = WorkItemFromTranscriptItem(item, StoryAssistantWorkItemKind.MutationReview, area);
+            await callbacks.RecordWorkItemAsync(workItem, cancellationToken);
+            return StoryAssistantToolExecutionResult.Pending(workItem);
         }
 
+        item.Status = StoryAssistantItemStatus.Applied;
+        await callbacks.RecordToolCallAsync(item, cancellationToken);
         apply();
-        item.Status = shouldReview ? StoryAssistantItemStatus.Accepted : StoryAssistantItemStatus.Applied;
         await callbacks.SaveEntityAreaAsync(area, cancellationToken);
         await callbacks.UpdateToolCallAsync(item, cancellationToken);
-        return Output("accepted", new { entityType = item.EntityType, entityId = item.EntityId, resultingEntity = item.After });
+        return StoryAssistantToolExecutionResult.Completed(Output("accepted", new { entityType = item.EntityType, entityId = item.EntityId, resultingEntity = item.After }));
     }
 
-    async Task<string> ResolveSceneTransitionAsync(
+    async Task<StoryAssistantToolExecutionResult> ResolveSceneTransitionAsync(
         RpChatDocument document,
         StoryAssistantTranscriptItem item,
         IStoryAssistantCallbacks callbacks,
@@ -649,37 +783,23 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         CancellationToken cancellationToken)
     {
         item.Diffs = Diff(item.Before, item.After);
-        await callbacks.RecordToolCallAsync(item, cancellationToken);
         var shouldReview = RequiresSceneReview(transition) || ShouldReview(document.StoryAssistant.ReviewMode, item.Risk);
         if (shouldReview)
         {
-            item.Status = StoryAssistantItemStatus.NeedsReview;
-            await callbacks.UpdateToolCallAsync(item, cancellationToken);
-            var decision = await callbacks.ReviewChangeAsync(item, cancellationToken);
-            item.DecisionReason = decision.Reason;
-            if (decision.Kind == StoryAssistantDecisionKind.TryAgain)
-            {
-                item.Status = StoryAssistantItemStatus.RetryRequested;
-                await callbacks.UpdateToolCallAsync(item, cancellationToken);
-                return Output("retry_requested", new { currentScene = item.Before, userGuidance = decision.Reason });
-            }
-
-            if (decision.Kind == StoryAssistantDecisionKind.Reject)
-            {
-                item.Status = StoryAssistantItemStatus.Rejected;
-                await callbacks.UpdateToolCallAsync(item, cancellationToken);
-                return Output("rejected", new { currentScene = item.Before, rejectionReason = decision.Reason });
-            }
+            var workItem = WorkItemFromTranscriptItem(item, StoryAssistantWorkItemKind.SceneReview, RoleplayStoreArea.Transcript);
+            await callbacks.RecordWorkItemAsync(workItem, cancellationToken);
+            return StoryAssistantToolExecutionResult.Pending(workItem);
         }
 
         try
         {
+            item.Status = StoryAssistantItemStatus.Applied;
+            await callbacks.RecordToolCallAsync(item, cancellationToken);
             var generated = await callbacks.GenerateSceneTransitionAsync(request, cancellationToken);
             item.After = SceneTransitionJsonObject(generated.Plan, document);
             item.Diffs = Diff(item.Before, item.After);
-            item.Status = shouldReview ? StoryAssistantItemStatus.Accepted : StoryAssistantItemStatus.Applied;
             await callbacks.UpdateToolCallAsync(item, cancellationToken);
-            return Output("accepted", new
+            return StoryAssistantToolExecutionResult.Completed(Output("accepted", new
             {
                 entityType = item.EntityType,
                 entityId = item.EntityId,
@@ -687,16 +807,231 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
                 narratorInstruction = generated.Plan.NarratorInstruction,
                 narratorTurnId = generated.NarratorTurnId,
                 narratorMessage = generated.NarratorMessage
-            });
+            }));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             item.Status = StoryAssistantItemStatus.Failed;
             item.DecisionReason = UserFacingErrorMessageBuilder.Build("Setting the scene failed.", exception);
             await callbacks.UpdateToolCallAsync(item, cancellationToken);
-            return Output("failed", new { reason = item.DecisionReason, currentScene = item.Before });
+            return StoryAssistantToolExecutionResult.Completed(Output("failed", new { reason = item.DecisionReason, currentScene = item.Before }));
         }
     }
+
+    public async Task ResolveWorkItemAsync(
+        RpChatDocument document,
+        StoryAssistantWorkItem workItem,
+        StoryAssistantWorkItemResolution resolution,
+        IStoryAssistantCallbacks callbacks,
+        CancellationToken cancellationToken)
+    {
+        if (workItem.Status != StoryAssistantWorkItemStatus.Pending)
+            return;
+
+        try
+        {
+            if (workItem.Kind == StoryAssistantWorkItemKind.Question)
+            {
+                var answer = resolution.Answer.Trim();
+                workItem.Question.Answer = answer;
+                workItem.Status = StoryAssistantWorkItemStatus.Completed;
+                workItem.ResultJson = Output("accepted", new { answer });
+                workItem.UpdatedUtc = DateTime.UtcNow;
+                await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+                return;
+            }
+
+            if (resolution.Kind == StoryAssistantWorkItemResolutionKind.TryAgain)
+            {
+                workItem.Status = StoryAssistantWorkItemStatus.RetryRequested;
+                workItem.DecisionReason = resolution.Reason.Trim();
+                workItem.ResultJson = Output("retry_requested", new { currentEntity = CurrentWorkItemState(document, workItem), userGuidance = workItem.DecisionReason });
+                workItem.UpdatedUtc = DateTime.UtcNow;
+                await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+                return;
+            }
+
+            if (resolution.Kind == StoryAssistantWorkItemResolutionKind.Reject)
+            {
+                workItem.Status = StoryAssistantWorkItemStatus.Rejected;
+                workItem.DecisionReason = resolution.Reason.Trim();
+                workItem.ResultJson = Output("rejected", new { currentEntity = CurrentWorkItemState(document, workItem), rejectionReason = workItem.DecisionReason });
+                workItem.UpdatedUtc = DateTime.UtcNow;
+                await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+                return;
+            }
+
+            var current = CurrentWorkItemState(document, workItem);
+            if (!JsonNode.DeepEquals(current, workItem.Before))
+            {
+                workItem.Status = StoryAssistantWorkItemStatus.Conflict;
+                workItem.DecisionReason = "The story changed after this assistant action was proposed.";
+                workItem.ResultJson = Output("conflict", new
+                {
+                    reason = workItem.DecisionReason,
+                    expected = workItem.Before,
+                    current
+                });
+                workItem.UpdatedUtc = DateTime.UtcNow;
+                await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+                return;
+            }
+
+            if (workItem.Kind == StoryAssistantWorkItemKind.SceneReview)
+            {
+                await ResolveAcceptedSceneWorkItemAsync(document, workItem, callbacks, cancellationToken);
+                return;
+            }
+
+            ApplyAcceptedMutation(document, workItem);
+            workItem.Status = StoryAssistantWorkItemStatus.Completed;
+            workItem.ResultJson = Output("accepted", new { entityType = workItem.EntityType, entityId = workItem.EntityId, resultingEntity = workItem.After });
+            workItem.UpdatedUtc = DateTime.UtcNow;
+            await callbacks.SaveEntityAreaAsync(AreaFor(workItem), cancellationToken);
+            await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            workItem.Status = StoryAssistantWorkItemStatus.Failed;
+            workItem.DecisionReason = UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception);
+            workItem.ResultJson = Output("failed", new { reason = workItem.DecisionReason, currentEntity = CurrentWorkItemState(document, workItem) });
+            workItem.UpdatedUtc = DateTime.UtcNow;
+            await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+        }
+    }
+
+    async Task ResolveAcceptedSceneWorkItemAsync(
+        RpChatDocument document,
+        StoryAssistantWorkItem workItem,
+        IStoryAssistantCallbacks callbacks,
+        CancellationToken cancellationToken)
+    {
+        var request = SceneRequest(workItem.ArgumentsJson);
+        var generated = await callbacks.GenerateSceneTransitionAsync(request, cancellationToken);
+        workItem.After = SceneTransitionJsonObject(generated.Plan, document);
+        workItem.Diffs = Diff(workItem.Before, workItem.After);
+        workItem.Status = StoryAssistantWorkItemStatus.Completed;
+        workItem.ResultJson = Output("accepted", new
+        {
+            entityType = workItem.EntityType,
+            entityId = workItem.EntityId,
+            resultingScene = workItem.After,
+            narratorInstruction = generated.Plan.NarratorInstruction,
+            narratorTurnId = generated.NarratorTurnId,
+            narratorMessage = generated.NarratorMessage
+        });
+        workItem.UpdatedUtc = DateTime.UtcNow;
+        await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);
+    }
+
+    JsonObject CurrentWorkItemState(RpChatDocument document, StoryAssistantWorkItem workItem) => workItem.EntityType switch
+    {
+        "character" => document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character ? CharacterJsonObject(character, document.CharacterTraitLibrary) : new(),
+        "relationship" => document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character ? RelationshipJsonObject(character) : new(),
+        "chatDirection" => ChatDirectionRules.JsonObject(document.ChatDirection),
+        "location" => document.Locations.FirstOrDefault(item => item.Id == workItem.EntityId) is { } location ? LocationJsonObject(location) : new(),
+        "item" => document.Items.FirstOrDefault(item => item.Id == workItem.EntityId) is { } item ? ItemJsonObject(item) : new(),
+        "timeline" => document.Timeline.FirstOrDefault(item => item.Id == workItem.EntityId) is { } entry ? TimelineJsonObject(entry) : new(),
+        "scene" => SceneJsonObject(TranscriptGraph.GetActiveScene(document.Transcript), document),
+        _ => new()
+    };
+
+    void ApplyAcceptedMutation(RpChatDocument document, StoryAssistantWorkItem workItem)
+    {
+        using var json = Parse(workItem.ArgumentsJson);
+        var root = json.RootElement;
+        var updates = Updates(root);
+        switch (workItem.ToolName)
+        {
+            case "create_character":
+                CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
+                var character = new RpCharacter { Id = workItem.EntityId, Name = "New Character" };
+                ApplyCharacter(character, updates);
+                CharacterProfileRules.ValidateCreatedCharacter(character);
+                document.Characters.Insert(0, character);
+                break;
+            case "update_character":
+                CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
+                var target = document.Characters.First(item => item.Id == workItem.EntityId);
+                ApplyCharacter(target, updates);
+                if (CharacterProfileRules.HasAppearancePatch(updates))
+                    CharacterProfileRules.ValidateCompleteAppearance(target);
+                break;
+            case "update_chat_direction":
+                ChatDirectionRules.ValidatePatch(updates);
+                ChatDirectionRules.Apply(document.ChatDirection, updates);
+                document.ChatDirection = ChatDirectionService.NormalizeState(document.ChatDirection);
+                break;
+            case "create_location":
+                ValidatePatch(updates, LocationFields, "location");
+                document.Locations.Add(Deserialize<RpLocation>(workItem.After));
+                break;
+            case "update_location":
+                ValidatePatch(updates, LocationFields, "location");
+                ApplyLocation(document.Locations.First(item => item.Id == workItem.EntityId), updates);
+                break;
+            case "create_item":
+                ValidatePatch(updates, ItemFields, "item");
+                document.Items.Add(Deserialize<RpItem>(workItem.After));
+                break;
+            case "update_item":
+                ValidatePatch(updates, ItemFields, "item");
+                ApplyItem(document.Items.First(item => item.Id == workItem.EntityId), updates);
+                break;
+            case "create_timeline_entry":
+                ValidatePatch(updates, TimelineFields, "timeline entry");
+                document.Timeline.Add(Deserialize<RpTimelineEntry>(workItem.After));
+                break;
+            case "update_timeline_entry":
+                ValidatePatch(updates, TimelineFields, "timeline entry");
+                ApplyTimeline(document.Timeline.First(item => item.Id == workItem.EntityId), updates);
+                break;
+            case "update_character_relationship":
+                CharacterProfileRules.ValidateRelationshipPatch(root, document.CharacterTraitLibrary);
+                ApplyRelationship(document, root);
+                break;
+            default:
+                throw new InvalidOperationException($"Resolving Story Assistant action failed because '{workItem.ToolName}' is not a supported durable mutation.");
+        }
+    }
+
+    static void ApplyRelationship(RpChatDocument document, JsonElement root)
+    {
+        var sourceId = RequiredString(root, "sourceCharacterId");
+        var targetId = RequiredString(root, "targetCharacterId");
+        var source = document.Characters.First(item => item.Id == sourceId);
+        var relationship = source.ProfileRelationships.FirstOrDefault(item => item.CharacterId == targetId);
+        if (relationship is null)
+        {
+            relationship = new() { CharacterId = targetId };
+            source.ProfileRelationships.Add(relationship);
+        }
+
+        relationship.NoteAtoB = String(root, "howSourceSeesTarget", relationship.NoteAtoB);
+        relationship.NoteBtoA = String(root, "howTargetSeesSource", relationship.NoteBtoA);
+        relationship.NoteExternal = String(root, "publicDynamic", relationship.NoteExternal);
+        AddDistinct(relationship.Dynamics, String(root, "privateTension"));
+        AddDistinct(relationship.Bonds, String(root, "relationshipType"));
+    }
+
+    static SceneTransitionRequest SceneRequest(string args)
+    {
+        using var json = Parse(args);
+        var root = json.RootElement;
+        return new(
+            RequiredString(root, "locationId"),
+            StringList(root, "characterIds"),
+            StringList(root, "itemIds"),
+            String(root, "elapsedTime"),
+            String(root, "transitionNote"),
+            String(root, "reason"));
+    }
+
+    static RoleplayStoreArea AreaFor(StoryAssistantWorkItem workItem) =>
+        Enum.TryParse<RoleplayStoreArea>(workItem.EntityArea, out var area) ? area : RoleplayStoreArea.StoryAssistant;
+
+    static T Deserialize<T>(JsonObject value) =>
+        JsonSerializer.Deserialize<T>(value.ToJsonString(AppJsonSerializerOptions.Web), AppJsonSerializerOptions.Web)!;
 
     static StoryAssistantTranscriptItem BaseItem(string callId, string toolName, string title, string args)
     {
@@ -714,6 +1049,49 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
             ArgumentsJson = args
         };
     }
+
+    static StoryAssistantWorkItem BaseWorkItem(string callId, string toolName, string title, string args, StoryAssistantWorkItemKind kind)
+    {
+        var now = DateTime.UtcNow;
+        return new()
+        {
+            Id = $"assistant-work-{Guid.NewGuid():N}",
+            TranscriptItemId = $"assistant-item-{Guid.NewGuid():N}",
+            Kind = kind,
+            Status = StoryAssistantWorkItemStatus.Pending,
+            CreatedUtc = now,
+            UpdatedUtc = now,
+            ToolCallId = callId,
+            ToolName = toolName,
+            Title = title,
+            ArgumentsJson = args
+        };
+    }
+
+    static StoryAssistantWorkItem WorkItemFromTranscriptItem(StoryAssistantTranscriptItem item, StoryAssistantWorkItemKind kind, RoleplayStoreArea area) => new()
+    {
+        Id = $"assistant-work-{Guid.NewGuid():N}",
+        TranscriptItemId = item.Id,
+        Kind = kind,
+        Status = StoryAssistantWorkItemStatus.Pending,
+        CreatedUtc = item.CreatedUtc,
+        UpdatedUtc = DateTime.UtcNow,
+        Title = item.Title,
+        ToolName = item.ToolName,
+        ToolCallId = item.ToolCallId,
+        EntityArea = area.ToString(),
+        Operation = item.Operation,
+        EntityType = item.EntityType,
+        EntityId = item.EntityId,
+        EntityName = item.EntityName,
+        ArgumentsJson = item.ArgumentsJson,
+        Before = item.Before,
+        After = item.After,
+        Diffs = item.Diffs,
+        Risk = item.Risk,
+        Question = item.Question,
+        Diagnostics = item.Diagnostics
+    };
 
     static StoryAssistantTranscriptItem MutationItem(string callId, string toolName, StoryAssistantOperationKind operation, string title, string entityType, string entityId, string entityName, string args, JsonObject before, JsonObject after, StoryAssistantChangeRisk risk)
     {
@@ -742,6 +1120,7 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
     static string RequiredEntityId(JsonElement root) => String(root, "entityId") is { Length: > 0 } value ? value : throw new StoryAssistantEntityLookupException("The tool call was missing 'entityId'.");
     static string String(JsonElement root, string name, string fallback = "") => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : fallback;
     static bool Bool(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+    static int Int(JsonElement root, string name, int fallback) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : fallback;
     static List<string> StringList(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
         ? value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? "").Where(item => !string.IsNullOrWhiteSpace(item)).ToList()
         : [];
@@ -769,8 +1148,8 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         Set(updates, "name", value => target.Name = value);
         Set(updates, "summary", value => target.Summary = value);
         Set(updates, "personality", value => target.Personality = value);
-        Set(updates, "appearance", value => target.Appearance = value);
-        SetAppearanceProfile(updates, target.AppearanceProfile);
+        Set(updates, CharacterProfileRules.ExtraAppearanceDetailsField, value => target.Appearance = value);
+        SetAppearanceFields(updates, target.AppearanceProfile);
         Set(updates, "backstory", value => target.Backstory = value);
         Set(updates, "voice", value => target.Voice = value);
         Set(updates, "notes", value => target.Notes = value);
@@ -792,22 +1171,19 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         SetList(updates, "avoidPatterns", value => target.AvoidPatterns = value);
     }
 
-    static void SetAppearanceProfile(JsonElement root, CharacterAppearanceState target)
+    static void SetAppearanceFields(JsonElement root, CharacterAppearanceState target)
     {
-        if (!root.TryGetProperty("appearanceProfile", out var value) || value.ValueKind != JsonValueKind.Object)
-            return;
-
-        Set(value, "hairColor", text => target.HairColor = text);
-        SetList(value, "hairStyles", list => target.HairStyles = list);
-        Set(value, "eyeColor", text => target.EyeColor = text);
-        Set(value, "faceShape", text => target.FaceShape = text);
-        Set(value, "skinTone", text => target.SkinTone = text);
-        SetList(value, "complexion", list => target.Complexion = list);
-        Set(value, "height", text => target.Height = text);
-        Set(value, "build", text => target.Build = text);
-        SetList(value, "bodyProportions", list => target.BodyProportions = list);
-        SetList(value, "presentation", list => target.Presentation = list);
-        Set(value, "attractiveness", text => target.Attractiveness = text);
+        Set(root, "hairColor", text => target.HairColor = text);
+        SetList(root, "hairStyles", list => target.HairStyles = list);
+        Set(root, "eyeColor", text => target.EyeColor = text);
+        Set(root, "faceShape", text => target.FaceShape = text);
+        Set(root, "skinTone", text => target.SkinTone = text);
+        SetList(root, "complexion", list => target.Complexion = list);
+        Set(root, "height", text => target.Height = text);
+        Set(root, "build", text => target.Build = text);
+        SetList(root, "bodyProportions", list => target.BodyProportions = list);
+        SetList(root, "presentation", list => target.Presentation = list);
+        Set(root, "attractiveness", text => target.Attractiveness = text);
     }
 
     static void ApplyLocation(RpLocation target, JsonElement updates)
@@ -875,6 +1251,18 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         "noteAtoB" => "How source sees target",
         "noteBtoA" => "How target sees source",
         "noteExternal" => "Public dynamic",
+        "extraAppearanceDetails" => "Extra Appearance Details",
+        "hairColor" => "Hair Color",
+        "hairStyles" => "Hair Styles",
+        "eyeColor" => "Eye Color",
+        "faceShape" => "Face Shape",
+        "skinTone" => "Skin Tone",
+        "complexion" => "Complexion",
+        "height" => "Height",
+        "build" => "Build",
+        "bodyProportions" => "Body Proportions",
+        "presentation" => "Presentation",
+        "attractiveness" => "Attractiveness",
         _ => string.Concat(field.Select((ch, index) => index > 0 && char.IsUpper(ch) ? $" {ch}" : ch.ToString()))
     };
 

@@ -15,15 +15,6 @@ public sealed class OverlayService(ILogger<OverlayService> logger)
 
     public async Task ShowAsync(OverlayEntry entry)
     {
-        logger.LogInformation(
-            "Overlay show requested. Id={OverlayId} Owner={Owner} Class={Class} Layer={Layer} Placement={Placement} ExistingCount={ExistingCount}",
-            entry.Id,
-            entry.OwnerDebugName,
-            entry.Class,
-            entry.Layer,
-            entry.Placement,
-            entries.Count);
-
         foreach (var existing in entries.Values.Where(existing => existing.Id != entry.Id).ToList())
             await CloseAsync(existing.Id);
 
@@ -36,14 +27,6 @@ public sealed class OverlayService(ILogger<OverlayService> logger)
         if (!entries.Remove(id, out var entry))
             return;
 
-        logger.LogInformation(
-            "Overlay close requested. Id={OverlayId} Owner={Owner} Class={Class} Layer={Layer} NotifyOwner={NotifyOwner}",
-            entry.Id,
-            entry.OwnerDebugName,
-            entry.Class,
-            entry.Layer,
-            notifyOwner);
-
         if (notifyOwner)
             await entry.CloseOwnerAsync();
 
@@ -55,7 +38,6 @@ public sealed class OverlayService(ILogger<OverlayService> logger)
         if (entries.Count == 0)
             return;
 
-        logger.LogInformation("Closing all overlays. Reason={Reason} Count={Count}", reason, entries.Count);
         foreach (var id in entries.Keys.ToList())
             await CloseAsync(id);
     }

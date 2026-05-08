@@ -1,0 +1,38 @@
+<div class="story-assistant-composer">
+    <AppTextarea Rows="3" Value="@Draft" ValueChanged="value => Draft = value" Placeholder="Ask the assistant to build or revise story entities" />
+    <div class="story-assistant-actions">
+        @if (IsBusy)
+        {
+            <span class="toolbar-spacer"></span>
+            <BusyButton Variant="secondary" OnClick="OnStop" TooltipText="Stop assistant run" AriaLabel="Stop assistant run">
+                <FaIcon Name="circle-stop" /> Stop
+            </BusyButton>
+        }
+        else
+        {
+            <span class="toolbar-spacer"></span>
+            <BusyButton Variant="primary" Disabled="@(!CanSend)" OnClick="Send">
+                <FaIcon Name="send" /> Send
+            </BusyButton>
+        }
+    </div>
+</div>
+
+@code {
+    string Draft = "";
+
+    [Parameter] public bool CanRun { get; set; }
+    [Parameter] public bool NeedsRestart { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+
+    bool CanSend => CanRun && !NeedsRestart && !string.IsNullOrWhiteSpace(Draft);
+
+    async Task Send()
+    {
+        var text = Draft;
+        Draft = "";
+        await OnSend.InvokeAsync(text);
+    }
+}

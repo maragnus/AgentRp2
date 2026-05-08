@@ -279,7 +279,7 @@ public sealed class OpenAiModelGenerationClient(
             }
             catch (ClientResultException exception) when (exception.Status == (int)HttpStatusCode.NotFound)
             {
-                logger.LogInformation(
+                logger.LogWarning(
                     exception,
                     "Stored assistant response was already unavailable during cleanup. Provider: {Provider}; Model: {Model}; ResponseId: {ResponseId}",
                     provider.Name,

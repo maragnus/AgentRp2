@@ -39,7 +39,6 @@ public sealed class DialogHelper(ILogger<DialogHelper> logger)
     {
         var request = new DialogRequest(Guid.NewGuid(), Normalize(options));
         pending.Enqueue(request);
-        logger.LogInformation("Dialog queued. Id={DialogId} Kind={Kind} Title={Title} PendingCount={PendingCount}", request.Id, request.Options.Kind, request.Options.Title, pending.Count);
         ShowNext();
         return request.Completion.Task;
     }
@@ -51,7 +50,6 @@ public sealed class DialogHelper(ILogger<DialogHelper> logger)
 
         var closed = current;
         current = null;
-        logger.LogInformation("Dialog closed. Id={DialogId} Kind={Kind} Result={Result}", closed.Id, closed.Options.Kind, result);
         closed.Completion.TrySetResult(result);
         Changed?.Invoke();
         ShowNext();
@@ -64,7 +62,6 @@ public sealed class DialogHelper(ILogger<DialogHelper> logger)
             return;
 
         current = pending.Dequeue();
-        logger.LogInformation("Dialog opened. Id={DialogId} Kind={Kind} Title={Title}", current.Id, current.Options.Kind, current.Options.Title);
         Changed?.Invoke();
     }
 

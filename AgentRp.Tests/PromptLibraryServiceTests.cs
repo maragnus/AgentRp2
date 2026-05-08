@@ -151,6 +151,43 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains(normalized.TurnShapes[PromptLibraryStageIds.Prose], shape => shape.Id == "silent-monologue");
     }
 
+    [Fact]
+    public void DefaultsIncludeEditableStoryAssistantWorkflowStages()
+    {
+        var defaults = PromptLibraryService.CreateDefaultState();
+
+        Assert.Contains("You are a friendly Story Entities Assistant", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Always use the `ask_user` tool whenever you need the user to answer", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("flat appearance fields", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("complete visual profile", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
+        Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
+        Assert.Contains("Introduce Characters", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceCharacters].User, StringComparison.Ordinal);
+        Assert.Contains("Introduce a Location", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceLocation].User, StringComparison.Ordinal);
+        Assert.Contains("Change the Scene", defaults.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User, StringComparison.Ordinal);
+        Assert.All(
+            PromptLibraryService.GetStageDefinitions().Where(stage => stage.Id.StartsWith("storyAssistant", StringComparison.Ordinal)),
+            stage => Assert.Equal(PromptLibraryStageGroups.StoryAssistant, stage.Group));
+    }
+
+    [Fact]
+    public void NormalizePreservesCustomStoryAssistantWorkflowPrompt()
+    {
+        var partial = new PromptLibraryState
+        {
+            Prompts = new()
+            {
+                [PromptLibraryStageIds.StoryAssistantChangeScene] = new() { System = "", User = "Custom change scene guidance." }
+            }
+        };
+
+        var normalized = PromptLibraryService.NormalizeState(partial);
+
+        Assert.Equal("Custom change scene guidance.", normalized.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User);
+        Assert.Contains("You are a friendly Story Entities Assistant", normalized.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+    }
+
     static string Shape(PromptLibraryState state, string stageId, string id) =>
         state.TurnShapes[stageId].First(shape => shape.Id == id).Value;
 

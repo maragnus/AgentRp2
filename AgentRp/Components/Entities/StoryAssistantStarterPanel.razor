@@ -1,0 +1,21 @@
+<EmptyState Icon="wand-sparkles"
+            Title="Start with guidance"
+            Message="Choose a workflow and the assistant will drive the setup.">
+    <div class="story-assistant-starters">
+        @foreach (var workflow in StoryAssistantWorkflowCatalog.Workflows)
+        {
+            <DecisionOptionCard @key="workflow.Id"
+                                Icon="@workflow.Icon"
+                                Title="@workflow.Title"
+                                Description="@workflow.Description"
+                                Disabled="@Disabled"
+                                Class="story-assistant-starter"
+                                OnClick="@(_ => OnStartWorkflow.InvokeAsync(workflow.Id))" />
+        }
+    </div>
+</EmptyState>
+
+@code {
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnStartWorkflow { get; set; }
+}

@@ -1,19 +1,19 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<ModalShell Title="Prompt Library" MaxWidth="860px" BodyClass="is-flush" OnClose="OnClose">
-    <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="156px">
+<ModalShell Title="Prompt Library" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="184px">
         <ChildContent>
             @foreach (var step in Steps)
             {
-                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Dirty="@IsDirtyStep(step.Id)" />
+                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Summary="@step.Group" Dirty="@IsDirtyStep(step.Id)" />
             }
         </ChildContent>
         <RailFooter>
             <div class="prompt-rail-note">
                 <div class="divider"></div>
-                <p>Appearance · Selection shape prompts per step.</p>
-                <p>Planning · Prose also include turn shape definitions.</p>
+                <p>Generation prompts shape transcript output.</p>
+                <p>Story Assistant prompts drive guided setup workflows.</p>
             </div>
         </RailFooter>
         <MainContent>

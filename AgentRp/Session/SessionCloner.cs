@@ -263,7 +263,8 @@ static class SessionCloner
         ResponseModelId = value.ResponseModelId,
         RemoteThreadLost = value.RemoteThreadLost,
         RemoteThreadError = value.RemoteThreadError,
-        Items = value.Items.Select(Clone).ToList()
+        Items = value.Items.Select(Clone).ToList(),
+        WorkItems = value.WorkItems.Select(Clone).ToList()
     };
 
     static StoryAssistantTranscriptItem Clone(StoryAssistantTranscriptItem value) => new()
@@ -277,6 +278,7 @@ static class SessionCloner
         Title = value.Title,
         ToolName = value.ToolName,
         ToolCallId = value.ToolCallId,
+        WorkItemId = value.WorkItemId,
         EntityType = value.EntityType,
         EntityId = value.EntityId,
         EntityName = value.EntityName,
@@ -287,7 +289,63 @@ static class SessionCloner
         Diffs = value.Diffs.Select(Clone).ToList(),
         Risk = value.Risk,
         DecisionReason = value.DecisionReason,
+        Retry = Clone(value.Retry),
+        Diagnostics = Clone(value.Diagnostics),
         Question = Clone(value.Question)
+    };
+
+    static StoryAssistantWorkItem Clone(StoryAssistantWorkItem value) => new()
+    {
+        Id = value.Id,
+        TranscriptItemId = value.TranscriptItemId,
+        Kind = value.Kind,
+        Status = value.Status,
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
+        Title = value.Title,
+        ToolName = value.ToolName,
+        ToolCallId = value.ToolCallId,
+        AwaitingResponseId = value.AwaitingResponseId,
+        ResponseProviderId = value.ResponseProviderId,
+        ResponseModelId = value.ResponseModelId,
+        EntityArea = value.EntityArea,
+        Operation = value.Operation,
+        EntityType = value.EntityType,
+        EntityId = value.EntityId,
+        EntityName = value.EntityName,
+        ArgumentsJson = value.ArgumentsJson,
+        ResultJson = value.ResultJson,
+        Before = Clone(value.Before),
+        After = Clone(value.After),
+        Diffs = value.Diffs.Select(Clone).ToList(),
+        Risk = value.Risk,
+        DecisionReason = value.DecisionReason,
+        Question = Clone(value.Question),
+        Diagnostics = Clone(value.Diagnostics)
+    };
+
+    static StoryAssistantRetryContext Clone(StoryAssistantRetryContext value) => new()
+    {
+        DisplayMessage = value.DisplayMessage,
+        ModelInput = value.ModelInput,
+        IsRetry = value.IsRetry
+    };
+
+    static StoryAssistantDiagnostics Clone(StoryAssistantDiagnostics value) => new()
+    {
+        Outcome = value.Outcome,
+        Reason = value.Reason,
+        ProviderId = value.ProviderId,
+        ProviderName = value.ProviderName,
+        ModelId = value.ModelId,
+        ModelName = value.ModelName,
+        PreviousResponseId = value.PreviousResponseId,
+        ResponseId = value.ResponseId,
+        RequestDisplay = value.RequestDisplay,
+        LastStreamEvent = value.LastStreamEvent,
+        ToolRoundCount = value.ToolRoundCount,
+        Error = value.Error,
+        RecordedUtc = value.RecordedUtc
     };
 
     static StoryAssistantFieldDiff Clone(StoryAssistantFieldDiff value) => new()
@@ -302,6 +360,9 @@ static class SessionCloner
     {
         Prompt = value.Prompt,
         AllowsFreeform = value.AllowsFreeform,
+        SelectionMode = value.SelectionMode,
+        MinSelections = value.MinSelections,
+        MaxSelections = value.MaxSelections,
         Choices = value.Choices.Select(Clone).ToList(),
         Answer = value.Answer
     };
@@ -309,7 +370,8 @@ static class SessionCloner
     static StoryAssistantQuestionChoice Clone(StoryAssistantQuestionChoice value) => new()
     {
         Id = value.Id,
-        Label = value.Label
+        Label = value.Label,
+        Description = value.Description
     };
 
     public static RpTranscriptState Clone(RpTranscriptState value) => new()

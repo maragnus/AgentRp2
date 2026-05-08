@@ -7,6 +7,7 @@ namespace AgentRp.Services;
 
 public static class CharacterProfileRules
 {
+    public const string ExtraAppearanceDetailsField = "extraAppearanceDetails";
     public const int MaxSceneRoles = 2;
     public const int RecommendedMinTraits = 3;
     public const int MaxTraits = 6;
@@ -17,6 +18,21 @@ public static class CharacterProfileRules
     public const int MaxComplexion = 4;
     public const int MaxBodyProportions = 5;
     public const int MaxPresentation = 5;
+
+    public static readonly string[] AppearanceFields =
+    [
+        "hairColor",
+        "hairStyles",
+        "eyeColor",
+        "faceShape",
+        "skinTone",
+        "complexion",
+        "height",
+        "build",
+        "bodyProportions",
+        "presentation",
+        "attractiveness"
+    ];
 
     public static readonly CharacterOption[] PronounOptions =
     [
@@ -42,7 +58,17 @@ public static class CharacterProfileRules
         "stressPattern",
         "softSpots",
         "avoidPatterns",
-        "appearanceProfile",
+        "hairColor",
+        "hairStyles",
+        "eyeColor",
+        "faceShape",
+        "skinTone",
+        "complexion",
+        "height",
+        "build",
+        "bodyProportions",
+        "presentation",
+        "attractiveness",
         "relationshipType",
         "privateTension"
     ];
@@ -50,14 +76,24 @@ public static class CharacterProfileRules
     public static JsonObject CharacterPatchSchema() => new()
     {
         ["type"] = "object",
-        ["description"] = "Only the character fields to set or replace. Before setting controlled profile fields, call get_character_profile_options for the relevant fields.",
+        ["description"] = "Character fields to set or replace. Prefer a complete, useful character profile; existing unchanged values do not need to be resent. Before setting controlled profile fields, call get_character_profile_options for the relevant fields.",
         ["properties"] = new JsonObject
         {
             ["name"] = StringField("Character name."),
             ["summary"] = StringField("One-sentence character summary."),
             ["personality"] = StringField("Freeform personality notes."),
-            ["appearance"] = StringField("Freeform appearance notes."),
-            ["appearanceProfile"] = AppearanceProfileSchema(),
+            [ExtraAppearanceDetailsField] = StringField("Extra visible appearance details such as scars, tattoos, birthmarks, lazy eye, prosthetics, distinctive marks, signature clothing, or other visual specifics."),
+            ["hairColor"] = ControlledString("Hair color id. Use with the other appearance fields to create a complete visual profile."),
+            ["hairStyles"] = ControlledArray("Hair style, texture, length, baldness, or styling ids.", MaxHairStyles),
+            ["eyeColor"] = ControlledString("Eye color id."),
+            ["faceShape"] = ControlledString("Overall face shape id."),
+            ["skinTone"] = ControlledString("Skin tone id."),
+            ["complexion"] = ControlledArray("Broad skin complexion quality ids.", MaxComplexion),
+            ["height"] = ControlledString("Height id."),
+            ["build"] = ControlledString("Body build id."),
+            ["bodyProportions"] = ControlledArray("Body shape and proportion ids.", MaxBodyProportions),
+            ["presentation"] = ControlledArray("Posture, bearing, movement, and visual presence ids.", MaxPresentation),
+            ["attractiveness"] = ControlledString("Overall appeal or attractiveness id."),
             ["backstory"] = StringField("Freeform backstory."),
             ["voice"] = StringField("Freeform voice notes."),
             ["notes"] = StringField("Freeform private or extra notes."),
@@ -123,19 +159,37 @@ public static class CharacterProfileRules
         {
             limits = Limits(),
             controlledFields = ControlledCharacterFields,
-            instruction = "Call get_character_profile_options with specific fields before setting controlled profile ids."
+            appearanceFields = AppearanceFields,
+            appearancePolicy = AppearancePolicy,
+            instruction = "Call get_character_profile_options with specific fields before setting controlled profile ids. For appearance, use the flat appearance fields to build a complete visual profile."
         };
     }
 
     public static object ProfileOptions(CharacterTraitLibraryState library, IReadOnlyList<string> requestedFields)
     {
         var normalized = CharacterTraitLibraryService.NormalizeState(library);
-        var fields = requestedFields.Count == 0 ? ControlledCharacterFields : requestedFields;
+        var fields = ExpandRequestedFields(requestedFields.Count == 0 ? ControlledCharacterFields : requestedFields);
         return new
         {
             limits = Limits(),
+            appearanceFields = AppearanceFields,
+            appearancePolicy = AppearancePolicy,
             fields = fields.Distinct(StringComparer.Ordinal).ToDictionary(field => field, field => OptionPayload(normalized, field), StringComparer.Ordinal)
         };
+    }
+
+    static string AppearancePolicy =>
+        "When creating or updating appearance, use the flat appearance fields together to make a complete visual profile: hair, eyes, face, skin, height, build, body proportions, presentation, and attractiveness. extraAppearanceDetails adds distinctive visible specifics such as scars, tattoos, birthmarks, prosthetics, signature clothing, or other details.";
+
+    static IReadOnlyList<string> ExpandRequestedFields(IReadOnlyList<string> requestedFields)
+    {
+        if (!requestedFields.Any(IsAppearanceField))
+            return requestedFields;
+
+        return requestedFields
+            .Where(field => !IsAppearanceField(field))
+            .Concat(AppearanceFields)
+            .ToList();
     }
 
     public static string FormatPronouns(IEnumerable<string> values) =>
@@ -158,6 +212,7 @@ public static class CharacterProfileRules
     public static void ValidateCharacterPatch(JsonElement updates, CharacterTraitLibraryState library)
     {
         var normalized = CharacterTraitLibraryService.NormalizeState(library);
+        ValidateLegacyAppearanceFields(updates);
         ValidateOptionArray(updates, "pronouns", "pronouns", PronounOptions, MaxPronouns);
         ValidateOptionArray(updates, "sceneRoles", "scene roles", normalized.SceneRoles, MaxSceneRoles);
         ValidateOptionArray(updates, "traits", "traits", TraitOptions(normalized), MaxTraits);
@@ -172,8 +227,30 @@ public static class CharacterProfileRules
         ValidateOption(updates, "stressPattern", "stress pattern", normalized.StressPatterns);
         ValidateOptionArray(updates, "softSpots", "soft spots", normalized.SoftSpots, MaxSoftSpots);
         ValidateOptionArray(updates, "avoidPatterns", "avoid patterns", normalized.AvoidPatterns, MaxAvoidPatterns);
-        ValidateAppearanceProfile(updates, normalized);
+        ValidateAppearancePatch(updates, normalized);
+        ValidateExtraAppearanceDetails(updates);
     }
+
+    public static void ValidateCreatedCharacter(RpCharacter character)
+    {
+        var missing = RequiredCreateFields(character).ToList();
+        if (missing.Count > 0)
+            throw CharacterProfileValidationException.ForFields(missing, $"Creating a character needs a fuller profile. Add {JoinFieldList(missing)} so the character is immediately usable.");
+    }
+
+    public static void ValidateCompleteAppearance(RpCharacter character)
+    {
+        var missing = MissingAppearanceFields(character.AppearanceProfile).ToList();
+        if (missing.Count > 0)
+            throw CharacterProfileValidationException.ForFields(missing, $"Updating appearance needs a complete visual profile. Add {JoinFieldList(missing)}.");
+    }
+
+    public static bool HasAppearancePatch(JsonElement updates) =>
+        updates.ValueKind == JsonValueKind.Object
+        && updates.EnumerateObject().Any(property => IsAppearanceField(property.Name) || property.Name == ExtraAppearanceDetailsField);
+
+    public static bool IsAppearanceField(string field) =>
+        AppearanceFields.Contains(field, StringComparer.Ordinal);
 
     public static void ValidateRelationshipPatch(JsonElement root, CharacterTraitLibraryState library)
     {
@@ -186,27 +263,6 @@ public static class CharacterProfileRules
     {
         ["type"] = "string",
         ["description"] = description
-    };
-
-    static JsonObject AppearanceProfileSchema() => new()
-    {
-        ["type"] = "object",
-        ["description"] = "Optional structured appearance selections. Use get_character_profile_options with fields ['appearanceProfile'] before setting. Omit unchanged fields.",
-        ["properties"] = new JsonObject
-        {
-            ["hairColor"] = ControlledString("Hair color id; empty string clears it."),
-            ["hairStyles"] = ControlledArray("Hair style or length ids.", MaxHairStyles),
-            ["eyeColor"] = ControlledString("Eye color id; empty string clears it."),
-            ["faceShape"] = ControlledString("Face shape id; empty string clears it."),
-            ["skinTone"] = ControlledString("Skin tone id; empty string clears it."),
-            ["complexion"] = ControlledArray("Complexion ids.", MaxComplexion),
-            ["height"] = ControlledString("Height id; empty string clears it."),
-            ["build"] = ControlledString("Build id; empty string clears it."),
-            ["bodyProportions"] = ControlledArray("Body proportion ids.", MaxBodyProportions),
-            ["presentation"] = ControlledArray("Presentation and bearing ids.", MaxPresentation),
-            ["attractiveness"] = ControlledString("Attractiveness id; empty string clears it.")
-        },
-        ["additionalProperties"] = false
     };
 
     static IReadOnlyList<CharacterOption> TraitOptions(CharacterTraitLibraryState library) =>
@@ -275,26 +331,108 @@ public static class CharacterProfileRules
             throw CharacterProfileValidationException.ForField(field, $"The relationship patch failed because {label} contains invalid value '{text}'. Controlled relationship fields must use valid values.");
     }
 
-    static void ValidateAppearanceProfile(JsonElement root, CharacterTraitLibraryState library)
+    static void ValidateAppearancePatch(JsonElement root, CharacterTraitLibraryState library)
     {
-        if (!root.TryGetProperty("appearanceProfile", out var value))
+        ValidateOption(root, "hairColor", "hair color", library.HairColors);
+        ValidateOptionArray(root, "hairStyles", "hair styles", library.HairStyles, MaxHairStyles);
+        ValidateOption(root, "eyeColor", "eye color", library.EyeColors);
+        ValidateOption(root, "faceShape", "face shape", library.FaceShapes);
+        ValidateOption(root, "skinTone", "skin tone", library.SkinTones);
+        ValidateOptionArray(root, "complexion", "complexion", library.Complexions, MaxComplexion);
+        ValidateOption(root, "height", "height", library.Heights);
+        ValidateOption(root, "build", "build", library.Builds);
+        ValidateOptionArray(root, "bodyProportions", "body proportions", library.BodyProportions, MaxBodyProportions);
+        ValidateOptionArray(root, "presentation", "presentation", library.Presentations, MaxPresentation);
+        ValidateOption(root, "attractiveness", "attractiveness", library.AttractivenessLevels);
+    }
+
+    static void ValidateLegacyAppearanceFields(JsonElement root)
+    {
+        if (root.TryGetProperty("appearance", out _))
+            throw CharacterProfileValidationException.ForField(ExtraAppearanceDetailsField, $"The character patch failed because appearance is not a supported Story Assistant field. Use {ExtraAppearanceDetailsField} for extra visible details.");
+
+        if (root.TryGetProperty("appearanceProfile", out _))
+            throw CharacterProfileValidationException.ForFields(AppearanceFields, "The character patch failed because appearanceProfile is no longer used by Story Assistant. Set the flat appearance fields instead.");
+    }
+
+    static void ValidateExtraAppearanceDetails(JsonElement root)
+    {
+        if (!root.TryGetProperty(ExtraAppearanceDetailsField, out var value))
             return;
 
-        if (value.ValueKind != JsonValueKind.Object)
-            throw CharacterProfileValidationException.ForField("appearanceProfile", "The character patch failed because appearanceProfile must be an object.");
+        if (value.ValueKind != JsonValueKind.String)
+            throw CharacterProfileValidationException.ForField(ExtraAppearanceDetailsField, $"The character patch failed because {ExtraAppearanceDetailsField} must be a string.");
 
-        ValidateOption(value, "hairColor", "hair color", library.HairColors);
-        ValidateOptionArray(value, "hairStyles", "hair styles", library.HairStyles, MaxHairStyles);
-        ValidateOption(value, "eyeColor", "eye color", library.EyeColors);
-        ValidateOption(value, "faceShape", "face shape", library.FaceShapes);
-        ValidateOption(value, "skinTone", "skin tone", library.SkinTones);
-        ValidateOptionArray(value, "complexion", "complexion", library.Complexions, MaxComplexion);
-        ValidateOption(value, "height", "height", library.Heights);
-        ValidateOption(value, "build", "build", library.Builds);
-        ValidateOptionArray(value, "bodyProportions", "body proportions", library.BodyProportions, MaxBodyProportions);
-        ValidateOptionArray(value, "presentation", "presentation", library.Presentations, MaxPresentation);
-        ValidateOption(value, "attractiveness", "attractiveness", library.AttractivenessLevels);
     }
+
+    static IEnumerable<string> RequiredCreateFields(RpCharacter character)
+    {
+        if (string.IsNullOrWhiteSpace(character.Name) || string.Equals(character.Name, "New Character", StringComparison.Ordinal))
+            yield return "name";
+        if (string.IsNullOrWhiteSpace(character.Summary))
+            yield return "summary";
+        if (string.IsNullOrWhiteSpace(character.Personality))
+            yield return "personality";
+        if (string.IsNullOrWhiteSpace(character.Voice))
+            yield return "voice";
+        if (!HasStoryProfileAnchor(character))
+            yield return "traits";
+
+        foreach (var field in MissingAppearanceFields(character.AppearanceProfile))
+            yield return field;
+    }
+
+    static bool HasStoryProfileAnchor(RpCharacter character) =>
+        character.SceneRoles.Count > 0
+        || character.Traits.Count > 0
+        || !string.IsNullOrWhiteSpace(character.CoreDrive)
+        || !string.IsNullOrWhiteSpace(character.CoreFear)
+        || !string.IsNullOrWhiteSpace(character.Backstory)
+        || !string.IsNullOrWhiteSpace(character.HiddenTruth);
+
+    static IEnumerable<string> MissingAppearanceFields(CharacterAppearanceState appearance)
+    {
+        if (string.IsNullOrWhiteSpace(appearance.HairColor))
+            yield return "hairColor";
+        if (appearance.HairStyles.Count == 0)
+            yield return "hairStyles";
+        if (string.IsNullOrWhiteSpace(appearance.EyeColor))
+            yield return "eyeColor";
+        if (string.IsNullOrWhiteSpace(appearance.FaceShape))
+            yield return "faceShape";
+        if (string.IsNullOrWhiteSpace(appearance.SkinTone))
+            yield return "skinTone";
+        if (appearance.Complexion.Count == 0)
+            yield return "complexion";
+        if (string.IsNullOrWhiteSpace(appearance.Height))
+            yield return "height";
+        if (string.IsNullOrWhiteSpace(appearance.Build))
+            yield return "build";
+        if (appearance.BodyProportions.Count == 0)
+            yield return "bodyProportions";
+        if (appearance.Presentation.Count == 0)
+            yield return "presentation";
+        if (string.IsNullOrWhiteSpace(appearance.Attractiveness))
+            yield return "attractiveness";
+    }
+
+    static string JoinFieldList(IReadOnlyList<string> fields) =>
+        string.Join(", ", fields.Select(LabelForField));
+
+    static string LabelForField(string field) => field switch
+    {
+        ExtraAppearanceDetailsField => "extra appearance details",
+        "hairColor" => "hair color",
+        "hairStyles" => "hair styles",
+        "eyeColor" => "eye color",
+        "faceShape" => "face shape",
+        "skinTone" => "skin tone",
+        "bodyProportions" => "body proportions",
+        "sceneRoles" => "scene roles",
+        "coreDrive" => "core drive",
+        "coreFear" => "core fear",
+        _ => string.Concat(field.Select((ch, index) => index > 0 && char.IsUpper(ch) ? $" {char.ToLowerInvariant(ch)}" : ch.ToString()))
+    };
 
     static List<string> ReadArray(JsonElement array, string field, string label)
     {
@@ -352,23 +490,17 @@ public static class CharacterProfileRules
         "stressPattern" => new { options = Options(library.StressPatterns), allowsEmpty = true },
         "softSpots" => new { maxItems = MaxSoftSpots, options = Options(library.SoftSpots) },
         "avoidPatterns" => new { maxItems = MaxAvoidPatterns, options = Options(library.AvoidPatterns) },
-        "appearanceProfile" => new
-        {
-            fields = new
-            {
-                hairColor = new { options = Options(library.HairColors), allowsEmpty = true },
-                hairStyles = new { maxItems = MaxHairStyles, options = Options(library.HairStyles) },
-                eyeColor = new { options = Options(library.EyeColors), allowsEmpty = true },
-                faceShape = new { options = Options(library.FaceShapes), allowsEmpty = true },
-                skinTone = new { options = Options(library.SkinTones), allowsEmpty = true },
-                complexion = new { maxItems = MaxComplexion, options = Options(library.Complexions) },
-                height = new { options = Options(library.Heights), allowsEmpty = true },
-                build = new { options = Options(library.Builds), allowsEmpty = true },
-                bodyProportions = new { maxItems = MaxBodyProportions, options = Options(library.BodyProportions) },
-                presentation = new { maxItems = MaxPresentation, options = Options(library.Presentations) },
-                attractiveness = new { options = Options(library.AttractivenessLevels), allowsEmpty = true }
-            }
-        },
+        "hairColor" => new { options = Options(library.HairColors), allowsEmpty = true, instruction = AppearancePolicy },
+        "hairStyles" => new { maxItems = MaxHairStyles, options = Options(library.HairStyles), instruction = AppearancePolicy },
+        "eyeColor" => new { options = Options(library.EyeColors), allowsEmpty = true, instruction = AppearancePolicy },
+        "faceShape" => new { options = Options(library.FaceShapes), allowsEmpty = true, instruction = AppearancePolicy },
+        "skinTone" => new { options = Options(library.SkinTones), allowsEmpty = true, instruction = AppearancePolicy },
+        "complexion" => new { maxItems = MaxComplexion, options = Options(library.Complexions), instruction = AppearancePolicy },
+        "height" => new { options = Options(library.Heights), allowsEmpty = true, instruction = AppearancePolicy },
+        "build" => new { options = Options(library.Builds), allowsEmpty = true, instruction = AppearancePolicy },
+        "bodyProportions" => new { maxItems = MaxBodyProportions, options = Options(library.BodyProportions), instruction = AppearancePolicy },
+        "presentation" => new { maxItems = MaxPresentation, options = Options(library.Presentations), instruction = AppearancePolicy },
+        "attractiveness" => new { options = Options(library.AttractivenessLevels), allowsEmpty = true, instruction = AppearancePolicy },
         "relationshipType" => new { options = library.BondTypes },
         "privateTension" => new { options = library.Dynamics },
         _ => throw CharacterProfileValidationException.ForField(field, $"Reading character profile options failed because '{field}' is not a supported controlled profile field.")
@@ -380,6 +512,7 @@ public sealed class CharacterProfileValidationException(string message, IReadOnl
     public IReadOnlyList<string> Fields { get; } = fields;
 
     public static CharacterProfileValidationException ForField(string field, string message) => new(message, [NormalizeField(field)]);
+    public static CharacterProfileValidationException ForFields(IEnumerable<string> fields, string message) => new(message, fields.Select(NormalizeField).Distinct(StringComparer.Ordinal).ToList());
 
     static string NormalizeField(string field) => field switch
     {

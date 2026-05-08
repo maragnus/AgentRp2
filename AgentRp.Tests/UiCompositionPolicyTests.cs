@@ -362,6 +362,72 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
+    public async Task StoryAssistantShowsStarterWorkflowsOnlyWhenAssistantTranscriptIsEmpty()
+    {
+        using var context = new BunitContext();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+
+        var component = context.Render<StoryAssistantPanel>(parameters => parameters.AddCascadingValue(session));
+
+        Assert.Contains("Prepare a New Story", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Introduce Characters", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Introduce a Location", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Change the Scene", component.Markup, StringComparison.Ordinal);
+
+        session.Chat.StoryAssistant.State.Items.Add(new()
+        {
+            Id = "assistant-message-1",
+            Kind = StoryAssistantItemKind.UserMessage,
+            Status = StoryAssistantItemStatus.Applied,
+            Text = "Existing assistant transcript."
+        });
+
+        component.Dispose();
+        var componentWithTranscript = context.Render<StoryAssistantPanel>(parameters => parameters.AddCascadingValue(session));
+
+        Assert.DoesNotContain("Prepare a New Story", componentWithTranscript.Markup, StringComparison.Ordinal);
+        Assert.Contains("Existing assistant transcript.", componentWithTranscript.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StoryAssistantTranscriptRerendersWhenStreamingMessageMutates()
+    {
+        using var context = new BunitContext();
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        await using var store = NewLiveStore();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var session = new RoleplaySession(
+            store,
+            storyAssistantService: new ScriptedStoryAssistantService(async callbacks =>
+            {
+                started.SetResult();
+                await release.Task;
+                await callbacks.AppendAssistantTextAsync("Live streamed response.", CancellationToken.None);
+            }));
+        await session.InitializeAsync();
+
+        var component = context.Render<StoryAssistantPanel>(parameters => parameters.AddCascadingValue(session));
+        var start = component.FindAll("button")
+            .First(button => button.TextContent.Contains("Prepare a New Story", StringComparison.Ordinal));
+
+        var clickTask = start.ClickAsync(new());
+        await started.Task;
+
+        component.WaitForAssertion(() => Assert.Contains("Loading...", component.Markup, StringComparison.Ordinal));
+        release.SetResult();
+
+        component.WaitForAssertion(() =>
+        {
+            Assert.Contains("Live streamed response.", component.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Loading...", component.Markup, StringComparison.Ordinal);
+        });
+        await clickTask;
+    }
+
+    [Fact]
     public void EntityListEditorAppliesHeaderChromeByDefault()
     {
         using var context = new BunitContext();
@@ -434,6 +500,33 @@ public sealed class UiCompositionPolicyTests
     static string Normalize(string path) => path.Replace('\\', '/');
 
     sealed record ModalPolicyItem(string Id, string Title);
+
+    sealed class ScriptedStoryAssistantService(Func<IStoryAssistantCallbacks, Task> script) : IStoryAssistantService
+    {
+        public Task RunTurnAsync(
+            RpChatDocument document,
+            IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
+            StoryAssistantTurnRequest request,
+            IStoryAssistantCallbacks callbacks,
+            CancellationToken cancellationToken = default) =>
+            script(callbacks);
+
+        public Task ClearRemoteStateAsync(
+            RpChatDocument document,
+            IReadOnlyList<AiProvider> providers,
+            ActiveModelSelectionsState modelSelections,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task ResolveWorkItemAsync(
+            RpChatDocument document,
+            StoryAssistantWorkItem workItem,
+            StoryAssistantWorkItemResolution resolution,
+            IStoryAssistantCallbacks callbacks,
+            CancellationToken cancellationToken = default) =>
+            new StoryEntityPatchService().ResolveWorkItemAsync(document, workItem, resolution, callbacks, cancellationToken);
+    }
 
     sealed class TestJsRuntime : IJSRuntime
     {

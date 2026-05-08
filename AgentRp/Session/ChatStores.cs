@@ -420,14 +420,24 @@ public sealed class StoryAssistantStore(
     TranscriptStore transcript,
     IStoryAssistantService? storyAssistantService) : ActiveChatStoreBase(activeChat, registry), IStoryAssistantCallbacks
 {
-    readonly Dictionary<string, TaskCompletionSource<StoryAssistantDecision>> _pendingReviews = [];
-    readonly Dictionary<string, TaskCompletionSource<string>> _pendingQuestions = [];
+    static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
     readonly object _operationLock = new();
     CancellationTokenSource? _activeRunCancellation;
 
     protected override RoleplayStoreArea Area => RoleplayStoreArea.StoryAssistant;
 
-    public StoryAssistantState State => Document?.StoryAssistant ?? new();
+    public StoryAssistantState State
+    {
+        get
+        {
+            var state = Document?.StoryAssistant ?? new();
+            SyncWorkItemTranscriptItems(state);
+            if (!IsBusy)
+                RecoverIdleStreamingMessages(state);
+
+            return state;
+        }
+    }
     public IReadOnlyList<StoryAssistantTranscriptItem> Items => State.Items;
     public bool IsBusy { get; private set; }
     public string BusyMessage { get; private set; } = "";
@@ -437,6 +447,18 @@ public sealed class StoryAssistantStore(
     public async Task SetReviewModeAsync(StoryAssistantReviewMode mode)
     {
         State.ReviewMode = mode;
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyChangedAsync();
+    }
+
+    public async Task RecoverIdleStreamingMessagesAsync()
+    {
+        if (IsBusy || Document is null)
+            return;
+
+        if (!RecoverIdleStreamingMessages(Document.StoryAssistant))
+            return;
+
         await SaveAssistantStateAsync(CancellationToken.None);
         await NotifyChangedAsync();
     }
@@ -458,18 +480,54 @@ public sealed class StoryAssistantStore(
         }
 
         State.Items.Clear();
+        State.WorkItems.Clear();
         StoryAssistantService.ClearResponseChain(State);
-        CancelPendingInteractions();
-        _pendingReviews.Clear();
-        _pendingQuestions.Clear();
         await SaveAssistantStateAsync(CancellationToken.None);
         await NotifyChangedAsync();
     }
 
-    public async Task SendAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
+        SendAsync(text, text, cancellationToken);
+
+    public Task SendWorkflowAsync(string workflowId, CancellationToken cancellationToken = default)
     {
-        if (Document is null || string.IsNullOrWhiteSpace(text) || storyAssistantService is null)
+        if (Document is null)
+            return Task.CompletedTask;
+
+        var workflow = StoryAssistantWorkflowCatalog.Find(workflowId)
+            ?? throw new InvalidOperationException($"Starting Story Assistant workflow failed because '{workflowId}' is not a supported workflow.");
+        var prompt = PromptLibraryService.RenderStage(Document.PromptLibrary, workflow.PromptStageId, EmptyPromptValues);
+        var modelInput = string.IsNullOrWhiteSpace(prompt.UserPrompt) ? workflow.DisplayMessage : prompt.UserPrompt;
+        return SendAsync(workflow.DisplayMessage, modelInput, cancellationToken);
+    }
+
+    public Task RetryAsync(string itemId, CancellationToken cancellationToken = default)
+    {
+        var item = State.Items.FirstOrDefault(item => item.Id == itemId);
+        if (item?.Retry.CanRetry != true)
+            return Task.CompletedTask;
+
+        var display = string.IsNullOrWhiteSpace(item.Retry.DisplayMessage)
+            ? "Retry Story Assistant"
+            : $"Retry: {item.Retry.DisplayMessage}";
+        var modelInput = $"""
+            Continue from the previous Story Assistant request.
+            If the last attempt returned no useful output, resume by asking one focused question or taking the next appropriate tool action.
+
+            Original request:
+            {item.Retry.ModelInput}
+            """;
+        return SendAsync(display, modelInput, cancellationToken, isRetry: true);
+    }
+
+    async Task SendAsync(string displayMessage, string modelInput, CancellationToken cancellationToken, bool isRetry = false)
+    {
+        if (Document is null || string.IsNullOrWhiteSpace(modelInput) || storyAssistantService is null)
             return;
+
+        displayMessage = string.IsNullOrWhiteSpace(displayMessage) ? modelInput : displayMessage;
+        if (RecoverIdleStreamingMessages(Document.StoryAssistant))
+            await SaveAssistantStateAsync(cancellationToken);
 
         CancellationTokenSource runCancellation;
         lock (_operationLock)
@@ -484,29 +542,55 @@ public sealed class StoryAssistantStore(
         }
 
         ClearBackgroundError();
-        State.Items.Add(AddMessage(StoryAssistantItemKind.UserMessage, StoryAssistantItemStatus.Applied, text.Trim()));
-        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, ""));
+        var retry = new StoryAssistantRetryContext
+        {
+            DisplayMessage = displayMessage.Trim(),
+            ModelInput = modelInput.Trim(),
+            IsRetry = isRetry
+        };
+        State.Items.Add(AddMessage(StoryAssistantItemKind.UserMessage, StoryAssistantItemStatus.Applied, displayMessage.Trim()));
+        var assistantItem = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
+        assistantItem.Retry = Clone(retry);
+        assistantItem.Diagnostics = BuildDiagnostics("Running", "Story Assistant turn started.", displayMessage);
+        State.Items.Add(assistantItem);
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
 
+        await RunAssistantAsync(
+            StoryAssistantTurnRequest.Start(modelInput, displayMessage),
+            retry,
+            displayMessage,
+            State.Items.Count - 1,
+            runCancellation);
+    }
+
+    async Task RunAssistantAsync(
+        StoryAssistantTurnRequest request,
+        StoryAssistantRetryContext retry,
+        string displayMessage,
+        int firstRunItemIndex,
+        CancellationTokenSource runCancellation,
+        string workItemId = "")
+    {
         var runToken = runCancellation.Token;
         try
         {
-            await storyAssistantService.RunTurnAsync(
-                Document,
+            await storyAssistantService!.RunTurnAsync(
+                Document!,
                 providers.Items.ToList(),
                 modelSelection.State,
-                new(text),
+                request,
                 this,
                 runToken);
-            CompleteStreamingAssistantMessages();
+            CompleteStreamingAssistantMessages(firstRunItemIndex, retry, displayMessage);
             await SaveAssistantStateAsync(runToken);
         }
         catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
         {
-            MarkPendingInteractionsStopped();
-            CancelPendingInteractions();
-            MarkStopped();
+            MarkStopped(retry, displayMessage);
+            if (!string.IsNullOrWhiteSpace(workItemId))
+                MarkWorkItemCancelled(workItemId);
+
             await SaveAssistantStateAsync(CancellationToken.None);
         }
         catch (ModelAssistantThreadLostException exception)
@@ -514,13 +598,20 @@ public sealed class StoryAssistantStore(
             CaptureBackgroundError(exception);
             State.RemoteThreadLost = true;
             State.RemoteThreadError = UserFacingErrorMessageBuilder.Build("Story Assistant needs a fresh thread.", exception);
-            FailCurrentAssistantMessage(State.RemoteThreadError);
+            FailCurrentAssistantMessage(State.RemoteThreadError, retry, displayMessage, exception);
+            if (!string.IsNullOrWhiteSpace(workItemId))
+                MarkWorkItemFailed(workItemId, State.RemoteThreadError);
+
             await SaveAssistantStateAsync(CancellationToken.None);
         }
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
-            FailCurrentAssistantMessage(UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception));
+            var message = UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception);
+            FailCurrentAssistantMessage(message, retry, displayMessage, exception);
+            if (!string.IsNullOrWhiteSpace(workItemId))
+                MarkWorkItemFailed(workItemId, message);
+
             await SaveAssistantStateAsync(CancellationToken.None);
         }
         finally
@@ -532,6 +623,9 @@ public sealed class StoryAssistantStore(
                 if (ReferenceEquals(_activeRunCancellation, runCancellation))
                     _activeRunCancellation = null;
             }
+
+            if (RecoverIdleStreamingMessages(Document?.StoryAssistant))
+                await SaveAssistantStateAsync(CancellationToken.None);
 
             runCancellation.Dispose();
             await NotifyChangedAsync();
@@ -551,55 +645,8 @@ public sealed class StoryAssistantStore(
             cancellation.Cancel();
         }
 
-        MarkPendingInteractionsStopped();
-        CancelPendingInteractions();
         await SaveAssistantStateAsync(CancellationToken.None);
         await NotifyChangedAsync();
-    }
-
-    public Task ResolveReviewAsync(string itemId, StoryAssistantDecisionKind kind, string reason)
-    {
-        if (_pendingReviews.TryGetValue(itemId, out var pending))
-        {
-            _pendingReviews.Remove(itemId);
-            pending.TrySetResult(new(kind, reason.Trim()));
-        }
-
-        return Task.CompletedTask;
-    }
-
-    void CancelPendingInteractions()
-    {
-        foreach (var pending in _pendingReviews.Values)
-            pending.TrySetCanceled();
-
-        foreach (var pending in _pendingQuestions.Values)
-            pending.TrySetCanceled();
-
-        _pendingReviews.Clear();
-        _pendingQuestions.Clear();
-    }
-
-    void MarkPendingInteractionsStopped()
-    {
-        var pendingIds = _pendingReviews.Keys.Concat(_pendingQuestions.Keys).ToHashSet(StringComparer.Ordinal);
-        foreach (var item in State.Items.Where(item => pendingIds.Contains(item.Id)))
-        {
-            item.Status = StoryAssistantItemStatus.Stopped;
-            item.DecisionReason = "Stopped before a decision.";
-            item.UpdatedUtc = DateTime.UtcNow;
-        }
-    }
-
-    public Task ResolveQuestionAsync(string itemId, string answer)
-    {
-        if (_pendingQuestions.TryGetValue(itemId, out var pending))
-        {
-            _pendingQuestions.Remove(itemId);
-            pending.TrySetResult(answer.Trim());
-        }
-
-        return Task.CompletedTask;
     }
 
     public async Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken)
@@ -636,31 +683,127 @@ public sealed class StoryAssistantStore(
         await NotifyChangedAsync();
     }
 
-    public async Task<StoryAssistantDecision> ReviewChangeAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
-    {
-        var pending = new TaskCompletionSource<StoryAssistantDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingReviews[item.Id] = pending;
-        using var registration = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
-        return await pending.Task;
-    }
-
-    public async Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    public async Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
     {
         CloseTrailingAssistantMessage();
-        item.UpdatedUtc = DateTime.UtcNow;
-        State.Items.Add(item);
+        workItem.UpdatedUtc = DateTime.UtcNow;
+        State.WorkItems.Add(workItem);
+        State.Items.Add(TranscriptItemFor(workItem));
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
-        var pending = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingQuestions[item.Id] = pending;
-        using var registration = cancellationToken.Register(() => pending.TrySetCanceled(cancellationToken));
-        var answer = await pending.Task;
-        item.Question.Answer = answer;
-        item.Status = StoryAssistantItemStatus.Answered;
-        item.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    public async Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
+    {
+        workItem.UpdatedUtc = DateTime.UtcNow;
+        var index = State.WorkItems.FindIndex(item => item.Id == workItem.Id);
+        if (index >= 0)
+            State.WorkItems[index] = workItem;
+        else
+            State.WorkItems.Add(workItem);
+
+        var transcriptItem = State.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+        if (transcriptItem is not null)
+            SyncTranscriptItem(transcriptItem, workItem);
+
         await SaveAssistantStateAsync(cancellationToken);
         await NotifyChangedAsync();
-        return answer;
+    }
+
+    public Task ResolveReviewAsync(string itemId, StoryAssistantDecisionKind kind, string reason) =>
+        ResolveWorkItemAsync(itemId, new(ToResolutionKind(kind), "", reason));
+
+    public Task ResolveQuestionAsync(string itemId, string answer) =>
+        ResolveWorkItemAsync(itemId, new(StoryAssistantWorkItemResolutionKind.Answer, answer, ""));
+
+    async Task ResolveWorkItemAsync(string itemId, StoryAssistantWorkItemResolution resolution)
+    {
+        if (Document is null || storyAssistantService is null)
+            return;
+
+        var workItem = WorkItemFor(itemId);
+        if (workItem is null || workItem.Status != StoryAssistantWorkItemStatus.Pending)
+            return;
+
+        if (string.IsNullOrWhiteSpace(workItem.AwaitingResponseId))
+        {
+            MarkWorkItemFailed(workItem.Id, "This assistant action cannot continue because its saved Responses continuation is missing.");
+            await SaveAssistantStateAsync(CancellationToken.None);
+            await NotifyChangedAsync();
+            return;
+        }
+
+        var activeModel = modelSelection.Resolve(AiModelRole.Reasoning);
+        if (activeModel is null
+            || !string.Equals(activeModel.Provider.Id, workItem.ResponseProviderId, StringComparison.Ordinal)
+            || !string.Equals(activeModel.Model.Id, workItem.ResponseModelId, StringComparison.Ordinal))
+        {
+            MarkWorkItemFailed(workItem.Id, "This assistant action cannot continue because the active reasoning model does not match the saved Responses continuation.");
+            await SaveAssistantStateAsync(CancellationToken.None);
+            await NotifyChangedAsync();
+            return;
+        }
+
+        CancellationTokenSource runCancellation;
+        lock (_operationLock)
+        {
+            if (IsBusy)
+                return;
+
+            IsBusy = true;
+            BusyMessage = "Thinking...";
+            runCancellation = new();
+            _activeRunCancellation = runCancellation;
+        }
+
+        ClearBackgroundError();
+        try
+        {
+            await storyAssistantService.ResolveWorkItemAsync(Document, workItem, resolution, this, runCancellation.Token);
+        }
+        catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
+        {
+            MarkWorkItemCancelled(workItem.Id);
+        }
+        catch (Exception exception)
+        {
+            CaptureBackgroundError(exception);
+            MarkWorkItemFailed(workItem.Id, UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception));
+        }
+
+        if (string.IsNullOrWhiteSpace(workItem.ResultJson) || workItem.Status is StoryAssistantWorkItemStatus.Failed)
+        {
+            ReleaseRunCancellation(runCancellation);
+            await NotifyChangedAsync();
+            return;
+        }
+
+        var assistantItem = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
+        assistantItem.Diagnostics = BuildDiagnostics("Running", "Story Assistant action resumed.", workItem.Title);
+        State.Items.Add(assistantItem);
+        await SaveAssistantStateAsync(runCancellation.Token);
+        await NotifyChangedAsync();
+
+        await RunAssistantAsync(
+            StoryAssistantTurnRequest.Resume(workItem),
+            new(),
+            workItem.Title,
+            State.Items.Count - 1,
+            runCancellation,
+            workItem.Id);
+    }
+
+    void ReleaseRunCancellation(CancellationTokenSource runCancellation)
+    {
+        lock (_operationLock)
+        {
+            IsBusy = false;
+            BusyMessage = "";
+            if (ReferenceEquals(_activeRunCancellation, runCancellation))
+                _activeRunCancellation = null;
+        }
+
+        runCancellation.Dispose();
     }
 
     public async Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
@@ -684,7 +827,7 @@ public sealed class StoryAssistantStore(
         }
     }
 
-    void CompleteStreamingAssistantMessages()
+    void CompleteStreamingAssistantMessages(int firstRunItemIndex, StoryAssistantRetryContext retry, string displayMessage)
     {
         for (var index = State.Items.Count - 1; index >= 0; index--)
         {
@@ -693,29 +836,98 @@ public sealed class StoryAssistantStore(
                 continue;
 
             if (string.IsNullOrWhiteSpace(item.Text))
-                State.Items.RemoveAt(index);
+            {
+                if (index == firstRunItemIndex)
+                {
+                    item.Status = StoryAssistantItemStatus.Failed;
+                    item.Text = "The model finished without returning a message or action.";
+                    item.Retry = Clone(retry);
+                    item.Diagnostics = BuildDiagnostics("No output", "The Responses stream completed without text or tool calls.", displayMessage, "Completed");
+                    item.UpdatedUtc = DateTime.UtcNow;
+                }
+                else
+                    State.Items.RemoveAt(index);
+            }
             else
             {
                 item.Status = StoryAssistantItemStatus.Applied;
+                item.Diagnostics = BuildDiagnostics("Completed", "The assistant returned text.", displayMessage, "TextDelta");
                 item.UpdatedUtc = DateTime.UtcNow;
             }
         }
     }
 
-    void FailCurrentAssistantMessage(string message)
+    static bool RecoverIdleStreamingMessages(StoryAssistantState? state)
+    {
+        if (state is null)
+            return false;
+
+        var changed = false;
+        for (var index = state.Items.Count - 1; index >= 0; index--)
+        {
+            var item = state.Items[index];
+            if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
+                continue;
+
+            changed = true;
+            if (string.IsNullOrWhiteSpace(item.Text))
+            {
+                if (item.Retry.CanRetry)
+                {
+                    item.Status = StoryAssistantItemStatus.Failed;
+                    item.Text = "The assistant run ended before returning a message or action.";
+                    item.Diagnostics.Outcome = "Interrupted";
+                    item.Diagnostics.Reason = "A saved streaming placeholder was recovered while the assistant was idle.";
+                    item.Diagnostics.LastStreamEvent = string.IsNullOrWhiteSpace(item.Diagnostics.LastStreamEvent) ? "Unknown" : item.Diagnostics.LastStreamEvent;
+                    item.Diagnostics.RecordedUtc = DateTime.UtcNow;
+                    item.UpdatedUtc = DateTime.UtcNow;
+                }
+                else
+                    state.Items.RemoveAt(index);
+            }
+            else
+            {
+                item.Status = StoryAssistantItemStatus.Stopped;
+                item.Diagnostics.Outcome = "Interrupted";
+                item.Diagnostics.Reason = "A partial streaming assistant message was recovered while the assistant was idle.";
+                item.Diagnostics.LastStreamEvent = string.IsNullOrWhiteSpace(item.Diagnostics.LastStreamEvent) ? "TextDelta" : item.Diagnostics.LastStreamEvent;
+                item.Diagnostics.RecordedUtc = DateTime.UtcNow;
+                item.UpdatedUtc = DateTime.UtcNow;
+            }
+        }
+
+        return changed;
+    }
+
+    static void SyncWorkItemTranscriptItems(StoryAssistantState state)
+    {
+        foreach (var workItem in state.WorkItems)
+        {
+            var transcriptItem = state.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+            if (transcriptItem is not null)
+                SyncTranscriptItem(transcriptItem, workItem);
+        }
+    }
+
+    void FailCurrentAssistantMessage(string message, StoryAssistantRetryContext retry, string displayMessage, Exception exception)
     {
         if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
         {
             item.Status = StoryAssistantItemStatus.Failed;
             item.Text = message;
+            item.Retry = Clone(retry);
+            item.Diagnostics = BuildDiagnostics("Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
             item.UpdatedUtc = DateTime.UtcNow;
             return;
         }
 
-        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Failed, message));
+        var failed = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Failed, message);
+        failed.Retry = Clone(retry);
+        failed.Diagnostics = BuildDiagnostics("Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
+        State.Items.Add(failed);
     }
 
-    void MarkStopped()
+    void MarkStopped(StoryAssistantRetryContext retry, string displayMessage)
     {
         if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
         {
@@ -723,11 +935,16 @@ public sealed class StoryAssistantStore(
                 item.Text = "Stopped.";
 
             item.Status = StoryAssistantItemStatus.Stopped;
+            item.Retry = Clone(retry);
+            item.Diagnostics = BuildDiagnostics("Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
             item.UpdatedUtc = DateTime.UtcNow;
             return;
         }
 
-        State.Items.Add(AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Stopped, "Stopped."));
+        var stopped = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Stopped, "Stopped.");
+        stopped.Retry = Clone(retry);
+        stopped.Diagnostics = BuildDiagnostics("Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
+        State.Items.Add(stopped);
     }
 
     public async Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken)
@@ -746,6 +963,131 @@ public sealed class StoryAssistantStore(
 
         await Registry.ReplaceAreaAsync(Document, Area);
     }
+
+    StoryAssistantDiagnostics BuildDiagnostics(
+        string outcome,
+        string reason,
+        string displayMessage,
+        string lastStreamEvent = "",
+        Exception? exception = null)
+    {
+        var activeModel = modelSelection.Resolve(AiModelRole.Reasoning);
+        return new()
+        {
+            Outcome = outcome,
+            Reason = reason,
+            ProviderId = activeModel?.Provider.Id ?? "",
+            ProviderName = activeModel?.Provider.Name ?? "",
+            ModelId = activeModel?.Model.Id ?? "",
+            ModelName = activeModel?.Model.DisplayName ?? "",
+            PreviousResponseId = Document?.StoryAssistant.ResponseIds.LastOrDefault(responseId => responseId != Document.StoryAssistant.LastResponseId) ?? "",
+            ResponseId = Document?.StoryAssistant.LastResponseId ?? "",
+            RequestDisplay = displayMessage,
+            LastStreamEvent = lastStreamEvent,
+            Error = exception is null ? "" : UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception),
+            RecordedUtc = DateTime.UtcNow
+        };
+    }
+
+    StoryAssistantWorkItem? WorkItemFor(string itemId) =>
+        State.WorkItems.FirstOrDefault(item =>
+            string.Equals(item.Id, itemId, StringComparison.Ordinal)
+            || string.Equals(item.TranscriptItemId, itemId, StringComparison.Ordinal));
+
+    void MarkWorkItemCancelled(string workItemId)
+    {
+        var workItem = WorkItemFor(workItemId);
+        if (workItem is null)
+            return;
+
+        workItem.Status = StoryAssistantWorkItemStatus.Cancelled;
+        workItem.DecisionReason = "Stopped before the assistant could continue.";
+        workItem.UpdatedUtc = DateTime.UtcNow;
+        SyncTranscriptFor(workItem);
+    }
+
+    void MarkWorkItemFailed(string workItemId, string message)
+    {
+        var workItem = WorkItemFor(workItemId);
+        if (workItem is null)
+            return;
+
+        workItem.Status = StoryAssistantWorkItemStatus.Failed;
+        workItem.DecisionReason = message;
+        workItem.UpdatedUtc = DateTime.UtcNow;
+        SyncTranscriptFor(workItem);
+    }
+
+    void SyncTranscriptFor(StoryAssistantWorkItem workItem)
+    {
+        var transcriptItem = State.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+        if (transcriptItem is not null)
+            SyncTranscriptItem(transcriptItem, workItem);
+    }
+
+    static StoryAssistantTranscriptItem TranscriptItemFor(StoryAssistantWorkItem workItem)
+    {
+        var item = new StoryAssistantTranscriptItem
+        {
+            Id = workItem.TranscriptItemId,
+            Kind = workItem.Kind == StoryAssistantWorkItemKind.Question ? StoryAssistantItemKind.Question : StoryAssistantItemKind.ToolCall,
+            CreatedUtc = workItem.CreatedUtc,
+            WorkItemId = workItem.Id
+        };
+        SyncTranscriptItem(item, workItem);
+        return item;
+    }
+
+    static void SyncTranscriptItem(StoryAssistantTranscriptItem item, StoryAssistantWorkItem workItem)
+    {
+        item.Status = TranscriptStatusFor(workItem);
+        item.UpdatedUtc = workItem.UpdatedUtc;
+        item.Title = workItem.Title;
+        item.ToolName = workItem.ToolName;
+        item.ToolCallId = workItem.ToolCallId;
+        item.WorkItemId = workItem.Id;
+        item.Operation = workItem.Operation;
+        item.EntityType = workItem.EntityType;
+        item.EntityId = workItem.EntityId;
+        item.EntityName = workItem.EntityName;
+        item.ArgumentsJson = workItem.ArgumentsJson;
+        item.ResultJson = workItem.ResultJson;
+        item.Before = workItem.Before;
+        item.After = workItem.After;
+        item.Diffs = workItem.Diffs;
+        item.Risk = workItem.Risk;
+        item.DecisionReason = workItem.DecisionReason;
+        item.Question = workItem.Question;
+        item.Diagnostics = workItem.Diagnostics;
+    }
+
+    static StoryAssistantItemStatus TranscriptStatusFor(StoryAssistantWorkItem workItem) => workItem.Status switch
+    {
+        StoryAssistantWorkItemStatus.Pending when workItem.Kind == StoryAssistantWorkItemKind.Question => StoryAssistantItemStatus.Pending,
+        StoryAssistantWorkItemStatus.Pending => StoryAssistantItemStatus.NeedsReview,
+        StoryAssistantWorkItemStatus.Completed when workItem.Kind == StoryAssistantWorkItemKind.Question => StoryAssistantItemStatus.Answered,
+        StoryAssistantWorkItemStatus.Completed => StoryAssistantItemStatus.Accepted,
+        StoryAssistantWorkItemStatus.RetryRequested => StoryAssistantItemStatus.RetryRequested,
+        StoryAssistantWorkItemStatus.Rejected => StoryAssistantItemStatus.Rejected,
+        StoryAssistantWorkItemStatus.Cancelled => StoryAssistantItemStatus.Stopped,
+        StoryAssistantWorkItemStatus.Conflict or StoryAssistantWorkItemStatus.Failed => StoryAssistantItemStatus.Failed,
+        _ => StoryAssistantItemStatus.Pending
+    };
+
+    static StoryAssistantWorkItemResolutionKind ToResolutionKind(StoryAssistantDecisionKind kind) => kind switch
+    {
+        StoryAssistantDecisionKind.Accept => StoryAssistantWorkItemResolutionKind.Accept,
+        StoryAssistantDecisionKind.TryAgain => StoryAssistantWorkItemResolutionKind.TryAgain,
+        StoryAssistantDecisionKind.Reject => StoryAssistantWorkItemResolutionKind.Reject,
+        _ => StoryAssistantWorkItemResolutionKind.Reject
+    };
+
+    static StoryAssistantRetryContext Clone(StoryAssistantRetryContext value) => new()
+    {
+        DisplayMessage = value.DisplayMessage,
+        ModelInput = value.ModelInput,
+        IsRetry = value.IsRetry
+    };
 
     static StoryAssistantTranscriptItem AddMessage(StoryAssistantItemKind kind, StoryAssistantItemStatus status, string text)
     {

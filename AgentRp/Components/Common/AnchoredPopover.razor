@@ -35,15 +35,6 @@
         IsOpen = true;
         var owner = OwnerDebugName;
 
-        Logger.LogInformation(
-            "AnchoredPopover opening. Id={OverlayId} Owner={Owner} Class={Class} AnchorClass={AnchorClass} Layer={Layer} Placement={Placement}",
-            EntryId.Value,
-            owner,
-            Class,
-            AnchorClass,
-            EffectiveLayer,
-            Placement);
-
         await Overlays.ShowAsync(new OverlayEntry(
             EntryId.Value,
             AnchorElement,
@@ -61,10 +52,7 @@
         IsOpen = false;
 
         if (EntryId is Guid id)
-        {
-            Logger.LogInformation("AnchoredPopover closing. Id={OverlayId} Owner={Owner}", id, OwnerDebugName);
             await Overlays.CloseAsync(id, notifyOwner: false);
-        }
 
         EntryId = null;
     }
@@ -81,10 +69,7 @@
     public async ValueTask DisposeAsync()
     {
         if (EntryId is Guid id)
-        {
-            Logger.LogInformation("AnchoredPopover disposing with open overlay. Id={OverlayId} Owner={Owner}", id, OwnerDebugName);
             await Overlays.CloseAsync(id, notifyOwner: false);
-        }
     }
 
     string OwnerDebugName =>

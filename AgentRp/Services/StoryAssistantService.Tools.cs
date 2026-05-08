@@ -13,17 +13,17 @@ public sealed partial class StoryAssistantService
         Tool("get_character_profile_options", "Read valid ids and limits for controlled character profile fields. Call this before setting controlled fields in create_character, update_character, or update_character_relationship.", CharacterProfileRules.ProfileOptionsSchema()),
         Tool("get_chat_direction_options", "Read valid ids, limits, intensity values, and current values for controlled chat direction fields. Call this before setting controlled fields in update_chat_direction.", ChatDirectionRules.OptionsSchema()),
         Tool("create_character", "Create a new character from provided fields. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema()),
-        Tool("update_character", "Patch only the provided fields on an existing character. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema(needsId: true)),
-        Tool("update_chat_direction", "Patch only the provided fields on this chat's direction. Before setting controlled direction fields, call get_chat_direction_options for those fields.", ChatDirectionRules.PatchSchema()),
+        Tool("update_character", "Update fields on an existing character. Eagerly complete missing profile details when useful; before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema(needsId: true)),
+        Tool("update_chat_direction", "Update fields on this chat's direction. Before setting controlled direction fields, call get_chat_direction_options for those fields.", ChatDirectionRules.PatchSchema()),
         Tool("create_location", "Create a new location from provided canon fields. The location name is required.", LocationEntityPatchSchema(requiredField: "name")),
-        Tool("update_location", "Patch only the provided fields on an existing location. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", LocationEntityPatchSchema(needsId: true)),
+        Tool("update_location", "Update fields on an existing location. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", LocationEntityPatchSchema(needsId: true)),
         Tool("create_item", "Create a new item from provided canon fields. The item name is required.", ItemEntityPatchSchema(requiredField: "name")),
-        Tool("update_item", "Patch only the provided fields on an existing item. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", ItemEntityPatchSchema(needsId: true)),
+        Tool("update_item", "Update fields on an existing item. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", ItemEntityPatchSchema(needsId: true)),
         Tool("create_timeline_entry", "Create a new timeline entry from provided canon fields. The timeline title is required.", TimelineEntityPatchSchema(requiredField: "title")),
-        Tool("update_timeline_entry", "Patch only the provided fields on an existing timeline entry. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", TimelineEntityPatchSchema(needsId: true)),
+        Tool("update_timeline_entry", "Update fields on an existing timeline entry. Use entityId from get_story_entities; call get_story_entities first if the target id is uncertain.", TimelineEntityPatchSchema(needsId: true)),
         Tool("update_character_relationship", "Patch the directional relationship between two characters with explicit source/target meaning. Before setting relationshipType or privateTension, call get_character_profile_options.", CharacterProfileRules.RelationshipSchema()),
         Tool("set_scene", "Set the starting scene or transition scene using existing canon ids, then ask the narrator to set the scene. Use only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. Do not resolve major plot outcomes through this tool.", SceneTransitionSchema()),
-        Tool("ask_user", "Ask the user a multiple-choice or open-ended question and wait for their answer.", QuestionSchema())
+        Tool("ask_user", "Ask the user one focused question and wait for their answer. Use this for onboarding interviews instead of writing prose questions. Supports single choice, multi-select, and optional freeform answers.", QuestionSchema())
     ];
 
     static ModelAssistantTool Tool(string name, string description, JsonObject schema) => new(name, description, schema);
@@ -78,7 +78,7 @@ public sealed partial class StoryAssistantService
             ["updates"] = new JsonObject
             {
                 ["type"] = "object",
-                ["description"] = "Only the fields to set or replace. Do not resend unchanged fields.",
+                ["description"] = "Fields to set or replace. Existing unchanged values do not need to be resent.",
                 ["properties"] = updateProperties,
                 ["additionalProperties"] = false
             },
@@ -137,19 +137,31 @@ public sealed partial class StoryAssistantService
         ["type"] = "object",
         ["properties"] = new JsonObject
         {
-            ["prompt"] = new JsonObject { ["type"] = "string" },
-            ["allowsFreeform"] = new JsonObject { ["type"] = "boolean" },
+            ["prompt"] = new JsonObject { ["type"] = "string", ["description"] = "The focused question to ask the user. Ask one decision at a time." },
+            ["allowsFreeform"] = new JsonObject { ["type"] = "boolean", ["description"] = "Whether the user may write a custom answer instead of selecting choices." },
+            ["selectionMode"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray { "single", "multiple" },
+                ["description"] = "Use 'single' for one choice and 'multiple' when the user may pick more than one option."
+            },
+            ["minSelections"] = new JsonObject { ["type"] = "integer", ["description"] = "Minimum choices for multiple selection. Usually 0 or 1." },
+            ["maxSelections"] = new JsonObject { ["type"] = "integer", ["description"] = "Maximum choices for multiple selection, such as 2 for pick 1-2." },
             ["choices"] = new JsonObject
             {
                 ["type"] = "array",
+                ["description"] = "Selectable options. Include descriptions when the option label alone is not enough.",
                 ["items"] = new JsonObject
                 {
                     ["type"] = "object",
                     ["properties"] = new JsonObject
                     {
                         ["id"] = new JsonObject { ["type"] = "string" },
-                        ["label"] = new JsonObject { ["type"] = "string" }
-                    }
+                        ["label"] = new JsonObject { ["type"] = "string" },
+                        ["description"] = new JsonObject { ["type"] = "string" }
+                    },
+                    ["required"] = new JsonArray { "label" },
+                    ["additionalProperties"] = false
                 }
             }
         },

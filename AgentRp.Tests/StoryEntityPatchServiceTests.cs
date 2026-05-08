@@ -50,9 +50,20 @@ public sealed class StoryEntityPatchServiceTests
             CancellationToken.None);
 
         using var json = JsonDocument.Parse(result);
-        Assert.Equal("retry_requested", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("pending", json.RootElement.GetProperty("status").GetString());
         Assert.Equal("Old summary", document.Characters[0].Summary);
-        Assert.Equal(StoryAssistantItemStatus.RetryRequested, callbacks.ToolItems.Single().Status);
+        var workItem = callbacks.WorkItems.Single();
+        Assert.Equal(StoryAssistantWorkItemStatus.Pending, workItem.Status);
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.TryAgain, "", "Keep the current motive."),
+            callbacks,
+            CancellationToken.None);
+
+        Assert.Equal("Old summary", document.Characters[0].Summary);
+        Assert.Equal(StoryAssistantWorkItemStatus.RetryRequested, workItem.Status);
     }
 
     [Fact]
@@ -93,9 +104,19 @@ public sealed class StoryEntityPatchServiceTests
             CancellationToken.None);
 
         using var json = JsonDocument.Parse(result);
-        Assert.Equal("rejected", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("pending", json.RootElement.GetProperty("status").GetString());
         Assert.Equal("Old summary", document.Characters[0].Summary);
-        Assert.Equal(StoryAssistantItemStatus.Rejected, callbacks.ToolItems.Single().Status);
+        var workItem = callbacks.WorkItems.Single();
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.Reject, "", "Leave Lucia alone."),
+            callbacks,
+            CancellationToken.None);
+
+        Assert.Equal("Old summary", document.Characters[0].Summary);
+        Assert.Equal(StoryAssistantWorkItemStatus.Rejected, workItem.Status);
     }
 
     [Fact]
@@ -115,9 +136,19 @@ public sealed class StoryEntityPatchServiceTests
             callbacks,
             CancellationToken.None);
 
-        Assert.Equal("New event", document.Timeline[0].Title);
+        Assert.Equal("Old event", document.Timeline[0].Title);
         Assert.Equal(1, callbacks.ReviewCount);
-        Assert.Equal(StoryAssistantItemStatus.Accepted, callbacks.ToolItems.Single().Status);
+        var workItem = callbacks.WorkItems.Single();
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.Accept, "", ""),
+            callbacks,
+            CancellationToken.None);
+
+        Assert.Equal("New event", document.Timeline[0].Title);
+        Assert.Equal(StoryAssistantWorkItemStatus.Completed, workItem.Status);
     }
 
     [Fact]
@@ -171,6 +202,7 @@ public sealed class StoryEntityPatchServiceTests
     {
         var document = CreateDocument();
         document.Characters[0].Pronouns = ["they/them"];
+        document.Characters[0].Appearance = "Small crescent scar under one eye.";
         var callbacks = new TestCallbacks();
         var service = new StoryEntityPatchService();
 
@@ -187,7 +219,15 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal(CharacterProfileRules.MaxTraits, library.GetProperty("limits").GetProperty("maxTraits").GetInt32());
         Assert.Contains(library.GetProperty("controlledFields").EnumerateArray(), item => item.GetString() == "traits");
         Assert.Contains(library.GetProperty("controlledFields").EnumerateArray(), item => item.GetString() == "pronouns");
-        Assert.Contains(json.RootElement.GetProperty("entities").GetProperty("characters")[0].GetProperty("pronouns").EnumerateArray(), item => item.GetString() == "they/them");
+        Assert.Contains("flat appearance fields", library.GetProperty("appearancePolicy").GetString(), StringComparison.Ordinal);
+        var character = json.RootElement.GetProperty("entities").GetProperty("characters")[0];
+        Assert.Contains(character.GetProperty("pronouns").EnumerateArray(), item => item.GetString() == "they/them");
+        Assert.Equal("Small crescent scar under one eye.", character.GetProperty("extraAppearanceDetails").GetString());
+        Assert.True(character.TryGetProperty("hairColor", out _));
+        Assert.True(character.TryGetProperty("attractiveness", out _));
+        Assert.False(character.TryGetProperty("appearance", out _));
+        Assert.False(character.TryGetProperty("appearanceProfile", out _));
+        Assert.False(character.TryGetProperty("appearanceSummary", out _));
         Assert.Contains("get_character_profile_options", library.GetProperty("instruction").GetString(), StringComparison.Ordinal);
     }
 
@@ -211,9 +251,31 @@ public sealed class StoryEntityPatchServiceTests
         var options = json.RootElement.GetProperty("characterProfileOptions").GetProperty("fields");
         var sceneRoleIds = options.GetProperty("sceneRoles").GetProperty("options").EnumerateArray().Select(item => item.GetProperty("id").GetString()).ToList();
         Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("flat appearance fields", json.RootElement.GetProperty("characterProfileOptions").GetProperty("appearancePolicy").GetString(), StringComparison.Ordinal);
         Assert.Contains("foil", sceneRoleIds);
         Assert.False(options.TryGetProperty("traits", out _));
         Assert.Equal(StoryAssistantItemStatus.Read, callbacks.ToolItems.Single().Status);
+    }
+
+    [Fact]
+    public async Task GetCharacterProfileOptionsRejectsLegacyAppearanceProfileField()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "get_character_profile_options",
+            """{"fields":["appearanceProfile"]}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("not a supported controlled profile field", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Empty(callbacks.ToolItems);
     }
 
     [Fact]
@@ -380,6 +442,54 @@ public sealed class StoryEntityPatchServiceTests
     }
 
     [Fact]
+    public async Task CreateCharacterRequiresUsableCompleteProfile()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "create_character",
+            """{"updates":{"name":"Mira"}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("fuller profile", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Contains("summary", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Contains(json.RootElement.GetProperty("nextStep").GetProperty("fields").EnumerateArray(), item => item.GetString() == "hairColor");
+        Assert.Empty(callbacks.ToolItems);
+        Assert.Equal(2, document.Characters.Count);
+    }
+
+    [Fact]
+    public async Task CreateCharacterAcceptsFlatCompleteAppearanceProfile()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "create_character",
+            """{"updates":{"name":"Mira","summary":"A poised courier with dangerous friends.","personality":"Alert, charming, and decisive under pressure.","voice":"Quick, bright, and teasing.","traits":["charmer","observer"],"hairColor":"black","hairStyles":["short","wavy"],"eyeColor":"green","faceShape":"angular","skinTone":"tan","complexion":["sun-kissed"],"height":"average","build":"lean","bodyProportions":["balanced-proportions"],"presentation":["confident"],"attractiveness":"attractive","extraAppearanceDetails":"A thin silver ring on every finger."}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Mira", document.Characters[0].Name);
+        Assert.Equal("black", document.Characters[0].AppearanceProfile.HairColor);
+        Assert.Equal("A thin silver ring on every finger.", document.Characters[0].Appearance);
+        Assert.False(json.RootElement.GetProperty("resultingEntity").TryGetProperty("appearanceProfile", out _));
+    }
+
+    [Fact]
     public async Task CharacterPatchAcceptsValidControlledValues()
     {
         var document = CreateDocument();
@@ -401,6 +511,102 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal(["guarded", "dry-wit"], document.Characters[0].Traits);
         Assert.Equal(["they/them", "xe/xem"], document.Characters[0].Pronouns);
         Assert.Equal("protect-their-people", document.Characters[0].CoreDrive);
+    }
+
+    [Fact]
+    public async Task CharacterPatchMapsExtraAppearanceDetailsToStoredAppearance()
+    {
+        var document = CreateDocument();
+        CompleteAppearance(document.Characters[0]);
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"extraAppearanceDetails":"Small crescent scar under one eye."}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Small crescent scar under one eye.", document.Characters[0].Appearance);
+        var item = callbacks.ToolItems.Single();
+        Assert.Contains(item.Diffs, diff => diff.Field == "extraAppearanceDetails");
+        Assert.DoesNotContain(item.Diffs, diff => diff.Field == "appearanceSummary");
+    }
+
+    [Fact]
+    public async Task CharacterPatchRejectsAppearanceUpdateWhenResultWouldStayIncomplete()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"hairColor":"blonde"}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("complete visual profile", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Contains(json.RootElement.GetProperty("nextStep").GetProperty("fields").EnumerateArray(), item => item.GetString() == "eyeColor");
+        Assert.Equal("", document.Characters[0].AppearanceProfile.HairColor);
+        Assert.Empty(callbacks.ToolItems);
+    }
+
+    [Fact]
+    public async Task CharacterPatchMapsFlatAppearanceFieldsToStoredAppearanceProfile()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"hairColor":"blonde","hairStyles":["long","wavy"],"eyeColor":"blue","faceShape":"heart-shaped","skinTone":"fair","complexion":["clear"],"height":"tall","build":"slender","bodyProportions":["long-legs"],"presentation":["graceful"],"attractiveness":"striking"}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("blonde", document.Characters[0].AppearanceProfile.HairColor);
+        Assert.Equal(["long", "wavy"], document.Characters[0].AppearanceProfile.HairStyles);
+        Assert.Equal("blue", document.Characters[0].AppearanceProfile.EyeColor);
+        Assert.Contains(callbacks.ToolItems.Single().Diffs, diff => diff.Field == "hairColor" && diff.Label == "Hair Color");
+        Assert.DoesNotContain(callbacks.ToolItems.Single().Diffs, diff => diff.Field == "appearanceProfile");
+    }
+
+    [Fact]
+    public async Task CharacterPatchRejectsLegacyAppearanceField()
+    {
+        var document = CreateDocument();
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"appearance":"Tall blonde."}}""",
+            callbacks,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result);
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+        Assert.Contains("not a supported Story Assistant field", json.RootElement.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        Assert.Equal("", document.Characters[0].Appearance);
+        Assert.Empty(callbacks.ToolItems);
     }
 
     [Fact]
@@ -648,13 +854,24 @@ public sealed class StoryEntityPatchServiceTests
             CancellationToken.None);
 
         using var json = JsonDocument.Parse(result);
-        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("pending", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(1, callbacks.ReviewCount);
+        Assert.Equal(0, callbacks.SceneTransitionCount);
+        var workItem = callbacks.WorkItems.Single();
+        Assert.Contains(workItem.Diffs, diff => diff.Field == "locationName");
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.Accept, "", ""),
+            callbacks,
+            CancellationToken.None);
+
         Assert.Equal(1, callbacks.SceneTransitionCount);
-        Assert.Equal(StoryAssistantItemStatus.Accepted, callbacks.ToolItems.Single().Status);
-        Assert.Contains(callbacks.ToolItems.Single().Diffs, diff => diff.Field == "locationName");
-        Assert.Equal("turn-1", json.RootElement.GetProperty("narratorTurnId").GetString());
-        Assert.Equal("The library waits in lamplight.", json.RootElement.GetProperty("narratorMessage").GetString());
+        Assert.Equal(StoryAssistantWorkItemStatus.Completed, workItem.Status);
+        using var resolvedJson = JsonDocument.Parse(workItem.ResultJson);
+        Assert.Equal("turn-1", resolvedJson.RootElement.GetProperty("narratorTurnId").GetString());
+        Assert.Equal("The library waits in lamplight.", resolvedJson.RootElement.GetProperty("narratorMessage").GetString());
     }
 
     [Fact]
@@ -675,9 +892,19 @@ public sealed class StoryEntityPatchServiceTests
             CancellationToken.None);
 
         using var json = JsonDocument.Parse(result);
-        Assert.Equal("rejected", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("pending", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(0, callbacks.SceneTransitionCount);
-        Assert.Equal(StoryAssistantItemStatus.Rejected, callbacks.ToolItems.Single().Status);
+        var workItem = callbacks.WorkItems.Single();
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.Reject, "", "Not yet."),
+            callbacks,
+            CancellationToken.None);
+
+        Assert.Equal(0, callbacks.SceneTransitionCount);
+        Assert.Equal(StoryAssistantWorkItemStatus.Rejected, workItem.Status);
     }
 
     [Fact]
@@ -722,10 +949,26 @@ public sealed class StoryEntityPatchServiceTests
         ]
     };
 
+    static void CompleteAppearance(RpCharacter character)
+    {
+        character.AppearanceProfile.HairColor = "brown";
+        character.AppearanceProfile.HairStyles = ["short"];
+        character.AppearanceProfile.EyeColor = "green";
+        character.AppearanceProfile.FaceShape = "oval";
+        character.AppearanceProfile.SkinTone = "light";
+        character.AppearanceProfile.Complexion = ["clear"];
+        character.AppearanceProfile.Height = "average";
+        character.AppearanceProfile.Build = "lean";
+        character.AppearanceProfile.BodyProportions = ["balanced-proportions"];
+        character.AppearanceProfile.Presentation = ["confident"];
+        character.AppearanceProfile.Attractiveness = "attractive";
+    }
+
     sealed class TestCallbacks : IStoryAssistantCallbacks
     {
         public StoryAssistantDecision Decision { get; set; } = new(StoryAssistantDecisionKind.Accept, "");
         public List<StoryAssistantTranscriptItem> ToolItems { get; } = [];
+        public List<StoryAssistantWorkItem> WorkItems { get; } = [];
         public Func<SceneTransitionRequest, SceneTransitionResult>? SceneTransition { get; set; }
         public int ReviewCount { get; private set; }
         public int SceneTransitionCount { get; private set; }
@@ -740,13 +983,14 @@ public sealed class StoryEntityPatchServiceTests
 
         public Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<StoryAssistantDecision> ReviewChangeAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+        public Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
         {
+            WorkItems.Add(workItem);
             ReviewCount++;
-            return Task.FromResult(Decision);
+            return Task.CompletedTask;
         }
 
-        public Task<string> AskQuestionAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken) => Task.FromResult("Answer");
+        public Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<SceneTransitionResult> GenerateSceneTransitionAsync(SceneTransitionRequest request, CancellationToken cancellationToken)
         {
