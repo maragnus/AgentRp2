@@ -5,8 +5,8 @@
         @if (Story?.ActiveLocation is { } location)
         {
             <StoryAvatar Name="@location.Name"
-                         ImageUrl="@location.Image?.Url"
-                         Crop="@CropFor(location.Image)"
+                         ImageUrl="@location.Avatar?.Url"
+                         Crop="@CropFor(location.Avatar)"
                          Class="story-resume-location-avatar" />
         }
         else
@@ -15,16 +15,9 @@
                 <FaIcon Name="map-pin" />
             </span>
         }
-        <span class="story-resume-character-stack">
-            @foreach (var character in VisibleCharacters)
-            {
-                <StoryAvatar @key="character.Id"
-                             Name="@character.Name"
-                             ImageUrl="@character.Image?.Url"
-                             Crop="@CropFor(character.Image)"
-                             Class="story-resume-character-avatar" />
-            }
-        </span>
+        <StoryPreviewAvatarStack Characters="VisibleCharacters"
+                                 Class="story-resume-character-stack"
+                                 AvatarClass="story-resume-character-avatar" />
     </span>
     <span class="story-resume-copy">
         <strong>@Story?.Title</strong>
@@ -36,18 +29,18 @@
 </button>
 
 @code {
-    [Parameter] public RpChat? Story { get; set; }
+    [Parameter] public StoryPreview? Story { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
 
-    IReadOnlyList<RpChatSceneCharacter> VisibleCharacters => Story?.SceneCharacters.Take(3).ToList() ?? [];
+    IReadOnlyList<StoryPreviewCharacter> VisibleCharacters => Story?.SceneCharacters.Take(3).ToList() ?? [];
     string CssClass => "story-resume-card";
     string Title => Story is null ? "" : $"Continue {Story.Title}";
     string TurnText => Story?.LastGeneratedTurnNumber > 0
         ? $"Turn {Story.LastGeneratedTurnNumber}"
-        : Story?.Messages > 0 ? $"{Story.Messages} turns" : "No turns";
+        : Story?.VisibleTurnCount > 0 ? $"{Story.VisibleTurnCount} turns" : "No turns";
     string Subtitle => string.Join(" / ", new[]
     {
-        Story?.ActiveLocation?.Name ?? Story?.Location,
+        Story?.ActiveLocation?.Name,
         TurnText,
         Story?.Updated
     }.Where(value => !string.IsNullOrWhiteSpace(value)));
@@ -55,6 +48,8 @@
         ? "No characters in scene"
         : $"In scene: {string.Join(", ", VisibleCharacters.Select(character => character.Name))}";
 
-    static ImageAvatarCropView CropFor(GalleryImage? image) =>
-        image is null ? ImageAvatarCropView.Default : ImageAvatarCropView.From(image);
+    static ImageAvatarCropView CropFor(StoryPreviewAvatar? avatar) =>
+        avatar is null
+            ? ImageAvatarCropView.Default
+            : ImageAvatarCropView.Normalize(avatar.FocusXPercent, avatar.FocusYPercent, avatar.ZoomPercent);
 }

@@ -27,12 +27,12 @@ public interface ILiveRoleplayStore
 {
     event Func<RoleplayStoreNotification, Task>? Changed;
 
-    Task<IReadOnlyList<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StoryPreview>> LoadStoryPreviewsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default);
     Task<RpChatDocument> OpenChatAsync(Guid sessionId, string chatId, CancellationToken cancellationToken = default);
     void ReleaseChat(Guid sessionId, string? chatId);
     Task<RpChatDocument> GetChatSnapshotAsync(string chatId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StoryPreview>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default);
     Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default);
     Task ReplaceChatAreaAsync(Guid originSessionId, string chatId, RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken = default);
 }
@@ -53,7 +53,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
     readonly Timer _cleanupTimer;
     readonly object _gate = new();
     readonly Dictionary<string, LoadedChat> _loadedChats = [];
-    List<RpChat>? _chats;
+    List<StoryPreview>? _storyPreviews;
     List<AiProvider>? _providers;
     long _chatListVersion;
     long _providerVersion;
@@ -73,20 +73,20 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
     public event Func<RoleplayStoreNotification, Task>? Changed;
 
-    public async Task<IReadOnlyList<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StoryPreview>> LoadStoryPreviewsAsync(CancellationToken cancellationToken = default)
     {
-        List<RpChat>? snapshot;
+        List<StoryPreview>? snapshot;
         lock (_gate)
-            snapshot = _chats?.Select(SessionCloner.Clone).ToList();
+            snapshot = _storyPreviews?.Select(SessionCloner.Clone).ToList();
 
         if (snapshot is not null)
             return snapshot;
 
-        var loaded = await _persistence.LoadChatsAsync(cancellationToken);
+        var loaded = await _persistence.LoadStoryPreviewsAsync(cancellationToken);
         lock (_gate)
         {
-            _chats ??= loaded.Select(SessionCloner.Clone).ToList();
-            return _chats.Select(SessionCloner.Clone).ToList();
+            _storyPreviews ??= loaded.Select(SessionCloner.Clone).ToList();
+            return _storyPreviews.Select(SessionCloner.Clone).ToList();
         }
     }
 
@@ -109,7 +109,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
     public async Task<RpChatDocument> OpenChatAsync(Guid sessionId, string chatId, CancellationToken cancellationToken = default)
     {
-        await LoadChatsAsync(cancellationToken);
+        await LoadStoryPreviewsAsync(cancellationToken);
 
         lock (_gate)
         {
@@ -170,20 +170,18 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         return await OpenChatAsync(Guid.Empty, chatId, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StoryPreview>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default)
     {
-        await LoadChatsAsync(cancellationToken);
+        await LoadStoryPreviewsAsync(cancellationToken);
         RpChat chat;
         RpChatDocument document;
+        StoryPreview preview;
         long version;
         var location = options.CopyLocations ? template?.Chat.Location ?? "" : "";
 
         lock (_gate)
         {
             chat = new() { Id = NextChatId(), Title = "Untitled Story", Updated = RelativeDateFormatter.FormatDate(DateTime.UtcNow), Location = location };
-            _chats!.Insert(0, chat);
-            _chatListVersion++;
-            version = _chatListVersion;
             document = new()
             {
                 Chat = SessionCloner.Clone(chat),
@@ -211,7 +209,10 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             document.Transcript.RootScene.InSceneCharacterIds = document.Characters.Where(character => character.InScene).Select(character => character.Id).ToList();
             document.Transcript.RootScene.InSceneItemIds = document.Items.Where(item => item.InScene).Select(item => item.Id).ToList();
             TranscriptProjector.Apply(document);
-            ChatPreviewProjector.Apply(chat, document);
+            preview = StoryPreviewProjector.FromDocument(document);
+            _storyPreviews!.Insert(0, preview);
+            _chatListVersion++;
+            version = _chatListVersion;
             _loadedChats[chat.Id] = new()
             {
                 Document = SessionCloner.Clone(document),
@@ -221,10 +222,10 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             };
         }
 
-        QueueSaveChats();
-        QueueSaveDocument(document);
+        QueueSaveStoryPreviews();
+        QueueCreateDocument(document);
         await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, version));
-        return await LoadChatsAsync(cancellationToken);
+        return await LoadStoryPreviewsAsync(cancellationToken);
     }
 
     static void ClearImageReferences(RpChatDocument document)
@@ -273,13 +274,13 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             loaded.LastAccess = DateTimeOffset.UtcNow;
             version = loaded.Version;
             snapshot = SessionCloner.Clone(loaded.Document);
-            UpdateChatMetadata(snapshot);
+            UpdateStoryPreview(snapshot);
         }
 
-        QueueSaveDocument(snapshot);
+        QueueSaveArea(snapshot, area);
         if (area is RoleplayStoreArea.Characters or RoleplayStoreArea.Locations or RoleplayStoreArea.Images or RoleplayStoreArea.Transcript or RoleplayStoreArea.ChatDirection)
         {
-            QueueSaveChats();
+            QueueSaveStoryPreviews();
             await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, _chatListVersion));
         }
 
@@ -355,27 +356,27 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         }
     }
 
-    void UpdateChatMetadata(RpChatDocument document)
+    void UpdateStoryPreview(RpChatDocument document)
     {
-        if (_chats is null)
+        if (_storyPreviews is null)
             return;
 
-        var chat = _chats.FirstOrDefault(chat => chat.Id == document.Chat.Id);
-        if (chat is null)
+        var index = _storyPreviews.FindIndex(preview => preview.ChatId == document.Chat.Id);
+        if (index < 0)
             return;
 
-        ChatPreviewProjector.Apply(chat, document);
+        _storyPreviews[index] = StoryPreviewProjector.FromDocument(document);
         _chatListVersion++;
     }
 
-    void QueueSaveChats()
+    void QueueSaveStoryPreviews()
     {
-        List<RpChat>? snapshot;
+        List<StoryPreview>? snapshot;
         lock (_gate)
-            snapshot = _chats?.Select(SessionCloner.Clone).ToList();
+            snapshot = _storyPreviews?.Select(SessionCloner.Clone).ToList();
 
         if (snapshot is not null)
-            _worker.Enqueue(token => _persistence.SaveChatsAsync(snapshot, token));
+            _worker.Enqueue(token => _persistence.SaveStoryPreviewsAsync(snapshot, token));
     }
 
     void QueueSaveProviders()
@@ -388,16 +389,22 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
             _worker.Enqueue(token => _persistence.SaveProvidersAsync(snapshot, token));
     }
 
-    void QueueSaveDocument(RpChatDocument document)
+    void QueueCreateDocument(RpChatDocument document)
     {
         var snapshot = SessionCloner.Clone(document);
-        _worker.Enqueue(token => _persistence.SaveChatDocumentAsync(snapshot, token));
+        _worker.Enqueue(token => _persistence.CreateChatDocumentAsync(snapshot, token));
+    }
+
+    void QueueSaveArea(RpChatDocument document, RoleplayStoreArea area)
+    {
+        var snapshot = SessionCloner.Clone(document);
+        _worker.Enqueue(token => _persistence.SaveChatAreaAsync(snapshot, area, token));
     }
 
     string NextChatId()
     {
-        var next = _chats!
-            .Select(chat => chat.Id)
+        var next = _storyPreviews!
+            .Select(chat => chat.ChatId)
             .Where(id => id.Length > 2 && id.StartsWith("ch", StringComparison.OrdinalIgnoreCase) && int.TryParse(id[2..], out _))
             .Select(id => int.Parse(id[2..]))
             .DefaultIfEmpty(0)

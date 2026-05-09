@@ -16,6 +16,10 @@ public sealed class ImageAssetRow
     public string OptimizationError { get; set; } = "";
     public DateTime? OptimizedUtc { get; set; }
     public string Title { get; set; } = "";
+    public string Entity { get; set; } = "";
+    public string EntityType { get; set; } = "";
+    public int Hue { get; set; } = 210;
+    public int SortOrder { get; set; }
     public int? Width { get; set; }
     public int? Height { get; set; }
     public int? AvatarFocusXPercent { get; set; }

@@ -127,7 +127,7 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnOpenAssistant { get; set; }
 
-    RpChat? ActiveStory => Session.Chats.Active;
+    StoryPreview? ActiveStory => Session.Chats.Active;
     bool CanCreate => !IsCreating && (Mode != NewStoryStartMode.Copy || ActiveStory is not null);
     string SummaryIcon => Mode switch
     {
@@ -184,7 +184,7 @@
         try
         {
             var story = await Session.Chats.AddAsync(BuildOptions());
-            Navigation.NavigateTo(ChatUrl(story.Id));
+            Navigation.NavigateTo(ChatUrl(story.ChatId));
             if (Mode == NewStoryStartMode.Assistant)
                 await OnOpenAssistant.InvokeAsync();
             else

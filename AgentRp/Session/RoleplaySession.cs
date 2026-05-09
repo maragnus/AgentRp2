@@ -56,7 +56,7 @@ public sealed class RoleplaySession(
         await Providers.LoadAsync();
         var first = Chats.Items.FirstOrDefault();
         if (selectFirstStory && first is not null)
-            await Chats.SelectAsync(first.Id);
+            await Chats.SelectAsync(first.ChatId);
 
         _initialized = true;
     }
@@ -229,23 +229,23 @@ public sealed class ChatWorkspace
 
 public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, ChatRegistry registry, ActiveChatContext activeChat) : StoreBase
 {
-    readonly List<RpChat> _items = [];
+    readonly List<StoryPreview> _items = [];
 
-    public IReadOnlyList<RpChat> Items => _items;
-    public RpChat? Active => activeChat.Current?.Chat;
+    public IReadOnlyList<StoryPreview> Items => _items;
+    public StoryPreview? Active => activeChat.Current is null ? null : StoryPreviewProjector.FromDocument(activeChat.Current);
 
     public async Task LoadAsync() => await RefreshAsync();
 
     public async Task RefreshAsync()
     {
         _items.Clear();
-        _items.AddRange((await liveStore.LoadChatsAsync()).Select(SessionCloner.Clone));
+        _items.AddRange((await liveStore.LoadStoryPreviewsAsync()).Select(SessionCloner.Clone));
         await NotifyChangedAsync();
     }
 
     public async Task SelectAsync(string chatId)
     {
-        if (!_items.Any(chat => string.Equals(chat.Id, chatId, StringComparison.Ordinal)))
+        if (!_items.Any(chat => string.Equals(chat.ChatId, chatId, StringComparison.Ordinal)))
             throw new InvalidOperationException($"Story '{chatId}' was not found.");
 
         var document = await registry.OpenAsync(chatId);
@@ -262,13 +262,13 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
     public RoleplaySession? ActiveSession { get; set; }
 
-    public async Task<RpChat> AddAsync(StoryCreationOptions options)
+    public async Task<StoryPreview> AddAsync(StoryCreationOptions options)
     {
         var chats = await liveStore.AddChatAsync(sessionId, options, activeChat.Current);
         _items.Clear();
         _items.AddRange(chats.Select(SessionCloner.Clone));
         var chat = _items.First();
-        await SelectAsync(chat.Id);
+        await SelectAsync(chat.ChatId);
         await NotifyChangedAsync();
         return chat;
     }

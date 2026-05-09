@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgentRp.Migrations
 {
     [DbContext(typeof(RpDbContext))]
-    [Migration("20260509152448_AddChatPreviewFields")]
-    partial class AddChatPreviewFields
+    [Migration("20260509202353_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -214,6 +214,354 @@ namespace AgentRp.Migrations
                     b.ToTable("AppSettings");
                 });
 
+            modelBuilder.Entity("AgentRp.Data.CharacterTraitLibraryStateRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId");
+
+                    b.ToTable("CharacterTraitLibraryStates", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatCharacterRelationshipRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CharacterAId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CharacterBId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "CharacterAId");
+
+                    b.HasIndex("ChatId", "CharacterBId");
+
+                    b.HasIndex("ChatId", "CharacterAId", "CharacterBId");
+
+                    b.ToTable("ChatCharacterRelationships");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatCharacterRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ImageId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<bool>("InScene")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "ImageId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatCharacters");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatCurrentSceneCharacterRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CharacterId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ChatId", "CharacterId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatCurrentSceneCharacters");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatCurrentSceneItemRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ItemId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ChatId", "ItemId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatCurrentSceneItems");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatDirectionStateRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId");
+
+                    b.ToTable("ChatDirectionStates", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatItemRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<bool>("InScene")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "ImageId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatItems");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatLocationRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "ImageId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatLocations");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatTimelineEntryRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateText")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SnapshotId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "SnapshotId");
+
+                    b.HasIndex("ChatId", "SortOrder");
+
+                    b.ToTable("ChatTimelineEntries");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.ChatTranscriptStateRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("BranchSelectionsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OptionsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RootSceneJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("WorkingSceneJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("ChatId");
+
+                    b.ToTable("ChatTranscriptStates");
+                });
+
             modelBuilder.Entity("AgentRp.Data.ElevenLabsVoiceCatalogRow", b =>
                 {
                     b.Property<string>("VoiceId")
@@ -372,6 +720,16 @@ namespace AgentRp.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Entity")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<string>("FinalPrompt")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -383,6 +741,9 @@ namespace AgentRp.Migrations
                         .HasDefaultValue("");
 
                     b.Property<int?>("Height")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Hue")
                         .HasColumnType("int");
 
                     b.Property<bool>("OptimizationAttempted")
@@ -427,6 +788,9 @@ namespace AgentRp.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
                     b.Property<long>("StoredByteLength")
                         .HasColumnType("bigint");
 
@@ -456,67 +820,21 @@ namespace AgentRp.Migrations
 
                     b.HasIndex("ChatId", "CreatedUtc");
 
+                    b.HasIndex("ChatId", "EntityType", "Entity");
+
                     b.ToTable("ImageAssets");
                 });
 
-            modelBuilder.Entity("AgentRp.Data.RpChatDocumentRow", b =>
+            modelBuilder.Entity("AgentRp.Data.ModelTuningStateRow", b =>
                 {
                     b.Property<string>("ChatId")
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
-                    b.Property<string>("CharacterRelationshipsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CharacterTraitLibraryJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CharactersJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ChatDirectionJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ImagesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ItemsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("LocationsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("MessagesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ModelTuningJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NarratorProfileJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PromptLibraryJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("StoryAssistantJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TimelineJson")
+                    b.Property<string>("StateJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -525,7 +843,49 @@ namespace AgentRp.Migrations
 
                     b.HasKey("ChatId");
 
-                    b.ToTable("ChatDocuments");
+                    b.ToTable("ModelTuningStates", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.NarratorProfileStateRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId");
+
+                    b.ToTable("NarratorProfileStates", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.PromptLibraryStateRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId");
+
+                    b.ToTable("PromptLibraryStates", (string)null);
                 });
 
             modelBuilder.Entity("AgentRp.Data.RpChatRow", b =>
@@ -534,9 +894,23 @@ namespace AgentRp.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
-                    b.Property<string>("ActiveLocationJson")
+                    b.Property<string>("ActiveLeafTurnId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActiveLocationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActiveLocationName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("ActiveTurnCount")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
@@ -555,9 +929,8 @@ namespace AgentRp.Migrations
                     b.Property<int>("Messages")
                         .HasColumnType("int");
 
-                    b.Property<string>("SceneCharactersJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int>("SnapshotCount")
+                        .HasColumnType("int");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
@@ -688,6 +1061,210 @@ namespace AgentRp.Migrations
                     b.ToTable("SpeechAssets");
                 });
 
+            modelBuilder.Entity("AgentRp.Data.TranscriptSnapshotRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CharacterAppearancesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ConsumedBySnapshotId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int?>("ConsumedBySnapshotOrdinal")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EndTurnId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ParentBeforeStartTurnId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("PrivateIntentJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SceneJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SceneLocationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("SceneLocationName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SpeechJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("StartTurnId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TraceJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TurnId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("TurnNumberEnd")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TurnNumberStart")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "ConsumedBySnapshotId", "ConsumedBySnapshotOrdinal");
+
+                    b.HasIndex("ChatId", "EndTurnId", "IsActive");
+
+                    b.ToTable("TranscriptSnapshots");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.TranscriptTurnRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActorCharacterId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("AppearanceJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AuthorCharacterId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ConsumedBySnapshotId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int?>("ConsumedBySnapshotOrdinal")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Guidance")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ParentTurnId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("PlanJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PrivateIntentJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SceneJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SceneLocationId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("SceneLocationName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SpeechJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TraceJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TurnNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Id");
+
+                    b.HasIndex("ChatId", "ParentTurnId");
+
+                    b.HasIndex("ChatId", "ConsumedBySnapshotId", "ConsumedBySnapshotOrdinal");
+
+                    b.ToTable("TranscriptTurns");
+                });
+
             modelBuilder.Entity("AgentRp.Data.AiProviderMetricRow", b =>
                 {
                     b.HasOne("AgentRp.Data.AiProviderRow", "Provider")
@@ -710,27 +1287,11 @@ namespace AgentRp.Migrations
                     b.Navigation("Provider");
                 });
 
-            modelBuilder.Entity("AgentRp.Data.RpChatDocumentRow", b =>
-                {
-                    b.HasOne("AgentRp.Data.RpChatRow", "Chat")
-                        .WithOne("Document")
-                        .HasForeignKey("AgentRp.Data.RpChatDocumentRow", "ChatId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Chat");
-                });
-
             modelBuilder.Entity("AgentRp.Data.AiProviderRow", b =>
                 {
                     b.Navigation("Metrics");
 
                     b.Navigation("Models");
-                });
-
-            modelBuilder.Entity("AgentRp.Data.RpChatRow", b =>
-                {
-                    b.Navigation("Document");
                 });
 #pragma warning restore 612, 618
         }

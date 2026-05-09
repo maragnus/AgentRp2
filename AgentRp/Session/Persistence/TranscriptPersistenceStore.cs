@@ -12,22 +12,28 @@ internal static class TranscriptPersistenceStore
         CancellationToken cancellationToken)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var shellJson = await dbContext.ChatDocuments
+        var shell = await dbContext.ChatTranscriptStates
             .AsNoTracking()
             .Where(x => x.ChatId == chatId)
-            .Select(x => x.MessagesJson)
+            .FirstOrDefaultAsync(cancellationToken);
+        var activeLeafTurnId = await dbContext.Chats
+            .AsNoTracking()
+            .Where(x => x.Id == chatId)
+            .OrderBy(x => x.Id)
+            .Select(x => x.ActiveLeafTurnId)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return await LoadActiveAsync(dbContext, chatId, shellJson, cancellationToken);
+        return await LoadActiveAsync(dbContext, chatId, shell, activeLeafTurnId ?? "", cancellationToken);
     }
 
     public static async Task<RpTranscriptState> LoadActiveAsync(
         RpDbContext dbContext,
         string chatId,
-        string? transcriptJson,
+        ChatTranscriptStateRow? shell,
+        string activeLeafTurnId,
         CancellationToken cancellationToken)
     {
-        var state = PersistenceJson.Deserialize(transcriptJson, new RpTranscriptState());
+        var state = ChatDocumentPersistenceMapper.ToTranscriptShell(shell, activeLeafTurnId);
 
         if (string.IsNullOrWhiteSpace(state.ActiveLeafTurnId))
             return state;
@@ -82,6 +88,7 @@ internal static class TranscriptPersistenceStore
         await SaveTurnRowsAsync(dbContext, document, chatId, cancellationToken);
         await SaveSnapshotRowsAsync(dbContext, document, chatId, cancellationToken);
         await SaveCurrentSceneCharacterRowsAsync(dbContext, document, chatId, cancellationToken);
+        await SaveCurrentSceneItemRowsAsync(dbContext, document, chatId, cancellationToken);
     }
 
     static async Task SaveTurnRowsAsync(
@@ -155,6 +162,31 @@ internal static class TranscriptPersistenceStore
             {
                 row = new() { ChatId = chatId, CharacterId = characterId };
                 dbContext.ChatCurrentSceneCharacters.Add(row);
+            }
+
+            row.SortOrder = index;
+        }
+    }
+
+    static async Task SaveCurrentSceneItemRowsAsync(
+        RpDbContext dbContext,
+        RpChatDocument document,
+        string chatId,
+        CancellationToken cancellationToken)
+    {
+        var existingSceneItems = await dbContext.ChatCurrentSceneItems
+            .Where(x => x.ChatId == chatId)
+            .ToDictionaryAsync(x => x.ItemId, cancellationToken);
+        var currentScene = TranscriptGraph.GetVisibleScene(document.Transcript);
+        var sceneItemIds = currentScene.InSceneItemIds.ToHashSet(StringComparer.Ordinal);
+        dbContext.ChatCurrentSceneItems.RemoveRange(existingSceneItems.Values.Where(row => !sceneItemIds.Contains(row.ItemId)));
+        for (var index = 0; index < currentScene.InSceneItemIds.Count; index++)
+        {
+            var itemId = currentScene.InSceneItemIds[index];
+            if (!existingSceneItems.TryGetValue(itemId, out var row))
+            {
+                row = new() { ChatId = chatId, ItemId = itemId };
+                dbContext.ChatCurrentSceneItems.Add(row);
             }
 
             row.SortOrder = index;

@@ -10,6 +10,18 @@ If a new requirement exposes that the current implementation is incomplete, stop
 
 The final result should look like we understood this requirement from day one. Favor coherent reconstruction over incremental duct-taping.
 
+## Data Architecture
+
+Before changing story persistence, transcript persistence, story previews, chat listing, or active chat loading, reread [DATA_OVERHAUL.md](DATA_OVERHAUL.md) and [TRANSCRIPT_OVERHAUL.md](TRANSCRIPT_OVERHAUL.md). Those documents are the current architectural source of truth.
+
+AgentRp2 uses a destructive story-data posture while it is still in design. Prefer a clean schema and coherent persistence model over compatibility shims for old chats. Preserve non-story local setup such as providers and app settings where practical, but do not preserve weak story storage.
+
+Do not add new chat-level `*Json` blobs for hot, queryable, or frequently changing story state. Chat list data, active scene state, entity names, entity image ids, image crop data, transcript branch ids, counts, dates, sort order, and other preview/search fields belong in relational rows/columns or explicit projections. JSON is acceptable for cold row-owned detail payloads such as deep profiles, settings documents, prompt overrides, generation metadata, and trace/debug payloads.
+
+Story lists must use a first-class story preview read model and shared preview UI components. Sidebar story rows, active story picker rows, startup resume cards, and similar surfaces must not independently resolve avatar/crop/location/character preview logic from hydrated chat documents.
+
+When touching large persistence or store files, split focused row models, mappers, stores, and query helpers rather than continuing to grow giant files. `ChatStores.cs`, `RpDbContext.cs`, and persistence implementations should trend smaller and more focused over time, not become junk drawers with a namespace. Yes, that is a technical term now.
+
 ## DRY - Don't Repeat Yourself
 Treat duplication as a maintenance risk, not just a style issue.
 

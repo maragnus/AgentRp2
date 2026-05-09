@@ -623,8 +623,8 @@ public sealed class StoryAssistantStoreTests
     {
         public event Func<RoleplayStoreNotification, Task>? Changed;
 
-        public Task<IReadOnlyList<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<RpChat>>([document.Chat]);
+        public Task<IReadOnlyList<StoryPreview>> LoadStoryPreviewsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StoryPreview>>([StoryPreviewProjector.FromDocument(document)]);
 
         public Task<IReadOnlyList<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(providers);
@@ -639,8 +639,8 @@ public sealed class StoryAssistantStoreTests
         public Task<RpChatDocument> GetChatSnapshotAsync(string chatId, CancellationToken cancellationToken = default) =>
             Task.FromResult(document);
 
-        public Task<IReadOnlyList<RpChat>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<RpChat>>([document.Chat]);
+        public Task<IReadOnlyList<StoryPreview>> AddChatAsync(Guid originSessionId, StoryCreationOptions options, RpChatDocument? template, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StoryPreview>>([StoryPreviewProjector.FromDocument(document)]);
 
         public Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;

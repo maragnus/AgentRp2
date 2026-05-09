@@ -73,6 +73,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<RpDbContext>>();
     await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+    await DestructiveStoryDatabaseReset.ResetStorySchemaIfNeededAsync(dbContext);
     await dbContext.Database.MigrateAsync();
 }
 

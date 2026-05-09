@@ -203,7 +203,7 @@
                 <div class="story-resume-grid">
                     @foreach (var story in ResumeStories)
                     {
-                        <StoryResumeCard @key="story.Id"
+                        <StoryResumeCard @key="story.ChatId"
                                          Story="story"
                                          OnClick="@(() => SelectStory(story))" />
                     }
@@ -260,7 +260,7 @@
 
     IMessageSpeechService? MessageSpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
     ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
-    RpChat Chat => Session.Chats.Active!;
+    RpChat Chat => Session.ActiveChat.Current!.Chat;
     RpTranscriptOptionsState Options => Session.Chat.Transcript.Options;
     string TurnShape => string.IsNullOrWhiteSpace(Options.TurnShape)
         ? TurnShapePickerOptions.Auto
@@ -272,7 +272,7 @@
     RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
     RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
     IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();
-    IReadOnlyList<RpChat> ResumeStories => Session.Chats.Items.Take(3).ToList();
+    IReadOnlyList<StoryPreview> ResumeStories => Session.Chats.Items.Take(3).ToList();
     string SelectionError => string.IsNullOrWhiteSpace(RouteSelectionError) ? StorySelectionError : RouteSelectionError;
 
     bool IsGuided => Draft.Trim().Length > 0;
@@ -352,7 +352,7 @@
 
     protected override void OnInitialized()
     {
-        ActiveChatId = Session.Chats.Active?.Id ?? "";
+        ActiveChatId = Session.Chats.Active?.ChatId ?? "";
         KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
         LastTranscriptScrollSignature = BuildTranscriptScrollSignature();
         Session.Changed += OnSessionChanged;
@@ -366,7 +366,7 @@
 
     async Task OnSessionChanged()
     {
-        var chatId = Session.Chats.Active?.Id ?? "";
+        var chatId = Session.Chats.Active?.ChatId ?? "";
         if (!string.Equals(ActiveChatId, chatId, StringComparison.Ordinal))
         {
             ActiveChatId = chatId;
@@ -403,10 +403,10 @@
         await Session.SetSpeakingAsAsync(character);
     }
 
-    async Task SelectStory(RpChat story)
+    async Task SelectStory(StoryPreview story)
     {
         StorySelectionError = "";
-        Navigation.NavigateTo(ChatUrl(story.Id));
+        Navigation.NavigateTo(ChatUrl(story.ChatId));
         await Task.CompletedTask;
     }
 

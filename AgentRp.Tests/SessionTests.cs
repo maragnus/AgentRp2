@@ -37,7 +37,7 @@ public sealed class SessionTests
 
         await session.Chats.SelectAsync("ch2");
 
-        Assert.Equal("ch2", session.Chats.Active?.Id);
+        Assert.Equal("ch2", session.Chats.Active?.ChatId);
         Assert.NotEmpty(session.Chat.Characters.Items);
         Assert.NotEmpty(session.Chat.Locations.Items);
         Assert.NotEmpty(session.Chat.Images.Items);
@@ -210,7 +210,7 @@ public sealed class SessionTests
         await using var liveStore = NewLiveStore();
         var session = new RoleplaySession(liveStore, new TestModelCapabilityCatalog(), entityNotifier: notifier);
         await session.InitializeAsync();
-        var chatId = session.Chats.Active?.Id ?? "";
+        var chatId = session.Chats.Active?.ChatId ?? "";
         var character = session.Chat.Characters.Items.First();
         var image = session.Chat.Images.Items.First();
 

@@ -7,16 +7,11 @@
                     AriaLabel="@Title"
                     OnClick="@OnClick">
     <LeadingContent>
-        <span class="sidebar-story-avatars" aria-label="@AvatarSummary">
-            @foreach (var character in VisibleSceneCharacters)
-            {
-                <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" EntityType="character" EntityId="@character.Id" ChatId="@Story.Id" Size="22" Class="sidebar-chat-avatar" />
-            }
-            @if (!VisibleSceneCharacters.Any())
-            {
-                <span class="sidebar-row-icon"><FaIcon Name="book-open" /></span>
-            }
-        </span>
+        <StoryPreviewAvatarStack Characters="Story.SceneCharacters"
+                                 Class="sidebar-story-avatars"
+                                 AvatarClass="sidebar-chat-avatar"
+                                 EmptyClass="sidebar-row-icon"
+                                 EmptyIcon="book-open" />
     </LeadingContent>
     <TitleContent>
         <span class="sidebar-chat-title-line">
@@ -30,14 +25,10 @@
 </PickerOptionButton>
 
 @code {
-    [Parameter] public RpChat Story { get; set; } = new();
+    [Parameter] public StoryPreview Story { get; set; } = new();
     [Parameter] public bool Active { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
 
-    IReadOnlyList<RpChatSceneCharacter> VisibleSceneCharacters => Story.SceneCharacters.Take(3).ToList();
-    string Subtitle => string.Join(" · ", new[] { Story.Location, Story.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    string Title => string.IsNullOrWhiteSpace(Story.Updated) ? Story.Title : $"{Story.Title} · {Story.Updated}";
-    string AvatarSummary => Story.SceneCharacters.Count == 0
-        ? "No characters in scene"
-        : $"In scene: {string.Join(", ", Story.SceneCharacters.Take(3).Select(character => character.Name))}";
+    string Subtitle => string.Join(" / ", new[] { Story.ActiveLocation?.Name, Story.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string Title => string.IsNullOrWhiteSpace(Story.Updated) ? Story.Title : $"{Story.Title} / {Story.Updated}";
 }

@@ -106,7 +106,7 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<RpItem> Items => Session.Chat.Items.Items;
-    string ActiveStoryKey => Session.Chats.Active?.Id ?? "";
+    string ActiveStoryKey => Session.Chats.Active?.ChatId ?? "";
     bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
 
     GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);

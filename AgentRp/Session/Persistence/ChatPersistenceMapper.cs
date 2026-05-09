@@ -1,5 +1,6 @@
 using AgentRp.Data;
 using AgentRp.Models;
+using AgentRp.Services;
 
 namespace AgentRp.Session;
 
@@ -15,8 +16,22 @@ internal static class ChatPersistenceMapper
         Starred = row.Starred,
         Messages = row.ActiveTurnCount > 0 ? row.ActiveTurnCount : row.Messages,
         Location = string.IsNullOrWhiteSpace(row.ActiveLocationName) ? row.Location : row.ActiveLocationName,
-        ActiveLocation = PersistenceJson.Deserialize(row.ActiveLocationJson, (RpChatSceneLocation?)null) ?? FallbackLocation(row),
-        SceneCharacters = PersistenceJson.Deserialize(row.SceneCharactersJson, new List<RpChatSceneCharacter>())
+        ActiveLocation = string.IsNullOrWhiteSpace(row.ActiveLocationName)
+            ? null
+            : new() { Id = row.ActiveLocationId, Name = row.ActiveLocationName }
+    };
+
+    public static StoryPreview ToPreview(RpChatRow row, StoryPreviewLocation? location, List<StoryPreviewCharacter> characters) => new()
+    {
+        ChatId = row.Id,
+        Title = row.Title,
+        Starred = row.Starred,
+        VisibleTurnCount = row.ActiveTurnCount > 0 ? row.ActiveTurnCount : row.Messages,
+        LastGeneratedTurnNumber = row.LastGeneratedTurnNumber,
+        LastMessageUtc = row.LastMessageUtc,
+        Updated = row.Updated,
+        ActiveLocation = location ?? FallbackLocation(row),
+        SceneCharacters = characters
     };
 
     public static void Apply(RpChat chat, RpChatRow row, int sortOrder, DateTime now)
@@ -28,23 +43,43 @@ internal static class ChatPersistenceMapper
         row.Starred = chat.Starred;
         row.Messages = chat.Messages;
         row.Location = chat.Location;
-        row.ActiveLocationJson = PersistenceJson.Serialize(chat.ActiveLocation);
-        row.SceneCharactersJson = PersistenceJson.Serialize(chat.SceneCharacters);
         row.SortOrder = sortOrder;
         row.UpdatedUtc = now;
     }
 
     public static void ApplyTranscriptPreview(RpChatDocument document, RpChatRow row)
     {
+        var scene = TranscriptGraph.GetVisibleScene(document.Transcript);
+        var location = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId);
         row.ActiveLeafTurnId = document.Transcript.ActiveLeafTurnId;
         row.ActiveTurnCount = document.Chat.Messages;
-        row.ActiveLocationId = document.Chat.ActiveLocation?.Id ?? "";
-        row.ActiveLocationName = document.Chat.ActiveLocation?.Name ?? document.Chat.Location;
+        row.ActiveLocationId = scene.LocationId;
+        row.ActiveLocationName = location?.Name
+            ?? (string.IsNullOrWhiteSpace(scene.LocationName) ? document.Chat.Location : scene.LocationName);
         row.SnapshotCount = document.Transcript.Snapshots.Count;
     }
 
-    static RpChatSceneLocation? FallbackLocation(RpChatRow row) =>
-        string.IsNullOrWhiteSpace(row.Location)
+    public static StoryPreviewAvatar? ToPreviewAvatar(ImageAssetRow? image)
+    {
+        if (image is null)
+            return null;
+
+        return new()
+        {
+            ImageId = image.Id,
+            Url = ImageGenerationService.BuildImageUrl(image.Id),
+            FocusXPercent = image.AvatarFocusXPercent ?? 50,
+            FocusYPercent = image.AvatarFocusYPercent ?? 50,
+            ZoomPercent = image.AvatarZoomPercent ?? 100
+        };
+    }
+
+    static StoryPreviewLocation? FallbackLocation(RpChatRow row) =>
+        string.IsNullOrWhiteSpace(row.ActiveLocationName) && string.IsNullOrWhiteSpace(row.Location)
             ? null
-            : new() { Name = row.Location };
+            : new()
+            {
+                LocationId = row.ActiveLocationId,
+                Name = string.IsNullOrWhiteSpace(row.ActiveLocationName) ? row.Location : row.ActiveLocationName
+            };
 }

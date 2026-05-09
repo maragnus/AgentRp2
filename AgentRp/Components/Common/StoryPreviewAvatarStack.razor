@@ -1,0 +1,34 @@
+<span class="@CssClass" aria-label="@AvatarSummary">
+    @foreach (var character in VisibleCharacters)
+    {
+        <StoryAvatar @key="character.CharacterId"
+                     Name="@character.Name"
+                     ImageUrl="@character.Avatar?.Url"
+                     Crop="@CropFor(character.Avatar)"
+                     Class="@AvatarClass" />
+    }
+    @if (VisibleCharacters.Count == 0 && !string.IsNullOrWhiteSpace(EmptyIcon))
+    {
+        <span class="@EmptyClass"><FaIcon Name="@EmptyIcon" /></span>
+    }
+</span>
+
+@code {
+    [Parameter] public IReadOnlyList<StoryPreviewCharacter> Characters { get; set; } = [];
+    [Parameter] public int Max { get; set; } = 3;
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public string AvatarClass { get; set; } = "";
+    [Parameter] public string EmptyClass { get; set; } = "";
+    [Parameter] public string EmptyIcon { get; set; } = "";
+
+    IReadOnlyList<StoryPreviewCharacter> VisibleCharacters => Characters.Take(Max).ToList();
+    string CssClass => Class;
+    string AvatarSummary => Characters.Count == 0
+        ? "No characters in scene"
+        : $"In scene: {string.Join(", ", Characters.Take(Max).Select(character => character.Name))}";
+
+    static ImageAvatarCropView CropFor(StoryPreviewAvatar? avatar) =>
+        avatar is null
+            ? ImageAvatarCropView.Default
+            : new(avatar.FocusXPercent, avatar.FocusYPercent, avatar.ZoomPercent);
+}

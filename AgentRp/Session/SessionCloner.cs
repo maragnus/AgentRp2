@@ -6,6 +6,42 @@ namespace AgentRp.Session;
 
 static class SessionCloner
 {
+    public static StoryPreview Clone(StoryPreview value) => new()
+    {
+        ChatId = value.ChatId,
+        Title = value.Title,
+        Starred = value.Starred,
+        VisibleTurnCount = value.VisibleTurnCount,
+        LastGeneratedTurnNumber = value.LastGeneratedTurnNumber,
+        LastMessageUtc = value.LastMessageUtc,
+        Updated = value.Updated,
+        ActiveLocation = value.ActiveLocation is null ? null : Clone(value.ActiveLocation),
+        SceneCharacters = value.SceneCharacters.Select(Clone).ToList()
+    };
+
+    static StoryPreviewLocation Clone(StoryPreviewLocation value) => new()
+    {
+        LocationId = value.LocationId,
+        Name = value.Name,
+        Avatar = value.Avatar is null ? null : Clone(value.Avatar)
+    };
+
+    static StoryPreviewCharacter Clone(StoryPreviewCharacter value) => new()
+    {
+        CharacterId = value.CharacterId,
+        Name = value.Name,
+        Avatar = value.Avatar is null ? null : Clone(value.Avatar)
+    };
+
+    static StoryPreviewAvatar Clone(StoryPreviewAvatar value) => new()
+    {
+        ImageId = value.ImageId,
+        Url = value.Url,
+        FocusXPercent = value.FocusXPercent,
+        FocusYPercent = value.FocusYPercent,
+        ZoomPercent = value.ZoomPercent
+    };
+
     public static RpChat Clone(RpChat value) => new()
     {
         Id = value.Id,

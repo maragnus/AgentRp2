@@ -9,14 +9,13 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
     List<AiProvider> _providers = SeedData.Providers().Select(SessionCloner.Clone).ToList();
     readonly Dictionary<string, RpChatDocument> _documents = [];
 
-    public Task<List<RpChat>> LoadChatsAsync(CancellationToken cancellationToken = default)
+    public Task<List<StoryPreview>> LoadStoryPreviewsAsync(CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
-            foreach (var chat in _chats)
-                ChatPreviewProjector.Apply(chat, GetOrCreateDocument(chat.Id));
-
-            return Task.FromResult(_chats.Select(SessionCloner.Clone).ToList());
+            return Task.FromResult(_chats
+                .Select(chat => StoryPreviewProjector.FromDocument(GetOrCreateDocument(chat.Id)))
+                .ToList());
         }
     }
 
@@ -42,10 +41,10 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             return Task.FromResult(SessionCloner.Clone(GetOrCreateDocument(chatId).Transcript));
     }
 
-    public Task SaveChatsAsync(IReadOnlyList<RpChat> chats, CancellationToken cancellationToken = default)
+    public Task SaveStoryPreviewsAsync(IReadOnlyList<StoryPreview> previews, CancellationToken cancellationToken = default)
     {
         lock (_gate)
-            _chats = chats.Select(SessionCloner.Clone).ToList();
+            _chats = previews.Select(ToChat).ToList();
 
         return Task.CompletedTask;
     }
@@ -58,6 +57,9 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
         return Task.CompletedTask;
     }
 
+    public Task CreateChatDocumentAsync(RpChatDocument document, CancellationToken cancellationToken = default) =>
+        SaveChatDocumentAsync(document, cancellationToken);
+
     public Task SaveChatDocumentAsync(RpChatDocument document, CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -67,12 +69,25 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
             if (chat is not null)
             {
                 TranscriptProjector.Apply(document);
-                ChatPreviewProjector.Apply(chat, document);
+                var preview = StoryPreviewProjector.FromDocument(document);
+                var updated = ToChat(preview);
+                chat.Title = updated.Title;
+                chat.Updated = updated.Updated;
+                chat.LastMessageUtc = updated.LastMessageUtc;
+                chat.LastGeneratedTurnNumber = updated.LastGeneratedTurnNumber;
+                chat.Starred = updated.Starred;
+                chat.Messages = updated.Messages;
+                chat.Location = updated.Location;
+                chat.ActiveLocation = updated.ActiveLocation;
+                chat.SceneCharacters = updated.SceneCharacters;
             }
         }
 
         return Task.CompletedTask;
     }
+
+    public Task SaveChatAreaAsync(RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken = default) =>
+        SaveChatDocumentAsync(document, cancellationToken);
 
     RpChatDocument GetOrCreateDocument(string chatId)
     {
@@ -98,4 +113,81 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
         _documents[chatId] = document;
         return document;
     }
+
+    static StoryPreview ToPreview(RpChat chat) => new()
+    {
+        ChatId = chat.Id,
+        Title = chat.Title,
+        Starred = chat.Starred,
+        VisibleTurnCount = chat.Messages,
+        LastGeneratedTurnNumber = chat.LastGeneratedTurnNumber,
+        LastMessageUtc = chat.LastMessageUtc,
+        Updated = chat.Updated,
+        ActiveLocation = chat.ActiveLocation is null && string.IsNullOrWhiteSpace(chat.Location)
+            ? null
+            : new()
+            {
+                LocationId = chat.ActiveLocation?.Id ?? "",
+                Name = chat.ActiveLocation?.Name ?? chat.Location,
+                Avatar = ToAvatar(chat.ActiveLocation?.Image)
+            },
+        SceneCharacters = chat.SceneCharacters.Select(character => new StoryPreviewCharacter
+        {
+            CharacterId = character.Id,
+            Name = character.Name,
+            Avatar = ToAvatar(character.Image)
+        }).ToList()
+    };
+
+    static RpChat ToChat(StoryPreview preview) => new()
+    {
+        Id = preview.ChatId,
+        Title = preview.Title,
+        Starred = preview.Starred,
+        Messages = preview.VisibleTurnCount,
+        LastGeneratedTurnNumber = preview.LastGeneratedTurnNumber,
+        LastMessageUtc = preview.LastMessageUtc,
+        Updated = preview.Updated,
+        Location = preview.ActiveLocation?.Name ?? "",
+        ActiveLocation = preview.ActiveLocation is null
+            ? null
+            : new()
+            {
+                Id = preview.ActiveLocation.LocationId,
+                Name = preview.ActiveLocation.Name,
+                ImageId = preview.ActiveLocation.Avatar?.ImageId ?? "",
+                Image = ToGalleryImage(preview.ActiveLocation.Avatar)
+            },
+        SceneCharacters = preview.SceneCharacters.Select(character => new RpChatSceneCharacter
+        {
+            Id = character.CharacterId,
+            Name = character.Name,
+            ImageId = character.Avatar?.ImageId ?? "",
+            Image = ToGalleryImage(character.Avatar)
+        }).ToList()
+    };
+
+    static StoryPreviewAvatar? ToAvatar(GalleryImage? image) =>
+        image is null
+            ? null
+            : new()
+            {
+                ImageId = image.Id,
+                Url = image.Url,
+                FocusXPercent = image.AvatarFocusXPercent,
+                FocusYPercent = image.AvatarFocusYPercent,
+                ZoomPercent = image.AvatarZoomPercent
+            };
+
+    static GalleryImage? ToGalleryImage(StoryPreviewAvatar? avatar) =>
+        avatar is null
+            ? null
+            : new()
+            {
+                Id = avatar.ImageId,
+                Url = avatar.Url,
+                AvatarFocusXPercent = avatar.FocusXPercent,
+                AvatarFocusYPercent = avatar.FocusYPercent,
+                AvatarZoomPercent = avatar.ZoomPercent
+            };
 }

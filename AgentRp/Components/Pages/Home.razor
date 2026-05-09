@@ -144,7 +144,7 @@ else
             return;
 
         var routeChatId = NormalizeRouteChatId(ChatId);
-        var activeChatId = Session.Chats.Active?.Id ?? "";
+        var activeChatId = Session.Chats.Active?.ChatId ?? "";
         if (string.Equals(activeChatId, routeChatId, StringComparison.Ordinal))
         {
             RouteSelectionError = "";

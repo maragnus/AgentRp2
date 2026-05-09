@@ -9,16 +9,12 @@
                      ErrorMessage="@ErrorMessage"
                      Empty="false">
     <LeadingContent>
-        <span class="sidebar-story-trigger-avatars" aria-label="@ActiveAvatarSummary">
-            @foreach (var character in ActiveVisibleSceneCharacters)
-            {
-                <EntityImage @key="character.Id" Name="@character.Name" Image="@character.Image" EntityType="character" EntityId="@character.Id" ChatId="@ActiveStory?.Id" Size="22" Class="sidebar-chat-avatar" />
-            }
-            @if (ActiveVisibleSceneCharacters.Count == 0)
-            {
-                <span class="sidebar-row-icon"><FaIcon Name="book-open" /></span>
-            }
-        </span>
+        <StoryPreviewAvatarStack Characters="@(ActiveStory?.SceneCharacters ?? [])"
+                                 Max="1"
+                                 Class="sidebar-story-trigger-avatars"
+                                 AvatarClass="sidebar-chat-avatar"
+                                 EmptyClass="sidebar-row-icon"
+                                 EmptyIcon="book-open" />
     </LeadingContent>
     <EmptyContent>No stories are available.</EmptyContent>
     <ChildContent Context="picker">
@@ -40,9 +36,9 @@
         {
             @foreach (var story in Stories)
             {
-                <SidebarStoryRow @key="story.Id"
+                <SidebarStoryRow @key="story.ChatId"
                                  Story="story"
-                                 Active="@(ActiveStory?.Id == story.Id)"
+                                 Active="@(ActiveStory?.ChatId == story.ChatId)"
                                  OnClick="@(() => SelectStory(picker, story))" />
             }
         }
@@ -55,16 +51,12 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnNewStory { get; set; }
 
-    IReadOnlyList<RpChat> Stories => Session.Chats.Items;
-    RpChat? ActiveStory => Session.Chats.Active;
-    IReadOnlyList<RpChatSceneCharacter> ActiveVisibleSceneCharacters => ActiveStory?.SceneCharacters.Take(3).ToList() ?? [];
+    IReadOnlyList<StoryPreview> Stories => Session.Chats.Items;
+    StoryPreview? ActiveStory => Session.Chats.Active;
     string ActiveStoryTitle => ActiveStory?.Title ?? (Stories.Count == 0 ? "Add Story" : "Choose Story");
     string ActiveStorySubtitle => ActiveStory is null
         ? (Stories.Count == 0 ? "No stories yet" : "No story loaded")
-        : string.Join(" · ", new[] { ActiveStory.Location, ActiveStory.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    string ActiveAvatarSummary => ActiveStory is null || ActiveStory.SceneCharacters.Count == 0
-        ? "No active story"
-        : $"In scene: {string.Join(", ", ActiveStory.SceneCharacters.Take(3).Select(character => character.Name))}";
+        : string.Join(" / ", new[] { ActiveStory.ActiveLocation?.Name, ActiveStory.Updated }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
     async Task OpenNewStory(AnchoredPopoverContext picker)
     {
@@ -73,10 +65,10 @@
         await OnNewStory.InvokeAsync();
     }
 
-    async Task SelectStory(AnchoredPopoverContext picker, RpChat story)
+    async Task SelectStory(AnchoredPopoverContext picker, StoryPreview story)
     {
         ErrorMessage = null;
-        Navigation.NavigateTo(ChatUrl(story.Id));
+        Navigation.NavigateTo(ChatUrl(story.ChatId));
         await picker.Close();
     }
 

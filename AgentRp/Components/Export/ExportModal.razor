@@ -111,8 +111,8 @@
     [Parameter] public List<RpLocation> Locations { get; set; } = [];
     [Parameter] public List<RpItem> Items { get; set; } = [];
     [Parameter] public List<RpTimelineEntry> Timeline { get; set; } = [];
-    [Parameter] public List<RpChat> Chats { get; set; } = [];
-    [Parameter] public RpChat ActiveChat { get; set; } = new();
+    [Parameter] public List<StoryPreview> Chats { get; set; } = [];
+    [Parameter] public StoryPreview ActiveChat { get; set; } = new();
     [Parameter] public EventCallback OnClose { get; set; }
 
     Dictionary<string, string> Counts => new()
