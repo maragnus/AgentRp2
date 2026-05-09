@@ -161,18 +161,26 @@ public sealed partial class TranscriptStore
                 RemoveSnapshotTimelineEntries(existing);
                 ClearSnapshotTurnLinks(existing);
                 Document.Transcript.Snapshots.Remove(existing);
+                Document.Transcript.DeletedSnapshotIds.Add(existing.Id);
             }
 
             var snapshot = new RpTranscriptSnapshot
             {
                 Id = NextSnapshotId(),
                 TurnId = draft.TurnId,
+                StartTurnId = context.CoveredTurns.First().Id,
+                EndTurnId = context.CoveredTurns.Last().Id,
+                ParentBeforeStartTurnId = context.CoveredTurns.First().ParentTurnId,
+                TurnNumberStart = context.CoveredTurns.First().TurnNumber,
+                TurnNumberEnd = context.CoveredTurns.Last().TurnNumber,
                 CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow,
                 Summary = draft.Summary.Trim(),
                 PrivateIntentByCharacterId = CloneMap(draft.PrivateIntentByCharacterId),
                 CharacterAppearances = CloneMap(draft.CharacterAppearances),
                 Scene = SessionCloner.Clone(draft.Scene),
-                Trace = draft.Trace is null ? null : SessionCloner.Clone(draft.Trace)
+                Trace = draft.Trace is null ? null : SessionCloner.Clone(draft.Trace),
+                IsActive = true
             };
             Document.Transcript.Snapshots.Add(snapshot);
             LinkSnapshotTurns(snapshot, context.CoveredTurns);
@@ -215,6 +223,7 @@ public sealed partial class TranscriptStore
                 RemoveSnapshotTurns(snapshot);
 
             Document.Transcript.Snapshots.Remove(snapshot);
+            Document.Transcript.DeletedSnapshotIds.Add(snapshot.Id);
 
             await SaveTranscriptAndTimelineAsync();
         });
@@ -240,6 +249,8 @@ public sealed partial class TranscriptStore
 
         var snapshotIds = snapshots.Select(snapshot => snapshot.Id).ToHashSet(StringComparer.Ordinal);
         Document.Transcript.Snapshots.RemoveAll(snapshot => snapshotIds.Contains(snapshot.Id));
+        foreach (var snapshotId in snapshotIds)
+            Document.Transcript.DeletedSnapshotIds.Add(snapshotId);
     }
 
     async Task DiscardSnapshotSpeechAsync(RpTranscriptSnapshot snapshot, CancellationToken cancellationToken = default)
@@ -298,9 +309,11 @@ public sealed partial class TranscriptStore
     void LinkSnapshotTurns(RpTranscriptSnapshot snapshot, IEnumerable<RpTranscriptTurn> turns)
     {
         var now = DateTime.UtcNow;
+        var ordinal = 1;
         foreach (var turn in turns)
         {
             turn.SnapshotId = snapshot.Id;
+            turn.ConsumedBySnapshotOrdinal = ordinal++;
             turn.UpdatedUtc = now;
         }
     }
@@ -314,6 +327,7 @@ public sealed partial class TranscriptStore
         foreach (var turn in Document.Transcript.Turns.Where(turn => string.Equals(turn.SnapshotId, snapshot.Id, StringComparison.Ordinal)))
         {
             turn.SnapshotId = "";
+            turn.ConsumedBySnapshotOrdinal = null;
             turn.UpdatedUtc = now;
         }
     }
@@ -336,6 +350,8 @@ public sealed partial class TranscriptStore
             ? ResolveDeletedLeafFallback(activeLeafId, turnIds)
             : "";
         Document.Transcript.Turns.RemoveAll(turn => turnIds.Contains(turn.Id));
+        foreach (var turnId in turnIds)
+            Document.Transcript.DeletedTurnIds.Add(turnId);
         if (turnIds.Contains(activeLeafId))
             Document.Transcript.ActiveLeafTurnId = activeLeafFallback;
 

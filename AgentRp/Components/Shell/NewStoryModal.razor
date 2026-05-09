@@ -1,4 +1,5 @@
 @inject NavigationManager Navigation
+@inject ILogger<NewStoryModal> Logger
 
 <ModalShell Title="New Story"
             Subtitle="Choose how this story should start"
@@ -191,7 +192,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Creating a new story failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Creating a new story failed.",
+                "Creating a new story failed. Mode={Mode}.",
+                Mode);
         }
         finally
         {

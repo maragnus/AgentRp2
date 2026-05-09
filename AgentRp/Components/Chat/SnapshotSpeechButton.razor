@@ -91,19 +91,30 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Regenerating read-aloud for snapshot {SnapshotId} failed.", Snapshot.Id);
+            var error = UserFacingErrorReporter.CaptureWithDetails(
+                Logger,
+                exception,
+                "Regenerating the snapshot read-aloud failed.",
+                "Regenerating read-aloud for snapshot {SnapshotId} failed.",
+                Snapshot.Id);
             await Dialogs.DisplayErrorAsync(
                 "Regenerating read-aloud failed",
-                UserFacingErrorMessageBuilder.Build("Regenerating the snapshot read-aloud failed.", exception),
-                UserFacingErrorMessageBuilder.BuildDetails(exception));
+                error.Message,
+                error.Details);
         }
     }
 
     async Task HandlePlaybackError(Exception exception)
     {
+        var error = UserFacingErrorReporter.CaptureWithDetails(
+            Logger,
+            exception,
+            "Reading this snapshot aloud failed.",
+            "Reading snapshot {SnapshotId} aloud failed during playback.",
+            Snapshot.Id);
         await Dialogs.DisplayErrorAsync(
             "Reading aloud failed",
-            UserFacingErrorMessageBuilder.Build("Reading this snapshot aloud failed.", exception),
-            UserFacingErrorMessageBuilder.BuildDetails(exception));
+            error.Message,
+            error.Details);
     }
 }

@@ -1,3 +1,5 @@
+@inject ILogger<VoicePickerMenu> Logger
+
 <AnchoredPopover Placement="OverlayPlacement.BottomStart"
                  Class="voice-picker-popover"
                  AnchorClass="voice-picker-anchor"
@@ -97,7 +99,13 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {AiProviderVoiceDisplayRules.DisplayVoice(voice)} for {OwnerName} failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Selecting {AiProviderVoiceDisplayRules.DisplayVoice(voice)} for {OwnerName} failed.",
+                "Selecting voice {VoiceId} for {OwnerName} failed.",
+                voice.Id,
+                OwnerName);
         }
     }
 }

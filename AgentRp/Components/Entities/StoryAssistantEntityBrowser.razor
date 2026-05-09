@@ -142,15 +142,7 @@
         _ => Session.Chat.Timeline.MarkChangedAsync()
     };
 
-    Task OnStoreChanged() => InvokeAsync(() =>
-    {
-        Logger.LogInformation(
-            "StoryAssistantEntityBrowser calling StateHasChanged from entity store change. SelectedKey={SelectedKey} Search={Search} EntryCount={EntryCount}",
-            SelectedKey,
-            Search,
-            AllEntries.Count);
-        StateHasChanged();
-    });
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
     void SearchChanged(ChangeEventArgs args)
     {

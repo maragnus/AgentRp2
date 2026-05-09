@@ -1,4 +1,5 @@
 @inject IElevenLabsVoiceCatalogService VoiceCatalogService
+@inject ILogger<ElevenLabsVoiceCatalogModal> Logger
 
 <ModalShell Title="ElevenLabs Voice Catalog" MaxWidth="980px" BodyClass="is-flush" OnClose="OnClose">
     <ModalStackLayout BodyClass="voice-catalog-body">
@@ -186,7 +187,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Loading the ElevenLabs voice catalog failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading the ElevenLabs voice catalog failed.",
+                "Loading ElevenLabs voice catalog failed for provider {ProviderId}.",
+                Provider.Id);
         }
         finally
         {
@@ -208,7 +214,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Refreshing the ElevenLabs voice catalog failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Refreshing the ElevenLabs voice catalog failed.",
+                "Refreshing ElevenLabs voice catalog failed for provider {ProviderId}.",
+                Provider.Id);
         }
         finally
         {
@@ -234,7 +245,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Updating the ElevenLabs voice bookmark failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Updating the ElevenLabs voice bookmark failed.",
+                "Updating ElevenLabs voice bookmark {VoiceId} failed.",
+                change.VoiceId);
         }
     }
 

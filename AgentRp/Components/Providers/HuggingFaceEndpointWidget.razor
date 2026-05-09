@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject IAiProviderWidgetService ProviderWidgetService
+@inject ILogger<HuggingFaceEndpointWidget> Logger
 
 <div class="hf-endpoint-widget">
     @if (!string.IsNullOrWhiteSpace(Error))
@@ -163,7 +164,13 @@
         catch (Exception exception)
         {
             Status = null;
-            Error = UserFacingErrorMessageBuilder.Build($"Loading Hugging Face endpoint status for {DisplayName} failed.", exception);
+            Error = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Loading Hugging Face endpoint status for {DisplayName} failed.",
+                "Loading Hugging Face endpoint status for provider {ProviderId} model {ModelId} failed.",
+                Provider.Id,
+                Model.Id);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -177,7 +184,14 @@
         }
         catch (Exception exception)
         {
-            Error = UserFacingErrorMessageBuilder.Build($"{DescribeAction(action)} the Hugging Face endpoint for {DisplayName} failed.", exception);
+            Error = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"{DescribeAction(action)} the Hugging Face endpoint for {DisplayName} failed.",
+                "Managing Hugging Face endpoint for provider {ProviderId} model {ModelId} failed. Action={Action}.",
+                Provider.Id,
+                Model.Id,
+                action);
         }
     }
 

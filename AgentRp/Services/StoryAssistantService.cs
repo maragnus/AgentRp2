@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using AgentRp.Models;
 using AgentRp.Serialization;
 using AgentRp.Session;
+using Microsoft.Extensions.Logging;
 
 namespace AgentRp.Services;
 
@@ -259,7 +260,9 @@ public sealed partial class StoryAssistantService(
     static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
-public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransitionService = null)
+public sealed class StoryEntityPatchService(
+    SceneTransitionService? sceneTransitionService = null,
+    ILogger<StoryEntityPatchService>? logger = null)
 {
     static readonly string[] LocationFields = ["name", "summary", "description", "atmosphere", "features"];
     static readonly string[] ItemFields = ["name", "summary", "description", "history", "properties"];
@@ -851,7 +854,12 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             item.Status = StoryAssistantItemStatus.Failed;
-            item.DecisionReason = UserFacingErrorMessageBuilder.Build("Setting the scene failed.", exception);
+            item.DecisionReason = UserFacingErrorReporter.Capture(
+                logger,
+                exception,
+                "Setting the scene failed.",
+                "Story Assistant set_scene tool failed for tool call {ToolCallId}.",
+                item.ToolCallId);
             await callbacks.UpdateToolCallAsync(item, cancellationToken);
             return StoryAssistantToolExecutionResult.Completed(Output("failed", new { reason = item.DecisionReason, currentScene = item.Before }));
         }
@@ -932,7 +940,12 @@ public sealed class StoryEntityPatchService(SceneTransitionService? sceneTransit
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             workItem.Status = StoryAssistantWorkItemStatus.Failed;
-            workItem.DecisionReason = UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception);
+            workItem.DecisionReason = UserFacingErrorReporter.Capture(
+                logger,
+                exception,
+                "Resolving Story Assistant action failed.",
+                "Resolving Story Assistant work item {WorkItemId} failed.",
+                workItem.Id);
             workItem.ResultJson = Output("failed", new { reason = workItem.DecisionReason, currentEntity = CurrentWorkItemState(document, workItem) });
             workItem.UpdatedUtc = DateTime.UtcNow;
             await callbacks.UpdateWorkItemAsync(workItem, cancellationToken);

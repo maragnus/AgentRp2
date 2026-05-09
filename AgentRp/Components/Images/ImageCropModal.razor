@@ -105,8 +105,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Loading image crop failed for image {ImageId}.", Image.Id);
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Loading the crop for '{Image.Name}' failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Loading the crop for '{Image.Name}' failed.",
+                "Loading image crop failed for image {ImageId}.",
+                Image.Id);
         }
         finally
         {
@@ -161,8 +165,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Saving image crop failed for image {ImageId}.", Image.Id);
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Saving the crop for '{Image.Name}' failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Saving the crop for '{Image.Name}' failed.",
+                "Saving image crop failed for image {ImageId}.",
+                Image.Id);
         }
         finally
         {

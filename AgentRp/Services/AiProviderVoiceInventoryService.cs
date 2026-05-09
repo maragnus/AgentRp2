@@ -1,4 +1,5 @@
 using AgentRp.Models;
+using Microsoft.Extensions.Logging;
 
 namespace AgentRp.Services;
 
@@ -9,7 +10,9 @@ public interface IAiProviderVoiceInventoryService
     Task<AiProviderVoiceRefreshResult> RefreshModelAsync(AiProvider provider, AiProviderModel model, CancellationToken cancellationToken = default);
 }
 
-public sealed class AiProviderVoiceInventoryService(IAiProviderVoiceDiscoveryService voiceDiscoveryService) : IAiProviderVoiceInventoryService
+public sealed class AiProviderVoiceInventoryService(
+    IAiProviderVoiceDiscoveryService voiceDiscoveryService,
+    ILogger<AiProviderVoiceInventoryService>? logger = null) : IAiProviderVoiceInventoryService
 {
     readonly object gate = new();
     readonly HashSet<string> refreshingKeys = new(StringComparer.Ordinal);
@@ -47,7 +50,13 @@ public sealed class AiProviderVoiceInventoryService(IAiProviderVoiceDiscoverySer
         }
         catch (Exception exception)
         {
-            model.LastVoiceRefreshError = UserFacingErrorMessageBuilder.Build($"Refreshing voices for {DisplayName(model)} failed.", exception);
+            model.LastVoiceRefreshError = UserFacingErrorReporter.Capture(
+                logger,
+                exception,
+                $"Refreshing voices for {DisplayName(model)} failed.",
+                "Refreshing voices for provider {ProviderId} model {ModelId} failed.",
+                provider.Id,
+                model.Id);
             return new(model.Id, DisplayName(model), false, model.LastVoiceRefreshError);
         }
         finally

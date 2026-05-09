@@ -3,6 +3,7 @@
 @inject IModelCapabilityCatalog CapabilityCatalog
 @inject IAiProviderVoiceInventoryService VoiceInventoryService
 @inject IAiProviderCapabilityPipeline CapabilityPipeline
+@inject ILogger<AIProvidersModal> Logger
 
 <ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
     <ModalSplitLayout RailWidth="230px">
@@ -405,7 +406,12 @@
         }
         catch (Exception exception)
         {
-            ProviderError = UserFacingErrorMessageBuilder.Build($"Fetching models from {OnboardMeta.Name} failed.", exception);
+            ProviderError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Fetching models from {OnboardMeta.Name} failed.",
+                "Fetching models during provider onboarding failed for provider type {ProviderType}.",
+                OnboardMeta.Id);
         }
     }
 
@@ -449,7 +455,12 @@
         }
         catch (Exception exception)
         {
-            ProviderError = UserFacingErrorMessageBuilder.Build($"Refreshing models for {Selected.Name} failed.", exception);
+            ProviderError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Refreshing models for {Selected.Name} failed.",
+                "Refreshing models for provider {ProviderId} failed.",
+                Selected.Id);
         }
     }
 

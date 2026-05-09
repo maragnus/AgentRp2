@@ -60,11 +60,14 @@ public sealed class TinifyImageOptimizer(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(exception, "Tinify image optimization failed; storing the original image.");
             return ImageOptimizationResult.Failed(
                 request,
                 fallbackExtension,
-                UserFacingErrorMessageBuilder.Build("Optimizing the image with Tinify failed.", exception));
+                UserFacingErrorReporter.Capture(
+                    logger,
+                    exception,
+                    "Optimizing the image with Tinify failed.",
+                    "Tinify image optimization failed; storing the original image."));
         }
     }
 

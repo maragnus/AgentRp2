@@ -5,6 +5,9 @@ namespace AgentRp.Models;
 public sealed class RpTranscriptState
 {
     public int SchemaVersion { get; set; } = 1;
+    [System.Text.Json.Serialization.JsonIgnore] public bool IsPartial { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public HashSet<string> DeletedTurnIds { get; set; } = new(StringComparer.Ordinal);
+    [System.Text.Json.Serialization.JsonIgnore] public HashSet<string> DeletedSnapshotIds { get; set; } = new(StringComparer.Ordinal);
     public RpSceneFrame RootScene { get; set; } = new();
     public RpWorkingSceneState WorkingScene { get; set; } = new();
     public RpTranscriptOptionsState Options { get; set; } = new();
@@ -60,6 +63,12 @@ public sealed class RpTranscriptTurn
     public RpMessageSpeechState Speech { get; set; } = new();
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
+    public string ConsumedBySnapshotId
+    {
+        get => SnapshotId;
+        set => SnapshotId = value;
+    }
+    public int? ConsumedBySnapshotOrdinal { get; set; }
     public JsonObject Data { get; set; } = new();
 }
 
@@ -79,13 +88,22 @@ public sealed class RpTranscriptSnapshot
 {
     public string Id { get; set; } = "";
     public string TurnId { get; set; } = "";
+    public string StartTurnId { get; set; } = "";
+    public string EndTurnId { get; set; } = "";
+    public string ParentBeforeStartTurnId { get; set; } = "";
+    public int TurnNumberStart { get; set; }
+    public int TurnNumberEnd { get; set; }
     public DateTime CreatedUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
     public string Summary { get; set; } = "";
     public RpMessageSpeechState Speech { get; set; } = new();
     public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
+    public string ConsumedBySnapshotId { get; set; } = "";
+    public int? ConsumedBySnapshotOrdinal { get; set; }
+    public bool IsActive { get; set; } = true;
     public JsonObject Data { get; set; } = new();
 }
 

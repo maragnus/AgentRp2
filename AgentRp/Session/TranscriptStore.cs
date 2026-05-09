@@ -1,5 +1,6 @@
 using AgentRp.Models;
 using AgentRp.Services;
+using Microsoft.Extensions.Logging;
 
 namespace AgentRp.Session;
 
@@ -10,7 +11,8 @@ public sealed partial class TranscriptStore(
     ModelSelectionStore modelSelection,
     ITextGenerationService textGenerationService,
     SceneTransitionService sceneTransitionService,
-    IMessageSpeechService? messageSpeechService = null) : ActiveChatStoreBase(activeChat, registry)
+    IMessageSpeechService? messageSpeechService = null,
+    ILogger<TranscriptStore>? logger = null) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.Transcript;
 
@@ -342,6 +344,7 @@ public sealed partial class TranscriptStore(
 
         await RemoveSnapshotsForTurnsAsync([id]);
         Document.Transcript.Turns.RemoveAll(existing => existing.Id == id);
+        Document.Transcript.DeletedTurnIds.Add(id);
         if (Document.Transcript.ActiveLeafTurnId == id)
             Document.Transcript.ActiveLeafTurnId = children.LastOrDefault()?.Id ?? turn.ParentTurnId;
 
@@ -364,6 +367,8 @@ public sealed partial class TranscriptStore(
         var parentId = TranscriptGraph.FindTurn(Document.Transcript, id)?.ParentTurnId ?? "";
         await RemoveSnapshotsForTurnsAsync(toDelete);
         Document.Transcript.Turns.RemoveAll(turn => toDelete.Contains(turn.Id));
+        foreach (var turnId in toDelete)
+            Document.Transcript.DeletedTurnIds.Add(turnId);
         if (toDelete.Contains(Document.Transcript.ActiveLeafTurnId))
             Document.Transcript.ActiveLeafTurnId = TranscriptGraph.GetChildren(Document.Transcript, parentId).LastOrDefault()?.Id ?? parentId;
 
@@ -453,7 +458,7 @@ public sealed partial class TranscriptStore(
         {
             ClearActiveDraft();
             PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, exception.Trace, scene: sceneOverride);
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Generating transcript turn failed with a model trace.");
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
             return null;
@@ -461,7 +466,7 @@ public sealed partial class TranscriptStore(
         catch (Exception exception)
         {
             ClearActiveDraft();
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Generating transcript turn failed unexpectedly.");
             if (mode is "regenerated" or "replanned")
             {
                 PersistFailedTurn(parentTurnId, guidance, requestedActor, requestedNarrator, mode, turnShape, BuildUnhandledFailureTrace(exception), scene: sceneOverride);
@@ -506,7 +511,7 @@ public sealed partial class TranscriptStore(
                 request.AppearanceByCharacterId,
                 request.PrivateIntentByCharacterId,
                 request.Scene);
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Replanning transcript turn failed with a model trace.");
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
             return null;
@@ -514,7 +519,7 @@ public sealed partial class TranscriptStore(
         catch (Exception exception)
         {
             ClearActiveDraft();
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Replanning transcript turn failed unexpectedly.");
             PersistFailedTurn(
                 request.ParentTurnId,
                 request.Guidance,
@@ -562,7 +567,7 @@ public sealed partial class TranscriptStore(
                 exception.Trace,
                 appearances: request.AppearanceByCharacterId,
                 scene: request.Scene);
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Regenerating transcript turn failed with a model trace.");
             await SaveTranscriptAsync();
             await ClearActiveTraceAsync();
             return null;
@@ -570,7 +575,7 @@ public sealed partial class TranscriptStore(
         catch (Exception exception)
         {
             ClearActiveDraft();
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Regenerating transcript turn failed unexpectedly.");
             PersistFailedTurn(
                 request.ParentTurnId,
                 request.Guidance,

@@ -400,6 +400,9 @@ static class SessionCloner
     public static RpTranscriptState Clone(RpTranscriptState value) => new()
     {
         SchemaVersion = value.SchemaVersion,
+        IsPartial = value.IsPartial,
+        DeletedTurnIds = [.. value.DeletedTurnIds],
+        DeletedSnapshotIds = [.. value.DeletedSnapshotIds],
         RootScene = Clone(value.RootScene),
         WorkingScene = Clone(value.WorkingScene),
         Options = Clone(value.Options),
@@ -410,14 +413,14 @@ static class SessionCloner
         Data = Clone(value.Data)
     };
 
-    static RpWorkingSceneState Clone(RpWorkingSceneState value) => new()
+    public static RpWorkingSceneState Clone(RpWorkingSceneState value) => new()
     {
         IsActive = value.IsActive,
         ParentTurnId = value.ParentTurnId,
         Scene = Clone(value.Scene)
     };
 
-    static RpTranscriptOptionsState Clone(RpTranscriptOptionsState value) => new()
+    public static RpTranscriptOptionsState Clone(RpTranscriptOptionsState value) => new()
     {
         InjectAudioTags = value.InjectAudioTags,
         HideAudioTags = value.HideAudioTags,
@@ -450,6 +453,7 @@ static class SessionCloner
         Speech = Clone(value.Speech),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
+        ConsumedBySnapshotOrdinal = value.ConsumedBySnapshotOrdinal,
         Data = Clone(value.Data)
     };
 
@@ -469,13 +473,22 @@ static class SessionCloner
     {
         Id = value.Id,
         TurnId = value.TurnId,
+        StartTurnId = value.StartTurnId,
+        EndTurnId = value.EndTurnId,
+        ParentBeforeStartTurnId = value.ParentBeforeStartTurnId,
+        TurnNumberStart = value.TurnNumberStart,
+        TurnNumberEnd = value.TurnNumberEnd,
         CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
         Summary = value.Summary,
         Speech = Clone(value.Speech),
         PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         CharacterAppearances = value.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
+        ConsumedBySnapshotId = value.ConsumedBySnapshotId,
+        ConsumedBySnapshotOrdinal = value.ConsumedBySnapshotOrdinal,
+        IsActive = value.IsActive,
         Data = Clone(value.Data)
     };
 

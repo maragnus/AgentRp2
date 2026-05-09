@@ -29,7 +29,17 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
     public Task<RpChatDocument> LoadChatDocumentAsync(string chatId, CancellationToken cancellationToken = default)
     {
         lock (_gate)
-            return Task.FromResult(SessionCloner.Clone(GetOrCreateDocument(chatId)).ApplyProjection());
+        {
+            var document = SessionCloner.Clone(GetOrCreateDocument(chatId));
+            TranscriptProjector.Apply(document);
+            return Task.FromResult(document);
+        }
+    }
+
+    public Task<RpTranscriptState> LoadActiveTranscriptAsync(string chatId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+            return Task.FromResult(SessionCloner.Clone(GetOrCreateDocument(chatId).Transcript));
     }
 
     public Task SaveChatsAsync(IReadOnlyList<RpChat> chats, CancellationToken cancellationToken = default)

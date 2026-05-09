@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject ILogger<ChatDirectionModal> Logger
 
 <ModalShell Title="Direction" Icon="book-open" MaxWidth="900px" BodyClass="is-flush" OnClose="Close">
     <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="620px" RailWidth="164px" Class="chat-direction-tabs">
@@ -151,7 +152,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Saving story direction failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Saving story direction failed.",
+                "Saving story direction failed for chat {ChatId}.",
+                Session.Chats.Active?.Id);
         }
     }
 

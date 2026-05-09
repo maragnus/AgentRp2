@@ -483,17 +483,6 @@ public sealed class StoryAssistantStore(
             ?? state?.Chats.OrderByDescending(chat => chat.UpdatedUtc).FirstOrDefault();
         var lastItem = chat?.Items.LastOrDefault();
 
-        logger?.LogInformation(
-            "StoryAssistantStore notifying changed: {Reason}. ChatId={ChatId} Title={Title} IsBusy={IsBusy} ItemCount={ItemCount} WorkItemCount={WorkItemCount} LastItemKind={LastItemKind} LastItemStatus={LastItemStatus}",
-            reason,
-            chat?.Id ?? "",
-            chat?.Title ?? "",
-            IsBusy,
-            chat?.Items.Count ?? 0,
-            chat?.WorkItems.Count ?? 0,
-            lastItem?.Kind.ToString() ?? "",
-            lastItem?.Status.ToString() ?? "");
-
         return NotifyChangedAsync();
     }
 
@@ -597,7 +586,7 @@ public sealed class StoryAssistantStore(
         }
         catch (Exception exception)
         {
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Clearing Story Assistant remote state failed.");
         }
 
         chat.Items.Clear();
@@ -730,9 +719,13 @@ public sealed class StoryAssistantStore(
         }
         catch (ModelAssistantThreadLostException exception)
         {
-            CaptureBackgroundError(exception);
             assistantChat.RemoteThreadLost = true;
-            assistantChat.RemoteThreadError = UserFacingErrorMessageBuilder.Build("Story Assistant needs a fresh thread.", exception);
+            assistantChat.RemoteThreadError = CaptureBackgroundErrorForUser(
+                exception,
+                logger,
+                "Story Assistant needs a fresh thread.",
+                "Story Assistant remote thread was lost for chat {ChatId}.",
+                document.Chat.Id);
             FailCurrentAssistantMessage(assistantChat, assistantChat.RemoteThreadError, retry, displayMessage, exception);
             if (!string.IsNullOrWhiteSpace(workItemId))
                 MarkWorkItemFailed(assistantChat, workItemId, assistantChat.RemoteThreadError);
@@ -741,8 +734,12 @@ public sealed class StoryAssistantStore(
         }
         catch (Exception exception)
         {
-            CaptureBackgroundError(exception);
-            var message = UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception);
+            var message = CaptureBackgroundErrorForUser(
+                exception,
+                logger,
+                "Story Assistant failed.",
+                "Story Assistant failed for chat {ChatId}.",
+                document.Chat.Id);
             FailCurrentAssistantMessage(assistantChat, message, retry, displayMessage, exception);
             if (!string.IsNullOrWhiteSpace(workItemId))
                 MarkWorkItemFailed(assistantChat, workItemId, message);
@@ -795,7 +792,7 @@ public sealed class StoryAssistantStore(
         }
         catch (Exception exception)
         {
-            CaptureBackgroundError(exception);
+            CaptureBackgroundError(exception, logger, "Clearing Story Assistant chat remote state failed.");
         }
     }
 
@@ -941,8 +938,13 @@ public sealed class StoryAssistantStore(
         }
         catch (Exception exception)
         {
-            CaptureBackgroundError(exception);
-            MarkWorkItemFailed(assistantChat, workItem.Id, UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception));
+            var message = CaptureBackgroundErrorForUser(
+                exception,
+                logger,
+                "Resolving Story Assistant action failed.",
+                "Resolving Story Assistant work item {WorkItemId} failed.",
+                workItem.Id);
+            MarkWorkItemFailed(assistantChat, workItem.Id, message);
         }
 
         if (string.IsNullOrWhiteSpace(workItem.ResultJson) || workItem.Status is StoryAssistantWorkItemStatus.Failed)
@@ -1179,7 +1181,7 @@ public sealed class StoryAssistantStore(
             ResponseId = chat.LastResponseId,
             RequestDisplay = displayMessage,
             LastStreamEvent = lastStreamEvent,
-            Error = exception is null ? "" : UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception),
+            Error = exception is null ? "" : UserFacingErrorReporter.BuildMessage("Story Assistant failed.", exception),
             RecordedUtc = DateTime.UtcNow
         };
     }

@@ -86,13 +86,6 @@
 
     Task OnStoreChanged() => InvokeAsync(() =>
     {
-        Logger.LogInformation(
-            "StoryAssistantModal calling StateHasChanged from StoryAssistantStore change. ActiveView={ActiveView} ActiveChatId={ActiveChatId} TitleDraft={TitleDraft} StoreTitle={StoreTitle} ContextChipCount={ContextChipCount}",
-            ActiveView,
-            ActiveChat.Id,
-            TitleDraft,
-            ActiveChat.Title,
-            ContextChips.Count);
         TitleDraft = ActiveChat.Title;
         StateHasChanged();
     });
@@ -109,29 +102,18 @@
             ContextChips.Add(chip);
 
         ActiveView = "chat";
-        Logger.LogInformation(
-            "StoryAssistantModal calling StateHasChanged after attaching context. EntityType={EntityType} EntityId={EntityId} ContextChipCount={ContextChipCount}",
-            chip.EntityType,
-            chip.EntityId,
-            ContextChips.Count);
         return InvokeAsync(StateHasChanged);
     }
 
     Task RemoveContext(StoryAssistantContextChip chip)
     {
         ContextChips.RemoveAll(item => item.EntityType == chip.EntityType && item.EntityId == chip.EntityId);
-        Logger.LogInformation(
-            "StoryAssistantModal calling StateHasChanged after removing context. EntityType={EntityType} EntityId={EntityId} ContextChipCount={ContextChipCount}",
-            chip.EntityType,
-            chip.EntityId,
-            ContextChips.Count);
         return InvokeAsync(StateHasChanged);
     }
 
     Task ClearContext()
     {
         ContextChips.Clear();
-        Logger.LogInformation("StoryAssistantModal calling StateHasChanged after clearing context.");
         return InvokeAsync(StateHasChanged);
     }
 

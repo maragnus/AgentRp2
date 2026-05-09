@@ -1,4 +1,5 @@
 @inject IAiProviderConnectionService ProviderConnectionService
+@inject ILogger<ProviderConnectionEditor> Logger
 
 <Section Title="Connection" Class="provider-section">
     <AppField Label="Display Name">
@@ -108,7 +109,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Saving {Provider.Name} connection failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Saving {Provider.Name} connection failed.",
+                "Saving provider connection {ProviderId} failed.",
+                Provider.Id);
         }
     }
 
@@ -126,7 +132,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Testing {Draft.Name} failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Testing {Draft.Name} failed.",
+                "Testing provider connection {ProviderId} failed.",
+                Provider.Id);
         }
     }
 

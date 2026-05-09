@@ -451,8 +451,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Creating snapshot draft failed for chat {ChatId}.", Chat.Id);
-            SnapshotError = UserFacingErrorMessageBuilder.Build("Creating the snapshot draft failed.", exception);
+            SnapshotError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Creating the snapshot draft failed.",
+                "Creating snapshot draft failed for chat {ChatId}.",
+                Chat.Id);
         }
         finally
         {
@@ -495,8 +499,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Saving snapshot failed for chat {ChatId}.", Chat.Id);
-            SnapshotError = UserFacingErrorMessageBuilder.Build("Saving the snapshot failed.", exception);
+            SnapshotError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Saving the snapshot failed.",
+                "Saving snapshot failed for chat {ChatId}.",
+                Chat.Id);
         }
         finally
         {
@@ -537,11 +545,16 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Automatically reading message {TurnId} aloud failed.", turn.Id);
+            var error = UserFacingErrorReporter.CaptureWithDetails(
+                Logger,
+                exception,
+                "Automatically reading the new message aloud failed.",
+                "Automatically reading message {TurnId} aloud failed.",
+                turn.Id);
             await Dialogs.DisplayErrorAsync(
                 "Reading aloud failed",
-                UserFacingErrorMessageBuilder.Build("Automatically reading the new message aloud failed.", exception),
-                UserFacingErrorMessageBuilder.BuildDetails(exception));
+                error.Message,
+                error.Details);
         }
     }
 

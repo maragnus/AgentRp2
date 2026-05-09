@@ -1,5 +1,6 @@
 @using AgentRp.Services
 @implements IDisposable
+@inject ILogger<ChatMessage> Logger
 @inject IServiceProvider Services
 @inject IEntityNotifier EntityNotifier
 
@@ -543,7 +544,12 @@
         }
         catch (Exception exception)
         {
-            SpeechInputError = UserFacingErrorMessageBuilder.Build("Loading TTS input failed.", exception);
+            SpeechInputError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading TTS input failed.",
+                "Loading TTS input failed for message {TurnId}.",
+                Message.Id);
         }
         finally
         {

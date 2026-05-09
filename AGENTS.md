@@ -36,7 +36,7 @@ If you choose not to reuse a similar existing implementation, briefly state why.
 Reusable layout and behavior CSS must be owned by common components or common utility classes. Feature/domain CSS may style domain visuals and content, but must not reimplement generic modal, footer, scroll, toolbar, split, list, field, button, or section behavior. If a layout pattern appears more than once, extract or extend a shared primitive before adding another feature-specific class.
 
 ## Non-Negotiable Rules
-- ALWAYS answer user questions without making code changes if the message contains a question.
+- ALWAYS answer user questions without making code changes if the message contains a question. Also, "audit" means we want an investigation to answer questions. DO NOT make code changes.
 - ALWAYS treat a user-presented issue, bug report, performance complaint, unexpected behavior report, or concern as a request for diagnosis and understanding first, not permission to immediately edit code. Investigate, explain the likely root cause, outline options, and wait for an explicit request to implement before making changes.
 - ALWAYS ask before removing or degrading user-facing behavior. NEVER assume feature removal is acceptable.
 - ALWAYS ask when requirements are ambiguous or you are uncertain.
@@ -139,8 +139,11 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 
 ## Displaying Failure Context
 - Every failed async action must tell the user what failed, which item/provider/model was being processed when that matters, and the best available reason the action failed.
-- In catch blocks that set an inline error field, call `UserFacingErrorMessageBuilder.Build(fallbackMessage, exception)` instead of assigning a hand-written generic failure string.
-- In catch blocks that only notify through a toast, call the `IUserFeedbackService.ShowBackgroundError(exception, fallbackMessage, title)` overload instead of formatting the message locally.
+- Every exception shown to the user must also be logged. Do not build a display message in a catch block without logging the same exception.
+- In catch blocks that set an inline error field, dialog message, persisted failure reason, or other user-visible error text, call `UserFacingErrorReporter.Capture(logger, exception, fallbackMessage, logMessage, logArgs...)` instead of calling `UserFacingErrorMessageBuilder.Build(...)` directly.
+- When the UI also needs expanded error details for a dialog, call `UserFacingErrorReporter.CaptureWithDetails(...)` so the exception is logged once and the message/details are built together.
+- For background stores that expose `LastBackgroundError` or persisted failure text, use `CaptureBackgroundError(...)` or `CaptureBackgroundErrorForUser(...)` with a logger. Do not set background error state from a caught exception without logging it.
+- `UserFacingErrorReporter.BuildMessage(...)` is only for formatting an exception that was already captured and logged earlier in the same error path, such as diagnostic metadata. It must not be used as the primary catch-block handling.
 - Never hand-write a generic caught-exception failure message when the exception is available; use a direct string only for validation or guard messages that already explain the exact reason.
 - If a service, domain validation, or exception chain contains a meaningful reason, show a sanitized version of that reason to the user.
 - If no structured or domain-specific reason exists, show the sanitized exception message rather than replacing it with a vague generic failure.

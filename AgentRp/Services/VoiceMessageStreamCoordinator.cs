@@ -178,8 +178,12 @@ public sealed class VoiceMessageStreamCoordinator(
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Generating voice message {VoiceMessageId} failed.", request.VoiceMessageId);
-            var message = UserFacingErrorMessageBuilder.Build("Generating read-aloud failed.", exception);
+            var message = UserFacingErrorReporter.Capture(
+                logger,
+                exception,
+                "Generating read-aloud failed.",
+                "Generating voice message {VoiceMessageId} failed.",
+                request.VoiceMessageId);
             await MarkFailedAsync(request.VoiceMessageId, message);
             Complete(live, exception);
         }

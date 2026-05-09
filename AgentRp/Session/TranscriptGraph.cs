@@ -80,11 +80,21 @@ static class TranscriptGraph
             return [];
 
         var byId = transcript.Turns.ToDictionary(turn => turn.Id, StringComparer.Ordinal);
+        var snapshotByEndTurnId = transcript.Snapshots
+            .Where(snapshot => snapshot.IsActive && !string.IsNullOrWhiteSpace(snapshot.EndTurnId))
+            .GroupBy(snapshot => snapshot.EndTurnId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(snapshot => snapshot.CreatedUtc).First(), StringComparer.Ordinal);
         var path = new List<RpTranscriptTurn>();
         var currentId = transcript.ActiveLeafTurnId;
         while (!string.IsNullOrWhiteSpace(currentId) && byId.TryGetValue(currentId, out var turn))
         {
             path.Add(turn);
+            if (snapshotByEndTurnId.TryGetValue(currentId, out var snapshot))
+            {
+                currentId = snapshot.ParentBeforeStartTurnId;
+                continue;
+            }
+
             currentId = turn.ParentTurnId;
         }
 

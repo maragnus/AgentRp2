@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject IModelSelectionNotifier ModelSelectionNotifier
+@inject ILogger<ActiveModelPicker> Logger
 
 <AnchoredPopover Placement="@Placement"
                  Class="@PopoverClass"
@@ -117,7 +118,14 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {AiProviderModelSelectionRules.Label(Role).ToLowerInvariant()} model {modelId} failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Selecting {AiProviderModelSelectionRules.Label(Role).ToLowerInvariant()} model {modelId} failed.",
+                "Selecting active {Role} model {ProviderId}/{ModelId} failed.",
+                Role,
+                providerId,
+                modelId);
         }
     }
 

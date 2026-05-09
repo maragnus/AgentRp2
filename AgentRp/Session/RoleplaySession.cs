@@ -45,7 +45,7 @@ public sealed class RoleplaySession(
         Registry = new(_sessionId, liveStore, ActiveChat);
         Chats = new(_sessionId, liveStore, Registry, ActiveChat);
         Chats.ActiveSession = this;
-        Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
+        Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService, loggerFactory?.CreateLogger<ProviderStore>());
         ModelSelection = new(Providers, _globalModelSelectionStore, _modelSelectionNotifier);
         Providers.ModelSelection = ModelSelection;
         Chat = new(ActiveChat, Registry, Providers, ModelSelection, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier, loggerFactory);
@@ -191,7 +191,7 @@ public sealed class ChatWorkspace
         Items = new(activeChat, registry, entityNotifier);
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry, entityNotifier);
-        Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService);
+        Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService, loggerFactory?.CreateLogger<TranscriptStore>());
         StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService, loggerFactory?.CreateLogger<StoryAssistantStore>());
         ChatDirection = new(activeChat, registry);
         NarratorProfile = new(activeChat, registry);
@@ -278,7 +278,8 @@ public sealed class ProviderStore(
     Guid sessionId,
     ILiveRoleplayStore liveStore,
     IAiProviderCapabilityPipeline? capabilityPipeline = null,
-    IAiProviderWidgetService? widgetService = null) : StoreBase
+    IAiProviderWidgetService? widgetService = null,
+    ILogger<ProviderStore>? logger = null) : StoreBase
 {
     readonly List<AiProvider> _items = [];
     readonly HashSet<string> _widgetLoadAttempts = new(StringComparer.Ordinal);
@@ -348,7 +349,12 @@ public sealed class ProviderStore(
         }
         catch (Exception exception)
         {
-            provider.LastMetricsError = UserFacingErrorMessageBuilder.Build($"Refreshing widget details for {provider.Name} failed.", exception);
+            provider.LastMetricsError = UserFacingErrorReporter.Capture(
+                logger,
+                exception,
+                $"Refreshing widget details for {provider.Name} failed.",
+                "Refreshing widget details for provider {ProviderId} failed.",
+                provider.Id);
         }
 
         await MarkChangedAsync();

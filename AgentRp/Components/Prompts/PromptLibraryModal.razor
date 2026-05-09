@@ -1,5 +1,6 @@
 @inject IJSRuntime JS
 @implements IDisposable
+@inject ILogger<PromptLibraryModal> Logger
 
 <ModalShell Title="Prompt Library" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
     <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="184px">
@@ -200,7 +201,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Resetting the prompt library failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Resetting the prompt library failed.",
+                "Resetting prompt library failed for chat {ChatId}.",
+                Session.Chats.Active?.Id);
         }
     }
 
@@ -221,7 +227,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Saving the prompt library failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Saving the prompt library failed.",
+                "Saving prompt library failed for chat {ChatId}.",
+                Session.Chats.Active?.Id);
         }
     }
 

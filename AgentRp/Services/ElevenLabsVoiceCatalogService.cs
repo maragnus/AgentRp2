@@ -5,6 +5,7 @@ using AgentRp.Data;
 using AgentRp.Models;
 using AgentRp.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace AgentRp.Services;
 
@@ -21,7 +22,8 @@ public interface IElevenLabsVoiceCatalogService
 
 public sealed class ElevenLabsVoiceCatalogService(
     IDbContextFactory<RpDbContext> dbContextFactory,
-    IHttpClientFactory httpClientFactory) : IElevenLabsVoiceCatalogService
+    IHttpClientFactory httpClientFactory,
+    ILogger<ElevenLabsVoiceCatalogService>? logger = null) : IElevenLabsVoiceCatalogService
 {
     const string StateId = "global";
     readonly object gate = new();
@@ -127,7 +129,12 @@ public sealed class ElevenLabsVoiceCatalogService(
             }
             catch (Exception exception)
             {
-                state.LastRefreshError = UserFacingErrorMessageBuilder.Build("Refreshing the ElevenLabs voice catalog failed.", exception);
+                state.LastRefreshError = UserFacingErrorReporter.Capture(
+                    logger,
+                    exception,
+                    "Refreshing the ElevenLabs voice catalog failed.",
+                    "Refreshing ElevenLabs voice catalog failed for provider {ProviderId}.",
+                    provider.Id);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 

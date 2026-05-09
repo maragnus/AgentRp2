@@ -71,8 +71,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "{ErrorFallback}", ErrorFallback);
-            Error = UserFacingErrorMessageBuilder.Build(ErrorFallback, exception);
+            Error = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                ErrorFallback,
+                "{ErrorFallback}",
+                ErrorFallback);
             await OnError.InvokeAsync(exception);
         }
         finally
@@ -89,8 +93,12 @@
             return;
 
         var exception = new InvalidOperationException(message);
-        Logger.LogError(exception, "{ErrorFallback}", ErrorFallback);
-        Error = UserFacingErrorMessageBuilder.Build(ErrorFallback, exception);
+        Error = UserFacingErrorReporter.Capture(
+            Logger,
+            exception,
+            ErrorFallback,
+            "{ErrorFallback}",
+            ErrorFallback);
         await OnError.InvokeAsync(exception);
         StateHasChanged();
     });

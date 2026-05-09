@@ -1,3 +1,6 @@
+using AgentRp.Services;
+using Microsoft.Extensions.Logging;
+
 namespace AgentRp.Session;
 
 public abstract class StoreBase : IDisposable
@@ -14,6 +17,23 @@ public abstract class StoreBase : IDisposable
     protected void CaptureBackgroundError(Exception exception)
     {
         LastBackgroundError = exception;
+    }
+
+    protected void CaptureBackgroundError(Exception exception, ILogger? logger, string logMessage, params object?[] logArgs)
+    {
+        LastBackgroundError = exception;
+        UserFacingErrorReporter.Log(logger, exception, logMessage, logArgs);
+    }
+
+    protected string CaptureBackgroundErrorForUser(
+        Exception exception,
+        ILogger? logger,
+        string fallbackMessage,
+        string logMessage,
+        params object?[] logArgs)
+    {
+        LastBackgroundError = exception;
+        return UserFacingErrorReporter.Capture(logger, exception, fallbackMessage, logMessage, logArgs);
     }
 
     protected void ClearBackgroundError()

@@ -1,7 +1,5 @@
-using System.Text.Json;
 using AgentRp.Data;
 using AgentRp.Models;
-using AgentRp.Serialization;
 
 namespace AgentRp.Session;
 
@@ -57,18 +55,51 @@ internal static class AiProviderPersistenceMapper
         RefreshedUtc = row.RefreshedUtc
     };
 
-    static T Deserialize<T>(string? json, T fallback)
+    public static AiProviderRow ToRow(AiProvider provider, int sortOrder, DateTime now) => new()
     {
-        if (string.IsNullOrWhiteSpace(json))
-            return fallback;
+        Id = provider.Id,
+        Name = provider.Name,
+        Type = provider.Type,
+        Enabled = provider.Enabled,
+        ApiKey = provider.ApiKey,
+        ManagementApiKey = provider.ManagementApiKey,
+        Endpoint = provider.Endpoint,
+        AccountId = provider.AccountId,
+        ProjectId = provider.ProjectId,
+        TeamId = provider.TeamId,
+        LastMetricsRefreshUtc = provider.LastMetricsRefreshUtc,
+        LastMetricsError = provider.LastMetricsError,
+        SortOrder = sortOrder,
+        CreatedUtc = now,
+        UpdatedUtc = now,
+        Models = provider.Models.Select(ToRow).ToList(),
+        Metrics = provider.Metrics.Select(ToRow).ToList()
+    };
 
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, AppJsonSerializerOptions.Web) ?? fallback;
-        }
-        catch (JsonException)
-        {
-            return fallback;
-        }
-    }
+    static AiProviderModelRow ToRow(AiProviderModel model, int sortOrder) => new()
+    {
+        Id = model.Id,
+        DisplayName = model.DisplayName,
+        Endpoint = model.Endpoint,
+        Repository = model.Repository,
+        CreatedUnix = model.CreatedUnix,
+        Enabled = model.Enabled,
+        RolesJson = PersistenceJson.Serialize(model.Roles),
+        LastVoiceRefreshUtc = model.LastVoiceRefreshUtc,
+        LastVoiceRefreshError = model.LastVoiceRefreshError,
+        VoicesJson = PersistenceJson.Serialize(model.Voices),
+        SortOrder = sortOrder
+    };
+
+    static AiProviderMetricRow ToRow(AiProviderMetric metric) => new()
+    {
+        Id = string.IsNullOrWhiteSpace(metric.Id) ? $"pm{Guid.NewGuid():N}" : metric.Id,
+        Kind = metric.Kind,
+        Label = metric.Label,
+        Value = metric.Value,
+        Detail = metric.Detail,
+        RefreshedUtc = metric.RefreshedUtc
+    };
+
+    static T Deserialize<T>(string? json, T fallback) => PersistenceJson.Deserialize(json, fallback);
 }

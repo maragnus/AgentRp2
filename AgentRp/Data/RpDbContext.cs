@@ -6,6 +6,9 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
 {
     public DbSet<RpChatRow> Chats => Set<RpChatRow>();
     public DbSet<RpChatDocumentRow> ChatDocuments => Set<RpChatDocumentRow>();
+    public DbSet<TranscriptTurnRow> TranscriptTurns => Set<TranscriptTurnRow>();
+    public DbSet<TranscriptSnapshotRow> TranscriptSnapshots => Set<TranscriptSnapshotRow>();
+    public DbSet<ChatCurrentSceneCharacterRow> ChatCurrentSceneCharacters => Set<ChatCurrentSceneCharacterRow>();
     public DbSet<AiProviderRow> AiProviders => Set<AiProviderRow>();
     public DbSet<AiProviderModelRow> AiProviderModels => Set<AiProviderModelRow>();
     public DbSet<AiProviderMetricRow> AiProviderMetrics => Set<AiProviderMetricRow>();
@@ -24,6 +27,9 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.Title).HasMaxLength(500);
             builder.Property(x => x.Updated).HasMaxLength(100);
             builder.Property(x => x.Location).HasMaxLength(500);
+            builder.Property(x => x.ActiveLeafTurnId).HasMaxLength(80);
+            builder.Property(x => x.ActiveLocationId).HasMaxLength(80);
+            builder.Property(x => x.ActiveLocationName).HasMaxLength(500);
             builder.Property(x => x.ActiveLocationJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.SceneCharactersJson).HasColumnType("nvarchar(max)");
             builder.HasIndex(x => x.SortOrder);
@@ -52,6 +58,62 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.PromptLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.CharacterTraitLibraryJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.ModelTuningJson).HasColumnType("nvarchar(max)");
+        });
+
+        modelBuilder.Entity<TranscriptTurnRow>(builder =>
+        {
+            builder.HasKey(x => new { x.ChatId, x.Id });
+            builder.Property(x => x.ChatId).HasMaxLength(80);
+            builder.Property(x => x.Id).HasMaxLength(80);
+            builder.Property(x => x.ParentTurnId).HasMaxLength(80);
+            builder.Property(x => x.Mode).HasMaxLength(80);
+            builder.Property(x => x.AuthorCharacterId).HasMaxLength(80);
+            builder.Property(x => x.AuthorName).HasMaxLength(500);
+            builder.Property(x => x.ActorCharacterId).HasMaxLength(80);
+            builder.Property(x => x.ActorName).HasMaxLength(500);
+            builder.Property(x => x.Guidance).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.Body).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.SceneLocationId).HasMaxLength(80);
+            builder.Property(x => x.SceneLocationName).HasMaxLength(500);
+            builder.Property(x => x.SceneJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.PlanJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.AppearanceJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.PrivateIntentJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.SpeechJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.TraceJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.ConsumedBySnapshotId).HasMaxLength(80);
+            builder.HasIndex(x => new { x.ChatId, x.ParentTurnId });
+            builder.HasIndex(x => new { x.ChatId, x.ConsumedBySnapshotId, x.ConsumedBySnapshotOrdinal });
+        });
+
+        modelBuilder.Entity<TranscriptSnapshotRow>(builder =>
+        {
+            builder.HasKey(x => new { x.ChatId, x.Id });
+            builder.Property(x => x.ChatId).HasMaxLength(80);
+            builder.Property(x => x.Id).HasMaxLength(80);
+            builder.Property(x => x.TurnId).HasMaxLength(80);
+            builder.Property(x => x.StartTurnId).HasMaxLength(80);
+            builder.Property(x => x.EndTurnId).HasMaxLength(80);
+            builder.Property(x => x.ParentBeforeStartTurnId).HasMaxLength(80);
+            builder.Property(x => x.Summary).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.SceneLocationId).HasMaxLength(80);
+            builder.Property(x => x.SceneLocationName).HasMaxLength(500);
+            builder.Property(x => x.SceneJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.SpeechJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.PrivateIntentJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.CharacterAppearancesJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.TraceJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.ConsumedBySnapshotId).HasMaxLength(80);
+            builder.HasIndex(x => new { x.ChatId, x.EndTurnId, x.IsActive });
+            builder.HasIndex(x => new { x.ChatId, x.ConsumedBySnapshotId, x.ConsumedBySnapshotOrdinal });
+        });
+
+        modelBuilder.Entity<ChatCurrentSceneCharacterRow>(builder =>
+        {
+            builder.HasKey(x => new { x.ChatId, x.CharacterId });
+            builder.Property(x => x.ChatId).HasMaxLength(80);
+            builder.Property(x => x.CharacterId).HasMaxLength(80);
+            builder.HasIndex(x => new { x.ChatId, x.SortOrder });
         });
 
         modelBuilder.Entity<AiProviderRow>(builder =>
@@ -187,196 +249,4 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
         });
     }
-}
-
-public sealed class RpChatRow
-{
-    public string Id { get; set; } = "";
-    public string Title { get; set; } = "";
-    public string Updated { get; set; } = "";
-    public DateTime? LastMessageUtc { get; set; }
-    public int LastGeneratedTurnNumber { get; set; }
-    public bool Starred { get; set; }
-    public int Messages { get; set; }
-    public string Location { get; set; } = "";
-    public string ActiveLocationJson { get; set; } = "";
-    public string SceneCharactersJson { get; set; } = "[]";
-    public int SortOrder { get; set; }
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-    public RpChatDocumentRow? Document { get; set; }
-}
-
-public sealed class RpChatDocumentRow
-{
-    public string ChatId { get; set; } = "";
-    public string CharactersJson { get; set; } = "[]";
-    public string CharacterRelationshipsJson { get; set; } = "[]";
-    public string LocationsJson { get; set; } = "[]";
-    public string ItemsJson { get; set; } = "[]";
-    public string TimelineJson { get; set; } = "[]";
-    public string ImagesJson { get; set; } = "[]";
-    public string MessagesJson { get; set; } = "[]";
-    public string StoryAssistantJson { get; set; } = "";
-    public string ChatDirectionJson { get; set; } = "";
-    public string NarratorProfileJson { get; set; } = "";
-    public string PromptLibraryJson { get; set; } = "";
-    public string CharacterTraitLibraryJson { get; set; } = "";
-    public string ModelTuningJson { get; set; } = "";
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-    public RpChatRow Chat { get; set; } = null!;
-}
-
-public sealed class AiProviderRow
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string Type { get; set; } = "";
-    public bool Enabled { get; set; }
-    public string ApiKey { get; set; } = "";
-    public string ManagementApiKey { get; set; } = "";
-    public string Endpoint { get; set; } = "";
-    public string AccountId { get; set; } = "";
-    public string ProjectId { get; set; } = "";
-    public string TeamId { get; set; } = "";
-    public DateTime? LastMetricsRefreshUtc { get; set; }
-    public string LastMetricsError { get; set; } = "";
-    public int SortOrder { get; set; }
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-    public List<AiProviderModelRow> Models { get; set; } = [];
-    public List<AiProviderMetricRow> Metrics { get; set; } = [];
-}
-
-public sealed class AiProviderModelRow
-{
-    public string ProviderId { get; set; } = "";
-    public string Id { get; set; } = "";
-    public string DisplayName { get; set; } = "";
-    public string Endpoint { get; set; } = "";
-    public string Repository { get; set; } = "";
-    public long? CreatedUnix { get; set; }
-    public bool Enabled { get; set; }
-    public string RolesJson { get; set; } = "[]";
-    public DateTime? LastVoiceRefreshUtc { get; set; }
-    public string LastVoiceRefreshError { get; set; } = "";
-    public string VoicesJson { get; set; } = "[]";
-    public int SortOrder { get; set; }
-    public AiProviderRow Provider { get; set; } = null!;
-}
-
-public sealed class AiProviderMetricRow
-{
-    public string Id { get; set; } = "";
-    public string ProviderId { get; set; } = "";
-    public string Kind { get; set; } = "";
-    public string Label { get; set; } = "";
-    public string Value { get; set; } = "";
-    public string Detail { get; set; } = "";
-    public DateTime RefreshedUtc { get; set; }
-    public AiProviderRow Provider { get; set; } = null!;
-}
-
-public sealed class ElevenLabsVoiceCatalogRow
-{
-    public string VoiceId { get; set; } = "";
-    public string PublicOwnerId { get; set; } = "";
-    public long? DateUnix { get; set; }
-    public string Name { get; set; } = "";
-    public string Description { get; set; } = "";
-    public string PreviewUrl { get; set; } = "";
-    public bool Featured { get; set; }
-    public string Accent { get; set; } = "";
-    public string Gender { get; set; } = "";
-    public string Age { get; set; } = "";
-    public string UseCase { get; set; } = "";
-    public string Category { get; set; } = "";
-    public string Language { get; set; } = "";
-    public string Locale { get; set; } = "";
-    public string Descriptive { get; set; } = "";
-    public string VerifiedLanguagesJson { get; set; } = "[]";
-    public bool IsBookmarked { get; set; }
-    public bool IsAvailable { get; set; } = true;
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-    public DateTime? LastSeenUtc { get; set; }
-    public string RawJson { get; set; } = "";
-}
-
-public sealed class ElevenLabsVoiceCatalogStateRow
-{
-    public string Id { get; set; } = "";
-    public DateTime? LastRefreshUtc { get; set; }
-    public string LastRefreshError { get; set; } = "";
-    public int TotalCount { get; set; }
-    public int CachedCount { get; set; }
-}
-
-public sealed class AppSettingRow
-{
-    public string Key { get; set; } = "";
-    public string JsonValue { get; set; } = "";
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-}
-
-public sealed class ImageAssetRow
-{
-    public string Id { get; set; } = "";
-    public string ChatId { get; set; } = "";
-    public string BlobName { get; set; } = "";
-    public string StoredContentType { get; set; } = "";
-    public string StoredFileName { get; set; } = "";
-    public string OriginalContentType { get; set; } = "";
-    public long OriginalByteLength { get; set; }
-    public long StoredByteLength { get; set; }
-    public bool OptimizationAttempted { get; set; }
-    public bool OptimizationSucceeded { get; set; }
-    public string OptimizationProvider { get; set; } = "";
-    public string OptimizationError { get; set; } = "";
-    public DateTime? OptimizedUtc { get; set; }
-    public string Title { get; set; } = "";
-    public int? Width { get; set; }
-    public int? Height { get; set; }
-    public int? AvatarFocusXPercent { get; set; }
-    public int? AvatarFocusYPercent { get; set; }
-    public int? AvatarZoomPercent { get; set; }
-    public string UserPrompt { get; set; } = "";
-    public string FinalPrompt { get; set; } = "";
-    public string GenerationMetadataJson { get; set; } = "";
-    public string ProviderId { get; set; } = "";
-    public string ProviderName { get; set; } = "";
-    public string ProviderModelId { get; set; } = "";
-    public DateTime CreatedUtc { get; set; }
-}
-
-public sealed class SpeechAssetRow
-{
-    public string Id { get; set; } = "";
-    public string ChatId { get; set; } = "";
-    public string TurnId { get; set; } = "";
-    public byte[] Bytes { get; set; } = [];
-    public string Status { get; set; } = SpeechAssetStatus.Pending;
-    public string ContentType { get; set; } = "";
-    public string FileName { get; set; } = "";
-    public string ProviderId { get; set; } = "";
-    public string ProviderName { get; set; } = "";
-    public string ProviderType { get; set; } = "";
-    public string ProviderModelId { get; set; } = "";
-    public string SourceHash { get; set; } = "";
-    public string InputsJson { get; set; } = "[]";
-    public string VoiceIdsJson { get; set; } = "{}";
-    public string ErrorMessage { get; set; } = "";
-    public DateTime CreatedUtc { get; set; }
-    public DateTime? StartedUtc { get; set; }
-    public DateTime? CompletedUtc { get; set; }
-}
-
-public static class SpeechAssetStatus
-{
-    public const string Pending = "Pending";
-    public const string Streaming = "Streaming";
-    public const string Ready = "Ready";
-    public const string Failed = "Failed";
 }

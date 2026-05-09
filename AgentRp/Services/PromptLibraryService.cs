@@ -893,11 +893,12 @@ public sealed partial class PromptLibraryService
     const string DefaultPlanningUserPromptTemplate =
         """
         {context}
-
-        {guidanceSection}
+        
         {requestedTurnShapeSection}
 
         {turnScopeRules}
+
+        {guidanceSection}
         """;
 
     const string DefaultProseSystemPromptTemplate =

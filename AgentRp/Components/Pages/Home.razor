@@ -1,6 +1,7 @@
 @page "/"
 @page "/{ChatId}"
 @inject OverlayService Overlays
+@inject ILogger<Home> Logger
 
 <PageTitle>AgentRp</PageTitle>
 
@@ -125,7 +126,11 @@ else
         }
         catch (Exception exception)
         {
-            InitializationError = UserFacingErrorMessageBuilder.Build("Loading AgentRp failed.", exception);
+            InitializationError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading AgentRp failed.",
+                "Loading AgentRp failed.");
         }
         finally
         {
@@ -163,7 +168,12 @@ else
         }
         catch (Exception exception)
         {
-            RouteSelectionError = UserFacingErrorMessageBuilder.Build($"Opening story '{routeChatId}' failed.", exception);
+            RouteSelectionError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Opening story '{routeChatId}' failed.",
+                "Opening story {ChatId} from route failed.",
+                routeChatId);
             await Session.Chats.ClearAsync();
         }
         finally

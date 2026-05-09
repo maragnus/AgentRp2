@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject ILogger<ActiveLocationPicker> Logger
 
 <SidebarActivePicker Label="Locations"
                      Title="@ActiveLocationName"
@@ -72,7 +73,12 @@
         }
         catch (Exception exception)
         {
-            ErrorMessage = UserFacingErrorMessageBuilder.Build($"Selecting {location.Name} as the current location failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Selecting {location.Name} as the current location failed.",
+                "Selecting location {LocationId} as current failed.",
+                location.Id);
         }
     }
 

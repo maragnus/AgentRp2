@@ -251,8 +251,12 @@
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Deleting snapshot {SnapshotId} failed.", Snapshot.Id);
-            ErrorMessage = UserFacingErrorMessageBuilder.Build("Deleting this snapshot failed.", exception);
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Deleting this snapshot failed.",
+                "Deleting snapshot {SnapshotId} failed.",
+                Snapshot.Id);
         }
         finally
         {
