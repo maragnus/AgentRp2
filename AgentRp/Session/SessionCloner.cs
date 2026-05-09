@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using AgentRp.Models;
+using AgentRp.Services;
 
 namespace AgentRp.Session;
 
@@ -539,16 +540,19 @@ static class SessionCloner
         Data = Clone(value.Data)
     };
 
-    public static PromptLibraryState Clone(PromptLibraryState value) => new()
+    public static PromptLibraryState Clone(PromptLibraryState value)
     {
-        Prompts = value.Prompts.ToDictionary(pair => pair.Key, pair => new PromptPairState { System = pair.Value.System, User = pair.Value.User }),
-        TurnShapes = value.TurnShapes.ToDictionary(pair => pair.Key, pair => pair.Value.Select(Clone).ToList())
-    };
+        var overrides = PromptLibraryService.CreateOverridesFromResolved(value);
+        return new()
+        {
+            PromptOverrides = overrides.PromptOverrides.ToDictionary(pair => pair.Key, pair => new PromptPairOverrideState { System = pair.Value.System, User = pair.Value.User }),
+            TurnShapeOverrides = overrides.TurnShapeOverrides.ToDictionary(pair => pair.Key, pair => pair.Value.Select(Clone).ToList())
+        };
+    }
 
-    static ShapePromptState Clone(ShapePromptState value) => new()
+    static ShapePromptOverrideState Clone(ShapePromptOverrideState value) => new()
     {
         Id = value.Id,
-        Label = value.Label,
         Value = value.Value
     };
 

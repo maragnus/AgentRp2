@@ -159,8 +159,10 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Required turn shape: Brief", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Turn shape definition:", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- brief = one action beat, one to two short lines with a tag in between (rare)", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("- silent extended =", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Prioritize compact", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Test private intent", prose.UserPrompt, StringComparison.Ordinal);
         Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Every action must include an explicit subject pronoun or character name", prose.UserPrompt, StringComparison.Ordinal);
@@ -170,6 +172,32 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("- Gemma only", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("**Actor:** Bella", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("You are Gemma", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Equal("Brief", result.Plan.TurnShape);
+    }
+
+    [Fact]
+    public async Task AutoTurnShapeLetsStructuredPlannerChooseFromDefinitions()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        var result = await service.GenerateTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            new("turn-3", "automatic", "", "Auto", "", ""));
+
+        var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
+        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
+
+        Assert.Contains("Choose the turn shape that best fits this turn.", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Turn shape definitions:", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("- compact =", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("- narrative =", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Prioritize compact, silent, and silent extended almost always.", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("- Never end a conversation.", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Required turn shape:", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Equal("Brief", result.Plan.TurnShape);
     }
 

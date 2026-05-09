@@ -1,4 +1,5 @@
 @using AgentRp.Models
+@using AgentRp.Services
 
 @if (Entries.Count == 0)
 {
@@ -21,7 +22,7 @@ else
                 <ChildContent>
                     <div class="snapshot-timeline-grid">
                         <FieldRow Label="When">
-                            <input class="field" type="number" min="1" value="@entry.TurnNumber" placeholder="52" @oninput="args => UpdateTurnNumber(entry, args)" />
+                            <input class="field" value="@FormatWhen(entry)" placeholder="Turn 52" @onchange="args => UpdateTurnNumber(entry, args)" />
                         </FieldRow>
                         <FieldRow Label="Title">
                             <input class="field" value="@entry.Title" placeholder="Timeline title" @oninput="args => Update(value => entry.Title = value, args)" />
@@ -48,7 +49,7 @@ else
 
     async Task UpdateTurnNumber(SnapshotDraftTimelineEntryEditor entry, ChangeEventArgs args)
     {
-        entry.TurnNumber = int.TryParse(args.Value?.ToString(), out var value) ? Math.Max(0, value) : 0;
+        entry.TurnNumber = ParseTurnNumber(args.Value?.ToString());
         await OnChanged.InvokeAsync();
     }
 
@@ -68,5 +69,17 @@ else
         string.IsNullOrWhiteSpace(entry.Title) ? $"Item {index + 1}" : entry.Title;
 
     static string EntryHint(SnapshotDraftTimelineEntryEditor entry) =>
-        entry.TurnNumber <= 0 ? "Turn" : $"Turn {entry.TurnNumber}";
+        entry.TurnNumber <= 0 ? "Turn" : FormatWhen(entry);
+
+    static string FormatWhen(SnapshotDraftTimelineEntryEditor entry) =>
+        entry.TurnNumber <= 0 ? "" : TranscriptTurnNumbering.Format(entry.TurnNumber);
+
+    static int ParseTurnNumber(string? value)
+    {
+        var text = value?.Trim() ?? "";
+        if (text.StartsWith("turn", StringComparison.OrdinalIgnoreCase))
+            text = text[4..].Trim();
+
+        return int.TryParse(text, out var turnNumber) ? Math.Max(0, turnNumber) : 0;
+    }
 }

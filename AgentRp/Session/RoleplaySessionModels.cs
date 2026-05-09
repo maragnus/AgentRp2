@@ -92,8 +92,10 @@ public sealed class PromptLibraryState
 {
     public Dictionary<string, PromptPairState> Prompts { get; set; } = [];
     public Dictionary<string, List<ShapePromptState>> TurnShapes { get; set; } = [];
+    public Dictionary<string, PromptPairOverrideState> PromptOverrides { get; set; } = [];
+    public Dictionary<string, List<ShapePromptOverrideState>> TurnShapeOverrides { get; set; } = [];
 
-    public static PromptLibraryState CreateDefault() => PromptLibraryService.CreateDefaultState();
+    public static PromptLibraryState CreateDefault() => PromptLibraryService.CreateOverrideState();
 }
 
 public sealed class PromptPairState
@@ -102,10 +104,22 @@ public sealed class PromptPairState
     public string User { get; set; } = "";
 }
 
+public sealed class PromptPairOverrideState
+{
+    public string? System { get; set; }
+    public string? User { get; set; }
+}
+
 public sealed class ShapePromptState
 {
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+public sealed class ShapePromptOverrideState
+{
+    public string Id { get; set; } = "";
     public string Value { get; set; } = "";
 }
 

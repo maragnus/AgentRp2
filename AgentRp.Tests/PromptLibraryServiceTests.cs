@@ -21,7 +21,7 @@ public sealed class PromptLibraryServiceTests
             defaults.Prompts[PromptLibraryStageIds.Prose].User);
         AssertPromptEqual(ExpectedSnapshotSystemPrompt, defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
         AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
-        Assert.Contains("Turn shape: copy the required turn shape exactly.", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
+        Assert.Contains("Turn shape: copy the required turn shape exactly when one is provided", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
         Assert.DoesNotContain("{planning.turnShapeDefinitions}", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
         Assert.DoesNotContain("Prioritize compact", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
         Assert.DoesNotContain("silent monologue", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.OrdinalIgnoreCase);
@@ -53,6 +53,16 @@ public sealed class PromptLibraryServiceTests
         AssertPromptEqual(ExpectedSilentExtendedRequestedTurnShape, section);
         Assert.DoesNotContain("brief =", section, StringComparison.Ordinal);
         Assert.DoesNotContain("narrative =", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AutoRequestedTurnShapePromptIncludesAllShapeDefinitions()
+    {
+        var defaults = PromptLibraryService.CreateDefaultState();
+
+        var section = PromptLibraryService.FormatRequestedTurnShape(defaults, PromptLibraryStageIds.Planning, "Auto");
+
+        AssertPromptEqual(ExpectedAutoRequestedTurnShape, section);
     }
 
     [Fact]
@@ -164,6 +174,52 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains("You update character scene state.", normalized.Prompts[PromptLibraryStageIds.Appearance].System, StringComparison.Ordinal);
         Assert.Equal("Custom brief", normalized.TurnShapes[PromptLibraryStageIds.Prose].First(shape => shape.Id == "brief").Value);
         Assert.Contains(normalized.TurnShapes[PromptLibraryStageIds.Prose], shape => shape.Id == "silent-extended");
+    }
+
+    [Fact]
+    public void OverridesApplyOnlyChangedPromptFields()
+    {
+        var state = PromptLibraryService.CreateOverrideState();
+        state.PromptOverrides[PromptLibraryStageIds.Planning] = new()
+        {
+            System = "Custom system"
+        };
+
+        var normalized = PromptLibraryService.NormalizeState(state);
+        var defaults = PromptLibraryService.CreateDefaultState();
+
+        Assert.Equal("Custom system", normalized.Prompts[PromptLibraryStageIds.Planning].System);
+        Assert.Equal(defaults.Prompts[PromptLibraryStageIds.Planning].User, normalized.Prompts[PromptLibraryStageIds.Planning].User);
+    }
+
+    [Fact]
+    public void CreateOverridesFromResolvedDropsValuesThatMatchDefaults()
+    {
+        var resolved = PromptLibraryService.CreateDefaultState();
+        resolved.Prompts[PromptLibraryStageIds.Planning].System = "Custom planning system";
+        resolved.TurnShapes[PromptLibraryStageIds.Prose].First(shape => shape.Id == "brief").Value = "Custom brief";
+
+        var overrides = PromptLibraryService.CreateOverridesFromResolved(resolved);
+
+        Assert.Empty(overrides.Prompts);
+        Assert.Empty(overrides.TurnShapes);
+        Assert.True(overrides.PromptOverrides.ContainsKey(PromptLibraryStageIds.Planning));
+        Assert.Equal("Custom planning system", overrides.PromptOverrides[PromptLibraryStageIds.Planning].System);
+        Assert.Null(overrides.PromptOverrides[PromptLibraryStageIds.Planning].User);
+        Assert.Single(overrides.TurnShapeOverrides[PromptLibraryStageIds.Prose]);
+        Assert.Equal("brief", overrides.TurnShapeOverrides[PromptLibraryStageIds.Prose][0].Id);
+        Assert.Equal("Custom brief", overrides.TurnShapeOverrides[PromptLibraryStageIds.Prose][0].Value);
+    }
+
+    [Fact]
+    public void CreateOverridesFromResolvedReturnsEmptyStateAfterResetToDefaults()
+    {
+        var resolved = PromptLibraryService.CreateDefaultState();
+
+        var overrides = PromptLibraryService.CreateOverridesFromResolved(resolved);
+
+        Assert.Empty(overrides.PromptOverrides);
+        Assert.Empty(overrides.TurnShapeOverrides);
     }
 
     [Fact]
@@ -345,7 +401,32 @@ public sealed class PromptLibraryServiceTests
         """
         Required turn shape: Silent Extended
         Use exactly this turn shape in the structured plan.
+        Turn shape definition:
         - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        """;
+
+    const string ExpectedAutoRequestedTurnShape =
+        """
+        Choose the turn shape that best fits this turn.
+        Use one of these turn shapes exactly in the structured plan.
+        Turn shape definitions:
+        - compact = one action beat, one or two phrases, optional short tag (always preferred)
+        - silent = quick action/subtext only, no spoken lines (common)
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        - brief = one action beat, one to two short lines with a tag in between (rare)
+        - extended = short narrative allowed (only when asked)
+        - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
+
+        Prioritize compact, silent, and silent extended almost always.
+        - Favor silent turns for quick intimate moments.
+        - Favor silent extended when an intimate, physical, or subtext-heavy moment needs a longer nonverbal beat instead of speech.
+        - Don't eagerly follow the narrative if it is counter to character goals or private intent.
+        - Pick the most valuable next beat to move the story forward, not the safest or most literal reply.
+        - Identify when the current thread has run its course and move on.
+        - If a direct reaction is needed, react.
+        - If no direct reaction is needed, introduce a small new beat that moves the scene.
+        - Never end an exchange.
+        - Never end a conversation.
         """;
 
     const string ExpectedProseSilentExtendedTurnShape =

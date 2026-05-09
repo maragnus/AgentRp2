@@ -158,22 +158,7 @@
 
                     <div class="toolbar-spacer"></div>
 
-                    <AnchoredPopover Placement="OverlayPlacement.TopEnd" Class="composer-popover">
-                        <Trigger Context="shape">
-                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button turn-shape-button" Active="@shape.IsOpen" Disabled="@TranscriptBusy" TooltipText="Select Turn Shape" OnClick="@(_ => shape.Toggle())">
-                                <FaIcon Name="layers" />
-                                <span>@TurnShape</span>
-                                <FaIcon Name="chevron-down" />
-                            </AppButton>
-                        </Trigger>
-                        <Content>
-                            <div class="popover-label">Turn Shape</div>
-                            @foreach (var shape in TurnShapePickerOptions.All)
-                            {
-                                <SelectableButton @key="shape" Class="@($"select-row {(TurnShape == shape ? "is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => PickShape(shape))"><span>@shape</span>@if (TurnShape == shape) { <FaIcon Name="check" /> }</SelectableButton>
-                            }
-                        </Content>
-                    </AnchoredPopover>
+                    <TurnShapePicker SelectedShape="@TurnShape" Disabled="@TranscriptBusy" ShapeSelected="PickShape" />
                     <AppButton Icon="@TurnShapeLockIcon"
                                Variant="secondary"
                                Size="xs"

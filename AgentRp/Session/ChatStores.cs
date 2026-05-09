@@ -1307,7 +1307,7 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
         get
         {
             if (Document is null)
-                return PromptLibraryState.CreateDefault();
+                return PromptLibraryService.CreateDefaultState();
 
             Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
             return Document.PromptLibrary;
@@ -1323,6 +1323,7 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
         {
             Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
             PromptLibraryService.ValidateState(Document.PromptLibrary);
+            Document.PromptLibrary = PromptLibraryService.CreateOverridesFromResolved(Document.PromptLibrary);
         }
 
         await SaveActiveDocumentAsync();
@@ -1347,7 +1348,7 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
     {
         if (Document is not null)
         {
-            Document.PromptLibrary = PromptLibraryService.CreateDefaultState();
+            Document.PromptLibrary = PromptLibraryService.CreateOverrideState();
             PromptLibraryService.ValidateState(Document.PromptLibrary);
         }
 

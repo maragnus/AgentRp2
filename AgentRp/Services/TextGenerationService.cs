@@ -599,15 +599,16 @@ public sealed class TextGenerationService(
         var guidance = string.IsNullOrWhiteSpace(request.Guidance)
             ? "Continue the scene in character."
             : request.Guidance.Trim();
+        var turnShape = TurnShapeRules.NormalizeExplicitLabel(context.RequestedTurnShape);
         return new()
         {
-            TurnShape = context.RequestedTurnShape,
+            TurnShape = turnShape,
             Beat = guidance,
             Intent = "Write the next prose turn.",
             ImmediateGoal = "Continue the active exchange.",
             WhyNow = "The user requested the next turn.",
             ChangeIntroduced = "Continue the scene without structured planning.",
-            Guardrails = $"Turn shape: {context.RequestedTurnShape}. Stay grounded in the visible scene."
+            Guardrails = $"Turn shape: {turnShape}. Stay grounded in the visible scene."
         };
     }
 
@@ -925,7 +926,7 @@ public sealed class TextGenerationService(
     static string ResolveTurnShape(string requestedByPlanner, string fallback)
     {
         var value = string.IsNullOrWhiteSpace(requestedByPlanner) ? fallback : requestedByPlanner;
-        return string.IsNullOrWhiteSpace(value) ? "Brief" : value.Trim();
+        return TurnShapeRules.NormalizeExplicitLabel(value);
     }
 
     static Dictionary<string, string> BuildSnapshotAppearances(IEnumerable<RpTranscriptTurn> turns)

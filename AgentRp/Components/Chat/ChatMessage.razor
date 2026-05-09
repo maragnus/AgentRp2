@@ -271,6 +271,7 @@
 @if (NewPlan)
 {
     <ChatMessageNewPlanModal InitialGuidance="@Message.Guidance"
+                             InitialTurnShape="@NewPlanInitialTurnShape"
                              Subtitle="@($"{DisplayAuthorName} Â· {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")"
                              TranscriptBusy="@TranscriptBusy"
                              OnClose="@CloseNewPlan"
@@ -367,6 +368,9 @@
         ? "Captured after read-aloud generation"
         : $"{SpeechInputSnapshot.ProviderName} · {SpeechInputSnapshot.ModelId} · {SpeechInputSnapshot.Status}";
 
+    string NewPlanInitialTurnShape => string.IsNullOrWhiteSpace(Message.Plan.TurnShape)
+        ? TurnShapePickerOptions.Auto
+        : TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
     RpCharacter? ActivePrivateIntentCharacter => ResolveActivePrivateIntentCharacter();
     bool IsActivePrivateIntentSet => ActivePrivateIntentCharacter is not null && !string.IsNullOrWhiteSpace(GetPrivateIntent(ActivePrivateIntentCharacter.Id));
 
@@ -464,15 +468,15 @@
         return Task.CompletedTask;
     }
 
-    async Task SubmitNewPlan(string guidance)
+    async Task SubmitNewPlan(ChatMessageNewPlanSubmission submission)
     {
         var actor = Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId);
         NewPlan = false;
         await Session.Chat.Transcript.ReplanAsync(
             Message.Id,
-            guidance,
+            submission.Guidance,
             actor,
-            TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape));
+            TurnShapePickerOptions.Normalize(submission.TurnShape));
     }
 
     async Task OpenPlanEditor()

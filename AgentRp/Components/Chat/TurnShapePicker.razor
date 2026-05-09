@@ -1,0 +1,33 @@
+<AnchoredPopover Placement="@Placement" Class="@PopoverClass">
+    <Trigger Context="shape">
+        <AppButton Variant="@Variant" Size="@Size" Class="@ButtonClass" Active="@shape.IsOpen" Disabled="@Disabled" TooltipText="@TooltipText" OnClick="@(_ => shape.Toggle())">
+            <FaIcon Name="layers" />
+            <span>@DisplayShape</span>
+            <FaIcon Name="chevron-down" />
+        </AppButton>
+    </Trigger>
+    <Content>
+        <div class="popover-label">@Label</div>
+        <TurnShapeOptionList SelectedShape="@DisplayShape" IncludeAuto="@IncludeAuto" Disabled="@Disabled" ShapeSelected="ShapeSelected" />
+    </Content>
+</AnchoredPopover>
+
+@code {
+    [Parameter] public string SelectedShape { get; set; } = TurnShapePickerOptions.Auto;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IncludeAuto { get; set; } = true;
+    [Parameter] public string Variant { get; set; } = "secondary";
+    [Parameter] public string Size { get; set; } = "xs";
+    [Parameter] public string? ButtonClass { get; set; } = "composer-action-button turn-shape-button";
+    [Parameter] public string? PopoverClass { get; set; } = "composer-popover";
+    [Parameter] public string TooltipText { get; set; } = "Select Turn Shape";
+    [Parameter] public string Label { get; set; } = "Turn Shape";
+    [Parameter] public OverlayPlacement Placement { get; set; } = OverlayPlacement.TopEnd;
+    [Parameter] public EventCallback<string> ShapeSelected { get; set; }
+
+    string DisplayShape => IncludeAuto && string.IsNullOrWhiteSpace(SelectedShape)
+        ? TurnShapePickerOptions.Auto
+        : IncludeAuto
+        ? TurnShapePickerOptions.Normalize(SelectedShape)
+        : TurnShapePickerOptions.NormalizeExplicit(SelectedShape);
+}

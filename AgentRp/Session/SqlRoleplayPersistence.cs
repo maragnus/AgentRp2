@@ -197,7 +197,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.StoryAssistantJson = Serialize(document.StoryAssistant);
         row.ChatDirectionJson = Serialize(ChatDirectionService.NormalizeState(document.ChatDirection));
         row.NarratorProfileJson = Serialize(NarratorProfileService.NormalizeState(document.NarratorProfile));
-        row.PromptLibraryJson = Serialize(document.PromptLibrary);
+        row.PromptLibraryJson = Serialize(PromptLibraryService.CreateOverridesFromResolved(document.PromptLibrary));
         row.CharacterTraitLibraryJson = Serialize(document.CharacterTraitLibrary);
         row.ModelTuningJson = Serialize(document.ModelTuning);
         row.UpdatedUtc = now;

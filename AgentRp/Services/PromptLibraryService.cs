@@ -86,7 +86,7 @@ public sealed partial class PromptLibraryService
         Placeholder("{guidance}", "Guidance text, when supplied.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{guidanceSection}", "Guidance section with the default heading and spacing.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{requestedTurnShape}", "Requested turn shape label.", PromptLibraryStageIds.Planning),
-        Placeholder("{requestedTurnShapeSection}", "Required turn-shape instructions, when supplied.", PromptLibraryStageIds.Planning),
+        Placeholder("{requestedTurnShapeSection}", "Auto or required turn-shape planning instructions.", PromptLibraryStageIds.Planning),
         Placeholder("{turnScopeRules}", "Default planning turn scope rules.", PromptLibraryStageIds.Planning),
         Placeholder("{planning.turnShapeDefinitions}", "Editable planning turn-shape definitions.", PromptLibraryStageIds.Planning),
         Placeholder("{prose.turnShapeSystem}", "Editable prose system instructions for the selected turn shape.", PromptLibraryStageIds.Prose),
@@ -218,7 +218,7 @@ public sealed partial class PromptLibraryService
                 Shape(TurnShapeRules.ExtendedId, TurnShapeRules.ExtendedLabel, "short narrative allowed (only when asked)"),
                 Shape(TurnShapeRules.NarrativeId, TurnShapeRules.NarrativeLabel, "elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)"),
                 Shape(TurnShapeRules.SilentId, TurnShapeRules.SilentLabel, "quick action/subtext only, no spoken lines (common)"),
-                Shape(TurnShapeRules.SilentExtendedId, TurnShapeRules.SilentExtendedLabel, "extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)")
+                Shape(TurnShapeRules.SilentExtendedId, TurnShapeRules.SilentExtendedLabel, "extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)")
             ],
             [PromptLibraryStageIds.Prose] =
             [
@@ -270,6 +270,12 @@ public sealed partial class PromptLibraryService
         }
     };
 
+    public static PromptLibraryState CreateOverrideState() => new()
+    {
+        PromptOverrides = new(StringComparer.Ordinal),
+        TurnShapeOverrides = new(StringComparer.Ordinal)
+    };
+
     public static PromptLibraryState NormalizeState(PromptLibraryState? state)
     {
         var defaults = CreateDefaultState();
@@ -279,26 +285,41 @@ public sealed partial class PromptLibraryService
         var normalized = CreateDefaultState();
         foreach (var pair in defaults.Prompts)
         {
-            if (!state.Prompts.TryGetValue(pair.Key, out var prompt))
+            if (state.Prompts.TryGetValue(pair.Key, out var prompt))
+            {
+                normalized.Prompts[pair.Key] = new()
+                {
+                    System = prompt.System,
+                    User = prompt.User
+                };
+            }
+
+            if (!state.PromptOverrides.TryGetValue(pair.Key, out var promptOverride))
                 continue;
 
             normalized.Prompts[pair.Key] = new()
             {
-                System = prompt.System,
-                User = prompt.User
+                System = promptOverride.System ?? normalized.Prompts[pair.Key].System,
+                User = promptOverride.User ?? normalized.Prompts[pair.Key].User
             };
         }
 
         foreach (var pair in defaults.TurnShapes)
         {
-            var existing = state.TurnShapes.TryGetValue(pair.Key, out var shapes)
+            var legacy = state.TurnShapes.TryGetValue(pair.Key, out var shapes)
                 ? shapes.ToDictionary(x => x.Id, StringComparer.Ordinal)
+                : [];
+            var overrides = state.TurnShapeOverrides.TryGetValue(pair.Key, out var shapeOverrides)
+                ? shapeOverrides.ToDictionary(x => x.Id, StringComparer.Ordinal)
                 : [];
             normalized.TurnShapes[pair.Key] = pair.Value.Select(shape =>
             {
-                var value = existing.TryGetValue(shape.Id, out var configured)
+                var value = legacy.TryGetValue(shape.Id, out var configured)
                     ? configured.Value
                     : shape.Value;
+                if (overrides.TryGetValue(shape.Id, out var configuredOverride))
+                    value = configuredOverride.Value;
+
                 return new ShapePromptState
                 {
                     Id = shape.Id,
@@ -309,6 +330,52 @@ public sealed partial class PromptLibraryService
         }
 
         return normalized;
+    }
+
+    public static PromptLibraryState CreateOverridesFromResolved(PromptLibraryState? state)
+    {
+        var defaults = CreateDefaultState();
+        var resolved = NormalizeState(state);
+        var overrides = CreateOverrideState();
+
+        foreach (var pair in defaults.Prompts)
+        {
+            var prompt = resolved.Prompts[pair.Key];
+            var promptOverride = new PromptPairOverrideState();
+            if (!string.Equals(prompt.System, pair.Value.System, StringComparison.Ordinal))
+                promptOverride.System = prompt.System;
+
+            if (!string.Equals(prompt.User, pair.Value.User, StringComparison.Ordinal))
+                promptOverride.User = prompt.User;
+
+            if (promptOverride.System is not null || promptOverride.User is not null)
+                overrides.PromptOverrides[pair.Key] = promptOverride;
+        }
+
+        foreach (var pair in defaults.TurnShapes)
+        {
+            var resolvedShapes = resolved.TurnShapes[pair.Key].ToDictionary(shape => shape.Id, StringComparer.Ordinal);
+            var shapeOverrides = new List<ShapePromptOverrideState>();
+            foreach (var defaultShape in pair.Value)
+            {
+                if (!resolvedShapes.TryGetValue(defaultShape.Id, out var resolvedShape))
+                    continue;
+
+                if (string.Equals(resolvedShape.Value, defaultShape.Value, StringComparison.Ordinal))
+                    continue;
+
+                shapeOverrides.Add(new()
+                {
+                    Id = resolvedShape.Id,
+                    Value = resolvedShape.Value
+                });
+            }
+
+            if (shapeOverrides.Count > 0)
+                overrides.TurnShapeOverrides[pair.Key] = shapeOverrides;
+        }
+
+        return overrides;
     }
 
     public static PromptRenderResult RenderStage(PromptLibraryState state, string stageId, IReadOnlyDictionary<string, string> values)
@@ -418,6 +485,30 @@ public sealed partial class PromptLibraryService
 
     public static string FormatRequestedTurnShape(PromptLibraryState state, string stageId, string requestedTurnShape)
     {
+        var normalized = NormalizeState(state);
+        if (TurnShapeRules.NormalizeLabel(requestedTurnShape) == TurnShapeRules.AutoLabel)
+        {
+            if (!normalized.TurnShapes.TryGetValue(stageId, out var shapes))
+                return "";
+
+            return $"""
+            Choose the turn shape that best fits this turn.
+            Use one of these turn shapes exactly in the structured plan.
+            Turn shape definitions:
+            {FormatTurnShapeDefinitions(shapes)}
+
+            Prioritize compact, brief, or silent almost always.
+            - Favor silent turns for quick intimate moments.
+            - Don't eagerly follow the narrative if it is counter to character goals or private intent.
+            - Pick the most valuable next beat to move the story forward, not the safest or most literal reply.
+            - Identify when the current thread has run its course and move on.
+            - If a direct reaction is needed, react.
+            - If no direct reaction is needed, introduce a small new beat that moves the scene.
+            - Never end an exchange.
+            - Never end a conversation.
+            """;
+        }
+
         var shape = FindTurnShape(state, stageId, requestedTurnShape);
         if (shape is null)
             return "";
@@ -425,6 +516,7 @@ public sealed partial class PromptLibraryService
         return $"""
         Required turn shape: {shape.Label}
         Use exactly this turn shape in the structured plan.
+        Turn shape definition:
         - {TurnShapeRules.FormatPromptLabel(shape.Label)} = {shape.Value}
         """;
     }
@@ -731,7 +823,7 @@ public sealed partial class PromptLibraryService
         Choose one immediate beat, not a sequence.
 
         Build the plan using these fields:
-        - Turn shape: copy the required turn shape exactly.
+        - Turn shape: copy the required turn shape exactly when one is provided, otherwise choose exactly one allowed turn shape.
         - Beat: the kind of move being made in this turn.
         - Intent: the actor's immediate intention.
         - Immediate goal: what this turn tries to achieve right now.
