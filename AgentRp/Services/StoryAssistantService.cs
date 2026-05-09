@@ -69,6 +69,7 @@ public interface IStoryAssistantService
 {
     Task RunTurnAsync(
         RpChatDocument document,
+        StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState modelSelections,
         StoryAssistantTurnRequest request,
@@ -76,7 +77,7 @@ public interface IStoryAssistantService
         CancellationToken cancellationToken = default);
 
     Task ClearRemoteStateAsync(
-        RpChatDocument document,
+        StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState modelSelections,
         CancellationToken cancellationToken = default);
@@ -96,6 +97,7 @@ public sealed partial class StoryAssistantService(
 {
     public async Task RunTurnAsync(
         RpChatDocument document,
+        StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState modelSelections,
         StoryAssistantTurnRequest request,
@@ -111,21 +113,21 @@ public sealed partial class StoryAssistantService(
         if (request.Kind == StoryAssistantTurnRequestKind.WorkItemResume && string.IsNullOrWhiteSpace(request.PreviousResponseId))
             throw new InvalidOperationException("Resuming Story Assistant failed because the saved action is missing its Responses continuation.");
 
-        if (request.Kind == StoryAssistantTurnRequestKind.WorkItemResume && !ResponseChainMatches(document.StoryAssistant, selection))
-            throw new InvalidOperationException($"Resuming Story Assistant failed because the saved action belongs to '{document.StoryAssistant.ResponseModelId}', but the active reasoning model is '{selection.Model.Id}'.");
+        if (request.Kind == StoryAssistantTurnRequestKind.WorkItemResume && !ResponseChainMatches(assistantChat, selection))
+            throw new InvalidOperationException($"Resuming Story Assistant failed because the saved action belongs to '{assistantChat.ResponseModelId}', but the active reasoning model is '{selection.Model.Id}'.");
 
-        if (request.Kind == StoryAssistantTurnRequestKind.UserMessage && !ResponseChainMatches(document.StoryAssistant, selection))
+        if (request.Kind == StoryAssistantTurnRequestKind.UserMessage && !ResponseChainMatches(assistantChat, selection))
         {
-            await ClearRemoteStateAsync(document, providers, modelSelections, cancellationToken);
-            ClearResponseChain(document.StoryAssistant);
+            await ClearRemoteStateAsync(assistantChat, providers, modelSelections, cancellationToken);
+            ClearResponseChain(assistantChat);
             await callbacks.SaveAssistantStateAsync(cancellationToken);
         }
 
-        document.StoryAssistant.RemoteThreadLost = false;
-        document.StoryAssistant.RemoteThreadError = "";
+        assistantChat.RemoteThreadLost = false;
+        assistantChat.RemoteThreadError = "";
         var previousResponseId = request.Kind == StoryAssistantTurnRequestKind.WorkItemResume
             ? request.PreviousResponseId
-            : document.StoryAssistant.LastResponseId;
+            : assistantChat.LastResponseId;
         var inputs = request.Kind == StoryAssistantTurnRequestKind.WorkItemResume
             ? new List<ModelAssistantInput> { new(ModelAssistantInputKind.FunctionCallOutput, request.ModelInput, request.ToolCallId) }
             : new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.ModelInput.Trim()) };
@@ -160,7 +162,7 @@ public sealed partial class StoryAssistantService(
                 {
                     if (!string.IsNullOrWhiteSpace(update.ResponseId))
                     {
-                        RecordResponse(document.StoryAssistant, selection, update.ResponseId);
+                        RecordResponse(assistantChat, selection, update.ResponseId);
                         if (pendingWorkItem is not null)
                         {
                             pendingWorkItem.AwaitingResponseId = update.ResponseId;
@@ -182,29 +184,29 @@ public sealed partial class StoryAssistantService(
                 return;
 
             inputs = toolOutputs;
-            previousResponseId = document.StoryAssistant.LastResponseId;
+            previousResponseId = assistantChat.LastResponseId;
         }
 
         throw new InvalidOperationException("Running the Story Assistant stopped because too many tool rounds were requested in one turn.");
     }
 
     public async Task ClearRemoteStateAsync(
-        RpChatDocument document,
+        StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
         ActiveModelSelectionsState modelSelections,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var responseIds = document.StoryAssistant.ResponseIds
-            .Append(document.StoryAssistant.LastResponseId)
+        var responseIds = assistantChat.ResponseIds
+            .Append(assistantChat.LastResponseId)
             .Where(responseId => !string.IsNullOrWhiteSpace(responseId))
             .Distinct(StringComparer.Ordinal)
             .ToList();
         if (responseIds.Count == 0)
             return;
 
-        var provider = providers.FirstOrDefault(provider => provider.Id == document.StoryAssistant.ResponseProviderId);
-        var model = provider?.Models.FirstOrDefault(model => model.Id == document.StoryAssistant.ResponseModelId);
+        var provider = providers.FirstOrDefault(provider => provider.Id == assistantChat.ResponseProviderId);
+        var model = provider?.Models.FirstOrDefault(model => model.Id == assistantChat.ResponseModelId);
         if (provider is null || model is null)
             return;
 
@@ -225,30 +227,30 @@ public sealed partial class StoryAssistantService(
             capabilityCatalog.ApplyResolvedCapabilities(provider);
     }
 
-    static bool ResponseChainMatches(StoryAssistantState state, ActiveModelSelection selection) =>
-        string.IsNullOrWhiteSpace(state.LastResponseId)
-        || (string.Equals(state.ResponseProviderId, selection.Provider.Id, StringComparison.Ordinal)
-            && string.Equals(state.ResponseModelId, selection.Model.Id, StringComparison.Ordinal));
+    static bool ResponseChainMatches(StoryAssistantChat chat, ActiveModelSelection selection) =>
+        string.IsNullOrWhiteSpace(chat.LastResponseId)
+        || (string.Equals(chat.ResponseProviderId, selection.Provider.Id, StringComparison.Ordinal)
+            && string.Equals(chat.ResponseModelId, selection.Model.Id, StringComparison.Ordinal));
 
-    static void RecordResponse(StoryAssistantState state, ActiveModelSelection selection, string responseId)
+    static void RecordResponse(StoryAssistantChat chat, ActiveModelSelection selection, string responseId)
     {
-        state.LastResponseId = responseId;
-        state.ResponseProviderId = selection.Provider.Id;
-        state.ResponseModelId = selection.Model.Id;
-        state.RemoteThreadLost = false;
-        state.RemoteThreadError = "";
-        if (!state.ResponseIds.Contains(responseId, StringComparer.Ordinal))
-            state.ResponseIds.Add(responseId);
+        chat.LastResponseId = responseId;
+        chat.ResponseProviderId = selection.Provider.Id;
+        chat.ResponseModelId = selection.Model.Id;
+        chat.RemoteThreadLost = false;
+        chat.RemoteThreadError = "";
+        if (!chat.ResponseIds.Contains(responseId, StringComparer.Ordinal))
+            chat.ResponseIds.Add(responseId);
     }
 
-    public static void ClearResponseChain(StoryAssistantState state)
+    public static void ClearResponseChain(StoryAssistantChat chat)
     {
-        state.LastResponseId = "";
-        state.ResponseIds.Clear();
-        state.ResponseProviderId = "";
-        state.ResponseModelId = "";
-        state.RemoteThreadLost = false;
-        state.RemoteThreadError = "";
+        chat.LastResponseId = "";
+        chat.ResponseIds.Clear();
+        chat.ResponseProviderId = "";
+        chat.ResponseModelId = "";
+        chat.RemoteThreadLost = false;
+        chat.RemoteThreadError = "";
     }
 
     static string Instructions(PromptLibraryState promptLibrary) =>

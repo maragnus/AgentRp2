@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject ILogger<StoryAssistantPanel> Logger
 
 <div class="story-assistant">
     <div class="story-assistant-toolbar">
@@ -107,6 +108,12 @@
     Task OnStoreChanged() => InvokeAsync(() =>
     {
         TranscriptRenderVersion++;
+        Logger.LogInformation(
+            "StoryAssistantPanel calling StateHasChanged from store change. RenderVersion={RenderVersion} IsBusy={IsBusy} ItemCount={ItemCount} ShowBusyPlaceholder={ShowBusyPlaceholder}",
+            TranscriptRenderVersion,
+            Session.Chat.StoryAssistant.IsBusy,
+            Session.Chat.StoryAssistant.Items.Count,
+            ShowBusyPlaceholder);
         StateHasChanged();
     });
 

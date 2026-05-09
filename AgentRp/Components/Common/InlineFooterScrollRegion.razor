@@ -1,0 +1,131 @@
+@inject IJSRuntime JS
+@inject ILogger<InlineFooterScrollRegion> Logger
+@implements IAsyncDisposable
+
+<div class="@HostCssClass">
+    <div @ref="ScrollContainer" class="@CssClass">
+        <div class="@ContentCssClass">
+            @ChildContent
+        </div>
+        <div @ref="FooterElement" class="@FooterCssClass">
+            @FooterContent
+        </div>
+    </div>
+</div>
+
+@code {
+    ElementReference ScrollContainer;
+    ElementReference FooterElement;
+    IJSObjectReference? ScrollSnap;
+    bool IsRegisteringScrollSnap;
+    bool PendingScrollToBottom;
+    long AppliedScrollVersion = -1;
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? ContentClass { get; set; }
+    [Parameter] public string? FooterClass { get; set; }
+    [Parameter] public long ScrollVersion { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    string HostCssClass => "inline-footer-scroll-region-host";
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "inline-footer-scroll-region",
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    string ContentCssClass => string.Join(" ", new[]
+    {
+        "inline-footer-scroll-content",
+        ContentClass
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    string FooterCssClass => string.Join(" ", new[]
+    {
+        "inline-footer-scroll-footer",
+        FooterClass
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    protected override void OnParametersSet()
+    {
+        if (ScrollVersion == AppliedScrollVersion)
+            return;
+
+        AppliedScrollVersion = ScrollVersion;
+        PendingScrollToBottom = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await RegisterScrollSnapAsync();
+        await CompletePendingScrollAsync();
+    }
+
+    async Task RegisterScrollSnapAsync()
+    {
+        if (ScrollSnap is not null || IsRegisteringScrollSnap)
+            return;
+
+        IsRegisteringScrollSnap = true;
+        try
+        {
+            ScrollSnap = await JS.InvokeAsync<IJSObjectReference>(
+                "agentRp.registerInlineFooterScrollSnap",
+                ScrollContainer,
+                FooterElement);
+        }
+        catch (InvalidOperationException exception) when (IsDetachedElementReference(exception))
+        {
+            Logger.LogDebug(exception, "Skipping inline footer scroll snap registration because an element reference is detached.");
+        }
+        catch (JSDisconnectedException exception)
+        {
+            Logger.LogDebug(exception, "Skipping inline footer scroll snap registration because the browser circuit is disconnected.");
+        }
+        finally
+        {
+            IsRegisteringScrollSnap = false;
+        }
+    }
+
+    async Task CompletePendingScrollAsync()
+    {
+        if (!PendingScrollToBottom)
+            return;
+
+        PendingScrollToBottom = false;
+        try
+        {
+            await JS.InvokeVoidAsync("agentRp.scrollToBottom", ScrollContainer);
+        }
+        catch (InvalidOperationException exception) when (IsDetachedElementReference(exception))
+        {
+            Logger.LogDebug(exception, "Skipping inline footer scroll because an element reference is detached.");
+        }
+        catch (JSDisconnectedException exception)
+        {
+            Logger.LogDebug(exception, "Skipping inline footer scroll because the browser circuit is disconnected.");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (ScrollSnap is null)
+            return;
+
+        try
+        {
+            await ScrollSnap.InvokeVoidAsync("dispose");
+            await ScrollSnap.DisposeAsync();
+        }
+        catch (JSDisconnectedException exception)
+        {
+            Logger.LogDebug(exception, "Skipping inline footer scroll snap disposal because the browser circuit is disconnected.");
+        }
+    }
+
+    static bool IsDetachedElementReference(InvalidOperationException exception) =>
+        exception.Message.Contains("No element is currently associated", StringComparison.OrdinalIgnoreCase);
+}

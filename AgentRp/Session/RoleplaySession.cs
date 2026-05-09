@@ -14,7 +14,8 @@ public sealed class RoleplaySession(
     IAiProviderWidgetService? providerWidgetService = null,
     IEntityNotifier? entityNotifier = null,
     IGlobalModelSelectionStore? globalModelSelectionStore = null,
-    IModelSelectionNotifier? modelSelectionNotifier = null) : IAsyncDisposable
+    IModelSelectionNotifier? modelSelectionNotifier = null,
+    ILoggerFactory? loggerFactory = null) : IAsyncDisposable
 {
     readonly Guid _sessionId = Guid.NewGuid();
     readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
@@ -47,7 +48,7 @@ public sealed class RoleplaySession(
         Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService);
         ModelSelection = new(Providers, _globalModelSelectionStore, _modelSelectionNotifier);
         Providers.ModelSelection = ModelSelection;
-        Chat = new(ActiveChat, Registry, Providers, ModelSelection, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier);
+        Chat = new(ActiveChat, Registry, Providers, ModelSelection, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier, loggerFactory);
         liveStore.Changed += OnLiveStoreChanged;
 
         await ModelSelection.LoadAsync();
@@ -171,7 +172,8 @@ public sealed class ChatWorkspace
         SceneTransitionService sceneTransitionService,
         IMessageSpeechService? messageSpeechService,
         IStoryAssistantService? storyAssistantService,
-        IEntityNotifier entityNotifier)
+        IEntityNotifier entityNotifier,
+        ILoggerFactory? loggerFactory = null)
     {
         Characters = new(activeChat, registry, entityNotifier);
         Locations = new(activeChat, registry, entityNotifier);
@@ -179,7 +181,7 @@ public sealed class ChatWorkspace
         Timeline = new(activeChat, registry);
         Images = new(activeChat, registry, entityNotifier);
         Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService);
-        StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService);
+        StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService, loggerFactory?.CreateLogger<StoryAssistantStore>());
         ChatDirection = new(activeChat, registry);
         NarratorProfile = new(activeChat, registry);
         PromptLibrary = new(activeChat, registry);

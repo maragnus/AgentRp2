@@ -69,8 +69,11 @@
         </AnchoredPopover>
     </header>
 
-    <section class="@TranscriptScrollClass">
-        <div class="chat-message-stack">
+    <InlineFooterScrollRegion Class="@TranscriptScrollClass"
+                              ContentClass="chat-message-stack"
+                              FooterClass="claude-footer"
+                              ScrollVersion="@TranscriptScrollVersion">
+        <ChildContent>
             @if (Session.Chat.Transcript.LastBackgroundError is not null)
             {
                 <StatusRow Icon="warning" Tone="danger" Class="appearance-row chat-error-row">@Session.Chat.Transcript.LastBackgroundError.Message</StatusRow>
@@ -117,10 +120,10 @@
             {
                 <ProcessTrace @key="ActiveTrace.StartedUtc" Trace="ActiveTrace" IsLive="true" AutoExpand="Options.ShowProcessTraces" />
             }
-        </div>
-        <div class="claude-footer">
+        </ChildContent>
+        <FooterContent>
             <div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
-                <textarea @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@TranscriptBusy" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
+                <textarea rows="3" @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@TranscriptBusy" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
                 <div class="claude-composer-actions">
                     <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
                         <Trigger Context="speaker">
@@ -178,8 +181,8 @@
                     <AppButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || Draft.Trim().Length == 0)" TooltipText="Post manual turn" OnClick="@(_ => PostManual())" />
                 </div>
             </div>
-        </div>
-    </section>
+        </FooterContent>
+    </InlineFooterScrollRegion>
     }
     else
     {
@@ -210,6 +213,8 @@
     string TurnShape = TurnShapePickerOptions.Default;
     string ActiveChatId = "";
     string PendingAutoSpeakTurnId = "";
+    string LastTranscriptScrollSignature = "";
+    long TranscriptScrollVersion;
     bool SnapshotModalOpen;
     bool SnapshotDraftLoading;
     bool SnapshotSaving;
@@ -294,6 +299,7 @@
     {
         ActiveChatId = Session.Chats.Active?.Id ?? "";
         KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
+        LastTranscriptScrollSignature = BuildTranscriptScrollSignature();
         Session.Changed += OnSessionChanged;
         Session.Chats.Changed += OnSessionChanged;
         Session.Providers.Changed += OnSessionChanged;
@@ -311,6 +317,8 @@
             ActiveChatId = chatId;
             KnownMessageIds = Messages.Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
             PendingAutoSpeakTurnId = "";
+            LastTranscriptScrollSignature = BuildTranscriptScrollSignature();
+            TranscriptScrollVersion++;
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -331,6 +339,7 @@
             await AutoSpeak(turnId);
         }
 
+        UpdateTranscriptScrollVersion();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -491,6 +500,33 @@
 
         Draft = "";
         await Session.Chat.Transcript.PostManualAsync(text, Session.SpeakingAs);
+    }
+
+    void UpdateTranscriptScrollVersion()
+    {
+        var signature = BuildTranscriptScrollSignature();
+        if (string.Equals(LastTranscriptScrollSignature, signature, StringComparison.Ordinal))
+            return;
+
+        LastTranscriptScrollSignature = signature;
+        TranscriptScrollVersion++;
+    }
+
+    string BuildTranscriptScrollSignature()
+    {
+        var lastMessage = Messages.LastOrDefault();
+        return string.Join("|",
+            ActiveChatId,
+            Messages.Count,
+            lastMessage?.Id,
+            lastMessage?.UpdatedUtc.Ticks,
+            lastMessage?.Body.Length,
+            ActiveDraftTurn?.Id,
+            ActiveDraftTurn?.UpdatedUtc.Ticks,
+            ActiveDraftTurn?.Body.Length,
+            ActiveTrace?.StartedUtc.Ticks,
+            ActiveTrace?.Status,
+            ActiveTrace?.Steps.Count);
     }
 
     public void Dispose()

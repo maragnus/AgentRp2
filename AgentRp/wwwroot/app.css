@@ -44,6 +44,25 @@ select {
     font-family: var(--font-control);
 }
 
+textarea {
+    --textarea-lines: 3lh;
+    field-sizing: content;
+    min-height: var(--textarea-lines);
+}
+
+textarea[rows="1"] { --textarea-lines: 1lh; }
+textarea[rows="2"] { --textarea-lines: 2lh; }
+textarea[rows="3"] { --textarea-lines: 3lh; }
+textarea[rows="4"] { --textarea-lines: 4lh; }
+textarea[rows="5"] { --textarea-lines: 5lh; }
+textarea[rows="6"] { --textarea-lines: 6lh; }
+textarea[rows="7"] { --textarea-lines: 7lh; }
+textarea[rows="8"] { --textarea-lines: 8lh; }
+textarea[rows="9"] { --textarea-lines: 9lh; }
+textarea[rows="10"] { --textarea-lines: 10lh; }
+textarea[rows="11"] { --textarea-lines: 11lh; }
+textarea[rows="12"] { --textarea-lines: 12lh; }
+
 button {
     border: 0;
 }

@@ -78,6 +78,46 @@
 .btn-danger { color: var(--c-text3); }
 .btn-danger:hover { color: var(--c-rose); background: var(--c-roseBg); }
 
+.inline-footer-scroll-region-host {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.inline-footer-scroll-region {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.inline-footer-scroll-content {
+    flex: 1 0 auto;
+}
+
+.inline-footer-scroll-footer {
+    flex: 0 0 auto;
+}
+
+.transcript-scroll-bottom {
+    position: absolute;
+    left: 50%;
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: 999px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .24);
+    transform: translateX(-50%);
+    z-index: 20;
+}
+
+.transcript-scroll-bottom.is-hidden {
+    display: none;
+}
+
 .toolbar {
     display: flex;
     align-items: center;
@@ -1201,7 +1241,6 @@
 
 .claude-composer textarea {
     width: 100%;
-    rows: 3;
     background: transparent;
     border: none;
     outline: none;
@@ -1832,7 +1871,7 @@
 }
 
 .snapshot-summary-field {
-    min-height: 220px;
+    --textarea-lines: 12lh;
 }
 
 .snapshot-range-grid,
@@ -1859,7 +1898,6 @@
 }
 
 .snapshot-readonly-field {
-    min-height: 0;
     resize: none;
     color: var(--c-text);
     background: var(--c-surface2);
@@ -2182,7 +2220,7 @@
 
 .composer textarea {
     width: 100%;
-    min-height: 82px;
+    --textarea-lines: 4lh;
     resize: vertical;
     border: 0;
     outline: none;
@@ -2485,15 +2523,11 @@
     background: color-mix(in oklab, var(--c-emerald) 16%, transparent);
 }
 
-textarea.field { resize: vertical; min-height: 84px; }
-
-textarea.generate-prompt {
-    field-sizing: content;
-    min-height: 2lh;
+textarea.field {
+    resize: vertical;
 }
 
 .edit-plan-modal textarea.field {
-    min-height: 0;
     resize: none;
 }
 
@@ -5828,7 +5862,6 @@ textarea.generate-prompt {
 
 .character-wizard-textarea {
     padding: 9px 12px;
-    min-height: 68px;
     color: var(--c-text);
     font: inherit;
     font-size: 13px;
@@ -6093,7 +6126,6 @@ textarea.generate-prompt {
 }
 
 .character-relationship-note {
-    min-height: 34px;
     padding: 6px 9px;
     border-radius: 6px;
     font: inherit;

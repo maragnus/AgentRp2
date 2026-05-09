@@ -1,5 +1,7 @@
-<textarea class="field @Class"
+<textarea @attributes="AdditionalAttributes"
+          class="field @Class"
           rows="@Rows"
+          style="@TextareaStyle"
           value="@Value"
           placeholder="@Placeholder"
           @oninput="HandleInput"></textarea>
@@ -9,7 +11,13 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
     [Parameter] public int Rows { get; set; } = 3;
+    [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    string TextareaStyle => string.IsNullOrWhiteSpace(Style)
+        ? $"--textarea-lines: {Rows}lh;"
+        : $"--textarea-lines: {Rows}lh; {Style}";
 
     Task HandleInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
 }

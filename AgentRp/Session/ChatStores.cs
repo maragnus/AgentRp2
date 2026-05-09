@@ -419,7 +419,8 @@ public sealed class StoryAssistantStore(
     ProviderStore providers,
     ModelSelectionStore modelSelection,
     TranscriptStore transcript,
-    IStoryAssistantService? storyAssistantService) : ActiveChatStoreBase(activeChat, registry), IStoryAssistantCallbacks
+    IStoryAssistantService? storyAssistantService,
+    ILogger<StoryAssistantStore>? logger = null) : ActiveChatStoreBase(activeChat, registry)
 {
     static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
     readonly object _operationLock = new();
@@ -448,11 +449,59 @@ public sealed class StoryAssistantStore(
 
     protected override bool ShouldHandleArea(RoleplayStoreArea? changedArea) => changedArea is null || changedArea == Area;
 
+    sealed class StoryAssistantRunCallbacks(StoryAssistantStore store, RpChatDocument document, StoryAssistantChat chat) : IStoryAssistantCallbacks
+    {
+        public Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken) =>
+            store.AppendAssistantTextAsync(document, chat, delta, cancellationToken);
+
+        public Task RecordToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken) =>
+            store.RecordToolCallAsync(document, chat, item, cancellationToken);
+
+        public Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken) =>
+            store.UpdateToolCallAsync(document, chat, item, cancellationToken);
+
+        public Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken) =>
+            store.RecordWorkItemAsync(document, chat, workItem, cancellationToken);
+
+        public Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken) =>
+            store.UpdateWorkItemAsync(document, chat, workItem, cancellationToken);
+
+        public Task<SceneTransitionResult> SetSceneAsync(SetSceneRequest request, CancellationToken cancellationToken) =>
+            store.SetSceneAsync(request, cancellationToken);
+
+        public Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken) =>
+            store.SaveEntityAreaAsync(document, area, cancellationToken);
+
+        public Task SaveAssistantStateAsync(CancellationToken cancellationToken) =>
+            store.SaveAssistantStateAsync(document, cancellationToken);
+    }
+
+    Task NotifyStoryAssistantChangedAsync(string reason)
+    {
+        var state = Document?.StoryAssistant;
+        var chat = state?.Chats.FirstOrDefault(chat => chat.Id == state.ActiveChatId)
+            ?? state?.Chats.OrderByDescending(chat => chat.UpdatedUtc).FirstOrDefault();
+        var lastItem = chat?.Items.LastOrDefault();
+
+        logger?.LogInformation(
+            "StoryAssistantStore notifying changed: {Reason}. ChatId={ChatId} Title={Title} IsBusy={IsBusy} ItemCount={ItemCount} WorkItemCount={WorkItemCount} LastItemKind={LastItemKind} LastItemStatus={LastItemStatus}",
+            reason,
+            chat?.Id ?? "",
+            chat?.Title ?? "",
+            IsBusy,
+            chat?.Items.Count ?? 0,
+            chat?.WorkItems.Count ?? 0,
+            lastItem?.Kind.ToString() ?? "",
+            lastItem?.Status.ToString() ?? "");
+
+        return NotifyChangedAsync();
+    }
+
     public async Task SetReviewModeAsync(StoryAssistantReviewMode mode)
     {
         State.ReviewMode = mode;
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync($"review mode set to {mode}");
     }
 
     public async Task RecoverIdleStreamingMessagesAsync()
@@ -464,7 +513,7 @@ public sealed class StoryAssistantStore(
             return;
 
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("idle streaming messages recovered");
     }
 
     public async Task CreateChatAsync()
@@ -481,7 +530,7 @@ public sealed class StoryAssistantStore(
         state.Chats.Insert(0, chat);
         state.ActiveChatId = chat.Id;
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("chat created");
     }
 
     public async Task SelectChatAsync(string chatId)
@@ -491,10 +540,10 @@ public sealed class StoryAssistantStore(
             return;
 
         state.ActiveChatId = chatId;
-        if (RecoverIdleStreamingMessages(state))
+        if (!IsBusy && RecoverIdleStreamingMessages(state))
             await SaveAssistantStateAsync(CancellationToken.None);
 
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("chat selected");
     }
 
     public async Task RenameChatAsync(string chatId, string title)
@@ -506,7 +555,7 @@ public sealed class StoryAssistantStore(
         chat.Title = CleanTitle(title);
         chat.UpdatedUtc = DateTime.UtcNow;
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("chat renamed");
     }
 
     public async Task DeleteChatAsync(string chatId)
@@ -529,7 +578,7 @@ public sealed class StoryAssistantStore(
             state.ActiveChatId = state.Chats.OrderByDescending(chat => chat.UpdatedUtc).First().Id;
 
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("chat deleted");
     }
 
     public Task ClearAsync() => ClearActiveChatAsync();
@@ -540,22 +589,23 @@ public sealed class StoryAssistantStore(
             return;
 
         ClearBackgroundError();
+        var chat = State.ActiveChat;
         try
         {
             if (storyAssistantService is not null)
-                await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
+                await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
         }
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
         }
 
-        State.Items.Clear();
-        State.WorkItems.Clear();
-        State.ActiveChat.UpdatedUtc = DateTime.UtcNow;
-        StoryAssistantService.ClearResponseChain(State);
+        chat.Items.Clear();
+        chat.WorkItems.Clear();
+        chat.UpdatedUtc = DateTime.UtcNow;
+        StoryAssistantService.ClearResponseChain(chat);
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("active chat cleared");
     }
 
     public Task SendAsync(string text, CancellationToken cancellationToken = default) =>
@@ -600,9 +650,12 @@ public sealed class StoryAssistantStore(
         if (Document is null || string.IsNullOrWhiteSpace(modelInput) || storyAssistantService is null)
             return;
 
+        var document = Document;
+        var assistantState = document.StoryAssistant;
+        var assistantChat = assistantState.EnsureActiveChat();
         displayMessage = string.IsNullOrWhiteSpace(displayMessage) ? modelInput : displayMessage;
-        if (RecoverIdleStreamingMessages(Document.StoryAssistant))
-            await SaveAssistantStateAsync(cancellationToken);
+        if (RecoverIdleStreamingMessages(assistantState))
+            await SaveAssistantStateAsync(document, cancellationToken);
 
         CancellationTokenSource runCancellation;
         lock (_operationLock)
@@ -617,31 +670,35 @@ public sealed class StoryAssistantStore(
         }
 
         ClearBackgroundError();
-        AutoTitleActiveChat(displayMessage);
+        AutoTitleChat(assistantChat, displayMessage);
         var retry = new StoryAssistantRetryContext
         {
             DisplayMessage = displayMessage.Trim(),
             ModelInput = modelInput.Trim(),
             IsRetry = isRetry
         };
-        State.Items.Add(AddMessage(StoryAssistantItemKind.UserMessage, StoryAssistantItemStatus.Applied, displayMessage.Trim()));
+        assistantChat.Items.Add(AddMessage(StoryAssistantItemKind.UserMessage, StoryAssistantItemStatus.Applied, displayMessage.Trim()));
         var assistantItem = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
         assistantItem.Retry = Clone(retry);
-        assistantItem.Diagnostics = BuildDiagnostics("Running", "Story Assistant turn started.", displayMessage);
-        State.Items.Add(assistantItem);
-        State.ActiveChat.UpdatedUtc = DateTime.UtcNow;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        assistantItem.Diagnostics = BuildDiagnostics(assistantChat, "Running", "Story Assistant turn started.", displayMessage);
+        assistantChat.Items.Add(assistantItem);
+        assistantChat.UpdatedUtc = DateTime.UtcNow;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("assistant send started");
 
         await RunAssistantAsync(
+            document,
+            assistantChat,
             StoryAssistantTurnRequest.Start(modelInput, displayMessage),
             retry,
             displayMessage,
-            State.Items.Count - 1,
+            assistantChat.Items.Count - 1,
             runCancellation);
     }
 
     async Task RunAssistantAsync(
+        RpChatDocument document,
+        StoryAssistantChat assistantChat,
         StoryAssistantTurnRequest request,
         StoryAssistantRetryContext retry,
         string displayMessage,
@@ -653,43 +710,44 @@ public sealed class StoryAssistantStore(
         try
         {
             await storyAssistantService!.RunTurnAsync(
-                Document!,
+                document,
+                assistantChat,
                 providers.Items.ToList(),
                 modelSelection.State,
                 request,
-                this,
+                new StoryAssistantRunCallbacks(this, document, assistantChat),
                 runToken);
-            CompleteStreamingAssistantMessages(firstRunItemIndex, retry, displayMessage);
-            await SaveAssistantStateAsync(runToken);
+            CompleteStreamingAssistantMessages(assistantChat, firstRunItemIndex, retry, displayMessage);
+            await SaveAssistantStateAsync(document, runToken);
         }
         catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
         {
-            MarkStopped(retry, displayMessage);
+            MarkStopped(assistantChat, retry, displayMessage);
             if (!string.IsNullOrWhiteSpace(workItemId))
-                MarkWorkItemCancelled(workItemId);
+                MarkWorkItemCancelled(assistantChat, workItemId);
 
-            await SaveAssistantStateAsync(CancellationToken.None);
+            await SaveAssistantStateAsync(document, CancellationToken.None);
         }
         catch (ModelAssistantThreadLostException exception)
         {
             CaptureBackgroundError(exception);
-            State.RemoteThreadLost = true;
-            State.RemoteThreadError = UserFacingErrorMessageBuilder.Build("Story Assistant needs a fresh thread.", exception);
-            FailCurrentAssistantMessage(State.RemoteThreadError, retry, displayMessage, exception);
+            assistantChat.RemoteThreadLost = true;
+            assistantChat.RemoteThreadError = UserFacingErrorMessageBuilder.Build("Story Assistant needs a fresh thread.", exception);
+            FailCurrentAssistantMessage(assistantChat, assistantChat.RemoteThreadError, retry, displayMessage, exception);
             if (!string.IsNullOrWhiteSpace(workItemId))
-                MarkWorkItemFailed(workItemId, State.RemoteThreadError);
+                MarkWorkItemFailed(assistantChat, workItemId, assistantChat.RemoteThreadError);
 
-            await SaveAssistantStateAsync(CancellationToken.None);
+            await SaveAssistantStateAsync(document, CancellationToken.None);
         }
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
             var message = UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception);
-            FailCurrentAssistantMessage(message, retry, displayMessage, exception);
+            FailCurrentAssistantMessage(assistantChat, message, retry, displayMessage, exception);
             if (!string.IsNullOrWhiteSpace(workItemId))
-                MarkWorkItemFailed(workItemId, message);
+                MarkWorkItemFailed(assistantChat, workItemId, message);
 
-            await SaveAssistantStateAsync(CancellationToken.None);
+            await SaveAssistantStateAsync(document, CancellationToken.None);
         }
         finally
         {
@@ -701,11 +759,11 @@ public sealed class StoryAssistantStore(
                     _activeRunCancellation = null;
             }
 
-            if (RecoverIdleStreamingMessages(Document?.StoryAssistant))
-                await SaveAssistantStateAsync(CancellationToken.None);
+            if (RecoverIdleStreamingMessages(document.StoryAssistant))
+                await SaveAssistantStateAsync(document, CancellationToken.None);
 
             runCancellation.Dispose();
-            await NotifyChangedAsync();
+            await NotifyStoryAssistantChangedAsync("assistant run completed");
         }
     }
 
@@ -723,34 +781,26 @@ public sealed class StoryAssistantStore(
         }
 
         await SaveAssistantStateAsync(CancellationToken.None);
-        await NotifyChangedAsync();
+        await NotifyStoryAssistantChangedAsync("stop requested");
     }
 
     async Task ClearRemoteStateForChatAsync(StoryAssistantChat chat)
     {
-        if (Document is null || storyAssistantService is null)
+        if (storyAssistantService is null)
             return;
 
-        var state = Document.StoryAssistant;
-        var previousChatId = state.ActiveChatId;
         try
         {
-            state.ActiveChatId = chat.Id;
-            await storyAssistantService.ClearRemoteStateAsync(Document, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
+            await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
         }
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
         }
-        finally
-        {
-            state.ActiveChatId = previousChatId;
-        }
     }
 
-    void AutoTitleActiveChat(string displayMessage)
+    static void AutoTitleChat(StoryAssistantChat chat, string displayMessage)
     {
-        var chat = State.ActiveChat;
         if (!string.Equals(chat.Title, "New chat", StringComparison.Ordinal) || chat.Items.Count > 0)
             return;
 
@@ -766,70 +816,70 @@ public sealed class StoryAssistantStore(
         return clean.Length <= 44 ? clean : $"{clean[..41]}...";
     }
 
-    public async Task AppendAssistantTextAsync(string delta, CancellationToken cancellationToken)
+    async Task AppendAssistantTextAsync(RpChatDocument document, StoryAssistantChat chat, string delta, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(delta))
             return;
 
-        var item = State.Items.LastOrDefault();
+        var item = chat.Items.LastOrDefault();
         if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
         {
             item = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
-            State.Items.Add(item);
+            chat.Items.Add(item);
         }
 
         item.Text += delta;
         item.UpdatedUtc = DateTime.UtcNow;
-        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        chat.UpdatedUtc = item.UpdatedUtc;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("stream delta appended");
     }
 
-    public async Task RecordToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    async Task RecordToolCallAsync(RpChatDocument document, StoryAssistantChat chat, StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
     {
-        CloseTrailingAssistantMessage();
+        CloseTrailingAssistantMessage(chat);
         item.UpdatedUtc = DateTime.UtcNow;
-        State.Items.Add(item);
-        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        chat.Items.Add(item);
+        chat.UpdatedUtc = item.UpdatedUtc;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("tool call recorded");
     }
 
-    public async Task UpdateToolCallAsync(StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
+    async Task UpdateToolCallAsync(RpChatDocument document, StoryAssistantChat chat, StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
     {
         item.UpdatedUtc = DateTime.UtcNow;
-        State.ActiveChat.UpdatedUtc = item.UpdatedUtc;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        chat.UpdatedUtc = item.UpdatedUtc;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("tool call updated");
     }
 
-    public async Task RecordWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
+    async Task RecordWorkItemAsync(RpChatDocument document, StoryAssistantChat chat, StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
     {
-        CloseTrailingAssistantMessage();
+        CloseTrailingAssistantMessage(chat);
         workItem.UpdatedUtc = DateTime.UtcNow;
-        State.WorkItems.Add(workItem);
-        State.Items.Add(TranscriptItemFor(workItem));
-        State.ActiveChat.UpdatedUtc = workItem.UpdatedUtc;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        chat.WorkItems.Add(workItem);
+        chat.Items.Add(TranscriptItemFor(workItem));
+        chat.UpdatedUtc = workItem.UpdatedUtc;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("work item recorded");
     }
 
-    public async Task UpdateWorkItemAsync(StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
+    async Task UpdateWorkItemAsync(RpChatDocument document, StoryAssistantChat chat, StoryAssistantWorkItem workItem, CancellationToken cancellationToken)
     {
         workItem.UpdatedUtc = DateTime.UtcNow;
-        var index = State.WorkItems.FindIndex(item => item.Id == workItem.Id);
+        var index = chat.WorkItems.FindIndex(item => item.Id == workItem.Id);
         if (index >= 0)
-            State.WorkItems[index] = workItem;
+            chat.WorkItems[index] = workItem;
         else
-            State.WorkItems.Add(workItem);
+            chat.WorkItems.Add(workItem);
 
-        var transcriptItem = State.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+        var transcriptItem = chat.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
         if (transcriptItem is not null)
             SyncTranscriptItem(transcriptItem, workItem);
 
-        State.ActiveChat.UpdatedUtc = workItem.UpdatedUtc;
-        await SaveAssistantStateAsync(cancellationToken);
-        await NotifyChangedAsync();
+        chat.UpdatedUtc = workItem.UpdatedUtc;
+        await SaveAssistantStateAsync(document, cancellationToken);
+        await NotifyStoryAssistantChangedAsync("work item updated");
     }
 
     public Task ResolveReviewAsync(string itemId, StoryAssistantDecisionKind kind, string reason) =>
@@ -843,15 +893,17 @@ public sealed class StoryAssistantStore(
         if (Document is null || storyAssistantService is null)
             return;
 
-        var workItem = WorkItemFor(itemId);
+        var document = Document;
+        var assistantChat = document.StoryAssistant.EnsureActiveChat();
+        var workItem = WorkItemFor(assistantChat, itemId);
         if (workItem is null || workItem.Status != StoryAssistantWorkItemStatus.Pending)
             return;
 
         if (string.IsNullOrWhiteSpace(workItem.AwaitingResponseId))
         {
-            MarkWorkItemFailed(workItem.Id, "This assistant action cannot continue because its saved Responses continuation is missing.");
-            await SaveAssistantStateAsync(CancellationToken.None);
-            await NotifyChangedAsync();
+            MarkWorkItemFailed(assistantChat, workItem.Id, "This assistant action cannot continue because its saved Responses continuation is missing.");
+            await SaveAssistantStateAsync(document, CancellationToken.None);
+            await NotifyStoryAssistantChangedAsync("work item resolution failed because continuation is missing");
             return;
         }
 
@@ -860,9 +912,9 @@ public sealed class StoryAssistantStore(
             || !string.Equals(activeModel.Provider.Id, workItem.ResponseProviderId, StringComparison.Ordinal)
             || !string.Equals(activeModel.Model.Id, workItem.ResponseModelId, StringComparison.Ordinal))
         {
-            MarkWorkItemFailed(workItem.Id, "This assistant action cannot continue because the active reasoning model does not match the saved Responses continuation.");
-            await SaveAssistantStateAsync(CancellationToken.None);
-            await NotifyChangedAsync();
+            MarkWorkItemFailed(assistantChat, workItem.Id, "This assistant action cannot continue because the active reasoning model does not match the saved Responses continuation.");
+            await SaveAssistantStateAsync(document, CancellationToken.None);
+            await NotifyStoryAssistantChangedAsync("work item resolution failed because active model changed");
             return;
         }
 
@@ -881,36 +933,38 @@ public sealed class StoryAssistantStore(
         ClearBackgroundError();
         try
         {
-            await storyAssistantService.ResolveWorkItemAsync(Document, workItem, resolution, this, runCancellation.Token);
+            await storyAssistantService.ResolveWorkItemAsync(document, workItem, resolution, new StoryAssistantRunCallbacks(this, document, assistantChat), runCancellation.Token);
         }
         catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
         {
-            MarkWorkItemCancelled(workItem.Id);
+            MarkWorkItemCancelled(assistantChat, workItem.Id);
         }
         catch (Exception exception)
         {
             CaptureBackgroundError(exception);
-            MarkWorkItemFailed(workItem.Id, UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception));
+            MarkWorkItemFailed(assistantChat, workItem.Id, UserFacingErrorMessageBuilder.Build("Resolving Story Assistant action failed.", exception));
         }
 
         if (string.IsNullOrWhiteSpace(workItem.ResultJson) || workItem.Status is StoryAssistantWorkItemStatus.Failed)
         {
             ReleaseRunCancellation(runCancellation);
-            await NotifyChangedAsync();
+            await NotifyStoryAssistantChangedAsync("work item resolution completed without continuation");
             return;
         }
 
         var assistantItem = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Streaming, "");
-        assistantItem.Diagnostics = BuildDiagnostics("Running", "Story Assistant action resumed.", workItem.Title);
-        State.Items.Add(assistantItem);
-        await SaveAssistantStateAsync(runCancellation.Token);
-        await NotifyChangedAsync();
+        assistantItem.Diagnostics = BuildDiagnostics(assistantChat, "Running", "Story Assistant action resumed.", workItem.Title);
+        assistantChat.Items.Add(assistantItem);
+        await SaveAssistantStateAsync(document, runCancellation.Token);
+        await NotifyStoryAssistantChangedAsync("assistant action resumed");
 
         await RunAssistantAsync(
+            document,
+            assistantChat,
             StoryAssistantTurnRequest.Resume(workItem),
             new(),
             workItem.Title,
-            State.Items.Count - 1,
+            assistantChat.Items.Count - 1,
             runCancellation,
             workItem.Id);
     }
@@ -935,13 +989,13 @@ public sealed class StoryAssistantStore(
         return transition;
     }
 
-    void CloseTrailingAssistantMessage()
+    static void CloseTrailingAssistantMessage(StoryAssistantChat chat)
     {
-        if (State.Items.LastOrDefault() is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+        if (chat.Items.LastOrDefault() is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
             return;
 
         if (string.IsNullOrWhiteSpace(item.Text))
-            State.Items.RemoveAt(State.Items.Count - 1);
+            chat.Items.RemoveAt(chat.Items.Count - 1);
         else
         {
             item.Status = StoryAssistantItemStatus.Applied;
@@ -949,11 +1003,11 @@ public sealed class StoryAssistantStore(
         }
     }
 
-    void CompleteStreamingAssistantMessages(int firstRunItemIndex, StoryAssistantRetryContext retry, string displayMessage)
+    void CompleteStreamingAssistantMessages(StoryAssistantChat chat, int firstRunItemIndex, StoryAssistantRetryContext retry, string displayMessage)
     {
-        for (var index = State.Items.Count - 1; index >= 0; index--)
+        for (var index = chat.Items.Count - 1; index >= 0; index--)
         {
-            var item = State.Items[index];
+            var item = chat.Items[index];
             if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
                 continue;
 
@@ -964,16 +1018,16 @@ public sealed class StoryAssistantStore(
                     item.Status = StoryAssistantItemStatus.Failed;
                     item.Text = "The model finished without returning a message or action.";
                     item.Retry = Clone(retry);
-                    item.Diagnostics = BuildDiagnostics("No output", "The Responses stream completed without text or tool calls.", displayMessage, "Completed");
+                    item.Diagnostics = BuildDiagnostics(chat, "No output", "The Responses stream completed without text or tool calls.", displayMessage, "Completed");
                     item.UpdatedUtc = DateTime.UtcNow;
                 }
                 else
-                    State.Items.RemoveAt(index);
+                    chat.Items.RemoveAt(index);
             }
             else
             {
                 item.Status = StoryAssistantItemStatus.Applied;
-                item.Diagnostics = BuildDiagnostics("Completed", "The assistant returned text.", displayMessage, "TextDelta");
+                item.Diagnostics = BuildDiagnostics(chat, "Completed", "The assistant returned text.", displayMessage, "TextDelta");
                 item.UpdatedUtc = DateTime.UtcNow;
             }
         }
@@ -985,9 +1039,18 @@ public sealed class StoryAssistantStore(
             return false;
 
         var changed = false;
-        for (var index = state.Items.Count - 1; index >= 0; index--)
+        foreach (var chat in state.Chats)
+            changed = RecoverIdleStreamingMessages(chat) || changed;
+
+        return changed;
+    }
+
+    static bool RecoverIdleStreamingMessages(StoryAssistantChat chat)
+    {
+        var changed = false;
+        for (var index = chat.Items.Count - 1; index >= 0; index--)
         {
-            var item = state.Items[index];
+            var item = chat.Items[index];
             if (item is not { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming })
                 continue;
 
@@ -1005,7 +1068,7 @@ public sealed class StoryAssistantStore(
                     item.UpdatedUtc = DateTime.UtcNow;
                 }
                 else
-                    state.Items.RemoveAt(index);
+                    chat.Items.RemoveAt(index);
             }
             else
             {
@@ -1023,59 +1086,63 @@ public sealed class StoryAssistantStore(
 
     static void SyncWorkItemTranscriptItems(StoryAssistantState state)
     {
-        foreach (var workItem in state.WorkItems)
+        foreach (var chat in state.Chats)
+            SyncWorkItemTranscriptItems(chat);
+    }
+
+    static void SyncWorkItemTranscriptItems(StoryAssistantChat chat)
+    {
+        foreach (var workItem in chat.WorkItems)
         {
-            var transcriptItem = state.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+            var transcriptItem = chat.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
             if (transcriptItem is not null)
                 SyncTranscriptItem(transcriptItem, workItem);
         }
     }
 
-    void FailCurrentAssistantMessage(string message, StoryAssistantRetryContext retry, string displayMessage, Exception exception)
+    void FailCurrentAssistantMessage(StoryAssistantChat chat, string message, StoryAssistantRetryContext retry, string displayMessage, Exception exception)
     {
-        if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+        if (chat.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
         {
             item.Status = StoryAssistantItemStatus.Failed;
             item.Text = message;
             item.Retry = Clone(retry);
-            item.Diagnostics = BuildDiagnostics("Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
+            item.Diagnostics = BuildDiagnostics(chat, "Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
             item.UpdatedUtc = DateTime.UtcNow;
             return;
         }
 
         var failed = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Failed, message);
         failed.Retry = Clone(retry);
-        failed.Diagnostics = BuildDiagnostics("Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
-        State.Items.Add(failed);
+        failed.Diagnostics = BuildDiagnostics(chat, "Failed", "The Story Assistant run raised an exception.", displayMessage, "Exception", exception);
+        chat.Items.Add(failed);
     }
 
-    void MarkStopped(StoryAssistantRetryContext retry, string displayMessage)
+    void MarkStopped(StoryAssistantChat chat, StoryAssistantRetryContext retry, string displayMessage)
     {
-        if (State.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
+        if (chat.Items.LastOrDefault() is { Kind: StoryAssistantItemKind.AssistantMessage, Status: StoryAssistantItemStatus.Streaming } item)
         {
             if (string.IsNullOrWhiteSpace(item.Text))
                 item.Text = "Stopped.";
 
             item.Status = StoryAssistantItemStatus.Stopped;
             item.Retry = Clone(retry);
-            item.Diagnostics = BuildDiagnostics("Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
+            item.Diagnostics = BuildDiagnostics(chat, "Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
             item.UpdatedUtc = DateTime.UtcNow;
             return;
         }
 
         var stopped = AddMessage(StoryAssistantItemKind.AssistantMessage, StoryAssistantItemStatus.Stopped, "Stopped.");
         stopped.Retry = Clone(retry);
-        stopped.Diagnostics = BuildDiagnostics("Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
-        State.Items.Add(stopped);
+        stopped.Diagnostics = BuildDiagnostics(chat, "Stopped", "The assistant run was stopped before it completed.", displayMessage, "Cancelled");
+        chat.Items.Add(stopped);
     }
 
-    public async Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken)
+    async Task SaveEntityAreaAsync(RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken)
     {
-        if (Document is null)
-            return;
-
-        await Registry.ReplaceAreaAsync(Document, area);
-        await ActiveChat.UpdateAsync(Document, area);
+        await Registry.ReplaceAreaAsync(document, area);
+        if (ActiveChat.Current?.Chat.Id == document.Chat.Id)
+            await ActiveChat.UpdateAsync(document, area);
     }
 
     public async Task SaveAssistantStateAsync(CancellationToken cancellationToken)
@@ -1083,10 +1150,16 @@ public sealed class StoryAssistantStore(
         if (Document is null)
             return;
 
-        await Registry.ReplaceAreaAsync(Document, Area);
+        await SaveAssistantStateAsync(Document, cancellationToken);
+    }
+
+    async Task SaveAssistantStateAsync(RpChatDocument document, CancellationToken cancellationToken)
+    {
+        await Registry.ReplaceAreaAsync(document, Area);
     }
 
     StoryAssistantDiagnostics BuildDiagnostics(
+        StoryAssistantChat chat,
         string outcome,
         string reason,
         string displayMessage,
@@ -1102,8 +1175,8 @@ public sealed class StoryAssistantStore(
             ProviderName = activeModel?.Provider.Name ?? "",
             ModelId = activeModel?.Model.Id ?? "",
             ModelName = activeModel?.Model.DisplayName ?? "",
-            PreviousResponseId = Document?.StoryAssistant.ResponseIds.LastOrDefault(responseId => responseId != Document.StoryAssistant.LastResponseId) ?? "",
-            ResponseId = Document?.StoryAssistant.LastResponseId ?? "",
+            PreviousResponseId = chat.ResponseIds.LastOrDefault(responseId => responseId != chat.LastResponseId) ?? "",
+            ResponseId = chat.LastResponseId,
             RequestDisplay = displayMessage,
             LastStreamEvent = lastStreamEvent,
             Error = exception is null ? "" : UserFacingErrorMessageBuilder.Build("Story Assistant failed.", exception),
@@ -1111,38 +1184,38 @@ public sealed class StoryAssistantStore(
         };
     }
 
-    StoryAssistantWorkItem? WorkItemFor(string itemId) =>
-        State.WorkItems.FirstOrDefault(item =>
+    static StoryAssistantWorkItem? WorkItemFor(StoryAssistantChat chat, string itemId) =>
+        chat.WorkItems.FirstOrDefault(item =>
             string.Equals(item.Id, itemId, StringComparison.Ordinal)
             || string.Equals(item.TranscriptItemId, itemId, StringComparison.Ordinal));
 
-    void MarkWorkItemCancelled(string workItemId)
+    void MarkWorkItemCancelled(StoryAssistantChat chat, string workItemId)
     {
-        var workItem = WorkItemFor(workItemId);
+        var workItem = WorkItemFor(chat, workItemId);
         if (workItem is null)
             return;
 
         workItem.Status = StoryAssistantWorkItemStatus.Cancelled;
         workItem.DecisionReason = "Stopped before the assistant could continue.";
         workItem.UpdatedUtc = DateTime.UtcNow;
-        SyncTranscriptFor(workItem);
+        SyncTranscriptFor(chat, workItem);
     }
 
-    void MarkWorkItemFailed(string workItemId, string message)
+    void MarkWorkItemFailed(StoryAssistantChat chat, string workItemId, string message)
     {
-        var workItem = WorkItemFor(workItemId);
+        var workItem = WorkItemFor(chat, workItemId);
         if (workItem is null)
             return;
 
         workItem.Status = StoryAssistantWorkItemStatus.Failed;
         workItem.DecisionReason = message;
         workItem.UpdatedUtc = DateTime.UtcNow;
-        SyncTranscriptFor(workItem);
+        SyncTranscriptFor(chat, workItem);
     }
 
-    void SyncTranscriptFor(StoryAssistantWorkItem workItem)
+    static void SyncTranscriptFor(StoryAssistantChat chat, StoryAssistantWorkItem workItem)
     {
-        var transcriptItem = State.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
+        var transcriptItem = chat.Items.FirstOrDefault(item => item.WorkItemId == workItem.Id || item.Id == workItem.TranscriptItemId);
         if (transcriptItem is not null)
             SyncTranscriptItem(transcriptItem, workItem);
     }

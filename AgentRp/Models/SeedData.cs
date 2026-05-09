@@ -338,7 +338,7 @@ public static class SeedData
 
     static RpTurnTrace GuidedNarratorTrace(DateTime startedUtc) => new()
     {
-        Summary = "Completed · Narrator · Appearance -> Selection -> Planning -> Prose",
+        Summary = "Completed · Narrator · Appearance -> Planning -> Prose",
         Status = "completed",
         StartedUtc = startedUtc,
         CompletedUtc = startedUtc.AddSeconds(4),
@@ -372,29 +372,10 @@ public static class SeedData
             },
             new()
             {
-                Id = "selection",
-                Label = "Selection",
-                Status = "completed",
-                StartedUtc = startedUtc.AddSeconds(1.1),
-                CompletedUtc = startedUtc.AddSeconds(1.8),
-                ProviderId = "ap1",
-                ProviderName = "Grok / xAI",
-                ModelId = "grok-4-0709",
-                InputTokens = 2210,
-                OutputTokens = 88,
-                TotalTokens = 2298,
-                DurationSeconds = 0.7,
-                SystemPrompt = "Choose the next responder. Return JSON only.",
-                UserPrompt = "Scene transcript and characters...",
-                RawOutput = "{\"characterName\":\"Bella\",\"reason\":\"She is the active arrival.\"}",
-                StructuredOutputJson = "{\"characterName\":\"Bella\",\"reason\":\"She is the active arrival.\"}"
-            },
-            new()
-            {
                 Id = "planning",
                 Label = "Planning",
                 Status = "completed",
-                StartedUtc = startedUtc.AddSeconds(1.8),
+                StartedUtc = startedUtc.AddSeconds(1.1),
                 CompletedUtc = startedUtc.AddSeconds(3.2),
                 ProviderId = "ap1",
                 ProviderName = "Grok / xAI",

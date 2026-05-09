@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject ILogger<StoryAssistantEntityBrowser> Logger
 
 <ModalSplitLayout Height="100%" RailWidth="280px" Class="story-entity-browser" MainClass="story-entity-browser-main">
     <RailHeader>
@@ -141,7 +142,15 @@
         _ => Session.Chat.Timeline.MarkChangedAsync()
     };
 
-    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+    Task OnStoreChanged() => InvokeAsync(() =>
+    {
+        Logger.LogInformation(
+            "StoryAssistantEntityBrowser calling StateHasChanged from entity store change. SelectedKey={SelectedKey} Search={Search} EntryCount={EntryCount}",
+            SelectedKey,
+            Search,
+            AllEntries.Count);
+        StateHasChanged();
+    });
 
     void SearchChanged(ChangeEventArgs args)
     {

@@ -124,13 +124,16 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId),
                 request.RequestedNarrator,
                 request.SceneOverride);
-            SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText);
+            var useSelectionStep = NeedsSelectionStep(request);
+            SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText, useSelectionStep);
             await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
                 return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, request, context, trace, progress, cancellationToken);
 
             var appearance = await RunAppearanceStepAsync(document, selection, context, trace, progress, cancellationToken);
-            var selectedActor = await RunSelectionStepAsync(document, selection, context, request, trace, progress, cancellationToken);
+            var selectedActor = useSelectionStep
+                ? await RunSelectionStepAsync(document, selection, context, trace, progress, cancellationToken)
+                : ResolveRequestedActor(request);
             var selectedContext = promptContextBuilder.BuildTurnContext(
                 document,
                 request.ParentTurnId,
@@ -448,47 +451,12 @@ public sealed class TextGenerationService(
         RpChatDocument document,
         ActiveModelSelection selection,
         TurnPromptContext context,
-        GenerateTurnRequest request,
         RpTurnTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "selection", selection, startedUtc, progress);
-        if (request.RequestedNarrator)
-        {
-            var explicitSelection = new SelectionResponse("Narrator", "User override");
-            await CompleteStepAsync(trace, CreateStepTrace(
-                "selection",
-                "Selection",
-                selection,
-                startedUtc,
-                DateTime.UtcNow,
-                "User override",
-                "Narrator",
-                new ModelTextCompletion("User override", 0, 0, ""),
-                JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
-                ""), progress);
-            return ("", "Narrator");
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.RequestedActorCharacterId))
-        {
-            var explicitSelection = new SelectionResponse(request.RequestedActorName, "User override");
-            await CompleteStepAsync(trace, CreateStepTrace(
-                "selection",
-                "Selection",
-                selection,
-                startedUtc,
-                DateTime.UtcNow,
-                "User override",
-                request.RequestedActorName,
-                new ModelTextCompletion("User override", 0, 0, ""),
-                JsonSerializer.Serialize(explicitSelection, AppJsonSerializerOptions.IndentedWeb),
-                ""), progress);
-            return (request.RequestedActorCharacterId, request.RequestedActorName);
-        }
-
         var tuning = ResolveTuning(document.ModelTuning, "selection");
         var tokens = promptContextBuilder.BuildTokens(context, "");
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Selection, tokens);
@@ -774,10 +742,20 @@ public sealed class TextGenerationService(
         Error = error
     };
 
-    static void SeedTurnSteps(RpTurnTrace trace, ActiveModelSelection selection, bool structured)
+    static bool NeedsSelectionStep(GenerateTurnRequest request) =>
+        !request.RequestedNarrator && string.IsNullOrWhiteSpace(request.RequestedActorCharacterId);
+
+    static (string Id, string Name) ResolveRequestedActor(GenerateTurnRequest request) =>
+        request.RequestedNarrator
+            ? ("", "Narrator")
+            : (request.RequestedActorCharacterId, request.RequestedActorName);
+
+    static void SeedTurnSteps(RpTurnTrace trace, ActiveModelSelection selection, bool structured, bool includeSelection = true)
     {
         var steps = structured
-            ? new[] { ("appearance", "Appearance"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
+            ? includeSelection
+                ? new[] { ("appearance", "Appearance"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
+                : new[] { ("appearance", "Appearance"), ("planning", "Planning"), ("prose", "Prose") }
             : new[] { ("prose", "Prose") };
 
         SeedSteps(trace, selection, steps);
