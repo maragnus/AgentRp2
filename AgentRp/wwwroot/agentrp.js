@@ -193,6 +193,139 @@ window.agentRp = {
             }
         };
     },
+    textInputs: (() => {
+        const modes = {
+            none: "None",
+            empty: "Empty",
+            change: "Change",
+            live: "Live"
+        };
+
+        function normalizeOptions(options) {
+            return {
+                mode: options?.mode || modes.none,
+                value: options?.value || "",
+                isEmpty: !!options?.isEmpty,
+                emptyDebounceMilliseconds: Number(options?.emptyDebounceMilliseconds) || 500,
+                changeDebounceMilliseconds: Number(options?.changeDebounceMilliseconds) || 2000,
+                liveDebounceMilliseconds: Number(options?.liveDebounceMilliseconds) || 500
+            };
+        }
+
+        function textValue(element) {
+            return element?.value ?? "";
+        }
+
+        function isEmptyValue(value) {
+            return !value || value.trim().length === 0;
+        }
+
+        function track(element, dotNet, options) {
+            if (!element || !dotNet) {
+                return {
+                    update() {
+                    },
+                    dispose() {
+                    }
+                };
+            }
+
+            let current = normalizeOptions(options);
+            let disposed = false;
+            let timer = 0;
+            let lastReportedValue = textValue(element);
+            let lastReportedEmpty = isEmptyValue(lastReportedValue);
+
+            const clearTimer = () => {
+                if (!timer) {
+                    return;
+                }
+
+                window.clearTimeout(timer);
+                timer = 0;
+            };
+
+            const invokeDotNet = (method, ...args) => {
+                dotNet.invokeMethodAsync(method, ...args).catch(() => {
+                    // The Blazor circuit may be gone during teardown. Disposal is best-effort.
+                });
+            };
+
+            const notifyValueChanged = () => {
+                const next = textValue(element);
+                if (next === lastReportedValue) {
+                    return;
+                }
+
+                lastReportedValue = next;
+                invokeDotNet("NotifyTextValueChanged", next);
+            };
+
+            const notifyEmptyChanged = () => {
+                const next = isEmptyValue(textValue(element));
+                if (next === lastReportedEmpty) {
+                    return;
+                }
+
+                lastReportedEmpty = next;
+                invokeDotNet("NotifyTextEmptyChanged", next);
+            };
+
+            const debounce = (delay, callback) => {
+                clearTimer();
+                timer = window.setTimeout(() => {
+                    timer = 0;
+
+                    if (!disposed) {
+                        callback();
+                    }
+                }, delay);
+            };
+
+            const handleInput = () => {
+                if (current.mode === modes.empty) {
+                    debounce(current.emptyDebounceMilliseconds, notifyEmptyChanged);
+                } else if (current.mode === modes.change) {
+                    debounce(current.changeDebounceMilliseconds, notifyValueChanged);
+                } else if (current.mode === modes.live) {
+                    debounce(current.liveDebounceMilliseconds, notifyValueChanged);
+                }
+            };
+
+            const handleChange = () => {
+                clearTimer();
+
+                if (current.mode === modes.empty) {
+                    notifyEmptyChanged();
+                } else if (current.mode === modes.change || current.mode === modes.live) {
+                    notifyValueChanged();
+                }
+            };
+
+            element.addEventListener("input", handleInput);
+            element.addEventListener("change", handleChange);
+
+            return {
+                update(nextOptions) {
+                    current = normalizeOptions(nextOptions);
+
+                    if (textValue(element) === current.value) {
+                        lastReportedValue = current.value;
+                    }
+
+                    lastReportedEmpty = current.isEmpty;
+                },
+                dispose() {
+                    disposed = true;
+                    clearTimer();
+                    element.removeEventListener("input", handleInput);
+                    element.removeEventListener("change", handleChange);
+                }
+            };
+        }
+
+        return { track };
+    })(),
     audio: (() => {
         let current = null;
 

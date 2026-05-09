@@ -1,15 +1,16 @@
+@inherits AppTextInputBase<AppInput>
+
 <input class="field @Class"
        type="@Type"
+       @ref="InputElement"
        value="@Value"
        placeholder="@Placeholder"
-       @oninput="HandleInput" />
+       disabled="@Disabled"
+       @onchange="HandleNativeChange" />
 
 @code {
     [Parameter] public string Type { get; set; } = "text";
-    [Parameter] public string Value { get; set; } = "";
-    [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
-
-    Task HandleInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    [Parameter] public bool Disabled { get; set; }
 }

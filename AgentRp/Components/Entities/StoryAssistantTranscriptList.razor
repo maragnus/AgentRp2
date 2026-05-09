@@ -126,8 +126,14 @@
                     @if (item.Question.AllowsFreeform || item.Question.Choices.Count == 0)
                     {
                         <div class="story-review-note">
-                            <AppTextarea Rows="2" Value="@NoteFor(item.Id)" ValueChanged="value => SetNote(item.Id, value)" Placeholder="Your answer" />
-                            <BusyButton Variant="primary" Disabled="@string.IsNullOrWhiteSpace(NoteFor(item.Id))" OnClick="@(() => AnswerQuestion(item.Id, NoteFor(item.Id)))">Send</BusyButton>
+                            <AppTextarea Rows="2"
+                                         Value="@NoteFor(item.Id)"
+                                         ValueChanged="value => SetNote(item.Id, value)"
+                                         IsEmpty="@NoteIsEmpty(item.Id)"
+                                         IsEmptyChanged="value => SetNoteEmpty(item.Id, value)"
+                                         UpdateMode="TextUpdateMode.Empty"
+                                         Placeholder="Your answer" />
+                            <BusyButton Variant="primary" Disabled="@NoteIsEmpty(item.Id)" OnClick="@(() => AnswerQuestion(item.Id, NoteFor(item.Id)))">Send</BusyButton>
                         </div>
                     }
                 }
@@ -182,7 +188,13 @@
                 @if (item.Status == StoryAssistantItemStatus.NeedsReview)
                 {
                     <div class="story-review-note">
-                        <AppTextarea Rows="2" Value="@NoteFor(item.Id)" ValueChanged="value => SetNote(item.Id, value)" Placeholder="Optional guidance" />
+                        <AppTextarea Rows="2"
+                                     Value="@NoteFor(item.Id)"
+                                     ValueChanged="value => SetNote(item.Id, value)"
+                                     IsEmpty="@NoteIsEmpty(item.Id)"
+                                     IsEmptyChanged="value => SetNoteEmpty(item.Id, value)"
+                                     UpdateMode="TextUpdateMode.Empty"
+                                     Placeholder="Optional guidance" />
                         <div class="story-review-actions">
                             <BusyButton Variant="primary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.Accept))">Accept</BusyButton>
                             <BusyButton Variant="secondary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.TryAgain))">Try Again</BusyButton>
@@ -210,6 +222,7 @@
 
 @code {
     readonly Dictionary<string, string> Notes = [];
+    readonly Dictionary<string, bool> EmptyNotes = [];
     readonly Dictionary<string, HashSet<string>> SelectedChoices = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -218,7 +231,16 @@
 
     string NoteFor(string id) => Notes.GetValueOrDefault(id, "");
 
-    void SetNote(string id, string value) => Notes[id] = value;
+    bool NoteIsEmpty(string id) =>
+        EmptyNotes.GetValueOrDefault(id, string.IsNullOrWhiteSpace(NoteFor(id)));
+
+    void SetNote(string id, string value)
+    {
+        Notes[id] = value;
+        EmptyNotes[id] = string.IsNullOrWhiteSpace(value);
+    }
+
+    void SetNoteEmpty(string id, bool isEmpty) => EmptyNotes[id] = isEmpty;
 
     bool IsChoiceSelected(string itemId, string choiceId) =>
         SelectedChoices.TryGetValue(itemId, out var selected) && selected.Contains(choiceId);
@@ -244,12 +266,14 @@
     {
         await Session.Chat.StoryAssistant.ResolveReviewAsync(id, kind, NoteFor(id));
         Notes.Remove(id);
+        EmptyNotes.Remove(id);
     }
 
     async Task AnswerQuestion(string id, string answer)
     {
         await Session.Chat.StoryAssistant.ResolveQuestionAsync(id, answer);
         Notes.Remove(id);
+        EmptyNotes.Remove(id);
         SelectedChoices.Remove(id);
     }
 

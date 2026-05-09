@@ -12,7 +12,11 @@
             }
         </div>
     }
-    <AppTextarea Rows="3" Value="@Draft" ValueChanged="value => Draft = value" Placeholder="Ask the assistant to build or revise story entities" />
+    <AppTextarea Rows="3"
+                 @bind-Value="Draft"
+                 @bind-IsEmpty="DraftIsEmpty"
+                 UpdateMode="TextUpdateMode.Empty"
+                 Placeholder="Ask the assistant to build or revise story entities" />
     <div class="story-assistant-actions">
         @if (ContextChips.Count > 0)
         {
@@ -40,6 +44,7 @@
 
 @code {
     string Draft = "";
+    bool DraftIsEmpty = true;
 
     [Parameter] public bool CanRun { get; set; }
     [Parameter] public bool NeedsRestart { get; set; }
@@ -51,12 +56,13 @@
     [Parameter] public EventCallback<StoryAssistantContextChip> OnRemoveContext { get; set; }
     [Parameter] public EventCallback<bool> KeepContextChanged { get; set; }
 
-    bool CanSend => CanRun && !NeedsRestart && !string.IsNullOrWhiteSpace(Draft);
+    bool CanSend => CanRun && !NeedsRestart && !DraftIsEmpty;
 
     async Task Send()
     {
         var text = Draft;
         Draft = "";
+        DraftIsEmpty = true;
         await OnSend.InvokeAsync(text);
     }
 
