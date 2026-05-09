@@ -54,7 +54,9 @@ public sealed record GeneratedTurnResult(
 public sealed record GeneratedSnapshotResult(
     string Summary,
     List<RpTranscriptSnapshotTimelineEntry> TimelineEntries,
-    RpTurnTrace Trace);
+    RpTurnTrace Trace,
+    Dictionary<string, string>? CharacterSceneStates = null,
+    RpSceneFrame? Scene = null);
 
 public sealed record TranscriptProseUpdate(
     string ParentTurnId,
@@ -130,9 +132,9 @@ public sealed class TextGenerationService(
             if (!selection.Capabilities.CanGenerateStructuredText)
                 return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, request, context, trace, progress, cancellationToken);
 
-            var appearance = await RunAppearanceStepAsync(document, selection, context, trace, progress, cancellationToken);
+            var continuity = await RunSceneContinuityStepAsync(document, selection, context, request, trace, progress, cancellationToken);
             var selectedActor = useSelectionStep
-                ? await RunSelectionStepAsync(document, selection, context, trace, progress, cancellationToken)
+                ? await RunSelectionStepAsync(document, selection, BuildContextWithScene(document, request, continuity.Scene, continuity.CharacterSceneStates, null), trace, progress, cancellationToken)
                 : ResolveRequestedActor(request);
             var selectedContext = promptContextBuilder.BuildTurnContext(
                 document,
@@ -141,10 +143,10 @@ public sealed class TextGenerationService(
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
                 request.RequestedNarrator,
-                request.SceneOverride,
-                appearance);
+                continuity.Scene,
+                continuity.CharacterSceneStates);
             var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken, progressSceneOverride: request.SceneOverride);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
             trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -153,14 +155,13 @@ public sealed class TextGenerationService(
             if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(selectedActor.Id))
                 privateIntents[selectedActor.Id] = plan.PrivateIntent;
 
-            var scene = SessionCloner.Clone(request.SceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
             return new(
                 selectedActor.Id,
                 selectedActor.Name,
                 CreateTurnPlan(plan, context.RequestedTurnShape),
-                appearance,
+                continuity.CharacterSceneStates,
                 privateIntents,
-                scene,
+                continuity.Scene,
                 prose,
                 trace);
         }
@@ -345,6 +346,22 @@ public sealed class TextGenerationService(
             if (!selection.Capabilities.CanGenerateStructuredText)
                 throw new InvalidOperationException("Creating a snapshot failed because the reasoning model has structured output disabled.");
 
+            var continuityContext = promptContextBuilder.BuildTurnContext(
+                document,
+                request.TurnId,
+                "",
+                "Brief",
+                null,
+                requestedNarrator: true);
+            var continuityRequest = new GenerateTurnRequest(
+                request.TurnId,
+                "snapshot",
+                "",
+                "Brief",
+                "",
+                "Narrator",
+                RequestedNarrator: true);
+            var continuity = await RunSceneContinuityStepAsync(document, selection, continuityContext, continuityRequest, trace, null, cancellationToken);
             var context = promptContextBuilder.BuildSnapshotContext(document, request.TurnId);
             var tuning = ResolveTuning(document.ModelTuning, "snapshot");
             var tokens = promptContextBuilder.BuildTokens(context);
@@ -367,7 +384,9 @@ public sealed class TextGenerationService(
             return new(
                 ResolveSnapshotSummary(result),
                 NormalizeSnapshotTimelineEntries(result.TimelineEntries),
-                trace);
+                trace,
+                continuity.CharacterSceneStates,
+                continuity.Scene);
         }
         catch (Exception exception) when (exception is not TranscriptGenerationException)
         {
@@ -412,24 +431,25 @@ public sealed class TextGenerationService(
             trace);
     }
 
-    async Task<Dictionary<string, string>> RunAppearanceStepAsync(
+    async Task<SceneContinuityResult> RunSceneContinuityStepAsync(
         RpChatDocument document,
         ActiveModelSelection selection,
         TurnPromptContext context,
+        GenerateTurnRequest request,
         RpTurnTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
-        var tuning = ResolveTuning(document.ModelTuning, "appearance");
-        var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Appearance);
-        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Appearance, tokens);
+        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.SceneContinuity);
+        var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.SceneContinuity);
+        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.SceneContinuity, tokens);
         var startedUtc = DateTime.UtcNow;
-        await StartStepAsync(trace, "appearance", selection, startedUtc, progress);
-        var completion = await SendStructuredAsync<AppearanceResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Generating appearance state", cancellationToken);
+        await StartStepAsync(trace, "scene-continuity", selection, startedUtc, progress);
+        var completion = await SendStructuredAsync<AppearanceResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Reconciling scene continuity", cancellationToken);
         var result = completion.Value;
         await CompleteStepAsync(trace, CreateStepTrace(
-            "appearance",
-            "Appearance",
+            "scene-continuity",
+            "Scene Continuity",
             selection,
             startedUtc,
             DateTime.UtcNow,
@@ -438,13 +458,21 @@ public sealed class TextGenerationService(
             completion,
             JsonSerializer.Serialize(result, AppJsonSerializerOptions.IndentedWeb),
             ""), progress);
-        return result.Characters
+        var characterSceneStates = result.Characters
             ?.Where(character => !string.IsNullOrWhiteSpace(character.CharacterName))
             .Select(character => ResolveAppearanceCharacter(document.Characters, character))
             .Where(pair => pair is not null && !string.IsNullOrWhiteSpace(pair.Value.Appearance))
             .GroupBy(pair => pair!.Value.CharacterId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last()!.Value.Appearance, StringComparer.Ordinal)
-        ?? new(StringComparer.Ordinal);
+            ?? new(StringComparer.Ordinal);
+        var scene = SessionCloner.Clone(request.SceneOverride ?? TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
+        scene.CharacterPhysicalStates = result.PhysicalStates is null
+            ? scene.CharacterPhysicalStates
+            : NormalizePhysicalStates(document.Characters, result.PhysicalStates);
+        scene.SceneObjects = result.SceneObjects is null
+            ? scene.SceneObjects
+            : NormalizeSceneObjects(document.Characters, result.SceneObjects);
+        return new(characterSceneStates, scene);
     }
 
     async Task<(string Id, string Name)> RunSelectionStepAsync(
@@ -477,6 +505,22 @@ public sealed class TextGenerationService(
         var actorName = document.Characters.FirstOrDefault(character => character.Id == actorId)?.Name ?? result.CharacterName;
         return (actorId, actorName);
     }
+
+    TurnPromptContext BuildContextWithScene(
+        RpChatDocument document,
+        GenerateTurnRequest request,
+        RpSceneFrame scene,
+        IReadOnlyDictionary<string, string> characterSceneStates,
+        RpCharacter? actor) =>
+        promptContextBuilder.BuildTurnContext(
+            document,
+            request.ParentTurnId,
+            request.Guidance,
+            request.RequestedTurnShape,
+            actor,
+            request.RequestedNarrator,
+            scene,
+            characterSceneStates);
 
     async Task<PlanningResponse> RunPlanningStepAsync(
         RpChatDocument document,
@@ -621,7 +665,8 @@ public sealed class TextGenerationService(
         WhyNow = plan.WhyNow,
         ChangeIntroduced = plan.ChangeIntroduced,
         Guardrails = plan.Guardrails,
-        PrivateIntent = privateIntent
+        PrivateIntent = privateIntent,
+        ContinuityIntents = plan.ContinuityIntents
     };
 
     static string ResolvePrivateIntent(IReadOnlyDictionary<string, string> privateIntents, string actorId) =>
@@ -635,6 +680,9 @@ public sealed class TextGenerationService(
     static ModelTuningStepState ResolveTuning(ModelTuningState state, string stepId)
     {
         if (state.Values.TryGetValue(stepId, out var tuning))
+            return tuning;
+
+        if (stepId == PromptLibraryStageIds.SceneContinuity && state.Values.TryGetValue(PromptLibraryStageIds.LegacyAppearance, out tuning))
             return tuning;
 
         var defaults = ModelTuningState.CreateDefault();
@@ -708,7 +756,8 @@ public sealed class TextGenerationService(
         ImmediateGoal = plan.ImmediateGoal,
         WhyNow = plan.WhyNow,
         ChangeIntroduced = plan.ChangeIntroduced,
-        Guardrails = plan.Guardrails
+        Guardrails = plan.Guardrails,
+        ContinuityIntents = NormalizeContinuityIntents(plan.ContinuityIntents)
     };
 
     static RpTurnTraceStep CreateStepTrace(
@@ -755,8 +804,8 @@ public sealed class TextGenerationService(
     {
         var steps = structured
             ? includeSelection
-                ? new[] { ("appearance", "Appearance"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
-                : new[] { ("appearance", "Appearance"), ("planning", "Planning"), ("prose", "Prose") }
+                ? new[] { ("scene-continuity", "Scene Continuity"), ("selection", "Selection"), ("planning", "Planning"), ("prose", "Prose") }
+                : new[] { ("scene-continuity", "Scene Continuity"), ("planning", "Planning"), ("prose", "Prose") }
             : new[] { ("prose", "Prose") };
 
         SeedSteps(trace, selection, steps);
@@ -883,12 +932,13 @@ public sealed class TextGenerationService(
         TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, modelSelections)
         ?? throw new InvalidOperationException("Creating a snapshot failed because no reasoning model is enabled.");
 
-    static string ResolveCharacterId(IEnumerable<RpCharacter> characters, string name)
+    static string ResolveCharacterId(IEnumerable<RpCharacter> characters, string idOrName)
     {
-        if (string.IsNullOrWhiteSpace(name))
+        if (string.IsNullOrWhiteSpace(idOrName))
             return "";
 
-        var match = characters.FirstOrDefault(character => string.Equals(character.Name, name, StringComparison.OrdinalIgnoreCase));
+        var match = characters.FirstOrDefault(character => string.Equals(character.Id, idOrName, StringComparison.Ordinal)
+            || string.Equals(character.Name, idOrName, StringComparison.OrdinalIgnoreCase));
         return match?.Id ?? "";
     }
 
@@ -914,6 +964,7 @@ public sealed class TextGenerationService(
         Immediate Goal: {plan.ImmediateGoal}
         Why Now: {plan.WhyNow}
         Change Introduced: {plan.ChangeIntroduced}
+        Physical Continuity Intent: {FormatContinuityIntents(plan.ContinuityIntents)}
         Private Intent: {plan.PrivateIntent}
         Guardrails: {plan.Guardrails}
         """;
@@ -941,14 +992,193 @@ public sealed class TextGenerationService(
         return appearances;
     }
 
+    static List<RpCharacterPhysicalState> NormalizePhysicalStates(
+        IReadOnlyList<RpCharacter> characters,
+        IReadOnlyList<SceneContinuityPhysicalStateResponse>? states)
+    {
+        if (states is null)
+            return [];
+
+        return states
+            .Select(state =>
+            {
+                var characterId = ResolveCharacterId(characters, state.CharacterName ?? "");
+                if (string.IsNullOrWhiteSpace(characterId))
+                    characterId = ResolveCharacterId(characters, state.CharacterId ?? "");
+                if (string.IsNullOrWhiteSpace(characterId))
+                    characterId = state.CharacterId?.Trim() ?? "";
+                return new RpCharacterPhysicalState
+                {
+                    CharacterId = characterId,
+                    Location = state.Location?.Trim() ?? "",
+                    Posture = state.Posture?.Trim() ?? "",
+                    Head = state.Head?.Trim() ?? "",
+                    LeftArm = state.LeftArm?.Trim() ?? "",
+                    RightArm = state.RightArm?.Trim() ?? "",
+                    LeftHand = state.LeftHand?.Trim() ?? "",
+                    RightHand = state.RightHand?.Trim() ?? "",
+                    LeftLeg = state.LeftLeg?.Trim() ?? "",
+                    RightLeg = state.RightLeg?.Trim() ?? "",
+                    LeftFoot = state.LeftFoot?.Trim() ?? "",
+                    RightFoot = state.RightFoot?.Trim() ?? "",
+                    Contact = state.Contact?.Trim() ?? "",
+                    Summary = state.Summary?.Trim() ?? ""
+                };
+            })
+            .Where(state => !string.IsNullOrWhiteSpace(state.CharacterId))
+            .GroupBy(state => state.CharacterId, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .ToList();
+    }
+
+    static List<RpSceneObjectState> NormalizeSceneObjects(
+        IReadOnlyList<RpCharacter> characters,
+        IReadOnlyList<SceneContinuityObjectResponse>? objects)
+    {
+        if (objects is null)
+            return [];
+
+        return objects
+            .Select((item, index) => new RpSceneObjectState
+            {
+                Id = CreateSceneObjectId(item, index),
+                Name = item.Name?.Trim() ?? "",
+                OwnerCharacterId = ResolveObjectCharacterId(characters, item.OwnerCharacterId),
+                HolderCharacterId = ResolveObjectCharacterId(characters, item.HolderCharacterId),
+                HeldBodyPart = item.HeldBodyPart?.Trim() ?? "",
+                Location = item.Location?.Trim() ?? "",
+                State = item.State?.Trim() ?? "",
+                Summary = item.Summary?.Trim() ?? ""
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name) || !string.IsNullOrWhiteSpace(item.Summary))
+            .GroupBy(item => item.Id, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .ToList();
+    }
+
+    static string ResolveObjectCharacterId(IEnumerable<RpCharacter> characters, string? idOrName)
+    {
+        var characterId = ResolveCharacterId(characters, idOrName ?? "");
+        return string.IsNullOrWhiteSpace(characterId) ? idOrName?.Trim() ?? "" : characterId;
+    }
+
+    static string CreateSceneObjectId(SceneContinuityObjectResponse item, int index)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Id))
+            return item.Id.Trim();
+
+        var source = !string.IsNullOrWhiteSpace(item.Name) ? item.Name : item.Summary;
+        if (string.IsNullOrWhiteSpace(source))
+            return $"scene-object-{index + 1}";
+
+        var builder = new StringBuilder("scene-object-");
+        var previousDash = false;
+        foreach (var character in source.Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(character);
+                previousDash = false;
+            }
+            else if (!previousDash && builder.Length > "scene-object-".Length)
+            {
+                builder.Append('-');
+                previousDash = true;
+            }
+        }
+
+        if (previousDash)
+            builder.Length--;
+
+        return builder.Length == "scene-object-".Length ? $"scene-object-{index + 1}" : builder.ToString();
+    }
+
+    static List<RpPhysicalContinuityIntent> NormalizeContinuityIntents(IReadOnlyList<RpPhysicalContinuityIntent>? intents) =>
+        intents?
+            .Where(intent => !string.IsNullOrWhiteSpace(intent.Change) || !string.IsNullOrWhiteSpace(intent.Kind))
+            .Select(intent => new RpPhysicalContinuityIntent
+            {
+                Kind = intent.Kind.Trim(),
+                CharacterName = intent.CharacterName.Trim(),
+                CharacterId = intent.CharacterId.Trim(),
+                BodyPart = intent.BodyPart.Trim(),
+                ObjectName = intent.ObjectName.Trim(),
+                ObjectId = intent.ObjectId.Trim(),
+                Target = intent.Target.Trim(),
+                Change = intent.Change.Trim(),
+                ClearsStaleState = intent.ClearsStaleState
+            })
+            .ToList()
+        ?? [];
+
+    static string FormatContinuityIntents(IReadOnlyList<RpPhysicalContinuityIntent>? intents)
+    {
+        var values = NormalizeContinuityIntents(intents);
+        if (values.Count == 0)
+            return "None";
+
+        return string.Join(" | ", values.Select(intent =>
+        {
+            var parts = new List<string>();
+            Add(parts, intent.Kind);
+            Add(parts, intent.CharacterName);
+            Add(parts, intent.BodyPart);
+            Add(parts, intent.ObjectName);
+            Add(parts, intent.Target);
+            Add(parts, intent.Change);
+            if (intent.ClearsStaleState)
+                parts.Add("clears stale state");
+            return string.Join("; ", parts);
+        }));
+
+        static void Add(List<string> parts, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                parts.Add(value.Trim());
+        }
+    }
+
     public sealed record AppearanceResponse(
         string? Summary,
-        IReadOnlyList<AppearanceCharacterResponse>? Characters);
+        IReadOnlyList<AppearanceCharacterResponse>? Characters,
+        IReadOnlyList<SceneContinuityPhysicalStateResponse>? PhysicalStates = null,
+        IReadOnlyList<SceneContinuityObjectResponse>? SceneObjects = null);
 
     public sealed record AppearanceCharacterResponse(
         string CharacterName,
         bool HasCurrentSceneState,
         string? CurrentAppearance);
+
+    public sealed record SceneContinuityPhysicalStateResponse(
+        string? CharacterId,
+        string? CharacterName,
+        string? Location,
+        string? Posture,
+        string? Head,
+        string? LeftArm,
+        string? RightArm,
+        string? LeftHand,
+        string? RightHand,
+        string? LeftLeg,
+        string? RightLeg,
+        string? LeftFoot,
+        string? RightFoot,
+        string? Contact,
+        string? Summary);
+
+    public sealed record SceneContinuityObjectResponse(
+        string? Id,
+        string? Name,
+        string? OwnerCharacterId,
+        string? HolderCharacterId,
+        string? HeldBodyPart,
+        string? Location,
+        string? State,
+        string? Summary);
+
+    sealed record SceneContinuityResult(
+        Dictionary<string, string> CharacterSceneStates,
+        RpSceneFrame Scene);
 
     sealed class SelectionResponse
     {
@@ -976,6 +1206,7 @@ public sealed class TextGenerationService(
         public string ChangeIntroduced { get; set; } = "";
         public string Guardrails { get; set; } = "";
         public string PrivateIntent { get; set; } = "";
+        public IReadOnlyList<RpPhysicalContinuityIntent>? ContinuityIntents { get; set; }
     }
 
     static string ResolveSnapshotSummary(SnapshotResponse response)

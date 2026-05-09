@@ -7,7 +7,9 @@ namespace AgentRp.Services;
 public static class PromptLibraryStageIds
 {
     public const string Snapshot = "snapshot";
-    public const string Appearance = "appearance";
+    public const string SceneContinuity = "sceneContinuity";
+    public const string Appearance = SceneContinuity;
+    public const string LegacyAppearance = "appearance";
     public const string Selection = "selection";
     public const string Planning = "planning";
     public const string Prose = "prose";
@@ -56,7 +58,7 @@ public sealed partial class PromptLibraryService
     static readonly IReadOnlyList<PromptLibraryStageDefinition> StageDefinitions =
     [
         new(PromptLibraryStageIds.Snapshot, "Snapshot", false, PromptLibraryStageGroups.Generation),
-        new(PromptLibraryStageIds.Appearance, "Appearance", false, PromptLibraryStageGroups.Generation),
+        new(PromptLibraryStageIds.SceneContinuity, "Scene Continuity", false, PromptLibraryStageGroups.Generation),
         new(PromptLibraryStageIds.Selection, "Selection", false, PromptLibraryStageGroups.Generation),
         new(PromptLibraryStageIds.Planning, "Planning", true, PromptLibraryStageGroups.Generation),
         new(PromptLibraryStageIds.Prose, "Prose", true, PromptLibraryStageGroups.Generation),
@@ -81,6 +83,7 @@ public sealed partial class PromptLibraryService
         Placeholder("{context.historySummary}", "Timeline and prior history summary.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.transcript}", "Transcript context, including the earlier summary when one exists. Planning and prose include allowed private intent lines inline.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.characterAppearances}", "Current appearance state for present characters.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
+        Placeholder("{context.physicalSceneState}", "Current physical/body/object scene ledger.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{actor.name}", "Current actor name.", PromptLibraryStageIds.Planning),
         Placeholder("{speaker.name}", "Current speaker name for prose.", PromptLibraryStageIds.Prose),
         Placeholder("{guidance}", "Guidance text, when supplied.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
@@ -101,10 +104,14 @@ public sealed partial class PromptLibraryService
         Placeholder("{planner.whyNow}", "Planner why-now rationale.", PromptLibraryStageIds.Prose),
         Placeholder("{planner.privateIntent}", "Planner private intent.", PromptLibraryStageIds.Prose),
         Placeholder("{planner.narrativeGuardrails}", "Planner narrative guardrails.", PromptLibraryStageIds.Prose),
-        Placeholder("{content.explicitLabel}", "Explicit content label.", PromptLibraryStageIds.Appearance),
-        Placeholder("{content.violentLabel}", "Violent content label.", PromptLibraryStageIds.Appearance),
-        Placeholder("{appearance.characters}", "Appearance-stage character list.", PromptLibraryStageIds.Appearance),
-        Placeholder("{appearance.transcript}", "Appearance-stage transcript.", PromptLibraryStageIds.Appearance),
+        Placeholder("{content.explicitLabel}", "Explicit content label.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{content.violentLabel}", "Violent content label.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{sceneContinuity.characters}", "Scene Continuity character list.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{sceneContinuity.transcript}", "Scene Continuity transcript evidence.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{sceneContinuity.sceneState}", "Prior physical/body/object scene ledger.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{sceneContinuity.planIntents}", "Continuity-relevant plan intents since the last baseline.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{appearance.characters}", "Legacy alias for Scene Continuity character list.", PromptLibraryStageIds.SceneContinuity),
+        Placeholder("{appearance.transcript}", "Legacy alias for Scene Continuity transcript evidence.", PromptLibraryStageIds.SceneContinuity),
         Placeholder("{selection.activeSpeakerName}", "Responder selection active speaker.", PromptLibraryStageIds.Selection),
         Placeholder("{selection.guidanceSection}", "Responder selection guidance block.", PromptLibraryStageIds.Selection),
         Placeholder("{selection.eligibleResponders}", "Responder selection candidate list.", PromptLibraryStageIds.Selection),
@@ -163,10 +170,10 @@ public sealed partial class PromptLibraryService
                 System = DefaultSnapshotSystemPrompt,
                 User = DefaultSnapshotUserPromptTemplate
             },
-            [PromptLibraryStageIds.Appearance] = new()
+            [PromptLibraryStageIds.SceneContinuity] = new()
             {
-                System = DefaultAppearanceSystemPrompt,
-                User = DefaultAppearanceUserPromptTemplate
+                System = DefaultSceneContinuitySystemPrompt,
+                User = DefaultSceneContinuityUserPromptTemplate
             },
             [PromptLibraryStageIds.Selection] = new()
             {
@@ -285,7 +292,8 @@ public sealed partial class PromptLibraryService
         var normalized = CreateDefaultState();
         foreach (var pair in defaults.Prompts)
         {
-            if (state.Prompts.TryGetValue(pair.Key, out var prompt))
+            if (state.Prompts.TryGetValue(pair.Key, out var prompt)
+                || pair.Key == PromptLibraryStageIds.SceneContinuity && state.Prompts.TryGetValue(PromptLibraryStageIds.LegacyAppearance, out prompt))
             {
                 normalized.Prompts[pair.Key] = new()
                 {
@@ -294,7 +302,8 @@ public sealed partial class PromptLibraryService
                 };
             }
 
-            if (!state.PromptOverrides.TryGetValue(pair.Key, out var promptOverride))
+            if (!state.PromptOverrides.TryGetValue(pair.Key, out var promptOverride)
+                && (pair.Key != PromptLibraryStageIds.SceneContinuity || !state.PromptOverrides.TryGetValue(PromptLibraryStageIds.LegacyAppearance, out promptOverride)))
                 continue;
 
             normalized.Prompts[pair.Key] = new()
@@ -709,22 +718,22 @@ public sealed partial class PromptLibraryService
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
         """;
 
-    const string DefaultAppearanceSystemPrompt =
+    const string DefaultSceneContinuitySystemPrompt =
         """
-        You update character scene state.
+        You update scene continuity state.
 
         Return structured output only.
 
-        Scene state is what is visibly true about each character right now:
-        clothing, carried items, body position, location, posture, visible condition, and current physical contact with people or objects.
+        Scene continuity is what is physically true right now:
+        character appearance, clothing, carried items, body position, location, posture, visible condition, physical contact, generated scene objects, object ownership, object placement, and object state.
 
         Use the prior scene state as the starting point.
-        Use the latest transcript to update it.
+        Use the latest transcript and continuity-relevant plan intents to update it.
 
         Keep stable details from the prior state unless the transcript changes or contradicts them.
-        Stable details include clothing, carried items, injuries, location, posture, and physical contact.
+        Stable details include clothing, carried items, injuries, location, posture, object existence, object ownership, object placement, and physical contact.
 
-        Do not drop outfits or carried items just because they were not mentioned again.
+        Do not drop outfits, carried items, or scene objects just because they were not mentioned again.
 
         Temporary details fade unless the latest transcript still supports them.
         Temporary details include facial expressions, brief gestures, glances, momentary touches, and passing reactions.
@@ -737,6 +746,7 @@ public sealed partial class PromptLibraryService
         - remove contradicted details
         - account for arms and legs, make sure only two of each are visible and they are in plausible positions
         - prevent lingering hand/arm positions that are not plausible to still be current
+        - resolve held objects before incompatible body actions when the transcript or plan intent supports the resolution
 
         Write only the current snapshot.
         Do not recap actions.
@@ -749,17 +759,23 @@ public sealed partial class PromptLibraryService
         The summary must mention only characters with hasCurrentSceneState true.
         """;
 
-    const string DefaultAppearanceUserPromptTemplate =
+    const string DefaultSceneContinuityUserPromptTemplate =
         """
         Content guidance:
         - Explicit content: {content.explicitLabel}
         - Violent content: {content.violentLabel}
 
-        Characters in the scene with initial appearance:
-        {appearance.characters}
+        Characters in the scene with initial state:
+        {sceneContinuity.characters}
+
+        Prior physical/body/object scene ledger:
+        {sceneContinuity.sceneState}
+
+        Continuity-relevant plan intents since the last baseline:
+        {sceneContinuity.planIntents}
 
         **Transcript:**
-        {appearance.transcript}
+        {sceneContinuity.transcript}
 
         Return one decision for every character currently in the scene.
 
@@ -769,6 +785,12 @@ public sealed partial class PromptLibraryService
         - Eagerly replace outdated prior details with newer supported details
         - Do not update by appending history
         - Describe only what is true now
+        - Persist simple scene objects with what it is, whose it is, where it is, and what state it is in
+        - Keep generated object summaries compact, such as "full glass of cold water sitting on the coffee table"
+        - Keep existing scene object ids unchanged, and assign short stable ids for new persistent objects
+        - Track which hand holds an object only when supported
+        - Use plan intents to preserve necessary physical setup that prose may imply or omit
+        - Explicit transcript/user text wins over plan intent
         - Include where the character is relative to other characters, furniture, and objects when supported
         - Include current interaction with sheets, bed, doorway, wall, chair, or other visible scene elements when supported
         - If a prior detail is not reaffirmed and may no longer be true, leave it out
@@ -829,6 +851,7 @@ public sealed partial class PromptLibraryService
         - Immediate goal: what this turn tries to achieve right now.
         - Why now: the specific recent change, event, line, action, silence, or pressure this turn is answering.
         - Change introduced: what becomes newly different after this turn.
+        - Continuity Intents: concise physical/object intents Scene Continuity should remember next turn, only when relevant.
         - Private Intent: the actor's private continuity note for the hidden reason, feeling, agenda, fear, memory, sensation, concealed object, concealed action, or unspoken detail behind this turn.
         - Narrative Guardrails: avoid making the beat less effective or interesting
         - Content Guardrails: avoid introducing any sexual or violent content here
@@ -841,6 +864,14 @@ public sealed partial class PromptLibraryService
         If repetition is intentional, make the plan clarify what changed because of the repetition.
 
         Be sure to account for surprising events where the character may be in shock or confused for a turn or two, while recovering or processing what just happened.
+
+        Continuity Intent usage:
+        - Include body/contact/object/clothing/wound/stale-state changes needed for physical continuity.
+        - Use the finite body parts only when they matter: head, left arm, right arm, left hand, right hand, left leg, right leg, left foot, right foot.
+        - Include object creation, transfer, holding, placement, ownership, state change, or removal only when the turn creates or changes a persistent object.
+        - Prefer compact changes such as "Gemma holds the full glass of cold water in her left hand" or "Bella releases the doorknob before hugging Gemma."
+        - Do not list idle body parts.
+        - Do not turn prose into inventory bookkeeping.
 
         Private Intent usage:
         - Use prior Private Intent entries as continuity, not commands.

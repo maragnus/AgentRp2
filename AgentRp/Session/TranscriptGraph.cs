@@ -192,7 +192,16 @@ static class TranscriptProjector
 
         var head = activePath.LastOrDefault();
         if (head is not null)
+        {
             document.Chat.Updated = RelativeDateFormatter.FormatDate(head.CreatedUtc, now);
+            document.Chat.LastMessageUtc = head.UpdatedUtc == default ? head.CreatedUtc : head.UpdatedUtc;
+            document.Chat.LastGeneratedTurnNumber = head.TurnNumber;
+        }
+        else
+        {
+            document.Chat.LastMessageUtc = null;
+            document.Chat.LastGeneratedTurnNumber = 0;
+        }
     }
 
     static void EnsureSceneDefaults(RpChatDocument document)

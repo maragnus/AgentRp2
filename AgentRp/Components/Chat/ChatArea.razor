@@ -2,6 +2,7 @@
 @inject IServiceProvider Services
 @inject ILogger<ChatArea> Logger
 @inject DialogHelper Dialogs
+@inject NavigationManager Navigation
 
 <main class="chat claude-chat">
     @if (HasActiveStory)
@@ -54,7 +55,7 @@
                     <div class="popover-label">Visible Blocks</div>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowAppearanceBlocks())">
                         <FaIcon Name="eye" />
-                        <span>Appearance Blocks</span>
+                        <span>Scene Continuity</span>
                         <span class="toggle-pill @(Options.ShowAppearanceBlocks ? "is-on" : "")"><span></span></span>
                     </SelectableButton>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowProcessTraces())">
@@ -63,7 +64,7 @@
                         <span class="toggle-pill @(Options.ShowProcessTraces ? "is-on" : "")"><span></span></span>
                     </SelectableButton>
                     <div class="divider"></div>
-                    <div class="popover-label">Appearance</div>
+                    <div class="popover-label">Theme</div>
                     <div class="popover-pad"><ThemeToggle /></div>
             </Content>
         </AnchoredPopover>
@@ -187,11 +188,37 @@
     else
     {
         <section class="claude-chat-scroll no-story-onboarding">
-            <EmptyState Icon="book-open"
-                        Title="Start your first story"
-                        Message="Create a story to begin chatting, planning, and building context.">
-                <AppButton Variant="primary" Size="lg" Icon="plus" Text="Add Story" TooltipText="Add Story" OnClick="@(_ => OnNewStory.InvokeAsync())" />
-            </EmptyState>
+            <div class="story-resume-board">
+                <div class="story-resume-head">
+                    <span class="story-resume-head-icon"><FaIcon Name="book-open" /></span>
+                    <div>
+                        <h1>Choose a story</h1>
+                        <p>Continue where you left off or start a new thread.</p>
+                    </div>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(SelectionError))
+                {
+                    <StatusRow Icon="warning" Tone="danger" Class="story-resume-error">@SelectionError</StatusRow>
+                }
+                <div class="story-resume-grid">
+                    @foreach (var story in ResumeStories)
+                    {
+                        <StoryResumeCard @key="story.Id"
+                                         Story="story"
+                                         OnClick="@(() => SelectStory(story))" />
+                    }
+                    <button class="story-resume-card story-resume-new-card"
+                            title="Start a new story"
+                            @onclick="@(() => OnNewStory.InvokeAsync())">
+                        <span class="story-resume-new-icon"><FaIcon Name="plus" /></span>
+                        <span class="story-resume-copy">
+                            <strong>New Story</strong>
+                            <small>Start from a blank setup.</small>
+                        </span>
+                        <span class="story-resume-trailing"><FaIcon Name="chevron-right" /></span>
+                    </button>
+                </div>
+            </div>
         </section>
     }
 </main>
@@ -213,6 +240,7 @@
     string ActiveChatId = "";
     string PendingAutoSpeakTurnId = "";
     string LastTranscriptScrollSignature = "";
+    string StorySelectionError = "";
     long TranscriptScrollVersion;
     bool SnapshotModalOpen;
     bool SnapshotDraftLoading;
@@ -226,6 +254,7 @@
     const int SnapshotSuggestionRetainedMessageCount = 5;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string RouteSelectionError { get; set; } = "";
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
     [Parameter] public EventCallback OnNewStory { get; set; }
 
@@ -243,6 +272,8 @@
     RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
     RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
     IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();
+    IReadOnlyList<RpChat> ResumeStories => Session.Chats.Items.Take(3).ToList();
+    string SelectionError => string.IsNullOrWhiteSpace(RouteSelectionError) ? StorySelectionError : RouteSelectionError;
 
     bool IsGuided => Draft.Trim().Length > 0;
     bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
@@ -372,6 +403,15 @@
         await Session.SetSpeakingAsAsync(character);
     }
 
+    async Task SelectStory(RpChat story)
+    {
+        StorySelectionError = "";
+        Navigation.NavigateTo(ChatUrl(story.Id));
+        await Task.CompletedTask;
+    }
+
+    static string ChatUrl(string chatId) => $"/{Uri.EscapeDataString(chatId)}";
+
     async Task PickShape(string shape) =>
         await Session.Chat.Transcript.SetTurnShapeAsync(shape);
 
@@ -385,7 +425,7 @@
         await Session.Chat.Transcript.SetHideAudioTagsAsync(!Options.HideAudioTags);
 
     async Task ToggleShowAppearanceBlocks() =>
-        await Session.Chat.Transcript.SetShowAppearanceBlocksAsync(!Options.ShowAppearanceBlocks);
+        await Session.Chat.Transcript.SetShowSceneContinuityBlocksAsync(!Options.ShowSceneContinuityBlocks);
 
     async Task ToggleShowProcessTraces() =>
         await Session.Chat.Transcript.SetShowProcessTracesAsync(!Options.ShowProcessTraces);

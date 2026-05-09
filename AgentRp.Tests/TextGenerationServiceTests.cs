@@ -24,7 +24,9 @@ public sealed class TextGenerationServiceTests
         Assert.Equal(1, client.StreamingTextCalls);
         Assert.Equal("Gemma", result.ActorName);
         Assert.Equal("Generated prose", result.Body);
-        Assert.Equal(["appearance", "selection", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
+        Assert.Contains(result.Scene.SceneObjects, item => item.Name == "Glass of water" && item.State == "full and cold");
+        Assert.Contains(result.Scene.CharacterPhysicalStates, state => state.CharacterId == "c2" && state.LeftHand.Contains("glass", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(["scene-continuity", "selection", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
     }
 
     [Fact]
@@ -47,11 +49,11 @@ public sealed class TextGenerationServiceTests
             }));
 
         Assert.NotEmpty(reports);
-        Assert.Equal(["appearance", "selection", "planning", "prose"], reports.First().Steps.Select(step => step.Id));
+        Assert.Equal(["scene-continuity", "selection", "planning", "prose"], reports.First().Steps.Select(step => step.Id));
         Assert.All(reports.First().Steps, step => Assert.Equal("pending", step.Status));
-        Assert.Contains(reports, report => report.Steps.First(step => step.Id == "appearance").Status == "running");
+        Assert.Contains(reports, report => report.Steps.First(step => step.Id == "scene-continuity").Status == "running");
         Assert.Contains(reports, report =>
-            report.Steps.First(step => step.Id == "appearance").Status == "completed" &&
+            report.Steps.First(step => step.Id == "scene-continuity").Status == "completed" &&
             report.Steps.First(step => step.Id == "selection").Status == "running");
         Assert.Equal("completed", reports.Last().Status);
         Assert.All(reports.Last().Steps, step => Assert.Equal("completed", step.Status));
@@ -151,12 +153,14 @@ public sealed class TextGenerationServiceTests
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
             new("turn-3", "automatic", "", "Brief", "", ""));
 
-        var appearance = client.GenerationRequests.First(request => request.OperationName == "Generating appearance state");
+        var appearance = client.GenerationRequests.First(request => request.OperationName == "Reconciling scene continuity");
         var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
         var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
 
-        Assert.Contains("You update character scene state.", appearance.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("You update scene continuity state.", appearance.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Prior physical/body/object scene ledger:", appearance.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Continuity Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Required turn shape: Brief", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Turn shape definition:", planning.UserPrompt, StringComparison.Ordinal);
@@ -194,7 +198,6 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Turn shape definitions:", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- compact =", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- narrative =", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Prioritize compact, silent, and silent extended almost always.", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- Never end a conversation.", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Required turn shape:", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
@@ -351,8 +354,7 @@ public sealed class TextGenerationServiceTests
         Assert.DoesNotContain(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Do not include quoted character speech", prose.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Equal(["appearance", "selection", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
-        Assert.Equal("User override", result.Trace.Steps.First(step => step.Id == "selection").SystemPrompt);
+        Assert.Equal(["scene-continuity", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
     }
 
     [Fact]
@@ -689,7 +691,9 @@ public sealed class TextGenerationServiceTests
             {
                 var response = new TextGenerationService.AppearanceResponse(
                     "Test appearance summary",
-                    [new("Bella", true, "Bella test appearance")]);
+                    [new("Bella", true, "Bella test appearance")],
+                    [new("c2", "Gemma", "near the couch", "standing", "turned toward Bella", "", "", "holding a glass", "", "", "", "", "", "", "holding water")],
+                    [new("glass-water-1", "Glass of water", "c2", "c2", "left hand", "", "full and cold", "full glass of cold water held by Gemma in left hand")]);
                 return (T)(object)response;
             }
 

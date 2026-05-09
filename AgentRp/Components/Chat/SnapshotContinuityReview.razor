@@ -5,7 +5,7 @@
     <div class="providers-empty-state is-compact">
         <FaIcon Name="eye" />
         <strong>No continuity state</strong>
-        <span>This snapshot has no private intents or appearance blocks.</span>
+        <span>This snapshot has no private intents or scene continuity blocks.</span>
     </div>
 }
 else
@@ -22,7 +22,7 @@ else
                 }
                 @if (Draft.CharacterAppearances.TryGetValue(characterId, out var appearance) && !string.IsNullOrWhiteSpace(appearance))
                 {
-                    <FieldRow Label="Appearance">
+                    <FieldRow Label="Scene Continuity">
                         <textarea class="field snapshot-readonly-field" rows="3" readonly value="@appearance"></textarea>
                     </FieldRow>
                 }

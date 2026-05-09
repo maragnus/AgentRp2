@@ -27,6 +27,11 @@ public sealed class RpTranscriptOptionsState
     public bool InjectAudioTags { get; set; }
     public bool HideAudioTags { get; set; }
     public bool ShowAppearanceBlocks { get; set; }
+    public bool ShowSceneContinuityBlocks
+    {
+        get => ShowAppearanceBlocks;
+        set => ShowAppearanceBlocks = value;
+    }
     public bool ShowProcessTraces { get; set; }
     public bool AutoSpeakNewMessages { get; set; }
     public bool SpeakActionsInNarratorVoice { get; set; }
@@ -132,7 +137,39 @@ public sealed class RpSceneFrame
     public string LocationName { get; set; } = "";
     public List<string> InSceneCharacterIds { get; set; } = [];
     public List<string> InSceneItemIds { get; set; } = [];
+    public List<RpCharacterPhysicalState> CharacterPhysicalStates { get; set; } = [];
+    public List<RpSceneObjectState> SceneObjects { get; set; } = [];
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpCharacterPhysicalState
+{
+    public string CharacterId { get; set; } = "";
+    public string Location { get; set; } = "";
+    public string Posture { get; set; } = "";
+    public string Head { get; set; } = "";
+    public string LeftArm { get; set; } = "";
+    public string RightArm { get; set; } = "";
+    public string LeftHand { get; set; } = "";
+    public string RightHand { get; set; } = "";
+    public string LeftLeg { get; set; } = "";
+    public string RightLeg { get; set; } = "";
+    public string LeftFoot { get; set; } = "";
+    public string RightFoot { get; set; } = "";
+    public string Contact { get; set; } = "";
+    public string Summary { get; set; } = "";
+}
+
+public sealed class RpSceneObjectState
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string OwnerCharacterId { get; set; } = "";
+    public string HolderCharacterId { get; set; } = "";
+    public string HeldBodyPart { get; set; } = "";
+    public string Location { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Summary { get; set; } = "";
 }
 
 public sealed class RpTurnPlan
@@ -144,7 +181,21 @@ public sealed class RpTurnPlan
     public string WhyNow { get; set; } = "";
     public string ChangeIntroduced { get; set; } = "";
     public string Guardrails { get; set; } = "";
+    public List<RpPhysicalContinuityIntent> ContinuityIntents { get; set; } = [];
     public JsonObject Data { get; set; } = new();
+}
+
+public sealed class RpPhysicalContinuityIntent
+{
+    public string Kind { get; set; } = "";
+    public string CharacterName { get; set; } = "";
+    public string CharacterId { get; set; } = "";
+    public string BodyPart { get; set; } = "";
+    public string ObjectName { get; set; } = "";
+    public string ObjectId { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string Change { get; set; } = "";
+    public bool ClearsStaleState { get; set; }
 }
 
 public sealed class RpTurnTrace

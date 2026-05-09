@@ -11,10 +11,21 @@ static class SessionCloner
         Id = value.Id,
         Title = value.Title,
         Updated = value.Updated,
+        LastMessageUtc = value.LastMessageUtc,
+        LastGeneratedTurnNumber = value.LastGeneratedTurnNumber,
         Starred = value.Starred,
         Messages = value.Messages,
         Location = value.Location,
+        ActiveLocation = value.ActiveLocation is null ? null : Clone(value.ActiveLocation),
         SceneCharacters = value.SceneCharacters.Select(Clone).ToList()
+    };
+
+    static RpChatSceneLocation Clone(RpChatSceneLocation value) => new()
+    {
+        Id = value.Id,
+        Name = value.Name,
+        ImageId = value.ImageId,
+        Image = value.Image is null ? null : Clone(value.Image)
     };
 
     static RpChatSceneCharacter Clone(RpChatSceneCharacter value) => new()
@@ -484,7 +495,39 @@ static class SessionCloner
         LocationName = value.LocationName,
         InSceneCharacterIds = [.. value.InSceneCharacterIds],
         InSceneItemIds = [.. value.InSceneItemIds],
+        CharacterPhysicalStates = value.CharacterPhysicalStates.Select(Clone).ToList(),
+        SceneObjects = value.SceneObjects.Select(Clone).ToList(),
         Data = Clone(value.Data)
+    };
+
+    static RpCharacterPhysicalState Clone(RpCharacterPhysicalState value) => new()
+    {
+        CharacterId = value.CharacterId,
+        Location = value.Location,
+        Posture = value.Posture,
+        Head = value.Head,
+        LeftArm = value.LeftArm,
+        RightArm = value.RightArm,
+        LeftHand = value.LeftHand,
+        RightHand = value.RightHand,
+        LeftLeg = value.LeftLeg,
+        RightLeg = value.RightLeg,
+        LeftFoot = value.LeftFoot,
+        RightFoot = value.RightFoot,
+        Contact = value.Contact,
+        Summary = value.Summary
+    };
+
+    static RpSceneObjectState Clone(RpSceneObjectState value) => new()
+    {
+        Id = value.Id,
+        Name = value.Name,
+        OwnerCharacterId = value.OwnerCharacterId,
+        HolderCharacterId = value.HolderCharacterId,
+        HeldBodyPart = value.HeldBodyPart,
+        Location = value.Location,
+        State = value.State,
+        Summary = value.Summary
     };
 
     public static RpTurnPlan Clone(RpTurnPlan value) => new()
@@ -496,7 +539,21 @@ static class SessionCloner
         WhyNow = value.WhyNow,
         ChangeIntroduced = value.ChangeIntroduced,
         Guardrails = value.Guardrails,
+        ContinuityIntents = value.ContinuityIntents.Select(Clone).ToList(),
         Data = Clone(value.Data)
+    };
+
+    static RpPhysicalContinuityIntent Clone(RpPhysicalContinuityIntent value) => new()
+    {
+        Kind = value.Kind,
+        CharacterName = value.CharacterName,
+        CharacterId = value.CharacterId,
+        BodyPart = value.BodyPart,
+        ObjectName = value.ObjectName,
+        ObjectId = value.ObjectId,
+        Target = value.Target,
+        Change = value.Change,
+        ClearsStaleState = value.ClearsStaleState
     };
 
     public static RpTurnTrace Clone(RpTurnTrace value) => new()

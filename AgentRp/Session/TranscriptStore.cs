@@ -37,6 +37,8 @@ public sealed partial class TranscriptStore(
 
     public async Task SetShowAppearanceBlocksAsync(bool value) => await SetOptionAsync(options => options.ShowAppearanceBlocks = value);
 
+    public async Task SetShowSceneContinuityBlocksAsync(bool value) => await SetOptionAsync(options => options.ShowSceneContinuityBlocks = value);
+
     public async Task SetShowProcessTracesAsync(bool value) => await SetOptionAsync(options => options.ShowProcessTraces = value);
 
     public async Task SetAutoSpeakNewMessagesAsync(bool value) => await SetOptionAsync(options => options.AutoSpeakNewMessages = value);

@@ -280,7 +280,7 @@ public sealed class TranscriptFeatureTests
         var snapshot = builder.BuildSnapshotContext(document, "turn-3");
 
         Assert.Contains("- Pronouns: she/her", context.ActorText, StringComparison.Ordinal);
-        Assert.Contains("-   Pronouns: she/her", context.CharactersInSceneText, StringComparison.Ordinal);
+        Assert.Contains("- Pronouns: she/her", context.CharactersInSceneText, StringComparison.Ordinal);
         Assert.Contains("Pronouns:", context.SelectionEligibleResponders, StringComparison.Ordinal);
         Assert.Contains("Bella (she/her)", snapshot.Characters, StringComparison.Ordinal);
     }

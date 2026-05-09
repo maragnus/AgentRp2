@@ -126,9 +126,9 @@ public sealed partial class TranscriptStore
                 CoveredTurnIds = context.CoveredTurns.Select(turn => turn.Id).ToList(),
                 IncludedTurns = context.CoveredTurns.Select(ToDraftTurn).ToList(),
                 PrivateIntentByCharacterId = BuildSnapshotPrivateIntents(context.LatestSnapshot, context.CoveredTurns),
-                CharacterAppearances = BuildSnapshotAppearances(context.LatestSnapshot, context.CoveredTurns),
+                CharacterAppearances = result.CharacterSceneStates ?? BuildSnapshotAppearances(context.LatestSnapshot, context.CoveredTurns),
                 TimelineEntries = result.TimelineEntries.Select(CloneSnapshotTimelineEntry).ToList(),
-                Scene = SessionCloner.Clone(context.TargetTurn.Scene),
+                Scene = SessionCloner.Clone(result.Scene ?? context.TargetTurn.Scene),
                 Trace = SessionCloner.Clone(result.Trace)
             };
         });

@@ -37,7 +37,7 @@ public sealed class RoleplaySession(
     public RpCharacter? SpeakingAs { get; private set; }
     public event Func<Task>? Changed;
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(bool selectFirstStory = true)
     {
         if (_initialized)
             return;
@@ -55,7 +55,7 @@ public sealed class RoleplaySession(
         await Chats.LoadAsync();
         await Providers.LoadAsync();
         var first = Chats.Items.FirstOrDefault();
-        if (first is not null)
+        if (selectFirstStory && first is not null)
             await Chats.SelectAsync(first.Id);
 
         _initialized = true;
@@ -117,6 +117,12 @@ public sealed class ActiveChatContext
     public RpChatDocument? Current { get; private set; }
     public event Func<ActiveChatChange, Task>? Changed;
 
+    public async Task ClearAsync()
+    {
+        Current = null;
+        await NotifyAsync(null);
+    }
+
     public async Task SetAsync(RpChatDocument document)
     {
         Current = document;
@@ -139,6 +145,11 @@ public sealed class ActiveChatContext
 
 public sealed class ChatRegistry(Guid sessionId, ILiveRoleplayStore liveStore, ActiveChatContext activeChat)
 {
+    public async Task CloseAsync()
+    {
+        await activeChat.ClearAsync();
+    }
+
     public async Task<RpChatDocument> OpenAsync(string chatId)
     {
         var document = await liveStore.OpenChatAsync(sessionId, chatId);
@@ -234,9 +245,19 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
     public async Task SelectAsync(string chatId)
     {
+        if (!_items.Any(chat => string.Equals(chat.Id, chatId, StringComparison.Ordinal)))
+            throw new InvalidOperationException($"Story '{chatId}' was not found.");
+
         var document = await registry.OpenAsync(chatId);
         await RefreshAsync();
         ActiveSession?.SetActiveChatId(document.Chat.Id);
+    }
+
+    public async Task ClearAsync()
+    {
+        await registry.CloseAsync();
+        ActiveSession?.SetActiveChatId(null);
+        await NotifyChangedAsync();
     }
 
     public RoleplaySession? ActiveSession { get; set; }

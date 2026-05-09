@@ -24,8 +24,11 @@ public sealed class RpDbContext(DbContextOptions<RpDbContext> options) : DbConte
             builder.Property(x => x.Title).HasMaxLength(500);
             builder.Property(x => x.Updated).HasMaxLength(100);
             builder.Property(x => x.Location).HasMaxLength(500);
+            builder.Property(x => x.ActiveLocationJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.SceneCharactersJson).HasColumnType("nvarchar(max)");
             builder.HasIndex(x => x.SortOrder);
             builder.HasIndex(x => x.UpdatedUtc);
+            builder.HasIndex(x => x.LastMessageUtc);
             builder.HasOne(x => x.Document)
                 .WithOne(x => x.Chat)
                 .HasForeignKey<RpChatDocumentRow>(x => x.ChatId)
@@ -191,9 +194,13 @@ public sealed class RpChatRow
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public string Updated { get; set; } = "";
+    public DateTime? LastMessageUtc { get; set; }
+    public int LastGeneratedTurnNumber { get; set; }
     public bool Starred { get; set; }
     public int Messages { get; set; }
     public string Location { get; set; } = "";
+    public string ActiveLocationJson { get; set; } = "";
+    public string SceneCharactersJson { get; set; } = "[]";
     public int SortOrder { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }

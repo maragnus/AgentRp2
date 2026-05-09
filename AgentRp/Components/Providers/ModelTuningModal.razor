@@ -144,13 +144,13 @@
 
 @code {
     sealed record StepDef(string Id, string Label);
-    string Active = "appearance";
+    string Active = PromptLibraryStageIds.SceneContinuity;
     string? CopiedToast;
 
     readonly StepDef[] Steps =
     [
         new("snapshot", "Snapshot"),
-        new("appearance", "Appearance"),
+        new(PromptLibraryStageIds.SceneContinuity, "Scene Continuity"),
         new("selection", "Selection"),
         new("planning", "Planning"),
         new("prose", "Prose")

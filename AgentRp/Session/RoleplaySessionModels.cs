@@ -172,6 +172,7 @@ public sealed class ModelTuningState
         Values = new()
         {
             ["snapshot"] = new(),
+            ["sceneContinuity"] = new(),
             ["appearance"] = new(),
             ["selection"] = new(),
             ["planning"] = new(),

@@ -14,12 +14,11 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var rows = await dbContext.Chats
             .AsNoTracking()
-            .Include(x => x.Document)
             .OrderBy(x => x.SortOrder)
-            .ThenByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.LastMessageUtc ?? x.UpdatedUtc)
             .ToListAsync(cancellationToken);
 
-        return rows.Select(ToChatListModel).ToList();
+        return rows.Select(ToModel).ToList();
     }
 
     public async Task<List<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default)
@@ -27,6 +26,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var rows = await dbContext.AiProviders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(x => x.Models)
             .Include(x => x.Metrics)
             .OrderBy(x => x.SortOrder)
@@ -173,6 +173,8 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
             dbContext.Chats.Add(chat);
         }
 
+        TranscriptProjector.Apply(document, now);
+        ChatPreviewProjector.Apply(document.Chat, document);
         Apply(document.Chat, chat, chat.SortOrder, now);
 
         var row = await dbContext.ChatDocuments.FirstOrDefaultAsync(x => x.ChatId == document.Chat.Id, cancellationToken);
@@ -192,7 +194,6 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         row.ItemsJson = Serialize(document.Items);
         row.TimelineJson = Serialize(document.Timeline);
         row.ImagesJson = Serialize(document.Images);
-        TranscriptProjector.Apply(document, now);
         row.MessagesJson = Serialize(document.Transcript);
         row.StoryAssistantJson = Serialize(document.StoryAssistant);
         row.ChatDirectionJson = Serialize(ChatDirectionService.NormalizeState(document.ChatDirection));
@@ -210,37 +211,34 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
         Id = row.Id,
         Title = row.Title,
         Updated = row.Updated,
+        LastMessageUtc = row.LastMessageUtc,
+        LastGeneratedTurnNumber = row.LastGeneratedTurnNumber,
         Starred = row.Starred,
         Messages = row.Messages,
-        Location = row.Location
+        Location = row.Location,
+        ActiveLocation = Deserialize(row.ActiveLocationJson, (RpChatSceneLocation?)null) ?? FallbackLocation(row),
+        SceneCharacters = Deserialize(row.SceneCharactersJson, new List<RpChatSceneCharacter>())
     };
-
-    static RpChat ToChatListModel(RpChatRow row)
-    {
-        var chat = ToModel(row);
-        if (row.Document is null)
-            return chat;
-
-        var characters = Deserialize(row.Document.CharactersJson, new List<RpCharacter>());
-        var images = Deserialize(row.Document.ImagesJson, new List<GalleryImage>());
-        var transcript = Deserialize(row.Document.MessagesJson, new RpTranscriptState());
-        var sceneCharacterIds = TranscriptGraph.GetVisibleScene(transcript).InSceneCharacterIds.ToHashSet(StringComparer.Ordinal);
-
-        ChatPreviewProjector.ApplySceneCharacters(chat, characters, images, sceneCharacterIds);
-
-        return chat;
-    }
 
     static void Apply(RpChat chat, RpChatRow row, int sortOrder, DateTime now)
     {
         row.Title = chat.Title;
         row.Updated = chat.Updated;
+        row.LastMessageUtc = chat.LastMessageUtc;
+        row.LastGeneratedTurnNumber = chat.LastGeneratedTurnNumber;
         row.Starred = chat.Starred;
         row.Messages = chat.Messages;
         row.Location = chat.Location;
+        row.ActiveLocationJson = Serialize(chat.ActiveLocation);
+        row.SceneCharactersJson = Serialize(chat.SceneCharacters);
         row.SortOrder = sortOrder;
         row.UpdatedUtc = now;
     }
+
+    static RpChatSceneLocation? FallbackLocation(RpChatRow row) =>
+        string.IsNullOrWhiteSpace(row.Location)
+            ? null
+            : new() { Name = row.Location };
 
     static string Serialize<T>(T value) => JsonSerializer.Serialize(value, AppJsonSerializerOptions.Web);
 

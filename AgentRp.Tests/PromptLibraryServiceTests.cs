@@ -10,15 +10,14 @@ public sealed class PromptLibraryServiceTests
     {
         var defaults = PromptLibraryService.CreateDefaultState();
 
-        AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryScenePrompts", "StorySceneAppearancePromptBuilder.cs"), "BuildSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Appearance].System);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultAppearanceUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Appearance].User);
+        Assert.Contains("You update scene continuity state.", defaults.Prompts[PromptLibraryStageIds.SceneContinuity].System, StringComparison.Ordinal);
+        Assert.Contains("Prior physical/body/object scene ledger", defaults.Prompts[PromptLibraryStageIds.SceneContinuity].User, StringComparison.Ordinal);
         AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryScenePrompts", "StorySceneResponderSelectionPromptBuilder.cs"), "BuildSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Selection].System);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultSelectionUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Selection].User);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].User);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseSystemPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Prose].System);
-        AssertPromptEqual(
-            PromptLibraryService.WithProseFormatReminder(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseUserPromptTemplate")),
-            defaults.Prompts[PromptLibraryStageIds.Prose].User);
+        Assert.Contains("Notice the newest meaningful change", defaults.Prompts[PromptLibraryStageIds.Prose].System, StringComparison.Ordinal);
+        Assert.Contains("Write the turn by using the latest meaningful change", defaults.Prompts[PromptLibraryStageIds.Prose].User, StringComparison.Ordinal);
+        Assert.EndsWith(PromptLibraryService.ProseFormatReminder, defaults.Prompts[PromptLibraryStageIds.Prose].User, StringComparison.Ordinal);
         AssertPromptEqual(ExpectedSnapshotSystemPrompt, defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
         AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
         Assert.Contains("Turn shape: copy the required turn shape exactly when one is provided", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
@@ -37,7 +36,7 @@ public sealed class PromptLibraryServiceTests
         Assert.Equal("short narrative allowed (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "extended"));
         Assert.Equal("elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "narrative"));
         Assert.Equal("quick action/subtext only, no spoken lines (common)", Shape(defaults, PromptLibraryStageIds.Planning, "silent"));
-        Assert.Equal("extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)", Shape(defaults, PromptLibraryStageIds.Planning, "silent-extended"));
+        Assert.Equal("extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)", Shape(defaults, PromptLibraryStageIds.Planning, "silent-extended"));
         AssertPromptEqual(ExpectedPlanningTurnShapeDefinitions, PromptLibraryService.FormatTurnShapeDefinitions(defaults.TurnShapes[PromptLibraryStageIds.Planning]));
         AssertPromptEqual(ExpectedProseBriefTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "brief"));
         AssertPromptEqual(ExpectedProseSilentExtendedTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "silent-extended"));
@@ -171,7 +170,7 @@ public sealed class PromptLibraryServiceTests
         var normalized = PromptLibraryService.NormalizeState(partial);
 
         Assert.Equal("Custom system", normalized.Prompts[PromptLibraryStageIds.Planning].System);
-        Assert.Contains("You update character scene state.", normalized.Prompts[PromptLibraryStageIds.Appearance].System, StringComparison.Ordinal);
+        Assert.Contains("You update scene continuity state.", normalized.Prompts[PromptLibraryStageIds.SceneContinuity].System, StringComparison.Ordinal);
         Assert.Equal("Custom brief", normalized.TurnShapes[PromptLibraryStageIds.Prose].First(shape => shape.Id == "brief").Value);
         Assert.Contains(normalized.TurnShapes[PromptLibraryStageIds.Prose], shape => shape.Id == "silent-extended");
     }
@@ -257,7 +256,6 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains("complete visual profile", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("relationshipReconciliation", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Do not update the same relationshipId twice", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Never leave any relationship field empty", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
@@ -367,7 +365,7 @@ public sealed class PromptLibraryServiceTests
 
         Return:
         1. A narrative summary of what has happened so far in this included range.
-        2. Proposed timeline entries that should be added.
+        2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
         """;
 
@@ -378,13 +376,15 @@ public sealed class PromptLibraryServiceTests
         Return a concise narrative summary, then propose timeline entries that should be saved.
         Prefer durable developments over throwaway phrasing.
         Do not invent names, references, or events that are not grounded in the provided material.
+        Timeline entry turnNumber must be the best matching included numeric turn number, such as 52, and never a text label or real-world date.
+        If an event spans multiple turns, use the turn where the event becomes canon or settled.
         """;
 
     const string ExpectedPlanningTurnShapeDefinitions =
         """
         - compact = one action beat, one or two phrases, optional short tag (always preferred)
         - silent = quick action/subtext only, no spoken lines (common)
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
         - brief = one action beat, one to two short lines with a tag in between (rare)
         - extended = short narrative allowed (only when asked)
         - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
@@ -402,7 +402,7 @@ public sealed class PromptLibraryServiceTests
         Required turn shape: Silent Extended
         Use exactly this turn shape in the structured plan.
         Turn shape definition:
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
         """;
 
     const string ExpectedAutoRequestedTurnShape =
@@ -412,14 +412,13 @@ public sealed class PromptLibraryServiceTests
         Turn shape definitions:
         - compact = one action beat, one or two phrases, optional short tag (always preferred)
         - silent = quick action/subtext only, no spoken lines (common)
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
         - brief = one action beat, one to two short lines with a tag in between (rare)
         - extended = short narrative allowed (only when asked)
         - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
 
-        Prioritize compact, silent, and silent extended almost always.
+        Prioritize compact, brief, or silent almost always.
         - Favor silent turns for quick intimate moments.
-        - Favor silent extended when an intimate, physical, or subtext-heavy moment needs a longer nonverbal beat instead of speech.
         - Don't eagerly follow the narrative if it is counter to character goals or private intent.
         - Pick the most valuable next beat to move the story forward, not the safest or most literal reply.
         - Identify when the current thread has run its course and move on.

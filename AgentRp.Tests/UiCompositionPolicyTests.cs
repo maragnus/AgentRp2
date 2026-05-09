@@ -575,6 +575,7 @@ public sealed class UiCompositionPolicyTests
     {
         public Task RunTurnAsync(
             RpChatDocument document,
+            StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
             ActiveModelSelectionsState modelSelections,
             StoryAssistantTurnRequest request,
@@ -583,7 +584,7 @@ public sealed class UiCompositionPolicyTests
             script(callbacks);
 
         public Task ClearRemoteStateAsync(
-            RpChatDocument document,
+            StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
             ActiveModelSelectionsState modelSelections,
             CancellationToken cancellationToken = default) =>

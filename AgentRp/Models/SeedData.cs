@@ -341,7 +341,7 @@ public static class SeedData
 
     static RpTurnTrace GuidedNarratorTrace(DateTime startedUtc) => new()
     {
-        Summary = "Completed · Narrator · Appearance -> Planning -> Prose",
+        Summary = "Completed · Narrator · Scene Continuity -> Planning -> Prose",
         Status = "completed",
         StartedUtc = startedUtc,
         CompletedUtc = startedUtc.AddSeconds(4),
@@ -356,8 +356,8 @@ public static class SeedData
         [
             new()
             {
-                Id = "appearance",
-                Label = "Appearance",
+                Id = "scene-continuity",
+                Label = "Scene Continuity",
                 Status = "completed",
                 StartedUtc = startedUtc,
                 CompletedUtc = startedUtc.AddSeconds(1.1),
@@ -368,7 +368,7 @@ public static class SeedData
                 OutputTokens = 312,
                 TotalTokens = 2152,
                 DurationSeconds = 1.1,
-                SystemPrompt = "You update character scene state. Return JSON only.",
+                SystemPrompt = "You update scene continuity state. Return JSON only.",
                 UserPrompt = "Characters:\nBella\nJake\nGemma\n\nTranscript:\nNarrator: Bella knocks once and lets herself into the apartment...",
                 RawOutput = "{\"characters\":{\"Bella\":\"Standing just inside the apartment entrance...\"}}",
                 StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing just inside the apartment entrance...\"}}"
@@ -415,7 +415,7 @@ public static class SeedData
 
     static RpTurnTrace BellaTrace(DateTime startedUtc) => new()
     {
-        Summary = "Completed · Bella · Appearance -> Selection -> Planning -> Prose",
+        Summary = "Completed · Bella · Scene Continuity -> Selection -> Planning -> Prose",
         Status = "completed",
         StartedUtc = startedUtc,
         CompletedUtc = startedUtc.AddSeconds(4),
@@ -430,8 +430,8 @@ public static class SeedData
         [
             new()
             {
-                Id = "appearance",
-                Label = "Appearance",
+                Id = "scene-continuity",
+                Label = "Scene Continuity",
                 Status = "completed",
                 StartedUtc = startedUtc,
                 CompletedUtc = startedUtc.AddSeconds(0.9),
@@ -442,8 +442,8 @@ public static class SeedData
                 OutputTokens = 298,
                 TotalTokens = 2402,
                 DurationSeconds = 0.9,
-                SystemPrompt = "You update character scene state. Return JSON only.",
-                UserPrompt = "Bella wrote a greeting and touched both characters. Update appearance.",
+                SystemPrompt = "You update scene continuity state. Return JSON only.",
+                UserPrompt = "Bella wrote a greeting and touched both characters. Update scene continuity.",
                 RawOutput = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}",
                 StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}"
             },
@@ -508,7 +508,7 @@ public static class SeedData
 
     static RpTurnTrace GemmaTrace(DateTime startedUtc) => new()
     {
-        Summary = "Completed · Gemma · Appearance -> Selection -> Planning -> Prose",
+        Summary = "Completed · Gemma · Scene Continuity -> Selection -> Planning -> Prose",
         Status = "completed",
         StartedUtc = startedUtc,
         CompletedUtc = startedUtc.AddSeconds(3.3),
@@ -523,8 +523,8 @@ public static class SeedData
         [
             new()
             {
-                Id = "appearance",
-                Label = "Appearance",
+                Id = "scene-continuity",
+                Label = "Scene Continuity",
                 Status = "completed",
                 StartedUtc = startedUtc,
                 CompletedUtc = startedUtc.AddSeconds(0.9),
@@ -536,7 +536,7 @@ public static class SeedData
                 TotalTokens = 2402,
                 DurationSeconds = 0.9,
                 SystemPrompt = "Maintain character positions.",
-                UserPrompt = "Bella wrote a greeting and touched both characters. Update appearance.",
+                UserPrompt = "Bella wrote a greeting and touched both characters. Update scene continuity.",
                 RawOutput = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}",
                 StructuredOutputJson = "{\"characters\":{\"Bella\":\"Standing at the dining table between Jake and Gemma.\"}}"
             },
@@ -629,7 +629,7 @@ public static class SeedData
                 TotalTokens = 1514,
                 DurationSeconds = 0.8,
                 SystemPrompt = "You summarize the state of an interactive roleplay scene for future continuation. Return concise JSON only.",
-                UserPrompt = "Transcript and appearance state after Bella enters the room.",
+                UserPrompt = "Transcript and scene continuity state after Bella enters the room.",
                 RawOutput = "{\"summary\":\"Bella has entered the apartment and physically bridged Jake and Gemma without taking sides.\"}",
                 StructuredOutputJson = "{\"summary\":\"Bella has entered the apartment and physically bridged Jake and Gemma without taking sides.\"}"
             }

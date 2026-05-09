@@ -1,14 +1,31 @@
 @page "/"
+@page "/{ChatId}"
 @inject OverlayService Overlays
 
 <PageTitle>AgentRp</PageTitle>
 
-@if (Session.IsInitialized)
+@if (!string.IsNullOrWhiteSpace(InitializationError))
+{
+    <main class="chat claude-chat">
+        <section class="claude-chat-scroll no-story-onboarding">
+            <StatusRow Icon="warning" Tone="danger">@InitializationError</StatusRow>
+        </section>
+    </main>
+}
+else if (!Session.IsInitialized)
+{
+    <main class="chat claude-chat">
+        <section class="claude-chat-scroll no-story-onboarding">
+            <StatusRow Icon="spinner" Tone="neutral">Loading AgentRp...</StatusRow>
+        </section>
+    </main>
+}
+else
 {
     <div class="app-shell">
         <Sidebar OnOpenModal="OpenModal" OnOpenEntities="OpenEntities" />
 
-        <ChatArea OnOpenEntities="OpenEntities" OnNewStory="OpenNewStory" />
+        <ChatArea RouteSelectionError="@RouteSelectionError" OnOpenEntities="OpenEntities" OnNewStory="OpenNewStory" />
 
         @switch (Modal)
         {
@@ -76,17 +93,84 @@
 
 @code {
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string? ChatId { get; set; }
 
     string? Modal;
     string EntityType = "characters";
     string? EntityId;
     string? PendingEntityType;
     string? PendingEntityId;
+    string InitializationError = "";
+    string RouteSelectionError = "";
+    bool IsApplyingRoute;
     GalleryImage? CropImage;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await Session.InitializeAsync();
+        _ = InitializeAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Session.IsInitialized)
+            _ = ApplyRouteAsync();
+    }
+
+    async Task InitializeAsync()
+    {
+        try
+        {
+            await Session.InitializeAsync(selectFirstStory: false);
+            await ApplyRouteAsync();
+        }
+        catch (Exception exception)
+        {
+            InitializationError = UserFacingErrorMessageBuilder.Build("Loading AgentRp failed.", exception);
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task ApplyRouteAsync()
+    {
+        if (IsApplyingRoute)
+            return;
+
+        var routeChatId = NormalizeRouteChatId(ChatId);
+        var activeChatId = Session.Chats.Active?.Id ?? "";
+        if (string.Equals(activeChatId, routeChatId, StringComparison.Ordinal))
+        {
+            RouteSelectionError = "";
+            return;
+        }
+
+        IsApplyingRoute = true;
+        try
+        {
+            RouteSelectionError = "";
+            await Overlays.CloseAllAsync("Changing active story from URL");
+            Modal = null;
+            CropImage = null;
+            ClearPendingEntityImage();
+
+            if (string.IsNullOrWhiteSpace(routeChatId))
+                await Session.Chats.ClearAsync();
+            else
+                await Session.Chats.SelectAsync(routeChatId);
+
+        }
+        catch (Exception exception)
+        {
+            RouteSelectionError = UserFacingErrorMessageBuilder.Build($"Opening story '{routeChatId}' failed.", exception);
+            await Session.Chats.ClearAsync();
+        }
+        finally
+        {
+            IsApplyingRoute = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     async Task OpenModal(string name)
@@ -208,6 +292,9 @@
         "items" => Session.Chat.Items.SetImageAsync(PendingEntityId!, imageId),
         _ => Task.CompletedTask
     };
+
+    static string NormalizeRouteChatId(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "" : Uri.UnescapeDataString(value).Trim();
 
     void ClearPendingEntityImage()
     {

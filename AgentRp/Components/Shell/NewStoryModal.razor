@@ -1,3 +1,5 @@
+@inject NavigationManager Navigation
+
 <ModalShell Title="New Story"
             Subtitle="Choose how this story should start"
             Icon="book-open"
@@ -180,7 +182,8 @@
         ErrorMessage = "";
         try
         {
-            await Session.Chats.AddAsync(BuildOptions());
+            var story = await Session.Chats.AddAsync(BuildOptions());
+            Navigation.NavigateTo(ChatUrl(story.Id));
             if (Mode == NewStoryStartMode.Assistant)
                 await OnOpenAssistant.InvokeAsync();
             else
@@ -209,6 +212,8 @@
             CopyPromptLibrary = SelectedCopyIds.Contains(PromptLibrary)
         }
         : StoryCreationOptions.Blank();
+
+    static string ChatUrl(string chatId) => $"/{Uri.EscapeDataString(chatId)}";
 
     IReadOnlyList<SummaryLine> BuildSummaryLines()
     {

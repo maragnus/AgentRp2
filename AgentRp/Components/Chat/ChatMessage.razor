@@ -129,7 +129,7 @@
         <ChildContent>
             <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
                 <ChildContent>
-                    <ModalTab Id="appearance" Title="Appearance" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
+                    <ModalTab Id="appearance" Title="Continuity" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
                     <ModalTab Id="plan" Title="Plan" Dirty="@IsPlanDirty()" />
                     <ModalTab Id="private" Title="Private Intent" Dirty="@IsActivePrivateIntentSet" />
                     <ModalTab Id="speech" Title="Speech" />
@@ -168,7 +168,7 @@
                                 @foreach (var character in Characters)
                                 {
                                     <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                        <textarea class="field plan-field" rows="3" placeholder="@($"How does {character.Name} appear in this turn?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                        <textarea class="field plan-field" rows="3" placeholder="@($"What is physically true for {character.Name}?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
                                     </Section>
                                 }
                             }

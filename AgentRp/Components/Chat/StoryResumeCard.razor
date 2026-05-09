@@ -1,0 +1,60 @@
+<button class="@CssClass"
+        title="@Title"
+        @onclick="OnClick">
+    <span class="story-resume-visuals" aria-label="@AvatarSummary">
+        @if (Story?.ActiveLocation is { } location)
+        {
+            <StoryAvatar Name="@location.Name"
+                         ImageUrl="@location.Image?.Url"
+                         Crop="@CropFor(location.Image)"
+                         Class="story-resume-location-avatar" />
+        }
+        else
+        {
+            <span class="story-resume-location-avatar story-resume-empty-avatar">
+                <FaIcon Name="map-pin" />
+            </span>
+        }
+        <span class="story-resume-character-stack">
+            @foreach (var character in VisibleCharacters)
+            {
+                <StoryAvatar @key="character.Id"
+                             Name="@character.Name"
+                             ImageUrl="@character.Image?.Url"
+                             Crop="@CropFor(character.Image)"
+                             Class="story-resume-character-avatar" />
+            }
+        </span>
+    </span>
+    <span class="story-resume-copy">
+        <strong>@Story?.Title</strong>
+        <small>@Subtitle</small>
+    </span>
+    <span class="story-resume-trailing">
+        <FaIcon Name="chevron-right" />
+    </span>
+</button>
+
+@code {
+    [Parameter] public RpChat? Story { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    IReadOnlyList<RpChatSceneCharacter> VisibleCharacters => Story?.SceneCharacters.Take(3).ToList() ?? [];
+    string CssClass => "story-resume-card";
+    string Title => Story is null ? "" : $"Continue {Story.Title}";
+    string TurnText => Story?.LastGeneratedTurnNumber > 0
+        ? $"Turn {Story.LastGeneratedTurnNumber}"
+        : Story?.Messages > 0 ? $"{Story.Messages} turns" : "No turns";
+    string Subtitle => string.Join(" / ", new[]
+    {
+        Story?.ActiveLocation?.Name ?? Story?.Location,
+        TurnText,
+        Story?.Updated
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string AvatarSummary => Story is null || VisibleCharacters.Count == 0
+        ? "No characters in scene"
+        : $"In scene: {string.Join(", ", VisibleCharacters.Select(character => character.Name))}";
+
+    static ImageAvatarCropView CropFor(GalleryImage? image) =>
+        image is null ? ImageAvatarCropView.Default : ImageAvatarCropView.From(image);
+}

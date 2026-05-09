@@ -54,6 +54,7 @@
     string? ModelId;
     ManagedEndpointStatusView? Status;
     string Error = "";
+    bool RefreshPending;
 
     [Parameter] public AiProvider Provider { get; set; } = new();
     [Parameter] public AiProviderModel Model { get; set; } = new();
@@ -98,6 +99,16 @@
         Status = null;
         Error = "";
         StopPolling();
+        RefreshPending = true;
+        await Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!RefreshPending)
+            return;
+
+        RefreshPending = false;
         await Refresh(CancellationToken.None);
         StartPolling();
     }

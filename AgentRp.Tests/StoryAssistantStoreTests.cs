@@ -418,7 +418,7 @@ public sealed class StoryAssistantStoreTests
             modelSelection.SetActiveModelAsync(AiModelRole.Reasoning, provider.Id, model.Id).GetAwaiter().GetResult();
 
         var transcript = new TranscriptStore(activeChat, registry, providers, modelSelection, NullTextGenerationService.Instance, new SceneTransitionService());
-        return new(activeChat, registry, providers, modelSelection, transcript, new ScriptedStoryAssistantService(script, clearScript));
+        return new(activeChat, registry, providers, modelSelection, transcript, new ScriptedStoryAssistantService(document, script, clearScript));
     }
 
     static RpChatDocument CreateDocument() => new()
@@ -572,11 +572,13 @@ public sealed class StoryAssistantStoreTests
     };
 
     sealed class ScriptedStoryAssistantService(
+        RpChatDocument document,
         Func<StoryAssistantTurnRequest, IStoryAssistantCallbacks, CancellationToken, Task> script,
         Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript) : IStoryAssistantService
     {
         public Task RunTurnAsync(
             RpChatDocument document,
+            StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
             ActiveModelSelectionsState modelSelections,
             StoryAssistantTurnRequest request,
@@ -584,7 +586,7 @@ public sealed class StoryAssistantStoreTests
             CancellationToken cancellationToken = default) => script(request, callbacks, cancellationToken);
 
         public Task ClearRemoteStateAsync(
-            RpChatDocument document,
+            StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
             ActiveModelSelectionsState modelSelections,
             CancellationToken cancellationToken = default) =>

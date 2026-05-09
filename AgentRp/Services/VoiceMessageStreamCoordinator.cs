@@ -71,6 +71,7 @@ public sealed class VoiceMessageStreamCoordinator(
 
         var providerRow = await dbContext.AiProviders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(provider => provider.Models)
             .Include(provider => provider.Metrics)
             .FirstOrDefaultAsync(provider => provider.Id == row.ProviderId, cancellationToken);

@@ -1,9 +1,6 @@
 # AgentRp2
 
-We are building `AgentRp1` as `AgentRp2` with a focus on new design and architectural patterns. Check `AgentRp1` for implementation details and behavior, but know we want to improve everything as it goes into `AgentRp2`
-
-- `W:\AgentRp2\AgentRp` is the new version, preparing for production release with a new design and internal architecture.
-- `W:\AgentRp1\AgentRp` is a fully functional prototype, but lacks recent design and architectural decisions. It should be used as guidance on how the features should work and be implemented. But it's critical that we used the updated designs and architectural patterns as they have evolved in AgentRp2.
+AgentRp is a stateful narrative chat workspace for building more consistent roleplay and story scenes, especially when you want to work with local, smaller, or limited-reasoning models. It is both a functional tool and a practical example of how to move narrative consistency out of fragile prompt-only memory and into the app itself.
 
 ## Design Stage
 
@@ -40,6 +37,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 
 ## Non-Negotiable Rules
 - ALWAYS answer user questions without making code changes if the message contains a question.
+- ALWAYS treat a user-presented issue, bug report, performance complaint, unexpected behavior report, or concern as a request for diagnosis and understanding first, not permission to immediately edit code. Investigate, explain the likely root cause, outline options, and wait for an explicit request to implement before making changes.
 - ALWAYS ask before removing or degrading user-facing behavior. NEVER assume feature removal is acceptable.
 - ALWAYS ask when requirements are ambiguous or you are uncertain.
 - NEVER make code changes from low-confidence analysis. If confidence is low, report what was found, identify the uncertainty, and ask before editing unless the user explicitly asked for that exact change.
@@ -83,6 +81,9 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - It is forbidden to parse model output as JSON. All model to JSON must use `GetResponseAsync<T>(...)` provided by `Microsoft.Extensions.AI` and must not customize any serialization details in the method call. `JsonSerializerOptions` is forbidden on `GetResponseAsync`.
 - Non-generic `GetResponseAsync(...)` and streaming APIs are allowed only for intentional prose output, never for structured outputs.
 - `JsonSerializerOptions` must always be based on `JsonSerializerDefaults.Web` and include `JsonStringEnumConverter`, exceptions must be explicitely stated in a comment with reasoning. `JsonSerializerOptions` must always be preconstructed and `static` unless a one-off, non-standard customization is needed.
+- EntityFramework queries with `.Include()` must always specify `.AsSplitQuery()` or `.AsSingleQuery()` responsibly, usually based on the impact: Consider impact of the included entity, or one-to-many versus one-to-one, or `.ToList` versus `.Single`/`.First` usage.
+- EntityFramework `.Single`/`.First` must include `.OrderBy` to prevent warnings
+- EntityFramework shouls always use `.AsNoTracking()` on queries intended to be read-only.
 
 ## React To Blazor Translation
 - Translate Claude/React inline styles into maintainable global CSS. Use `app.css` for resets, layout, typography, and app shell structure; `components.css` for reusable UI component classes; and `light.css` / `dark.css` for theme variables and theme-only overrides. Preserve the Claude Design visually, but do not preserve its inline-style implementation unless a value is truly dynamic and cannot reasonably be expressed with classes or CSS custom properties. Avoid component-scoped `.razor.css` by default.
