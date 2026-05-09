@@ -129,10 +129,10 @@
         <ChildContent>
             <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
                 <ChildContent>
-                    <ModalTab Id="appearance" Title="Appearance" Summary="@($"{Characters.Count} characters")" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
-                    <ModalTab Id="plan" Title="Plan" Summary="@PlanShape" Dirty="@IsPlanDirty()" />
-                    <ModalTab Id="private" Title="Private Intent" Summary="@($"{Characters.Count} characters")" Dirty="@PrivateIntents.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
-                    <ModalTab Id="speech" Title="Speech" Summary="@SpeechSummary" />
+                    <ModalTab Id="appearance" Title="Appearance" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
+                    <ModalTab Id="plan" Title="Plan" Dirty="@IsPlanDirty()" />
+                    <ModalTab Id="private" Title="Private Intent" Dirty="@IsActivePrivateIntentSet" />
+                    <ModalTab Id="speech" Title="Speech" />
                 </ChildContent>
                 <RailFooter>
                     <div class="prompt-rail-note">
@@ -147,31 +147,18 @@
                             {
                                 <ModalPaneToolbar Class="tuning-toolbar">
                                     <strong>Characters</strong>
-                                    <span class="toolbar-spacer"></span>
-                                    <Badge Tone="blue">@Characters.Count</Badge>
                                 </ModalPaneToolbar>
                             }
                             else if (ActivePlanTab == "plan")
                             {
                                 <ModalPaneToolbar Class="tuning-toolbar">
                                     <strong>Plan</strong>
-                                    <span class="toolbar-spacer"></span>
-                                    <Badge Tone="amber">@PlanShape</Badge>
                                 </ModalPaneToolbar>
                             }
                             else
                             {
                                 <ModalPaneToolbar Class="tuning-toolbar">
                                     <strong>@(ActivePlanTab == "speech" ? "TTS Input" : "Private Intent")</strong>
-                                    <span class="toolbar-spacer"></span>
-                                    @if (ActivePlanTab == "speech")
-                                    {
-                                        <Badge Tone="emerald">@SpeechSummary</Badge>
-                                    }
-                                    else
-                                    {
-                                        <Badge Tone="violet">@Characters.Count</Badge>
-                                    }
                                 </ModalPaneToolbar>
                             }
                         </Header>
@@ -200,34 +187,39 @@
 
                                 <Section Title="Scene Beat" Class="edit-plan-section">
                                     <FieldRow Label="Beat">
-                                        <textarea class="field plan-field" rows="3" placeholder="What story beat does this turn serve?" @bind="Beat"></textarea>
+                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What story beat does this turn serve?" @bind="Beat"></textarea>
                                     </FieldRow>
                                     <FieldRow Label="Change Introduced">
-                                        <textarea class="field plan-field" rows="3" placeholder="What shifts as a result of this turn?" @bind="ChangeIntroduced"></textarea>
+                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What shifts as a result of this turn?" @bind="ChangeIntroduced"></textarea>
                                     </FieldRow>
                                 </Section>
 
                                 <Section Title="Character Aim" Class="edit-plan-section">
                                     <FieldRow Label="Intent">
-                                        <textarea class="field plan-field" rows="3" placeholder="What does the character intend to do?" @bind="Intent"></textarea>
+                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What does the character intend to do?" @bind="Intent"></textarea>
                                     </FieldRow>
                                     <FieldRow Label="Immediate Goal">
                                         <input class="field plan-field" placeholder="What does the character want right now?" @bind="ImmediateGoal" />
                                     </FieldRow>
                                     <FieldRow Label="Why Now">
-                                        <textarea class="field plan-field" rows="3" placeholder="Why is the character acting at this moment?" @bind="WhyNow"></textarea>
+                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="Why is the character acting at this moment?" @bind="WhyNow"></textarea>
                                     </FieldRow>
                                     <FieldRow Label="Guardrails">
-                                        <textarea class="field plan-field" rows="3" placeholder="What should the AI avoid or preserve?" @bind="Guardrails"></textarea>
+                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What should the AI avoid or preserve?" @bind="Guardrails"></textarea>
                                     </FieldRow>
                                 </Section>
                             }
                             else if (ActivePlanTab == "private")
                             {
-                                @foreach (var character in Characters)
+                                var activeCharacter = ActivePrivateIntentCharacter;
+                                if (activeCharacter is null)
                                 {
-                                    <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                        <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {character.Name} carrying?")" value="@GetPrivateIntent(character.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(character.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                    <p class="empty-note">Narrator turns do not have a private character intent.</p>
+                                }
+                                else
+                                {
+                                    <Section @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section">
+                                        <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {activeCharacter.Name} carrying?")" value="@GetPrivateIntent(activeCharacter.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(activeCharacter.Id, args.Value?.ToString() ?? ""))"></textarea>
                                     </Section>
                                 }
                             }
@@ -306,7 +298,7 @@
     bool NewPlan;
     bool EditBody;
     bool SpeechInputLoading;
-    string ActivePlanTab = "appearance";
+    string ActivePlanTab = "plan";
     string SelectedTurnShape = "";
     string BodyDraft = "";
     string PlanShape = TurnShapePickerOptions.Default;
@@ -320,6 +312,7 @@
     MessageSpeechInputSnapshot? SpeechInputSnapshot;
     Dictionary<string, string> Appearances = [];
     Dictionary<string, string> PrivateIntents = [];
+    const int PlanTextareaRows = 1;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTranscriptTurn Message { get; set; } = new();
@@ -370,14 +363,12 @@
     string FailureMessage => Message.Trace?.Status == "failed" && Message.Trace?.Data.TryGetPropertyValue("error", out var errorNode) == true
         ? errorNode?.GetValue<string>() ?? ""
         : "";
-    string SpeechSummary => SpeechInputSnapshot is null
-        ? "No input"
-        : SpeechInputSnapshot.Inputs.Count == 1
-            ? "1 input"
-            : $"{SpeechInputSnapshot.Inputs.Count} inputs";
     string SpeechInputHint => SpeechInputSnapshot is null
         ? "Captured after read-aloud generation"
         : $"{SpeechInputSnapshot.ProviderName} · {SpeechInputSnapshot.ModelId} · {SpeechInputSnapshot.Status}";
+
+    RpCharacter? ActivePrivateIntentCharacter => ResolveActivePrivateIntentCharacter();
+    bool IsActivePrivateIntentSet => ActivePrivateIntentCharacter is not null && !string.IsNullOrWhiteSpace(GetPrivateIntent(ActivePrivateIntentCharacter.Id));
 
     protected override void OnParametersSet()
     {
@@ -495,6 +486,7 @@
         Guardrails = Message.Plan.Guardrails;
         Appearances = Message.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         PrivateIntents = Message.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        ActivePlanTab = "plan";
         EditPlan = true;
         await LoadSpeechInputSnapshot();
     }
@@ -562,6 +554,19 @@
 
     static string SpeechInputKey(SpeechGenerationInput input, int index) =>
         $"{index}:{input.VoiceId}:{input.Text.Length}";
+
+    RpCharacter? ResolveActivePrivateIntentCharacter()
+    {
+        if (string.IsNullOrWhiteSpace(Message.ActorCharacterId))
+            return null;
+
+        return Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId)
+            ?? new()
+            {
+                Id = Message.ActorCharacterId,
+                Name = string.IsNullOrWhiteSpace(Message.ActorName) ? "Active character" : Message.ActorName
+            };
+    }
 
     ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Reasoning);
 

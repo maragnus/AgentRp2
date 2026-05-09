@@ -421,7 +421,7 @@ public sealed class TextGenerationService(
         CancellationToken cancellationToken)
     {
         var tuning = ResolveTuning(document.ModelTuning, "appearance");
-        var tokens = promptContextBuilder.BuildTokens(context, "");
+        var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Appearance);
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Appearance, tokens);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "appearance", selection, startedUtc, progress);
@@ -458,7 +458,7 @@ public sealed class TextGenerationService(
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "selection", selection, startedUtc, progress);
         var tuning = ResolveTuning(document.ModelTuning, "selection");
-        var tokens = promptContextBuilder.BuildTokens(context, "");
+        var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Selection);
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Selection, tokens);
         var completion = await SendStructuredAsync<SelectionResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Selecting transcript actor", cancellationToken);
         var result = completion.Value;
@@ -488,7 +488,7 @@ public sealed class TextGenerationService(
         CancellationToken cancellationToken)
     {
         var tuning = ResolveTuning(document.ModelTuning, "planning");
-        var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "");
+        var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "", PromptLibraryStageIds.Planning);
         var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Planning, tokens);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "planning", selection, startedUtc, progress);
@@ -990,10 +990,9 @@ public sealed class TextGenerationService(
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Title))
             .Select(entry => new RpTranscriptSnapshotTimelineEntry
             {
-                WhenText = entry.WhenText.Trim(),
+                TurnNumber = entry.TurnNumber,
                 Title = entry.Title.Trim(),
-                Summary = entry.Summary.Trim(),
-                Details = entry.Details.Trim(),
+                Description = entry.Description.Trim(),
                 CharacterNames = NormalizeNames(entry.CharacterNames),
                 LocationNames = NormalizeNames(entry.LocationNames),
                 ItemNames = NormalizeNames(entry.ItemNames)
@@ -1006,10 +1005,9 @@ public sealed class TextGenerationService(
 
     public sealed class SnapshotTimelineEntryResponse
     {
-        public string WhenText { get; set; } = "";
+        public int TurnNumber { get; set; }
         public string Title { get; set; } = "";
-        public string Summary { get; set; } = "";
-        public string Details { get; set; } = "";
+        public string Description { get; set; } = "";
         public IReadOnlyList<string>? CharacterNames { get; set; }
         public IReadOnlyList<string>? LocationNames { get; set; }
         public IReadOnlyList<string>? ItemNames { get; set; }

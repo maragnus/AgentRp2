@@ -1,0 +1,20 @@
+<aside class="snapshot-suggestion" role="status">
+    <span class="snapshot-suggestion-icon"><FaIcon Name="flag" /></span>
+    <span class="snapshot-suggestion-copy">
+        Snapshot @CoveredMessageCount older messages and keep the last @RetainedMessageCount live to save tokens.
+    </span>
+    <BusyButton Variant="primary"
+                Size="xs"
+                Class="snapshot-suggestion-action"
+                Disabled="@Disabled"
+                OnClick="OnCreateSnapshot">
+        <FaIcon Name="scissors" />Create Snapshot
+    </BusyButton>
+</aside>
+
+@code {
+    [Parameter] public int CoveredMessageCount { get; set; }
+    [Parameter] public int RetainedMessageCount { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnCreateSnapshot { get; set; }
+}

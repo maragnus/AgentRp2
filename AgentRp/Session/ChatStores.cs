@@ -1342,6 +1342,17 @@ public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistr
         var defaults = PromptLibraryService.CreateDefaultState();
         State.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value = defaults.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value;
     }
+
+    public async Task ResetAllAsync()
+    {
+        if (Document is not null)
+        {
+            Document.PromptLibrary = PromptLibraryService.CreateDefaultState();
+            PromptLibraryService.ValidateState(Document.PromptLibrary);
+        }
+
+        await SaveActiveDocumentAsync();
+    }
 }
 
 public sealed class ChatDirectionStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)

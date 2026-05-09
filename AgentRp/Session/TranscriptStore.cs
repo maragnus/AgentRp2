@@ -43,6 +43,10 @@ public sealed partial class TranscriptStore(
 
     public async Task SetSpeakActionsInNarratorVoiceAsync(bool value) => await SetOptionAsync(options => options.SpeakActionsInNarratorVoice = value);
 
+    public async Task SetTurnShapeAsync(string value) => await SetOptionAsync(options => options.TurnShape = TurnShapeRules.NormalizeLabel(value));
+
+    public async Task SetTurnShapeLockedAsync(bool value) => await SetOptionAsync(options => options.TurnShapeLocked = value);
+
     public async Task<MessageSpeechPlayback?> GetOrGenerateSpeechAsync(string turnId, bool regenerate, CancellationToken cancellationToken = default)
     {
         MessageSpeechPlayback? playback = null;
@@ -81,6 +85,7 @@ public sealed partial class TranscriptStore(
         {
             Id = NextTurnId(),
             ParentTurnId = Document.Transcript.ActiveLeafTurnId,
+            TurnNumber = NextTurnNumber(Document.Transcript.ActiveLeafTurnId),
             CreatedUtc = now,
             UpdatedUtc = now,
             Mode = "manual",
@@ -264,6 +269,7 @@ public sealed partial class TranscriptStore(
         {
             Id = NextTurnId(),
             ParentTurnId = original.ParentTurnId,
+            TurnNumber = NextTurnNumber(original.ParentTurnId),
             CreatedUtc = now,
             UpdatedUtc = now,
             Mode = "edited",
@@ -587,6 +593,7 @@ public sealed partial class TranscriptStore(
         {
             Id = NextTurnId(),
             ParentTurnId = parentTurnId,
+            TurnNumber = NextTurnNumber(parentTurnId),
             CreatedUtc = now,
             UpdatedUtc = now,
             Mode = NormalizeMode(mode),
@@ -623,6 +630,7 @@ public sealed partial class TranscriptStore(
         {
             Id = existing?.Id ?? "__draft-turn",
             ParentTurnId = update.ParentTurnId,
+            TurnNumber = NextTurnNumber(update.ParentTurnId),
             CreatedUtc = existing?.CreatedUtc ?? now,
             UpdatedUtc = now,
             Mode = NormalizeMode(update.Mode),
@@ -701,6 +709,7 @@ public sealed partial class TranscriptStore(
         {
             Id = NextTurnId(),
             ParentTurnId = parentTurnId,
+            TurnNumber = NextTurnNumber(parentTurnId),
             CreatedUtc = now,
             UpdatedUtc = now,
             Mode = NormalizeMode(mode),
@@ -742,6 +751,8 @@ public sealed partial class TranscriptStore(
         if (Document is null)
             return;
 
+        if (turn.TurnNumber <= 0)
+            turn.TurnNumber = NextTurnNumber(turn.ParentTurnId);
         Document.Transcript.Turns.Add(turn);
         TranscriptGraph.ClearWorkingSceneForParent(Document.Transcript, turn.ParentTurnId);
         TranscriptGraph.SelectLeaf(Document.Transcript, turn.Id);
@@ -834,6 +845,9 @@ public sealed partial class TranscriptStore(
         "edited" => "edited",
         _ => "manual"
     };
+
+    int NextTurnNumber(string parentTurnId) =>
+        Document is null ? 1 : TranscriptTurnNumbering.NextTurnNumber(Document.Transcript, parentTurnId);
 
     static string NextTurnId() => $"turn-{Guid.NewGuid():N}";
     static string NextSnapshotId() => $"snap-{Guid.NewGuid():N}";

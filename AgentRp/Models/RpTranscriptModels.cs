@@ -30,12 +30,15 @@ public sealed class RpTranscriptOptionsState
     public bool ShowProcessTraces { get; set; }
     public bool AutoSpeakNewMessages { get; set; }
     public bool SpeakActionsInNarratorVoice { get; set; }
+    public string TurnShape { get; set; } = "Auto";
+    public bool TurnShapeLocked { get; set; }
 }
 
 public sealed class RpTranscriptTurn
 {
     public string Id { get; set; } = "";
     public string ParentTurnId { get; set; } = "";
+    public int TurnNumber { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
     public string Mode { get; set; } = "";
@@ -83,10 +86,9 @@ public sealed class RpTranscriptSnapshot
 
 public sealed class RpTranscriptSnapshotTimelineEntry
 {
-    public string WhenText { get; set; } = "";
+    public int TurnNumber { get; set; }
     public string Title { get; set; } = "";
-    public string Summary { get; set; } = "";
-    public string Details { get; set; } = "";
+    public string Description { get; set; } = "";
     public List<string> CharacterNames { get; set; } = [];
     public List<string> LocationNames { get; set; } = [];
     public List<string> ItemNames { get; set; } = [];
@@ -118,6 +120,7 @@ public sealed class RpTranscriptSnapshotDraftPreview
 public sealed class RpSnapshotDraftTurn
 {
     public string Id { get; set; } = "";
+    public int TurnNumber { get; set; }
     public string SpeakerName { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public string Body { get; set; } = "";

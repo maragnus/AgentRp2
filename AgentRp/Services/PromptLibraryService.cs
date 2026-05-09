@@ -73,14 +73,13 @@ public sealed partial class PromptLibraryService
         Placeholder("{context.actor}", "Actor section from the scene context.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.location}", "Location section from the scene context.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.charactersInScene}", "Characters currently in the scene.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
+        Placeholder("{context.relationships}", "Relationship section with actor-scoped private notes.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.otherKnownCharacters}", "Known characters not currently present.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.objectsInScene}", "Objects currently in the scene.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.storyContext}", "Genre, setting, tone, and story direction.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.contentGuidance}", "Explicit and violent content guidance.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.historySummary}", "Timeline and prior history summary.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
-        Placeholder("{context.snapshot}", "Latest snapshot summary.", PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
-        Placeholder("{context.transcript}", "Transcript since the latest snapshot.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
-        Placeholder("{context.earlierPrivateIntentContinuity}", "Older private intent continuity not already in transcript.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
+        Placeholder("{context.transcript}", "Transcript context, including the earlier summary when one exists. Planning and prose include allowed private intent lines inline.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{context.characterAppearances}", "Current appearance state for present characters.", PromptLibraryStageIds.Snapshot, PromptLibraryStageIds.Planning, PromptLibraryStageIds.Prose),
         Placeholder("{actor.name}", "Current actor name.", PromptLibraryStageIds.Planning),
         Placeholder("{speaker.name}", "Current speaker name for prose.", PromptLibraryStageIds.Prose),
@@ -214,43 +213,43 @@ public sealed partial class PromptLibraryService
         {
             [PromptLibraryStageIds.Planning] =
             [
-                Shape("compact", "Compact", "one action beat, one or two phrases, optional short tag (always preferred)"),
-                Shape("brief", "Brief", "one action beat, one to two short lines with a tag in between (rare)"),
-                Shape("extended", "Extended", "elaborate the beat into three focused paragraphs with well choreography interactions (only when asked)"),
-                Shape("monologue", "Monologue", "short monologue allowed (only when asked)"),
-                Shape("silent", "Silent", "quick action/subtext only, no spoken lines (common)"),
-                Shape("silent-monologue", "Silent Monologue", "extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)")
+                Shape(TurnShapeRules.CompactId, TurnShapeRules.CompactLabel, "one action beat, one or two phrases, optional short tag (always preferred)"),
+                Shape(TurnShapeRules.BriefId, TurnShapeRules.BriefLabel, "one action beat, one to two short lines with a tag in between (rare)"),
+                Shape(TurnShapeRules.ExtendedId, TurnShapeRules.ExtendedLabel, "short narrative allowed (only when asked)"),
+                Shape(TurnShapeRules.NarrativeId, TurnShapeRules.NarrativeLabel, "elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)"),
+                Shape(TurnShapeRules.SilentId, TurnShapeRules.SilentLabel, "quick action/subtext only, no spoken lines (common)"),
+                Shape(TurnShapeRules.SilentExtendedId, TurnShapeRules.SilentExtendedLabel, "extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)")
             ],
             [PromptLibraryStageIds.Prose] =
             [
-                Shape("compact", "Compact",
+                Shape(TurnShapeRules.CompactId, TurnShapeRules.CompactLabel,
                     """
                     Write only a very short compact turn on the same line with:
                     - One brief visible *action*.
                     - One or two short "spoken phrases".
                     - One very short trailing *action* if needed.
                     """),
-                Shape("brief", "Brief",
+                Shape(TurnShapeRules.BriefId, TurnShapeRules.BriefLabel,
                     """
                     Write only a very brief turn on the same line with:
                     - One brief *action*.
                     - One or two short "spoken lines" separated by simple *action*.
                     """),
-                Shape("extended", "Extended",
+                Shape(TurnShapeRules.ExtendedId, TurnShapeRules.ExtendedLabel,
                     """
                     Write an extended turn with:
+                    - Sentences of "spoken words" with simple *action* in between.
+                    - Flow this into a connected move with a clear landing point.
+                    - Stop before repeating.
+                    """),
+                Shape(TurnShapeRules.NarrativeId, TurnShapeRules.NarrativeLabel,
+                    """
+                    Write a narrative turn with:
                     - One to three paragraphs.
                     - "Dialogue", *action*, and narration that all serve the same planned beat.
                     - A clear landing point before the turn becomes a second move.
                     """),
-                Shape("monologue", "Monologue",
-                    """
-                    Write a brief monologue turn with:
-                    - Sentences of "spoken word"s with simple *action* in between.
-                    - Flow this into a connected move with a clear landing point.
-                    - Stop before repeating.
-                    """),
-                Shape("silent", "Silent",
+                Shape(TurnShapeRules.SilentId, TurnShapeRules.SilentLabel,
                     """
                     Write only a quick silent turn on the same line with:
                     - Nonverbal move or subtext *action* and no verbal component.
@@ -258,9 +257,9 @@ public sealed partial class PromptLibraryService
                     - Do not use "dialogue" unless a word or two is necessary to land the beat.
                     - Keep it restrained and readable.
                     """),
-                Shape("silent-monologue", "Silent Monologue",
+                Shape(TurnShapeRules.SilentExtendedId, TurnShapeRules.SilentExtendedLabel,
                     """
-                    Write only a silent monologue turn with:
+                    Write only a silent extended turn with:
                     - Detailed nonverbal *action* and subtext only.
                     - Use touch, movement, posture, expression, distance, hesitation, or atmosphere.
                     - Build one connected physical move with a clear landing point.
@@ -414,7 +413,20 @@ public sealed partial class PromptLibraryService
     public static string FormatTurnShapeDefinitions(IReadOnlyList<ShapePromptState> shapes)
     {
         var ordered = OrderTurnShapes(shapes);
-        return string.Join(Environment.NewLine, ordered.Select(shape => $"- {FormatTurnShapeLabel(shape.Label)} = {shape.Value}"));
+        return string.Join(Environment.NewLine, ordered.Select(shape => $"- {TurnShapeRules.FormatPromptLabel(shape.Label)} = {shape.Value}"));
+    }
+
+    public static string FormatRequestedTurnShape(PromptLibraryState state, string stageId, string requestedTurnShape)
+    {
+        var shape = FindTurnShape(state, stageId, requestedTurnShape);
+        if (shape is null)
+            return "";
+
+        return $"""
+        Required turn shape: {shape.Label}
+        Use exactly this turn shape in the structured plan.
+        - {TurnShapeRules.FormatPromptLabel(shape.Label)} = {shape.Value}
+        """;
     }
 
     public static string GetTurnShapeTemplate(PromptLibraryState state, string stageId, string requestedTurnShape)
@@ -423,17 +435,14 @@ public sealed partial class PromptLibraryService
         var shapes = normalized.TurnShapes.TryGetValue(stageId, out var stageShapes)
             ? stageShapes
             : [];
-        return shapes.FirstOrDefault(shape =>
-                string.Equals(shape.Id, ShapeId(requestedTurnShape), StringComparison.Ordinal)
-                || string.Equals(shape.Label, requestedTurnShape, StringComparison.OrdinalIgnoreCase))
-            ?.Value
+        return FindTurnShape(shapes, requestedTurnShape)?.Value
             ?? shapes.FirstOrDefault()?.Value
             ?? string.Empty;
     }
 
-    public static string BuildDefaultProseSystemTurnShape(string requestedTurnShape) => ShapeId(requestedTurnShape) switch
+    public static string BuildDefaultProseSystemTurnShape(string requestedTurnShape) => TurnShapeRules.ToId(requestedTurnShape) switch
     {
-        "compact" =>
+        TurnShapeRules.CompactId =>
             """
             This turn has a compact shape, fulfill the beat with one sharp move.
             - Keep this very short.
@@ -443,7 +452,7 @@ public sealed partial class PromptLibraryService
             - Stop immediately.
             - Do not add a second move.
             """,
-        "brief" =>
+        TurnShapeRules.BriefId =>
             """
             This turn has a brief shape, fulfill the beat with a quick move that may need a little setup or follow-through.
             - Keep this short.
@@ -452,25 +461,25 @@ public sealed partial class PromptLibraryService
             - Stop immediately.
             - Do not add a new topic or second emotional turn.
             """,
-        "extended" =>
+        TurnShapeRules.ExtendedId =>
             """
-            This turn has an extended shape, fulfill the beat and expand on it.
+            This turn has an extended shape, fulfill the beat with a longer move.
+            - A longer reply is allowed here. You can make up to three connected beats in a row.
+            - Up to five sentences maximum of spoken words with simple actions in between.
+            - Still focus on one beat but expand it into three parts.
+            - Provide a clear landing point.
+            - Do not ramble, recap, or drift into a second move.
+            """,
+        TurnShapeRules.NarrativeId =>
+            """
+            This turn has a narrative shape, fulfill the beat and expand on it.
             - Expand the beat into three paragraphs with detailed choreography and vivid descriptions.
             - Use each paragraph well to create meaningful visuals.
             - Dialogue, action, and narration are allowed when they serve the immediate goal.
             - Provide a clear landing point.
             - Do not ramble, recap, or drift into a second move.
             """,
-        "monologue" =>
-            """
-            This turn has a monologue shape, fulfill the beat with a longer move.
-            - A longer reply is allowed here. You can make up to three connected beats in a row.
-            - Up to five sentenses maximum of spoken words with simple actions in between.
-            - Still focus on one beat but expand it into three parts.
-            - Provide a clear landing point.
-            - Do not ramble, recap, or drift into a second move.
-            """,
-        "silent" =>
+        TurnShapeRules.SilentId =>
             """
             This turn has a silent shape, fulfill the beat with a nonverbal move or subtext and no verbal component.
             - Prefer action, expression, posture, or a small physical response.
@@ -478,9 +487,9 @@ public sealed partial class PromptLibraryService
             - Keep it restrained and readable.
             - Stop early once action is clear.
             """,
-        "silent-monologue" =>
+        TurnShapeRules.SilentExtendedId =>
             """
-            This turn has a silent monologue shape, fulfill the beat with a longer nonverbal move and no dialogue.
+            This turn has a silent extended shape, fulfill the beat with a longer nonverbal move and no dialogue.
             - Use connected physical detail: touch, movement, posture, expression, distance, atmosphere, or subtext.
             - Let the action imply the emotional or tactical shift without explaining it.
             - Keep this to one playable move, not a full scene sequence.
@@ -494,9 +503,9 @@ public sealed partial class PromptLibraryService
     public static string BuildDefaultNarratorProseTurnShape(string requestedTurnShape) =>
         $"""
         Narrator turn shape:
-        - Treat "{FormatTurnShapeLabel(requestedTurnShape)}" as a length and pacing request only, never as permission for dialogue or character turns.
+        - Treat "{TurnShapeRules.FormatPromptLabel(requestedTurnShape)}" as a length and pacing request only, never as permission for dialogue or character turns.
         - For compact or brief, write one short staging paragraph.
-        - For extended or monologue, write up to three concise staging paragraphs.
+        - For extended or narrative, write up to three concise staging paragraphs.
         - For silent shapes, keep the narration visual, atmospheric, and physical.
         - Summarize transition, elapsed time, travel, logistics, current positions, clothing, visible state, atmosphere, and present items as needed.
         - Do not include quoted speech, internal monologue, new character reactions, or the next dramatic exchange.
@@ -546,29 +555,38 @@ public sealed partial class PromptLibraryService
         Value = value
     };
 
+    static ShapePromptState? FindTurnShape(PromptLibraryState state, string stageId, string requestedTurnShape)
+    {
+        var normalized = NormalizeState(state);
+        return normalized.TurnShapes.TryGetValue(stageId, out var shapes)
+            ? FindTurnShape(shapes, requestedTurnShape)
+            : null;
+    }
+
+    static ShapePromptState? FindTurnShape(IEnumerable<ShapePromptState> shapes, string requestedTurnShape)
+    {
+        var requestedId = TurnShapeRules.ToId(requestedTurnShape);
+        return shapes.FirstOrDefault(shape =>
+            string.Equals(shape.Id, requestedId, StringComparison.Ordinal)
+            || string.Equals(shape.Label, requestedTurnShape, StringComparison.OrdinalIgnoreCase));
+    }
+
     static IEnumerable<ShapePromptState> OrderTurnShapes(IEnumerable<ShapePromptState> shapes)
     {
-        var order = new[] { "compact", "silent", "silent-monologue", "brief", "extended", "monologue" };
         var shapeList = shapes.ToList();
-        foreach (var id in order)
+        foreach (var id in TurnShapeRules.PromptDefinitionOrder)
         {
             var match = shapeList.FirstOrDefault(shape => shape.Id == id);
             if (match is not null)
                 yield return match;
         }
 
-        foreach (var shape in shapeList.Where(shape => !order.Contains(shape.Id, StringComparer.Ordinal)))
+        foreach (var shape in shapeList.Where(shape => !TurnShapeRules.PromptDefinitionOrder.Contains(shape.Id, StringComparer.Ordinal)))
             yield return shape;
     }
 
     static string NormalizePlaceholderKey(string key) =>
         key.StartsWith('{') && key.EndsWith('}') ? key[1..^1] : key;
-
-    static string ShapeId(string value) =>
-        value.Trim().ToLowerInvariant().Replace(" ", "-");
-
-    static string FormatTurnShapeLabel(string value) =>
-        value.Trim().ToLowerInvariant();
 
     const string DefaultSnapshotSystemPrompt =
         """
@@ -577,6 +595,8 @@ public sealed partial class PromptLibraryService
         Return a concise narrative summary, then propose timeline entries that should be saved.
         Prefer durable developments over throwaway phrasing.
         Do not invent names, references, or events that are not grounded in the provided material.
+        Timeline entry turnNumber must be the best matching included numeric turn number, such as 52, and never a text label or real-world date.
+        If an event spans multiple turns, use the turn where the event becomes canon or settled.
         """;
 
     const string DefaultSnapshotUserPromptTemplate =
@@ -593,7 +613,7 @@ public sealed partial class PromptLibraryService
 
         Return:
         1. A narrative summary of what has happened so far in this included range.
-        2. Proposed timeline entries that should be added.
+        2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
         """;
 
@@ -711,35 +731,22 @@ public sealed partial class PromptLibraryService
         Choose one immediate beat, not a sequence.
 
         Build the plan using these fields:
-        - Turn shape: choose exactly one of compact, brief, extended, monologue, silent, or silent monologue.
+        - Turn shape: copy the required turn shape exactly.
         - Beat: the kind of move being made in this turn.
         - Intent: the actor's immediate intention.
         - Immediate goal: what this turn tries to achieve right now.
-        - Why now: why this beat fits this exact moment in the transcript.
-        - Change introduced: what becomes different after this turn.
+        - Why now: the specific recent change, event, line, action, silence, or pressure this turn is answering.
+        - Change introduced: what becomes newly different after this turn.
         - Private Intent: the actor's private continuity note for the hidden reason, feeling, agenda, fear, memory, sensation, concealed object, concealed action, or unspoken detail behind this turn.
         - Narrative Guardrails: avoid making the beat less effective or interesting
         - Content Guardrails: avoid introducing any sexual or violent content here
 
-        Turn shape definitions:
-        {planning.turnShapeDefinitions}
+        **strong beat:** responds to what just changed, then adds one new playable value: shifted pressure, changed position, redirected attention, a new question, discomfort, intimacy, restraint, refusal, reveal, misdirection, or escalation.
 
-        Prioritize compact, silent, and silent monologue almost always.
-        - Favor silent turns for quick intimate moments.
-        - Favor silent monologue when an intimate, physical, or subtext-heavy moment needs a longer nonverbal beat instead of speech.
-        - Don't eagerly follow the narrative if it is counter to character goals or private intent.
-        - Pick the most valuable next beat to move the story forward, not the safest or most literal reply.
-        - Identify when the current thread has run it's course and move on.
-        - If a direct reaction is needed, react.
-        - If no direct reaction is needed, introduce a small new beat that moves the scene.
-        - Never end an exchange.
-        - Never end a conversation.
-
-        **strong beat:** changes something, shifts pressure, tests a boundary, redirects attention, creates a question, adds discomfort, adds intimacy, or forces a reply.
-
-        Avoid empty beats.
-        Do not only restate rules, confirm the current situation, paraphrase the last line, or preserve the same tension without adding value.
-        Do not repeat parts of the story, always keep it moving.
+        Avoid empty or recycled beats.
+        Do not merely restate the current situation, paraphrase the last line, repeat the actor's previous posture or emotional signal, or preserve the same tension without adding value.
+        Repetition is allowed only when recurrence is the dramatic point, such as shock, hesitation, avoidance, insistence, ritual, denial, or escalation through repeated pressure.
+        If repetition is intentional, make the plan clarify what changed because of the repetition.
 
         Be sure to account for surprising events where the character may be in shock or confused for a turn or two, while recovering or processing what just happened.
 
@@ -756,9 +763,6 @@ public sealed partial class PromptLibraryService
         - Do not include other characters' private thoughts.
         - If the actor infers another character's motive, phrase it as the actor's suspicion, not fact.
         - Do not use Private Intent to duplicate the visible message. Visible actions belong in the transcript. Private Intent may include hidden/internal/concealed actions or sensations that are not visible to others.
-
-        For intimate interactions, prioritize a silent monologue to detail the physical and emotional sensations in descriptive graphic explicit detail.
-        For complex explainations of feelings, intentions, or situations, a monologue turn is appropriate.
 
         Do not write the final message text.
         """;
@@ -783,10 +787,11 @@ public sealed partial class PromptLibraryService
         Make one short playable move, then stop.
 
         Priority order:
-        1. Fulfill the beat
-        2. Stay true to {speaker.name}, the current scene, and recent transcript
-        3. Use as few words as possible
-        4. Stop at the first natural pause
+        1. Notice the newest meaningful change in the scene; address it directly only when doing so adds value
+        2. Fulfill the planned beat as a response to that change
+        3. Stay true to {speaker.name}, the current scene, and recent transcript
+        4. Use as few words as possible
+        5. Stop at the first natural pause
 
         Respect the supplied story context and content guidance.
 
@@ -799,7 +804,7 @@ public sealed partial class PromptLibraryService
 
         {guidanceSection}
 
-        Write the turn by fulfilling only:
+        Write the turn by using the latest meaningful change as context, addressing it directly only when that adds value, then fulfilling only:
         1. **the beat:** {planner.beat}
         2. **the intent:** {planner.intent}
         3. **the immediate goal:** {planner.immediateGoal}
@@ -809,6 +814,9 @@ public sealed partial class PromptLibraryService
         7. **narrative guardrails:** {planner.narrativeGuardrails}
         - Honor why now and the guardrails.
         - Let private intent influence the actor's subtext and choices, but do not reveal it directly unless the planned beat naturally makes some part visible.
+        - Let continuity show through consequence, escalation, contrast, restraint, or changed focus rather than recap.
+        - If the turn echoes a recent action, phrase, posture, or emotional signal, make the echo purposeful and changed.
+        - Do not repeat the actor's last visible move in another form unless the planner's why-now or guardrails justify it.
         - Do not expand beyond them.
         - Stop early to prevent ramble, recap, or repeating yourself.
 

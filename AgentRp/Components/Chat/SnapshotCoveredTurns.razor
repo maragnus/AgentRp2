@@ -1,4 +1,5 @@
 @using AgentRp.Models
+@using AgentRp.Services
 
 @if (Turns.Count == 0)
 {
@@ -13,7 +14,7 @@ else
     <div class="snapshot-covered-list">
         @foreach (var turn in Turns)
         {
-            <Section @key="turn.Id" Title="@turn.SpeakerName" Hint="@RelativeDateFormatter.FormatDate(turn.CreatedUtc)" Class="snapshot-review-section snapshot-covered-turn-section">
+            <Section @key="turn.Id" Title="@turn.SpeakerName" Hint="@TranscriptTurnNumbering.Format(turn)" Class="snapshot-review-section snapshot-covered-turn-section">
                 <TranscriptBody Body="@turn.Body" Class="snapshot-covered-body" />
             </Section>
         }

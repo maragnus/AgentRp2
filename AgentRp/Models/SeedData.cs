@@ -71,6 +71,7 @@ public static class SeedData
         var turn1 = new RpTranscriptTurn
         {
             Id = "turn-1",
+            TurnNumber = 1,
             CreatedUtc = started,
             UpdatedUtc = started,
             Mode = "guided",
@@ -105,6 +106,7 @@ public static class SeedData
         {
             Id = "turn-2",
             ParentTurnId = "turn-1",
+            TurnNumber = 2,
             CreatedUtc = turn2Time,
             UpdatedUtc = turn2Time,
             Mode = "automatic",
@@ -141,6 +143,7 @@ public static class SeedData
         {
             Id = "turn-3",
             ParentTurnId = "turn-2",
+            TurnNumber = 3,
             CreatedUtc = turn3Time,
             UpdatedUtc = turn3Time,
             Mode = "automatic",

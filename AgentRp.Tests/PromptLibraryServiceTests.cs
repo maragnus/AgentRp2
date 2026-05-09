@@ -6,7 +6,7 @@ namespace AgentRp.Tests;
 public sealed class PromptLibraryServiceTests
 {
     [Fact]
-    public void DefaultsMatchAgentRp1PromptLibraryContentWithAgentRp2ProseFormatReminder()
+    public void DefaultsMatchAgentRp1PromptLibraryContentWithAgentRp2ProseFormatReminderExceptTurnShapeVocabulary()
     {
         var defaults = PromptLibraryService.CreateDefaultState();
 
@@ -14,7 +14,6 @@ public sealed class PromptLibraryServiceTests
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultAppearanceUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Appearance].User);
         AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryScenePrompts", "StorySceneResponderSelectionPromptBuilder.cs"), "BuildSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Selection].System);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultSelectionUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Selection].User);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningSystemPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].System);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].User);
         AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultProseSystemPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Prose].System);
         AssertPromptEqual(
@@ -22,22 +21,38 @@ public sealed class PromptLibraryServiceTests
             defaults.Prompts[PromptLibraryStageIds.Prose].User);
         AssertPromptEqual(ExpectedSnapshotSystemPrompt, defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
         AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
+        Assert.Contains("Turn shape: copy the required turn shape exactly.", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
+        Assert.DoesNotContain("{planning.turnShapeDefinitions}", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
+        Assert.DoesNotContain("Prioritize compact", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
+        Assert.DoesNotContain("silent monologue", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void TurnShapeDefaultsMatchAgentRp1Exactly()
+    public void TurnShapeDefaultsUseCanonicalDefinitions()
     {
         var defaults = PromptLibraryService.CreateDefaultState();
 
         Assert.Equal("one action beat, one or two phrases, optional short tag (always preferred)", Shape(defaults, PromptLibraryStageIds.Planning, "compact"));
         Assert.Equal("one action beat, one to two short lines with a tag in between (rare)", Shape(defaults, PromptLibraryStageIds.Planning, "brief"));
-        Assert.Equal("elaborate the beat into three focused paragraphs with well choreography interactions (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "extended"));
-        Assert.Equal("short monologue allowed (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "monologue"));
+        Assert.Equal("short narrative allowed (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "extended"));
+        Assert.Equal("elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "narrative"));
         Assert.Equal("quick action/subtext only, no spoken lines (common)", Shape(defaults, PromptLibraryStageIds.Planning, "silent"));
-        Assert.Equal("extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)", Shape(defaults, PromptLibraryStageIds.Planning, "silent-monologue"));
+        Assert.Equal("extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)", Shape(defaults, PromptLibraryStageIds.Planning, "silent-extended"));
         AssertPromptEqual(ExpectedPlanningTurnShapeDefinitions, PromptLibraryService.FormatTurnShapeDefinitions(defaults.TurnShapes[PromptLibraryStageIds.Planning]));
         AssertPromptEqual(ExpectedProseBriefTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "brief"));
-        AssertPromptEqual(ExpectedProseSilentMonologueTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "silent-monologue"));
+        AssertPromptEqual(ExpectedProseSilentExtendedTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "silent-extended"));
+    }
+
+    [Fact]
+    public void RequestedTurnShapePromptIncludesOnlySelectedShapeDefinition()
+    {
+        var defaults = PromptLibraryService.CreateDefaultState();
+
+        var section = PromptLibraryService.FormatRequestedTurnShape(defaults, PromptLibraryStageIds.Planning, "Silent Extended");
+
+        AssertPromptEqual(ExpectedSilentExtendedRequestedTurnShape, section);
+        Assert.DoesNotContain("brief =", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("narrative =", section, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -148,7 +163,31 @@ public sealed class PromptLibraryServiceTests
         Assert.Equal("Custom system", normalized.Prompts[PromptLibraryStageIds.Planning].System);
         Assert.Contains("You update character scene state.", normalized.Prompts[PromptLibraryStageIds.Appearance].System, StringComparison.Ordinal);
         Assert.Equal("Custom brief", normalized.TurnShapes[PromptLibraryStageIds.Prose].First(shape => shape.Id == "brief").Value);
-        Assert.Contains(normalized.TurnShapes[PromptLibraryStageIds.Prose], shape => shape.Id == "silent-monologue");
+        Assert.Contains(normalized.TurnShapes[PromptLibraryStageIds.Prose], shape => shape.Id == "silent-extended");
+    }
+
+    [Fact]
+    public void NormalizeDropsLegacyTurnShapeRows()
+    {
+        var partial = new PromptLibraryState
+        {
+            TurnShapes = new()
+            {
+                [PromptLibraryStageIds.Prose] =
+                [
+                    new() { Id = "monologue", Label = "Monologue", Value = "Legacy monologue" },
+                    new() { Id = "silent-monologue", Label = "Silent Monologue", Value = "Legacy silent monologue" },
+                    new() { Id = "narrative", Label = "Narrative", Value = "Custom narrative" }
+                ]
+            }
+        };
+
+        var normalized = PromptLibraryService.NormalizeState(partial);
+        var proseShapes = normalized.TurnShapes[PromptLibraryStageIds.Prose];
+
+        Assert.DoesNotContain(proseShapes, shape => shape.Id == "monologue");
+        Assert.DoesNotContain(proseShapes, shape => shape.Id == "silent-monologue");
+        Assert.Equal("Custom narrative", proseShapes.First(shape => shape.Id == "narrative").Value);
     }
 
     [Fact]
@@ -289,10 +328,10 @@ public sealed class PromptLibraryServiceTests
         """
         - compact = one action beat, one or two phrases, optional short tag (always preferred)
         - silent = quick action/subtext only, no spoken lines (common)
-        - silent monologue = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
         - brief = one action beat, one to two short lines with a tag in between (rare)
-        - extended = elaborate the beat into three focused paragraphs with well choreography interactions (only when asked)
-        - monologue = short monologue allowed (only when asked)
+        - extended = short narrative allowed (only when asked)
+        - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
         """;
 
     const string ExpectedProseBriefTurnShape =
@@ -302,9 +341,16 @@ public sealed class PromptLibraryServiceTests
         - One or two short "spoken lines" separated by simple *action*.
         """;
 
-    const string ExpectedProseSilentMonologueTurnShape =
+    const string ExpectedSilentExtendedRequestedTurnShape =
         """
-        Write only a silent monologue turn with:
+        Required turn shape: Silent Extended
+        Use exactly this turn shape in the structured plan.
+        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (common in intimate, physical, or subtext-heavy moments)
+        """;
+
+    const string ExpectedProseSilentExtendedTurnShape =
+        """
+        Write only a silent extended turn with:
         - Detailed nonverbal *action* and subtext only.
         - Use touch, movement, posture, expression, distance, hesitation, or atmosphere.
         - Build one connected physical move with a clear landing point.

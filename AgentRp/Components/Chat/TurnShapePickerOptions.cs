@@ -1,54 +1,17 @@
+using AgentRp.Services;
+
 namespace AgentRp.Components.Chat;
 
 public static class TurnShapePickerOptions
 {
-    public const string Auto = "Auto";
-    public const string Default = "Brief";
+    public const string Auto = TurnShapeRules.AutoLabel;
+    public const string Default = TurnShapeRules.DefaultLabel;
 
-    public static readonly IReadOnlyList<string> Explicit =
-    [
-        "Compact",
-        Default,
-        "Extended",
-        "Monologue",
-        "Silent",
-        "Silent Monologue"
-    ];
+    public static readonly IReadOnlyList<string> Explicit = TurnShapeRules.ExplicitLabels;
 
-    public static readonly IReadOnlyList<string> All =
-    [
-        Auto,
-        ..Explicit
-    ];
+    public static readonly IReadOnlyList<string> All = TurnShapeRules.AllLabels;
 
-    public static string Normalize(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return Default;
+    public static string Normalize(string? value) => TurnShapeRules.NormalizeLabel(value);
 
-        var trimmed = value.Trim();
-        var key = trimmed
-            .Replace("-", "", StringComparison.Ordinal)
-            .Replace("_", "", StringComparison.Ordinal)
-            .Replace(" ", "", StringComparison.Ordinal)
-            .ToLowerInvariant();
-
-        return key switch
-        {
-            "auto" => Auto,
-            "compact" => "Compact",
-            "brief" => Default,
-            "extended" => "Extended",
-            "monologue" => "Monologue",
-            "silent" => "Silent",
-            "silentmonologue" => "Silent Monologue",
-            _ => trimmed
-        };
-    }
-
-    public static string NormalizeExplicit(string? value)
-    {
-        var normalized = Normalize(value);
-        return normalized == Auto ? Default : normalized;
-    }
+    public static string NormalizeExplicit(string? value) => TurnShapeRules.NormalizeExplicitLabel(value);
 }

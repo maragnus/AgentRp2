@@ -166,6 +166,7 @@ static class TranscriptProjector
     public static void Apply(RpChatDocument document, DateTime? now = null)
     {
         var transcript = document.Transcript;
+        TranscriptTurnNumbering.EnsureTurnNumbers(transcript);
         EnsureSceneDefaults(document);
         var scene = TranscriptGraph.GetVisibleScene(transcript);
         var activePath = TranscriptGraph.GetActivePath(transcript);

@@ -122,6 +122,13 @@
             }
         </ChildContent>
         <FooterContent>
+            @if (BuildSnapshotSuggestion() is { } snapshotSuggestion)
+            {
+                <SnapshotSuggestionBanner CoveredMessageCount="@snapshotSuggestion.CoveredMessageCount"
+                                          RetainedMessageCount="@SnapshotSuggestionRetainedMessageCount"
+                                          Disabled="@TranscriptBusy"
+                                          OnCreateSnapshot="OpenSuggestedSnapshotDraft" />
+            }
             <div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
                 <textarea rows="3" @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@TranscriptBusy" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
                 <div class="claude-composer-actions">
@@ -167,6 +174,14 @@
                             }
                         </Content>
                     </AnchoredPopover>
+                    <AppButton Icon="@TurnShapeLockIcon"
+                               Variant="secondary"
+                               Size="xs"
+                               Class="composer-lock-button"
+                               Active="@Options.TurnShapeLocked"
+                               Disabled="@TranscriptBusy"
+                               TooltipText="@TurnShapeLockTitle"
+                               OnClick="@(_ => ToggleTurnShapeLocked())" />
 
                     <span class="v-divider"></span>
 
@@ -210,7 +225,6 @@
 
 @code {
     string Draft = "";
-    string TurnShape = TurnShapePickerOptions.Default;
     string ActiveChatId = "";
     string PendingAutoSpeakTurnId = "";
     string LastTranscriptScrollSignature = "";
@@ -223,6 +237,8 @@
     RpTranscriptSnapshotDraftPreview? SnapshotDraftPreview;
     HashSet<string> KnownMessageIds = [];
     readonly SceneTransitionService SceneTransitions = new();
+    const int SnapshotSuggestionThreshold = 25;
+    const int SnapshotSuggestionRetainedMessageCount = 5;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
@@ -232,6 +248,11 @@
     ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
     RpChat Chat => Session.Chats.Active!;
     RpTranscriptOptionsState Options => Session.Chat.Transcript.Options;
+    string TurnShape => string.IsNullOrWhiteSpace(Options.TurnShape)
+        ? TurnShapePickerOptions.Auto
+        : TurnShapePickerOptions.Normalize(Options.TurnShape);
+    string TurnShapeLockIcon => Options.TurnShapeLocked ? "lock" : "lock-open";
+    string TurnShapeLockTitle => Options.TurnShapeLocked ? "Keep Turn Shape" : "Reset Turn Shape after generation";
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
@@ -293,6 +314,24 @@
         return items;
     }
 
+    SnapshotSuggestionTarget? BuildSnapshotSuggestion()
+    {
+        var messages = Messages;
+        var latestSnapshot = Session.Chat.Transcript.SnapshotsForActivePath().LastOrDefault();
+        var latestSnapshotIndex = latestSnapshot is null
+            ? -1
+            : messages.FindIndex(message => string.Equals(message.Id, latestSnapshot.TurnId, StringComparison.Ordinal));
+        var unsnapshottedMessageCount = messages.Count - latestSnapshotIndex - 1;
+        var targetIndex = messages.Count - SnapshotSuggestionRetainedMessageCount - 1;
+        if (unsnapshottedMessageCount < SnapshotSuggestionThreshold
+            || targetIndex <= latestSnapshotIndex
+            || targetIndex < 0
+            || targetIndex >= messages.Count)
+            return null;
+
+        return new(messages[targetIndex], targetIndex - latestSnapshotIndex);
+    }
+
     GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 
     protected override void OnInitialized()
@@ -348,10 +387,11 @@
         await Session.SetSpeakingAsAsync(character);
     }
 
-    void PickShape(string shape)
-    {
-        TurnShape = shape;
-    }
+    async Task PickShape(string shape) =>
+        await Session.Chat.Transcript.SetTurnShapeAsync(shape);
+
+    async Task ToggleTurnShapeLocked() =>
+        await Session.Chat.Transcript.SetTurnShapeLockedAsync(!Options.TurnShapeLocked);
 
     async Task ToggleInjectAudioTags() =>
         await Session.Chat.Transcript.SetInjectAudioTagsAsync(!Options.InjectAudioTags);
@@ -394,6 +434,15 @@
             SnapshotDraftLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    async Task OpenSuggestedSnapshotDraft()
+    {
+        var suggestion = BuildSnapshotSuggestion();
+        if (suggestion is null)
+            return;
+
+        await OpenSnapshotDraft(suggestion.TargetTurn.Id);
     }
 
     Task CloseSnapshotDraft()
@@ -485,8 +534,11 @@
         var text = Draft.Trim();
         var isGuided = text.Length > 0;
         var speaker = Session.SpeakingAs;
+        var turnShape = TurnShape;
         Draft = "";
-        await Session.Chat.Transcript.GenerateAsync(text, speaker, speaker is null, isGuided ? "guided" : "automatic", TurnShape);
+        await Session.Chat.Transcript.GenerateAsync(text, speaker, speaker is null, isGuided ? "guided" : "automatic", turnShape);
+        if (!Options.TurnShapeLocked)
+            await Session.Chat.Transcript.SetTurnShapeAsync(TurnShapePickerOptions.Auto);
     }
 
     async Task PostManual()
@@ -546,4 +598,6 @@
         RpTranscriptSnapshot? Snapshot,
         SceneTransitionDelta? Transition,
         int SubsequentCount);
+
+    sealed record SnapshotSuggestionTarget(RpTranscriptTurn TargetTurn, int CoveredMessageCount);
 }

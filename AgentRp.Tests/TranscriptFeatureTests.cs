@@ -68,6 +68,7 @@ public sealed class TranscriptFeatureTests
         Assert.Equal("Take Bella's affection while reminding Jake she noticed his silence.", snapshot.PrivateIntentByCharacterId["c2"]);
         var snapshotTimelineEntry = Assert.Single(sessionB.Chat.Timeline.Items, entry => entry.SnapshotId == snapshot.Id);
         Assert.Equal("Snapshot event", snapshotTimelineEntry.Title);
+        Assert.Equal("Turn 3", snapshotTimelineEntry.Date);
     }
 
     [Fact]
@@ -294,6 +295,8 @@ public sealed class TranscriptFeatureTests
         Assert.False(document.Transcript.Options.HideAudioTags);
         Assert.False(document.Transcript.Options.ShowAppearanceBlocks);
         Assert.False(document.Transcript.Options.ShowProcessTraces);
+        Assert.Equal("Auto", document.Transcript.Options.TurnShape);
+        Assert.False(document.Transcript.Options.TurnShapeLocked);
     }
 
     [Fact]
@@ -311,11 +314,15 @@ public sealed class TranscriptFeatureTests
             await sessionA.Chat.Transcript.SetHideAudioTagsAsync(true);
             await sessionA.Chat.Transcript.SetShowAppearanceBlocksAsync(true);
             await sessionA.Chat.Transcript.SetShowProcessTracesAsync(true);
+            await sessionA.Chat.Transcript.SetTurnShapeAsync("Extended");
+            await sessionA.Chat.Transcript.SetTurnShapeLockedAsync(true);
 
             Assert.True(sessionB.Chat.Transcript.Options.InjectAudioTags);
             Assert.True(sessionB.Chat.Transcript.Options.HideAudioTags);
             Assert.True(sessionB.Chat.Transcript.Options.ShowAppearanceBlocks);
             Assert.True(sessionB.Chat.Transcript.Options.ShowProcessTraces);
+            Assert.Equal("Extended", sessionB.Chat.Transcript.Options.TurnShape);
+            Assert.True(sessionB.Chat.Transcript.Options.TurnShapeLocked);
         }
 
         await using var reloadedStore = new LiveRoleplayStore(persistence, TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
@@ -326,6 +333,8 @@ public sealed class TranscriptFeatureTests
         Assert.True(reloadedSession.Chat.Transcript.Options.HideAudioTags);
         Assert.True(reloadedSession.Chat.Transcript.Options.ShowAppearanceBlocks);
         Assert.True(reloadedSession.Chat.Transcript.Options.ShowProcessTraces);
+        Assert.Equal("Extended", reloadedSession.Chat.Transcript.Options.TurnShape);
+        Assert.True(reloadedSession.Chat.Transcript.Options.TurnShapeLocked);
     }
 
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
@@ -614,10 +623,9 @@ public sealed class TranscriptFeatureTests
                 [
                     new()
                     {
-                        WhenText = "Today",
+                        TurnNumber = 3,
                         Title = "Snapshot event",
-                        Summary = "Snapshot event summary",
-                        Details = "Snapshot event details",
+                        Description = "Snapshot event details",
                         CharacterNames = ["Gemma"],
                         LocationNames = ["Devonshire Apartment 822"],
                         ItemNames = ["Tesla Model S Plaid"]

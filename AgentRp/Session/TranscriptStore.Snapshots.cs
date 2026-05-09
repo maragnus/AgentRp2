@@ -275,15 +275,19 @@ public sealed partial class TranscriptStore
         if (Document is null)
             return;
 
+        TranscriptTurnNumbering.EnsureTurnNumbers(Document.Transcript);
+        var snapshotTurn = TranscriptGraph.FindTurn(Document.Transcript, snapshot.TurnId);
+        var fallbackWhen = snapshotTurn is null ? "Snapshot" : TranscriptTurnNumbering.Format(snapshotTurn);
         foreach (var entry in entries.Where(entry => !string.IsNullOrWhiteSpace(entry.Title)))
         {
+            var turnNumber = entry.TurnNumber > 0 ? entry.TurnNumber : snapshotTurn?.TurnNumber ?? 0;
             var timelineEntry = new RpTimelineEntry
             {
                 Id = NextTimelineId(),
                 SnapshotId = snapshot.Id,
                 Title = entry.Title.Trim(),
-                Date = string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText.Trim(),
-                Description = BuildSnapshotTimelineDescription(entry),
+                Date = turnNumber > 0 ? TranscriptTurnNumbering.Format(turnNumber) : fallbackWhen,
+                Description = entry.Description.Trim(),
                 Characters = [.. entry.CharacterNames],
                 Significance = "Generated from snapshot."
             };
@@ -434,6 +438,7 @@ public sealed partial class TranscriptStore
     static RpSnapshotDraftTurn ToDraftTurn(RpTranscriptTurn turn) => new()
     {
         Id = turn.Id,
+        TurnNumber = turn.TurnNumber,
         SpeakerName = string.IsNullOrWhiteSpace(turn.AuthorName) ? "Narrator" : turn.AuthorName,
         CreatedUtc = turn.CreatedUtc,
         Body = turn.Body
@@ -441,25 +446,13 @@ public sealed partial class TranscriptStore
 
     static RpTranscriptSnapshotTimelineEntry CloneSnapshotTimelineEntry(RpTranscriptSnapshotTimelineEntry value) => new()
     {
-        WhenText = value.WhenText,
+        TurnNumber = value.TurnNumber,
         Title = value.Title,
-        Summary = value.Summary,
-        Details = value.Details,
+        Description = value.Description,
         CharacterNames = [.. value.CharacterNames],
         LocationNames = [.. value.LocationNames],
         ItemNames = [.. value.ItemNames]
     };
-
-    static string BuildSnapshotTimelineDescription(RpTranscriptSnapshotTimelineEntry entry)
-    {
-        if (string.IsNullOrWhiteSpace(entry.Details))
-            return entry.Summary;
-
-        if (string.IsNullOrWhiteSpace(entry.Summary))
-            return entry.Details;
-
-        return $"{entry.Summary}\n\n{entry.Details}";
-    }
 }
 
 sealed record SnapshotPath(
@@ -470,6 +463,7 @@ sealed record SnapshotPath(
 {
     public static SnapshotPath Build(RpChatDocument document, string turnId)
     {
+        TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         var targetIndex = activePath.FindIndex(turn => turn.Id == turnId);
         if (targetIndex < 0)

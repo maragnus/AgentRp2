@@ -412,13 +412,16 @@ static class SessionCloner
         ShowAppearanceBlocks = value.ShowAppearanceBlocks,
         ShowProcessTraces = value.ShowProcessTraces,
         AutoSpeakNewMessages = value.AutoSpeakNewMessages,
-        SpeakActionsInNarratorVoice = value.SpeakActionsInNarratorVoice
+        SpeakActionsInNarratorVoice = value.SpeakActionsInNarratorVoice,
+        TurnShape = value.TurnShape,
+        TurnShapeLocked = value.TurnShapeLocked
     };
 
     static RpTranscriptTurn Clone(RpTranscriptTurn value) => new()
     {
         Id = value.Id,
         ParentTurnId = value.ParentTurnId,
+        TurnNumber = value.TurnNumber,
         CreatedUtc = value.CreatedUtc,
         UpdatedUtc = value.UpdatedUtc,
         Mode = value.Mode,
@@ -466,10 +469,9 @@ static class SessionCloner
 
     static RpTranscriptSnapshotTimelineEntry Clone(RpTranscriptSnapshotTimelineEntry value) => new()
     {
-        WhenText = value.WhenText,
+        TurnNumber = value.TurnNumber,
         Title = value.Title,
-        Summary = value.Summary,
-        Details = value.Details,
+        Description = value.Description,
         CharacterNames = [.. value.CharacterNames],
         LocationNames = [.. value.LocationNames],
         ItemNames = [.. value.ItemNames]

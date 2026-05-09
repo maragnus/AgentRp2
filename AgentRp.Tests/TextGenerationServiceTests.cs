@@ -157,7 +157,10 @@ public sealed class TextGenerationServiceTests
 
         Assert.Contains("You update character scene state.", appearance.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Required turn shape: Brief", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("- brief = one action beat, one to two short lines with a tag in between (rare)", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("- silent extended =", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Test private intent", prose.UserPrompt, StringComparison.Ordinal);
         Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Every action must include an explicit subject pronoun or character name", prose.UserPrompt, StringComparison.Ordinal);
@@ -364,6 +367,7 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Thread title: Devonshire Games", snapshotRequest.UserPrompt, StringComparison.Ordinal);
         Assert.Equal("Test snapshot narrative", result.Summary);
         var timelineEntry = Assert.Single(result.TimelineEntries);
+        Assert.Equal(3, timelineEntry.TurnNumber);
         Assert.Equal("Test event", timelineEntry.Title);
         Assert.Equal("completed", result.Trace.Status);
     }
@@ -679,10 +683,9 @@ public sealed class TextGenerationServiceTests
             {
                 new()
                 {
-                    WhenText = "Today",
+                    TurnNumber = 3,
                     Title = "Test event",
-                    Summary = "Test event summary",
-                    Details = "Test event details",
+                    Description = "Test event details",
                     CharacterNames = ["Gemma"],
                     LocationNames = ["Devonshire Apartment 822"],
                     ItemNames = ["Tesla Model S Plaid"]

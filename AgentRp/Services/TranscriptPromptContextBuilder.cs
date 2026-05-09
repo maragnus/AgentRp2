@@ -18,6 +18,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         RpSceneFrame? sceneOverride = null,
         IReadOnlyDictionary<string, string>? appearanceOverrides = null)
     {
+        TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         if (!string.IsNullOrWhiteSpace(parentTurnId))
         {
@@ -51,40 +52,64 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         var requestedShape = string.IsNullOrWhiteSpace(requestedTurnShape) ? "Brief" : requestedTurnShape.Trim();
         var currentLocation = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId);
         var characterNames = document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
-        var actorText = FormatActor(actor, document.NarratorProfile, requestedNarrator, traitLibrary, document.CharacterRelationships, characterNames);
+        var actorText = FormatActor(actor, document.NarratorProfile, requestedNarrator);
         var locationText = FormatLocation(currentLocation, scene);
-        var charactersText = FormatCharactersInScene(presentCharacters, actor, characterAppearances, traitLibrary, document.CharacterRelationships, characterNames);
+        var charactersText = FormatCharactersInScene(presentCharacters, actor);
+        var relationshipsText = FormatRelationships(document.CharacterRelationships, presentCharacters, actor, characterNames);
         var otherCharactersText = FormatOtherKnownCharacters(otherCharacters);
         var objectsText = FormatObjectsInScene(presentItems);
         var chatDirection = ChatDirectionService.NormalizeState(document.ChatDirection);
         var storyContextText = FormatStoryContext(document);
         var contentGuidanceText = ChatDirectionService.BuildContentGuidance(chatDirection);
         var historySummaryText = FormatHistorySummary(document);
-        var snapshotText = snapshot is null ? "No pinned snapshot yet." : snapshot.Summary;
-        var transcriptText = FormatTranscript(document, transcriptTurns, snapshot?.Scene);
+        var snapshotText = snapshot?.Summary ?? "";
         var characterAppearancesText = FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary);
-        var earlierPrivateIntentContinuity = BuildEarlierPrivateIntentContinuity(snapshot, activePath, snapshotTurnIndex, document.Characters);
-        var contextText = JoinSections(
+        var transcriptText = FormatTranscriptWithTurnStart(
+            FormatTranscriptWithEarlierSummary(FormatTranscript(document, transcriptTurns, snapshot?.Scene), snapshotText),
+            transcriptTurns);
+        var planningProseTranscriptText = FormatTranscriptWithEarlierSummary(
+            FormatTranscript(
+                document,
+                transcriptTurns,
+                snapshot?.Scene,
+                requestedNarrator ? PrivateIntentTranscriptScope.All : PrivateIntentTranscriptScope.ActorOnly,
+                actor?.Id ?? ""),
+            snapshotText);
+        planningProseTranscriptText = FormatTranscriptWithTurnStart(planningProseTranscriptText, transcriptTurns);
+        var contextText = BuildContextText(
             actorText,
             locationText,
             charactersText,
+            relationshipsText,
             otherCharactersText,
             objectsText,
             storyContextText,
             contentGuidanceText,
             historySummaryText,
-            FormatTitledLine("Snapshot", snapshotText),
             FormatTranscriptSection(transcriptText),
-            FormatTitledLine("Earlier private intent continuity", earlierPrivateIntentContinuity, "None"),
+            FormatCharacterAppearancesSection(characterAppearancesText));
+        var planningProseContextText = BuildContextText(
+            actorText,
+            locationText,
+            charactersText,
+            relationshipsText,
+            otherCharactersText,
+            objectsText,
+            storyContextText,
+            contentGuidanceText,
+            historySummaryText,
+            FormatTranscriptSection(planningProseTranscriptText),
             FormatCharacterAppearancesSection(characterAppearancesText));
 
         return new(
             Actor: actor,
             ActiveSpeakerName: activeSpeakerName,
             ContextText: contextText,
+            PlanningProseContextText: planningProseContextText,
             ActorText: actorText,
             LocationText: locationText,
             CharactersText: charactersText,
+            RelationshipsText: relationshipsText,
             OtherKnownCharactersText: otherCharactersText,
             ObjectsText: objectsText,
             StoryContextText: storyContextText,
@@ -92,13 +117,12 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             ExplicitContentLabel: ChatDirectionService.FormatIntensityLabel(chatDirection.ExplicitContent),
             ViolentContentLabel: ChatDirectionService.FormatIntensityLabel(chatDirection.ViolentContent),
             HistorySummaryText: historySummaryText,
-            SnapshotText: snapshotText,
             TranscriptText: transcriptText,
+            PlanningProseTranscriptText: planningProseTranscriptText,
             CharactersInSceneText: charactersText,
             CharacterAppearancesText: characterAppearancesText,
             AppearanceCharactersText: FormatAppearanceCharacters(presentCharacters, characterAppearances, traitLibrary),
-            AppearanceTranscriptText: FormatTranscript(document, transcriptTurns, snapshot?.Scene),
-            EarlierPrivateIntentContinuity: earlierPrivateIntentContinuity,
+            AppearanceTranscriptText: FormatTranscriptWithEarlierSummary(FormatTranscript(document, transcriptTurns, snapshot?.Scene), snapshotText),
             SelectionEligibleResponders: FormatEligibleResponders(presentCharacters, activeSpeakerName, characterAppearances, traitLibrary),
             SelectionLocationSection: string.IsNullOrWhiteSpace(locationText) ? "" : locationText + Environment.NewLine,
             SelectionCurrentAppearance: FormatSelectionAppearance(characterAppearancesText),
@@ -114,6 +138,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
 
     public SnapshotPromptContext BuildSnapshotContext(RpChatDocument document, string turnId)
     {
+        TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         var turnIndex = activePath.FindIndex(turn => turn.Id == turnId);
         if (turnIndex >= 0)
@@ -146,14 +171,16 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             Items: FormatReferenceNames(document.Items.Select(item => item.Name)),
             History: FormatSnapshotHistory(document),
             Messages: FormatSnapshotMessages(snapshotTurns),
-            TranscriptText: FormatTranscript(document, snapshotTurns, latestSnapshot?.Scene),
-            CharacterAppearancesText: FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary),
-            EarlierPrivateIntentContinuity: BuildEarlierPrivateIntentContinuity(latestSnapshot, activePath, snapshotTurnIndex, document.Characters));
+            TranscriptText: FormatTranscriptWithEarlierSummary(FormatTranscript(document, snapshotTurns, latestSnapshot?.Scene, includeTurnLabels: true), latestSnapshot?.Summary ?? ""),
+            CharacterAppearancesText: FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary));
     }
 
-    public Dictionary<string, string> BuildTokens(TurnPromptContext context, string planningOutput)
+    public Dictionary<string, string> BuildTokens(TurnPromptContext context, string planningOutput, string stageId = "")
     {
         var actorName = context.Actor?.Name ?? "Narrator";
+        var includePrivateIntentTranscript = stageId is PromptLibraryStageIds.Planning or PromptLibraryStageIds.Prose;
+        var contextText = includePrivateIntentTranscript ? context.PlanningProseContextText : context.ContextText;
+        var transcriptText = includePrivateIntentTranscript ? context.PlanningProseTranscriptText : context.TranscriptText;
         return new(StringComparer.Ordinal)
         {
             ["{content.explicitLabel}"] = context.ExplicitContentLabel,
@@ -168,19 +195,20 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             ["{selection.contentGuidance}"] = FormatOptionalSection(context.ContentGuidanceText),
             ["{selection.recentTranscript}"] = FormatSelectionTranscript(context.TranscriptText),
             ["{selection.currentAppearance}"] = context.SelectionCurrentAppearance,
-            ["{context}"] = context.ContextText,
+            ["{context}"] = contextText,
             ["{context.actor}"] = context.ActorText,
             ["{context.location}"] = context.LocationText,
             ["{context.charactersInScene}"] = context.CharactersInSceneText,
+            ["{context.relationships}"] = context.RelationshipsText,
             ["{context.otherKnownCharacters}"] = context.OtherKnownCharactersText,
             ["{context.objectsInScene}"] = context.ObjectsText,
             ["{context.storyContext}"] = context.StoryContextText,
             ["{context.contentGuidance}"] = context.ContentGuidanceText,
             ["{context.historySummary}"] = context.HistorySummaryText,
-            ["{context.snapshot}"] = context.SnapshotText,
-            ["{context.transcript}"] = context.TranscriptText,
+            ["{context.snapshot}"] = "",
+            ["{context.transcript}"] = transcriptText,
             ["{context.characterAppearances}"] = context.CharacterAppearancesText,
-            ["{context.earlierPrivateIntentContinuity}"] = context.EarlierPrivateIntentContinuity,
+            ["{context.earlierPrivateIntentContinuity}"] = "",
             ["{actor.name}"] = actorName,
             ["{speaker.name}"] = actorName,
             ["{guidance}"] = context.Guidance,
@@ -205,7 +233,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         string narrativeGuardrails,
         PromptLibraryState promptLibrary)
     {
-        var tokens = BuildTokens(context, planningOutput);
+        var tokens = BuildTokens(context, planningOutput, PromptLibraryStageIds.Prose);
         var isNarrator = context.Actor is null;
         var speaker = isNarrator ? "the narrator" : context.Actor!.Name;
         var turnShapeSystem = PromptLibraryService.BuildDefaultProseSystemTurnShape(turnShape);
@@ -245,7 +273,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         ["{snapshot.messages}"] = context.Messages,
         ["{context.transcript}"] = context.TranscriptText,
         ["{context.characterAppearances}"] = context.CharacterAppearancesText,
-        ["{context.earlierPrivateIntentContinuity}"] = context.EarlierPrivateIntentContinuity
+        ["{context.earlierPrivateIntentContinuity}"] = ""
     };
 
     static Dictionary<string, string> BuildAppearanceMap(RpTranscriptSnapshot? snapshot, IReadOnlyList<RpTranscriptTurn> path, int snapshotTurnIndex)
@@ -271,35 +299,16 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             appearances[pair.Key] = pair.Value;
     }
 
-    static string BuildEarlierPrivateIntentContinuity(
-        RpTranscriptSnapshot? snapshot,
-        IReadOnlyList<RpTranscriptTurn> path,
-        int snapshotTurnIndex,
-        IReadOnlyList<RpCharacter> characters)
-    {
-        var builder = new StringBuilder();
-        if (snapshot is not null)
-        {
-            foreach (var pair in snapshot.PrivateIntentByCharacterId.Where(pair => !string.IsNullOrWhiteSpace(pair.Value)))
-                builder.AppendLine($"{ResolveCharacterName(characters, pair.Key)}: {pair.Value}");
-
-            return builder.ToString().Trim();
-        }
-
-        var endIndex = snapshotTurnIndex >= 0 ? snapshotTurnIndex : path.Count;
-        foreach (var turn in path.Take(endIndex))
-        {
-            foreach (var pair in turn.PrivateIntentByCharacterId.Where(pair => !string.IsNullOrWhiteSpace(pair.Value)))
-                builder.AppendLine($"{turn.ActorName}: {pair.Value}");
-        }
-
-        return builder.ToString().Trim();
-    }
-
     static string ResolveCharacterName(IEnumerable<RpCharacter> characters, string characterId) =>
         characters.FirstOrDefault(character => character.Id == characterId)?.Name ?? characterId;
 
-    string FormatTranscript(RpChatDocument document, IEnumerable<RpTranscriptTurn> turns, RpSceneFrame? baselineScene = null)
+    string FormatTranscript(
+        RpChatDocument document,
+        IEnumerable<RpTranscriptTurn> turns,
+        RpSceneFrame? baselineScene = null,
+        PrivateIntentTranscriptScope privateIntentScope = PrivateIntentTranscriptScope.None,
+        string actorCharacterId = "",
+        bool includeTurnLabels = false)
     {
         var blocks = new List<string>();
         var previousScene = baselineScene;
@@ -317,13 +326,53 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             if (builder.Length > 0)
                 builder.AppendLine();
 
-            builder.Append($"{ResolveActiveSpeakerName(turn)}: {turn.Body.Trim()}");
+            AppendPrivateIntentLines(builder, document.Characters, turn, privateIntentScope, actorCharacterId);
+            var speakerLine = $"{ResolveActiveSpeakerName(turn)}: {turn.Body.Trim()}";
+            builder.Append(includeTurnLabels ? $"{TranscriptTurnNumbering.Format(turn)} - {speakerLine}" : speakerLine);
             blocks.Add(builder.ToString());
             previousScene = turn.Scene;
         }
 
         var content = string.Join("\n\n", blocks);
         return string.IsNullOrWhiteSpace(content) ? "(No transcript yet.)" : content;
+    }
+
+    static void AppendPrivateIntentLines(
+        StringBuilder builder,
+        IReadOnlyList<RpCharacter> characters,
+        RpTranscriptTurn turn,
+        PrivateIntentTranscriptScope scope,
+        string actorCharacterId)
+    {
+        var intents = ResolvePrivateIntents(characters, turn, scope, actorCharacterId);
+        foreach (var intent in intents)
+            builder.AppendLine($"[{intent.CharacterName}'s private intent: {PromptInlineText(intent.Value)}]");
+    }
+
+    static IReadOnlyList<(string CharacterName, string Value)> ResolvePrivateIntents(
+        IReadOnlyList<RpCharacter> characters,
+        RpTranscriptTurn turn,
+        PrivateIntentTranscriptScope scope,
+        string actorCharacterId)
+    {
+        if (scope == PrivateIntentTranscriptScope.None || turn.PrivateIntentByCharacterId.Count == 0)
+            return [];
+
+        if (scope == PrivateIntentTranscriptScope.ActorOnly)
+        {
+            if (string.IsNullOrWhiteSpace(actorCharacterId) || turn.ActorCharacterId != actorCharacterId)
+                return [];
+
+            return turn.PrivateIntentByCharacterId.TryGetValue(actorCharacterId, out var privateIntent) && !string.IsNullOrWhiteSpace(privateIntent)
+                ? [(ResolveCharacterName(characters, actorCharacterId), privateIntent.Trim())]
+                : [];
+        }
+
+        return turn.PrivateIntentByCharacterId
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+            .Select(pair => (CharacterName: ResolveCharacterName(characters, pair.Key), Value: pair.Value.Trim()))
+            .OrderBy(pair => pair.CharacterName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     static string FormatSelectionTranscript(string transcriptText)
@@ -341,10 +390,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
     static string FormatActor(
         RpCharacter? actor,
         NarratorProfileState narratorProfile,
-        bool requestedNarrator,
-        CharacterTraitLibraryState library,
-        IReadOnlyList<RpCharacterRelationship> relationships,
-        IReadOnlyDictionary<string, string> characterNames)
+        bool requestedNarrator)
     {
         if (actor is null)
         {
@@ -356,63 +402,88 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
 
         var builder = new StringBuilder();
         builder.AppendLine($"**Actor:** {actor.Name}");
-        AppendList(builder, "Pronouns", actor.Pronouns);
-        AppendField(builder, "Summary", actor.Summary);
-        AppendField(builder, "Personality", actor.Personality);
-        AppendField(builder, "Appearance", CharacterAppearanceFormatter.FormatBase(actor, library));
-        AppendField(builder, "Voice", actor.Voice);
-        AppendField(builder, "Relationships", FormatRelationshipContext(actor.Id, relationships, characterNames));
         AppendField(builder, "Backstory", actor.Backstory);
-        AppendField(builder, "Core drive", actor.CoreDrive);
-        AppendField(builder, "Core fear", actor.CoreFear);
         AppendField(builder, "Surface mask", actor.SurfaceMask);
-        AppendField(builder, "Hidden truth", actor.HiddenTruth);
         AppendField(builder, "Sentence style", actor.SentenceStyle);
         AppendField(builder, "Honesty style", actor.HonestyStyle);
         AppendField(builder, "Emotional leakage", actor.EmotionalLeakage);
         AppendField(builder, "Action fingerprint", actor.ActionFingerprint);
         AppendField(builder, "Stress pattern", actor.StressPattern);
         AppendList(builder, "Scene roles", actor.SceneRoles);
-        AppendList(builder, "Traits", actor.Traits);
         AppendList(builder, "Drives", actor.Drives);
-        AppendList(builder, "Limits", actor.Limits);
         AppendList(builder, "Soft spots", actor.SoftSpots);
         AppendList(builder, "Avoid patterns", actor.AvoidPatterns);
         AppendField(builder, "Notes", actor.Notes);
         return builder.ToString().TrimEnd();
     }
 
-    static string FormatRelationshipContext(
-        string sourceCharacterId,
+    static string FormatRelationships(
         IReadOnlyList<RpCharacterRelationship> relationships,
+        IReadOnlyList<RpCharacter> sceneCharacters,
+        RpCharacter? actor,
         IReadOnlyDictionary<string, string> characterNames)
     {
-        var lines = CharacterRelationshipGraph.ViewsForCharacter(relationships, sourceCharacterId, characterNames)
-            .Where(relationship => !string.IsNullOrWhiteSpace(relationship.TargetCharacterName))
-            .OrderBy(relationship => relationship.TargetCharacterName, StringComparer.OrdinalIgnoreCase)
-            .Select(FormatRelationshipLine)
+        var relevantCharacterIds = sceneCharacters.Select(character => character.Id).ToHashSet(StringComparer.Ordinal);
+        if (actor is not null)
+            relevantCharacterIds.Add(actor.Id);
+
+        var lines = relationships
+            .Where(relationship => relevantCharacterIds.Contains(relationship.CharacterAId) || relevantCharacterIds.Contains(relationship.CharacterBId))
+            .OrderBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterAId, ""), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterBId, ""), StringComparer.OrdinalIgnoreCase)
+            .Select(relationship => FormatRelationshipLine(relationship, actor, characterNames))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
             .ToList();
 
-        return lines.Count == 0 ? "" : string.Join(Environment.NewLine, lines);
+        return lines.Count == 0
+            ? ""
+            : $"**Relationships:**{Environment.NewLine}{string.Join(Environment.NewLine, lines)}";
     }
 
-    static string FormatRelationshipLine(CharacterRelationshipView relationship)
+    static string FormatRelationshipLine(
+        RpCharacterRelationship relationship,
+        RpCharacter? actor,
+        IReadOnlyDictionary<string, string> characterNames)
     {
+        var characterAName = characterNames.GetValueOrDefault(relationship.CharacterAId, "");
+        var characterBName = characterNames.GetValueOrDefault(relationship.CharacterBId, "");
+        if (string.IsNullOrWhiteSpace(characterAName) || string.IsNullOrWhiteSpace(characterBName))
+            return "";
+
+        var actorView = actor is not null && RelationshipContains(relationship, actor.Id)
+            ? CharacterRelationshipGraph.View(
+                relationship,
+                actor.Id,
+                actor.Name,
+                relationship.CharacterAId == actor.Id ? relationship.CharacterBId : relationship.CharacterAId,
+                relationship.CharacterAId == actor.Id ? characterBName : characterAName)
+            : null;
         var details = new List<string>();
-        if (relationship.RelationshipTypes.Count > 0)
-            details.Add($"types: {string.Join(", ", relationship.RelationshipTypes)}");
-        if (relationship.PrivateTensions.Count > 0)
-            details.Add($"dynamics: {string.Join(", ", relationship.PrivateTensions)}");
-        if (!string.IsNullOrWhiteSpace(relationship.HowSourceSeesTarget))
-            details.Add($"they see {relationship.TargetCharacterName}: {relationship.HowSourceSeesTarget}");
-        if (!string.IsNullOrWhiteSpace(relationship.HowTargetSeesSource))
-            details.Add($"{relationship.TargetCharacterName} sees them: {relationship.HowTargetSeesSource}");
-        if (!string.IsNullOrWhiteSpace(relationship.PublicDynamic))
-            details.Add($"public: {relationship.PublicDynamic}");
+        AppendRelationshipValues(details, relationship.Bonds);
+        AppendRelationshipValues(details, relationship.Dynamics);
+
+        var visibleNote = actorView is not null
+            ? actorView.HowSourceSeesTarget
+            : relationship.NoteExternal;
+        if (!string.IsNullOrWhiteSpace(visibleNote))
+            details.Add(PromptInlineText(visibleNote));
 
         return details.Count == 0
-            ? $"- {relationship.TargetCharacterName}"
-            : $"- {relationship.TargetCharacterName}: {string.Join("; ", details)}";
+            ? $"- {characterAName} and {characterBName}"
+            : $"- {characterAName} and {characterBName}: {string.Join("; ", details)}";
+    }
+
+    static bool RelationshipContains(RpCharacterRelationship relationship, string characterId) =>
+        relationship.CharacterAId == characterId || relationship.CharacterBId == characterId;
+
+    static void AppendRelationshipValues(List<string> details, IReadOnlyList<string> values)
+    {
+        var normalized = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => PromptInlineText(value))
+            .ToList();
+        if (normalized.Count > 0)
+            details.Add(string.Join(", ", normalized));
     }
 
     static string FormatLocation(RpLocation? location, RpSceneFrame scene)
@@ -436,11 +507,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
 
     static string FormatCharactersInScene(
         IEnumerable<RpCharacter> characters,
-        RpCharacter? actor,
-        IReadOnlyDictionary<string, string> appearances,
-        CharacterTraitLibraryState library,
-        IReadOnlyList<RpCharacterRelationship> relationships,
-        IReadOnlyDictionary<string, string> characterNames)
+        RpCharacter? actor)
     {
         var values = characters.ToList();
         if (values.Count == 0)
@@ -450,22 +517,16 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         builder.AppendLine("**Characters in the scene:**");
         foreach (var character in values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var role = actor?.Id == character.Id ? "current actor" : "present";
-            builder.AppendLine($"- **{character.Name}:** {role}");
-            AppendList(builder, "  Pronouns", character.Pronouns);
-            AppendField(builder, "  Summary", character.Summary);
-            AppendField(builder, "  Appearance", CharacterAppearanceFormatter.FormatWithSceneState(
-                character,
-                library,
-                appearances.TryGetValue(character.Id, out var appearance) ? appearance : ""));
-            AppendField(builder, "  Voice", character.Voice);
-            AppendField(builder, "  Personality", character.Personality);
-            AppendField(builder, "  Relationships", FormatRelationshipContext(character.Id, relationships, characterNames));
-            AppendField(builder, "  Core drive", character.CoreDrive);
-            AppendField(builder, "  Core fear", character.CoreFear);
-            AppendField(builder, "  Hidden truth", character.HiddenTruth);
-            AppendList(builder, "  Traits", character.Traits);
-            AppendList(builder, "  Limits", character.Limits);
+            var role = actor?.Id == character.Id ? "current actor" : "in scene";
+            builder.AppendLine().AppendLine($"**{character.Name}:** {string.Join(", ", [..character.Pronouns, role])}");
+            AppendField(builder, "Summary", character.Summary);
+            AppendField(builder, "Voice", character.Voice);
+            AppendField(builder, "Personality", character.Personality);
+            AppendField(builder, "Core drive", character.CoreDrive);
+            AppendField(builder, "Core fear", character.CoreFear);
+            AppendField(builder, "Hidden truth", character.HiddenTruth);
+            AppendList(builder, "Traits", character.Traits);
+            AppendList(builder, "Limits", character.Limits);
         }
 
         return builder.ToString().TrimEnd();
@@ -546,7 +607,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         var lines = turns.Select(turn =>
         {
             var speaker = ResolveActiveSpeakerName(turn);
-            return $"- {speaker} ({turn.CreatedUtc:u}): {CollapseWhitespace(turn.Body)}";
+            return $"- {TranscriptTurnNumbering.Format(turn)} - {speaker}: {CollapseWhitespace(turn.Body)}";
         });
         var content = string.Join(Environment.NewLine, lines);
         return string.IsNullOrWhiteSpace(content) ? "- None" : content;
@@ -645,13 +706,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
 
     static string BuildRequestedTurnShapeSection(RpChatDocument document, string requestedTurnShape)
     {
-        var match = document.PromptLibrary.TurnShapes.TryGetValue(PromptLibraryStageIds.Planning, out var shapes)
-            ? shapes.FirstOrDefault(shape => string.Equals(shape.Label, requestedTurnShape, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(shape.Id, requestedTurnShape.ToLowerInvariant().Replace(" ", "-"), StringComparison.Ordinal))
-            : null;
-        return match is null
-            ? ""
-            : $"Required turn shape: {requestedTurnShape}.\nChoose exactly that turn shape in the structured plan, then plan a beat that fits it.\n{match.Value}";
+        return PromptLibraryService.FormatRequestedTurnShape(document.PromptLibrary, PromptLibraryStageIds.Planning, requestedTurnShape);
     }
 
     static string FormatTurnShapeDefinitions(RpChatDocument document, string stepId)
@@ -731,11 +786,29 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
     static string JoinSections(params string[] sections) =>
         string.Join(Environment.NewLine + Environment.NewLine, sections.Where(section => !string.IsNullOrWhiteSpace(section))).Trim();
 
-    static string FormatTitledLine(string title, string value, string fallback = "") =>
-        $"**{title}:** {PromptInlineText(value, fallback)}";
+    static string BuildContextText(params string[] sections) => JoinSections(sections);
 
     static string FormatTranscriptSection(string transcriptText) =>
         $"**Transcript:**{Environment.NewLine}{transcriptText}";
+
+    static string FormatTranscriptWithTurnStart(string transcriptText, IReadOnlyList<RpTranscriptTurn> turns)
+    {
+        var startLine = TranscriptTurnNumbering.FormatTranscriptStart(turns);
+        return string.IsNullOrWhiteSpace(startLine)
+            ? transcriptText
+            : $"{startLine}{Environment.NewLine}{Environment.NewLine}{transcriptText}";
+    }
+
+    static string FormatTranscriptWithEarlierSummary(string transcriptText, string earlierSummary)
+    {
+        if (string.IsNullOrWhiteSpace(earlierSummary))
+            return transcriptText;
+
+        var summary = $"Earlier transcript summary: {PromptInlineText(earlierSummary)}";
+        return transcriptText == "(No transcript yet.)"
+            ? $"{summary}{Environment.NewLine}{Environment.NewLine}(No transcript since that summary.)"
+            : $"{summary}{Environment.NewLine}{Environment.NewLine}{transcriptText}";
+    }
 
     static string FormatCharacterAppearancesSection(string characterAppearancesText) =>
         $"**Character appearances:**{Environment.NewLine}{characterAppearancesText}";
@@ -773,9 +846,11 @@ public sealed record TurnPromptContext(
     RpCharacter? Actor,
     string ActiveSpeakerName,
     string ContextText,
+    string PlanningProseContextText,
     string ActorText,
     string LocationText,
     string CharactersText,
+    string RelationshipsText,
     string OtherKnownCharactersText,
     string ObjectsText,
     string StoryContextText,
@@ -783,13 +858,12 @@ public sealed record TurnPromptContext(
     string ExplicitContentLabel,
     string ViolentContentLabel,
     string HistorySummaryText,
-    string SnapshotText,
     string TranscriptText,
+    string PlanningProseTranscriptText,
     string CharactersInSceneText,
     string CharacterAppearancesText,
     string AppearanceCharactersText,
     string AppearanceTranscriptText,
-    string EarlierPrivateIntentContinuity,
     string SelectionEligibleResponders,
     string SelectionLocationSection,
     string SelectionCurrentAppearance,
@@ -811,5 +885,11 @@ public sealed record SnapshotPromptContext(
     string History,
     string Messages,
     string TranscriptText,
-    string CharacterAppearancesText,
-    string EarlierPrivateIntentContinuity);
+    string CharacterAppearancesText);
+
+enum PrivateIntentTranscriptScope
+{
+    None,
+    ActorOnly,
+    All
+}

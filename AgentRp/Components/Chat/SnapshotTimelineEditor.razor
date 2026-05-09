@@ -21,17 +21,14 @@ else
                 <ChildContent>
                     <div class="snapshot-timeline-grid">
                         <FieldRow Label="When">
-                            <input class="field" value="@entry.WhenText" placeholder="Snapshot" @oninput="args => Update(value => entry.WhenText = value, args)" />
+                            <input class="field" type="number" min="1" value="@entry.TurnNumber" placeholder="52" @oninput="args => UpdateTurnNumber(entry, args)" />
                         </FieldRow>
                         <FieldRow Label="Title">
                             <input class="field" value="@entry.Title" placeholder="Timeline title" @oninput="args => Update(value => entry.Title = value, args)" />
                         </FieldRow>
                     </div>
-                    <FieldRow Label="Summary">
-                        <AppTextarea Rows="2" Value="@entry.Summary" ValueChanged="value => Update(updated => entry.Summary = updated, value)" />
-                    </FieldRow>
-                    <FieldRow Label="Details">
-                        <AppTextarea Rows="3" Value="@entry.Details" ValueChanged="value => Update(updated => entry.Details = updated, value)" />
+                    <FieldRow Label="Description">
+                        <AppTextarea Rows="3" Value="@entry.Description" ValueChanged="value => Update(updated => entry.Description = updated, value)" />
                     </FieldRow>
                 </ChildContent>
             </Section>
@@ -46,6 +43,12 @@ else
     async Task Remove(string id)
     {
         Entries.RemoveAll(entry => entry.Id == id);
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task UpdateTurnNumber(SnapshotDraftTimelineEntryEditor entry, ChangeEventArgs args)
+    {
+        entry.TurnNumber = int.TryParse(args.Value?.ToString(), out var value) ? Math.Max(0, value) : 0;
         await OnChanged.InvokeAsync();
     }
 
@@ -65,5 +68,5 @@ else
         string.IsNullOrWhiteSpace(entry.Title) ? $"Item {index + 1}" : entry.Title;
 
     static string EntryHint(SnapshotDraftTimelineEntryEditor entry) =>
-        string.IsNullOrWhiteSpace(entry.WhenText) ? "Snapshot" : entry.WhenText;
+        entry.TurnNumber <= 0 ? "Turn" : $"Turn {entry.TurnNumber}";
 }

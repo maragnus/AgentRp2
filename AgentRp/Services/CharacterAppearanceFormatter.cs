@@ -36,7 +36,7 @@ public static class CharacterAppearanceFormatter
         if (string.IsNullOrWhiteSpace(baseAppearance))
             return current;
 
-        return $"{baseAppearance}. Current: {current}";
+        return $"{baseAppearance}; {current}";
     }
 
     public static bool HasStructuredAppearance(CharacterAppearanceState appearance) =>

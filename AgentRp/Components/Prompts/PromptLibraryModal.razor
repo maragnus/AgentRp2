@@ -27,6 +27,10 @@
                             <Badge Tone="amber">Turn Shapes</Badge>
                         }
                     </div>
+                    <span class="toolbar-spacer"></span>
+                    <AppButton Variant="danger" Size="xs" Disabled="@(!IsDirty())" TooltipText="Reset all prompt pages" OnClick="@(_ => ConfirmResetAll = true)">
+                        <FaIcon Name="refresh" />Reset All
+                    </AppButton>
                     <SelectableButton Class="@($"placeholder-toggle {(ShowPlaceholders ? "is-active" : "")}")" OnClick="@(_ => ShowPlaceholders = !ShowPlaceholders)">
                         <code>{…}</code>
                         <span>Placeholders</span>
@@ -96,9 +100,21 @@
     </ModalTabGroup>
 </ModalShell>
 
+@if (ConfirmResetAll)
+{
+    <ConfirmDialog Title="Reset all prompts?"
+                   Body="This restores every system prompt, user prompt template, and turn shape on every Prompt Library page to defaults."
+                   Icon="refresh"
+                   ConfirmText="Reset All"
+                   ConfirmVariant="rose"
+                   OnCancel="@(() => ConfirmResetAll = false)"
+                   OnConfirm="ResetAllPrompts" />
+}
+
 @code {
     string Active = "appearance";
     bool ShowPlaceholders;
+    bool ConfirmResetAll;
     string? CopiedToken;
     string? ErrorMessage;
 
@@ -138,6 +154,8 @@
         return promptDirty || shapeDirty;
     }
 
+    bool IsDirty() => Steps.Any(step => IsDirtyStep(step.Id));
+
     async Task SetSystem(string value)
     {
         PromptValues[Active].System = value;
@@ -170,6 +188,20 @@
     {
         TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
         await SaveChangesAsync();
+    }
+
+    async Task ResetAllPrompts()
+    {
+        ConfirmResetAll = false;
+        ErrorMessage = null;
+        try
+        {
+            await Session.Chat.PromptLibrary.ResetAllAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorMessageBuilder.Build("Resetting the prompt library failed.", exception);
+        }
     }
 
     async Task CopyToken(string token)

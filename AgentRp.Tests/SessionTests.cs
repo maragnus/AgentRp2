@@ -457,8 +457,11 @@ public sealed class SessionTests
     {
         Assert.Equal("Brief", TurnShapePickerOptions.Normalize("brief"));
         Assert.Equal("Brief", TurnShapePickerOptions.Normalize("Brief"));
-        Assert.Equal("Silent Monologue", TurnShapePickerOptions.Normalize("silent-monologue"));
-        Assert.Equal("Silent Monologue", TurnShapePickerOptions.Normalize("silent monologue"));
+        Assert.Equal("Narrative", TurnShapePickerOptions.Normalize("narrative"));
+        Assert.Equal("Silent Extended", TurnShapePickerOptions.Normalize("silent-extended"));
+        Assert.Equal("Silent Extended", TurnShapePickerOptions.Normalize("silent extended"));
+        Assert.Equal("Monologue", TurnShapePickerOptions.Normalize("Monologue"));
+        Assert.Equal("silent-monologue", TurnShapePickerOptions.Normalize("silent-monologue"));
         Assert.Equal("Brief", TurnShapePickerOptions.Normalize(""));
         Assert.Equal("Auto", TurnShapePickerOptions.Normalize("Auto"));
         Assert.Equal("Brief", TurnShapePickerOptions.NormalizeExplicit("Auto"));
@@ -504,7 +507,7 @@ public sealed class SessionTests
         var original = session.Chat.Transcript.Items.Last();
         var originalShape = original.Plan.TurnShape;
 
-        var operation = session.Chat.Transcript.RegenerateAsync(original.Id, original.Guidance, null, "Silent Monologue");
+        var operation = session.Chat.Transcript.RegenerateAsync(original.Id, original.Guidance, null, "Silent Extended");
         await generation.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         generation.Release.SetResult();
         await operation.WaitAsync(TimeSpan.FromSeconds(5));
@@ -512,9 +515,9 @@ public sealed class SessionTests
         var regenerated = session.Chat.Transcript.Items.Last();
         Assert.NotEqual(original.Id, regenerated.Id);
         Assert.Equal(original.ParentTurnId, regenerated.ParentTurnId);
-        Assert.Equal("Silent Monologue", regenerated.Plan.TurnShape);
+        Assert.Equal("Silent Extended", regenerated.Plan.TurnShape);
         Assert.Empty(generation.Requests);
-        Assert.Equal("Silent Monologue", generation.ProseRequests.Single().Plan.TurnShape);
+        Assert.Equal("Silent Extended", generation.ProseRequests.Single().Plan.TurnShape);
         Assert.Equal(originalShape, original.Plan.TurnShape);
         Assert.Equal(2, session.Chat.Transcript.SiblingsFor(regenerated.Id).Count);
     }
