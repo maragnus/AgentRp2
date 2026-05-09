@@ -34,14 +34,16 @@
 
         @if (HasActiveStory)
         {
-            <SidebarListRow Title="Story Assistant"
-                            Summary="Chats and story context"
-                            Class="sidebar-assistant-entry"
-                            OnClick="@(_ => OnOpenModal.InvokeAsync("storyAssistant"))">
-                <LeadingContent>
-                    <span class="sidebar-row-icon"><FaIcon Name="story-assistant" /></span>
-                </LeadingContent>
-            </SidebarListRow>
+            <Section Title="Story Assistant" Compact="true">
+                <SidebarListRow Title="Story Assistant"
+                                Summary="Chats and story context"
+                                Class="sidebar-assistant-entry"
+                                OnClick="@(_ => OnOpenModal.InvokeAsync("storyAssistant"))">
+                    <LeadingContent>
+                        <span class="sidebar-row-icon"><FaIcon Name="story-assistant" /></span>
+                    </LeadingContent>
+                </SidebarListRow>
+            </Section>
 
             <div class="divider"></div>
 

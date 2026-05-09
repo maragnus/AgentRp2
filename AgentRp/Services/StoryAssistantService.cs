@@ -133,6 +133,7 @@ public sealed partial class StoryAssistantService(
             ? new List<ModelAssistantInput> { new(ModelAssistantInputKind.FunctionCallOutput, request.ModelInput, request.ToolCallId) }
             : new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.ModelInput.Trim()) };
         var instructions = Instructions(document.PromptLibrary);
+        var toolContext = new StoryAssistantToolRunContext();
         for (var pass = 0; pass < 16; pass++)
         {
             var toolOutputs = new List<ModelAssistantInput>();
@@ -153,7 +154,7 @@ public sealed partial class StoryAssistantService(
                     await callbacks.AppendAssistantTextAsync(update.TextDelta, cancellationToken);
                 else if (update.Kind == ModelAssistantStreamingUpdateKind.ToolCall)
                 {
-                    var execution = await patchService.ExecuteToolAsync(document, update.ToolCallId, update.ToolName, update.ToolArgumentsJson, callbacks, cancellationToken);
+                    var execution = await patchService.ExecuteToolAsync(document, update.ToolCallId, update.ToolName, update.ToolArgumentsJson, callbacks, toolContext, cancellationToken);
                     if (execution.Status == StoryAssistantToolExecutionStatus.Pending)
                         pendingWorkItem = execution.WorkItem;
                     else
@@ -260,7 +261,14 @@ public sealed partial class StoryAssistantService(
     static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
-public sealed class StoryEntityPatchService(
+public sealed class StoryAssistantToolRunContext
+{
+    public bool HasReadTranscript { get; set; }
+
+    public void MarkTranscriptRead() => HasReadTranscript = true;
+}
+
+public sealed partial class StoryEntityPatchService(
     SceneTransitionService? sceneTransitionService = null,
     ILogger<StoryEntityPatchService>? logger = null)
 {
@@ -280,21 +288,35 @@ public sealed class StoryEntityPatchService(
         return result.OutputJson;
     }
 
+    public Task<StoryAssistantToolExecutionResult> ExecuteToolAsync(
+        RpChatDocument document,
+        string toolCallId,
+        string toolName,
+        string argumentsJson,
+        IStoryAssistantCallbacks callbacks,
+        CancellationToken cancellationToken) =>
+        ExecuteToolAsync(document, toolCallId, toolName, argumentsJson, callbacks, null, cancellationToken);
+
     public async Task<StoryAssistantToolExecutionResult> ExecuteToolAsync(
         RpChatDocument document,
         string toolCallId,
         string toolName,
         string argumentsJson,
         IStoryAssistantCallbacks callbacks,
+        StoryAssistantToolRunContext? context,
         CancellationToken cancellationToken)
     {
         try
         {
+            if (MustReadTranscriptFirst(toolName, context))
+                return StoryAssistantToolExecutionResult.Completed(TranscriptRequiredOutput(toolName));
+
             switch (toolName)
             {
                 case "get_story_entities":
                     return StoryAssistantToolExecutionResult.Completed(await ReadToolAsync(toolCallId, toolName, "Read story entities", argumentsJson, callbacks, new { entities = BuildEntities(document) }, cancellationToken));
                 case "get_story_transcript":
+                    context?.MarkTranscriptRead();
                     return StoryAssistantToolExecutionResult.Completed(await ReadToolAsync(toolCallId, toolName, "Read story transcript", argumentsJson, callbacks, new { transcript = BuildTranscript(document) }, cancellationToken));
                 case "get_character_profile_options":
                     return StoryAssistantToolExecutionResult.Completed(await ReadProfileOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken));
@@ -302,6 +324,8 @@ public sealed class StoryEntityPatchService(
                     return StoryAssistantToolExecutionResult.Completed(await ReadChatDirectionOptionsAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken));
                 case "ask_user":
                     return await AskUserAsync(toolCallId, argumentsJson, callbacks, cancellationToken);
+                case "rename_story":
+                    return await RenameStoryAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
                 case "create_character":
                     return await CreateCharacterAsync(document, toolCallId, toolName, argumentsJson, callbacks, cancellationToken);
                 case "update_character":
@@ -978,6 +1002,7 @@ public sealed class StoryEntityPatchService(
 
     JsonObject CurrentWorkItemState(RpChatDocument document, StoryAssistantWorkItem workItem) => workItem.EntityType switch
     {
+        "story" => StoryTitleJsonObject(document.Chat.Title),
         "character" => document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character ? CharacterJsonObject(character, document.CharacterTraitLibrary) : new(),
         "relationship" => CurrentRelationshipState(document, workItem),
         "chatDirection" => ChatDirectionRules.JsonObject(document.ChatDirection),
@@ -1011,6 +1036,9 @@ public sealed class StoryEntityPatchService(
         var updates = Updates(root);
         switch (workItem.ToolName)
         {
+            case "rename_story":
+                document.Chat.Title = NormalizeStoryTitle(RequiredString(root, "title"));
+                break;
             case "create_character":
                 CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
                 var character = new RpCharacter { Id = workItem.EntityId, Name = "New Character" };

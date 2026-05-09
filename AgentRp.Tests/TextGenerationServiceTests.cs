@@ -344,9 +344,11 @@ public sealed class TextGenerationServiceTests
         Assert.Contains("Narrator contract:", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("NEVER speak as, quote, roleplay, decide for, or take a turn as any character", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("You may summarize transitional action, elapsed time, travel, mundane logistics", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains(PromptLibraryService.NarratorWardrobeGuidance, prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("End with the scene staged so a character can react next", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Narrator turn shape:", prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Treat \"brief\" as a length and pacing request only", prose.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains(PromptLibraryService.NarratorWardrobeGuidance, prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Do not include quoted speech, internal monologue, new character reactions", prose.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("spoken lines", prose.UserPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("speech in \"quotes\"", prose.UserPrompt, StringComparison.OrdinalIgnoreCase);

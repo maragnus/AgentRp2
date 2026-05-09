@@ -21,6 +21,7 @@ public sealed class SceneTransitionServiceTests
         Assert.Contains("Scene setting purpose: opening scene", plan.NarratorInstruction, StringComparison.Ordinal);
         Assert.Contains("Narrator guidance: Start here.", plan.NarratorInstruction, StringComparison.Ordinal);
         Assert.Contains("This is the opening scene", plan.NarratorInstruction, StringComparison.Ordinal);
+        Assert.Contains(PromptLibraryService.NarratorWardrobeGuidance, plan.NarratorInstruction, StringComparison.Ordinal);
         Assert.Contains("Do not create the next playable character beat", plan.NarratorInstruction, StringComparison.Ordinal);
         Assert.Contains("End with the scene staged so a character can react next", plan.NarratorInstruction, StringComparison.Ordinal);
     }

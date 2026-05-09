@@ -25,6 +25,8 @@ public sealed partial class PromptLibraryService
         - Character relationships must be eagerly fleshed out. Never leave any relationship field empty: howSourceSeesTarget, howTargetSeesSource, publicDynamic, relationshipTypes, and privateTensions must all be populated.
 
         Tool guidance:
+        - Before calling any durable canon-changing tool, call get_story_transcript in the current assistant turn and use the transcript to keep changes aligned with the current narrative. Durable tools include rename_story, create/update entity tools, update_chat_direction, update_character_relationship, and set_scene.
+        - Use rename_story when the story title should change. During new story preparation, call rename_story after the basic premise, tone, viewpoint, and opening pressure are established.
         - When editing relationships, treat them as directional. Use flat relationship fields: sourceCharacterId, targetCharacterId, howSourceSeesTarget, howTargetSeesSource, publicDynamic, relationshipTypes, and privateTensions. Send every relationship field every time.
         - Before setting controlled character profile fields, relationshipTypes, or privateTensions, call get_character_profile_options for the fields you need. If a character tool fails with nextStep.tool = get_character_profile_options, call it before retrying.
         - For character appearance, use the flat appearance fields together to create a complete visual profile: hairColor, hairStyles, eyeColor, faceShape, skinTone, complexion, height, build, bodyProportions, presentation, and attractiveness. Use extraAppearanceDetails for distinctive visible specifics such as scars, tattoos, birthmarks, prosthetics, signature clothing, or other details.
@@ -45,6 +47,7 @@ public sealed partial class PromptLibraryService
         Create a sufficient starting point for a playable story: story direction, tone, premise, useful characters, useful locations, important items if needed, and an initial scene.
 
         Preparation:
+        - Use `get_story_transcript` before durable story changes so setup aligns with any existing narrative.
         - Use `get_chat_direction_options` to understand available story direction options.
         - Use `get_character_profile_options` to understand available character profile options for better suggestions.
 
@@ -56,9 +59,11 @@ public sealed partial class PromptLibraryService
         - Then ask for central situation, protagonist or viewpoint, and what kind of pressure should open the story.
         - If the user is unsure, offer concrete options and say you can choose defaults.
         - Do not wait for perfect detail. Once you have enough to create useful canon, use tools as you go.        
+        - After the story basics are established, call rename_story with a concise title that fits the premise, tone, viewpoint, and opening pressure. Do this before staging the initial scene.
         - Use create_character, create_location, create_item, update_chat_direction, and set_scene as needed. After each character create or update, inspect relationshipReconciliation and complete only incomplete or contradicted relationshipIds.
 
         Final state:
+        - The story has a useful title.
         - A story direction exists.
         - At least one playable character exists, with enough motivation or relationship pressure to start.
         - At least one location exists.

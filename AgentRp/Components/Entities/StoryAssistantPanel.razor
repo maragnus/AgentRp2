@@ -12,9 +12,6 @@
             <option value="@StoryAssistantReviewMode.ReviewMajor">Major changes</option>
             <option value="@StoryAssistantReviewMode.AutoApprove">Apply automatically</option>
         </AppSelect>
-        <AppButton Variant="secondary" Disabled="@(Session.Chat.StoryAssistant.Items.Count == 0 || Session.Chat.StoryAssistant.IsBusy)" OnClick="@(_ => ConfirmClear = true)">
-            <FaIcon Name="eraser" /> Clear
-        </AppButton>
     </div>
 
     @if (!CanRun)
@@ -31,9 +28,6 @@
                 <strong>Story Assistant needs a fresh thread.</strong>
                 <span>@RestartMessage</span>
             </div>
-            <BusyButton Variant="primary" Disabled="@Session.Chat.StoryAssistant.IsBusy" OnClick="Clear">
-                <FaIcon Name="rotate-right" /> Clear and Restart
-            </BusyButton>
         </div>
     }
 
@@ -59,19 +53,7 @@
                             OnStop="Stop" />
 </div>
 
-@if (ConfirmClear)
-{
-    <ConfirmDialog Title="Clear assistant transcript?"
-                   Body="Clear the Story Assistant conversation and provider thread. Story entities will stay unchanged."
-                   Icon="eraser"
-                   ConfirmText="Clear"
-                   ConfirmVariant="rose"
-                   OnCancel="@(() => ConfirmClear = false)"
-                   OnConfirm="Clear" />
-}
-
 @code {
-    bool ConfirmClear;
     int TranscriptRenderVersion;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -130,12 +112,6 @@
     {
         if (Enum.TryParse<StoryAssistantReviewMode>(value, out var mode))
             await Session.Chat.StoryAssistant.SetReviewModeAsync(mode);
-    }
-
-    async Task Clear()
-    {
-        ConfirmClear = false;
-        await Session.Chat.StoryAssistant.ClearAsync();
     }
 
     Task Stop() => Session.Chat.StoryAssistant.StopAsync();

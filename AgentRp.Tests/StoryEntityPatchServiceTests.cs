@@ -10,6 +10,133 @@ namespace AgentRp.Tests;
 public sealed class StoryEntityPatchServiceTests
 {
     [Fact]
+    public void BuildToolsExposesRenameStoryWithRequiredTitle()
+    {
+        var tool = StoryAssistantService.BuildTools(new()).Single(tool => tool.Name == "rename_story");
+
+        using var json = JsonDocument.Parse(tool.Parameters.ToJsonString());
+        var required = json.RootElement.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToList();
+
+        Assert.Contains("Rename the current story", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("title", required);
+        Assert.True(json.RootElement.GetProperty("properties").TryGetProperty("reason", out _));
+    }
+
+    [Fact]
+    public async Task RenameStoryAppliesReviewedStoryTitleMutation()
+    {
+        var document = CreateDocument();
+        document.Chat.Title = "Old Story";
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var context = new StoryAssistantToolRunContext { HasReadTranscript = true };
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteToolAsync(
+            document,
+            "call-1",
+            "rename_story",
+            """{"title":"  Neon Rain  ","reason":"Fits the premise."}""",
+            callbacks,
+            context,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result.OutputJson);
+        Assert.Equal("accepted", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Neon Rain", document.Chat.Title);
+        Assert.Equal(RoleplayStoreArea.ChatDirection, callbacks.SavedAreas.Single());
+        var item = callbacks.ToolItems.Single();
+        Assert.Equal("rename_story", item.ToolName);
+        Assert.Equal("story", item.EntityType);
+        Assert.Contains(item.Diffs, diff => diff.Field == "title" && diff.Before == "Old Story" && diff.After == "Neon Rain");
+    }
+
+    [Fact]
+    public async Task RenameStoryRespectsReviewMode()
+    {
+        var document = CreateDocument();
+        document.Chat.Title = "Old Story";
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.ReviewMajor;
+        var callbacks = new TestCallbacks();
+        var context = new StoryAssistantToolRunContext { HasReadTranscript = true };
+        var service = new StoryEntityPatchService();
+
+        var result = await service.ExecuteToolAsync(
+            document,
+            "call-1",
+            "rename_story",
+            """{"title":"Neon Rain"}""",
+            callbacks,
+            context,
+            CancellationToken.None);
+
+        using var json = JsonDocument.Parse(result.OutputJson);
+        Assert.Equal("pending", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Old Story", document.Chat.Title);
+        var workItem = callbacks.WorkItems.Single();
+        Assert.Equal("story", workItem.EntityType);
+
+        await service.ResolveWorkItemAsync(
+            document,
+            workItem,
+            new(StoryAssistantWorkItemResolutionKind.Accept, "", ""),
+            callbacks,
+            CancellationToken.None);
+
+        Assert.Equal("Neon Rain", document.Chat.Title);
+        Assert.Equal(RoleplayStoreArea.ChatDirection, callbacks.SavedAreas.Single());
+    }
+
+    [Fact]
+    public async Task GuardedMutationsRequireTranscriptReadInRunContext()
+    {
+        var document = CreateDocument();
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var context = new StoryAssistantToolRunContext();
+        var service = new StoryEntityPatchService();
+
+        var blocked = await service.ExecuteToolAsync(
+            document,
+            "call-1",
+            "update_character",
+            """{"entityId":"c1","updates":{"summary":"Changed"}}""",
+            callbacks,
+            context,
+            CancellationToken.None);
+
+        using var blockedJson = JsonDocument.Parse(blocked.OutputJson);
+        Assert.Equal("failed", blockedJson.RootElement.GetProperty("status").GetString());
+        Assert.Equal("get_story_transcript", blockedJson.RootElement.GetProperty("nextStep").GetProperty("tool").GetString());
+        Assert.Equal("Old summary", document.Characters[0].Summary);
+        Assert.Empty(callbacks.ToolItems);
+
+        await service.ExecuteToolAsync(
+            document,
+            "call-read",
+            "get_story_transcript",
+            "{}",
+            callbacks,
+            context,
+            CancellationToken.None);
+
+        Assert.True(context.HasReadTranscript);
+
+        var allowed = await service.ExecuteToolAsync(
+            document,
+            "call-2",
+            "update_character",
+            """{"entityId":"c1","updates":{"summary":"Changed"}}""",
+            callbacks,
+            context,
+            CancellationToken.None);
+
+        using var allowedJson = JsonDocument.Parse(allowed.OutputJson);
+        Assert.Equal("accepted", allowedJson.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Changed", document.Characters[0].Summary);
+    }
+
+    [Fact]
     public async Task UpdateCharacterAppliesOnlyProvidedFields()
     {
         var document = CreateDocument();
@@ -1131,6 +1258,7 @@ public sealed class StoryEntityPatchServiceTests
         public StoryAssistantDecision Decision { get; set; } = new(StoryAssistantDecisionKind.Accept, "");
         public List<StoryAssistantTranscriptItem> ToolItems { get; } = [];
         public List<StoryAssistantWorkItem> WorkItems { get; } = [];
+        public List<RoleplayStoreArea> SavedAreas { get; } = [];
         public Func<SetSceneRequest, SceneTransitionResult>? SceneTransition { get; set; }
         public int ReviewCount { get; private set; }
         public int SceneTransitionCount { get; private set; }
@@ -1163,7 +1291,11 @@ public sealed class StoryEntityPatchServiceTests
             return Task.FromResult(SceneTransition(request));
         }
 
-        public Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SaveEntityAreaAsync(RoleplayStoreArea area, CancellationToken cancellationToken)
+        {
+            SavedAreas.Add(area);
+            return Task.CompletedTask;
+        }
 
         public Task SaveAssistantStateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }

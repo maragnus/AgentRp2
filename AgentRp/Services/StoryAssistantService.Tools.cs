@@ -8,10 +8,11 @@ public sealed partial class StoryAssistantService
 {
     public static IReadOnlyList<ModelAssistantTool> BuildTools(RpChatDocument document) =>
     [
-        Tool("get_story_entities", "Read the current JSON model for all story entities and character relationships. This is required to unlock the ability to create or update any entities.", ObjectSchema()),
+        Tool("get_story_entities", "Read the current JSON model for all story entities and character relationships. Use this before choosing existing entity ids.", ObjectSchema()),
         Tool("get_story_transcript", "Read the current active story chat transcript, including private intents. This will provide valid context on the story so far.", ObjectSchema()),
         Tool("get_character_profile_options", "Read valid ids and limits for controlled character profile fields. Call this before setting controlled fields in create_character, update_character, or update_character_relationship.", CharacterProfileRules.ProfileOptionsSchema()),
         Tool("get_chat_direction_options", "Read valid ids, limits, intensity values, and current values for controlled chat direction fields. Call this before setting controlled fields in update_chat_direction.", ChatDirectionRules.OptionsSchema()),
+        Tool("rename_story", "Rename the current story. Call get_story_transcript first in this assistant turn, then choose a concise title that reflects the established story basics and current narrative.", StoryRenameSchema()),
         Tool("create_character", "Create a new character from provided fields. Before setting controlled profile fields, call get_character_profile_options for those fields.", CharacterEntityPatchSchema()),
         Tool("update_character", "Update fields on an existing character. Eagerly complete missing profile details when useful; before setting controlled profile fields, call get_character_profile_options for those fields. After any successful character update, inspect relationshipReconciliation and update only incomplete or contradicted canonical relationshipIds.", CharacterEntityPatchSchema(needsId: true)),
         Tool("update_chat_direction", "Update fields on this chat's direction. Before setting controlled direction fields, call get_chat_direction_options for those fields.", ChatDirectionRules.PatchSchema()),
@@ -131,6 +132,26 @@ public sealed partial class StoryAssistantService
             ["additionalProperties"] = false
         };
     }
+
+    static JsonObject StoryRenameSchema() => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["title"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["description"] = "New story title."
+            },
+            ["reason"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["description"] = "Why this title fits the story."
+            }
+        },
+        ["required"] = new JsonArray { "title" },
+        ["additionalProperties"] = false
+    };
 
     static JsonObject QuestionSchema() => new()
     {

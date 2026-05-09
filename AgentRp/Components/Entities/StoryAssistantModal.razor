@@ -23,12 +23,9 @@
                         <span class="sidebar-row-icon"><FaIcon Name="messages-square" /></span>
                     </LeadingContent>
                     <TrailingContent>
-                        @if (Chats.Count > 1)
-                        {
-                            <span @onclick:stopPropagation="true">
-                                <AppButton Icon="trash" TooltipText="Delete chat" AriaLabel="Delete chat" OnClick="@(_ => Session.Chat.StoryAssistant.DeleteChatAsync(chat.Id))" />
-                            </span>
-                        }
+                        <span @onclick:stopPropagation="true">
+                            <AppButton Icon="trash" TooltipText="Delete chat" AriaLabel="Delete chat" OnClick="@(_ => Session.Chat.StoryAssistant.DeleteChatAsync(chat.Id))" />
+                        </span>
                     </TrailingContent>
                 </SidebarListRow>
             }
@@ -122,8 +119,11 @@
 
     static string ChatSummary(StoryAssistantChat chat)
     {
-        var count = chat.Items.Count(item => item.Kind is StoryAssistantItemKind.UserMessage or StoryAssistantItemKind.AssistantMessage);
-        return count == 0 ? "Empty" : $"{count} message{(count == 1 ? "" : "s")}";
+        var lastMessage = chat.Items
+            .Where(item => item.Kind is StoryAssistantItemKind.UserMessage or StoryAssistantItemKind.AssistantMessage)
+            .OrderByDescending(item => item.CreatedUtc)
+            .FirstOrDefault();
+        return lastMessage is null ? "No messages" : RelativeDateFormatter.FormatDate(lastMessage.CreatedUtc);
     }
 
     static string PendingCountText(StoryAssistantChat chat)

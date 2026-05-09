@@ -508,14 +508,7 @@ public sealed class StoryAssistantStore(
     public async Task CreateChatAsync()
     {
         var state = State;
-        var now = DateTime.UtcNow;
-        var chat = new StoryAssistantChat
-        {
-            Id = $"assistant-chat-{Guid.NewGuid():N}",
-            Title = "New chat",
-            CreatedUtc = now,
-            UpdatedUtc = now
-        };
+        var chat = CreateNewChat();
         state.Chats.Insert(0, chat);
         state.ActiveChatId = chat.Id;
         await SaveAssistantStateAsync(CancellationToken.None);
@@ -553,9 +546,6 @@ public sealed class StoryAssistantStore(
             return;
 
         var state = State;
-        if (state.Chats.Count <= 1)
-            return;
-
         var chat = state.Chats.FirstOrDefault(chat => chat.Id == chatId);
         if (chat is null)
             return;
@@ -563,6 +553,9 @@ public sealed class StoryAssistantStore(
         ClearBackgroundError();
         await ClearRemoteStateForChatAsync(chat);
         state.Chats.Remove(chat);
+        if (state.Chats.Count == 0)
+            state.Chats.Add(CreateNewChat());
+
         if (state.ActiveChatId == chat.Id)
             state.ActiveChatId = state.Chats.OrderByDescending(chat => chat.UpdatedUtc).First().Id;
 
@@ -802,6 +795,18 @@ public sealed class StoryAssistantStore(
             return;
 
         chat.Title = CleanTitle(displayMessage);
+    }
+
+    static StoryAssistantChat CreateNewChat()
+    {
+        var now = DateTime.UtcNow;
+        return new()
+        {
+            Id = $"assistant-chat-{Guid.NewGuid():N}",
+            Title = "New chat",
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
     }
 
     static string CleanTitle(string title)

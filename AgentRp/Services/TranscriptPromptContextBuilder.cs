@@ -870,6 +870,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             - You may resolve low-stakes positioning needed to reach the requested scene, such as who enters, where characters stand, who sits where, what they carry, and what they are visibly wearing.
             - You may preserve obvious tension as atmosphere, physical arrangement, or visible setup, but do not make a character react to it.
             - Focus on location, atmosphere, current mode, character positions, clothing, visible state, present items, and how the transition into this scene happened.
+            - {PromptLibraryService.NarratorWardrobeGuidance}
             - End with the scene staged so a character can react next.
             - Write narration only, with no speaker labels, no meta commentary, and no tool/schema language.
             {guidance}

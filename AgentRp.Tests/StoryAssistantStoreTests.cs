@@ -23,7 +23,7 @@ public sealed class StoryAssistantStoreTests
     }
 
     [Fact]
-    public async Task ChatCommandsCreateSelectRenameAndDeleteWithoutDeletingFinalChat()
+    public async Task ChatCommandsCreateSelectRenameAndDeleteWithFreshFinalChat()
     {
         var document = CreateDocument();
         var store = CreateStore(document, (_, _) => Task.CompletedTask);
@@ -42,7 +42,9 @@ public sealed class StoryAssistantStoreTests
         await store.DeleteChatAsync(secondChatId);
 
         Assert.Single(store.Chats);
-        Assert.Equal(secondChatId, store.ActiveAssistantChat.Id);
+        Assert.NotEqual(secondChatId, store.ActiveAssistantChat.Id);
+        Assert.Equal("New chat", store.ActiveAssistantChat.Title);
+        Assert.Empty(store.ActiveAssistantChat.Items);
     }
 
     [Fact]
@@ -222,6 +224,24 @@ public sealed class StoryAssistantStoreTests
         Assert.Equal(StoryAssistantItemStatus.Failed, document.StoryAssistant.Items[1].Status);
         Assert.True(document.StoryAssistant.Items[1].Retry.CanRetry);
         Assert.Equal("No output", document.StoryAssistant.Items[1].Diagnostics.Outcome);
+    }
+
+    [Fact]
+    public async Task StoryMetadataSaveRefreshesPreviewTitle()
+    {
+        var document = CreateDocument();
+        document.Chat.Title = "Old Story";
+        var (store, liveStore) = CreateStoreWithLiveStore(document, async (_, callbacks, cancellationToken) =>
+        {
+            document.Chat.Title = "New Story";
+            await callbacks.SaveEntityAreaAsync(RoleplayStoreArea.ChatDirection, cancellationToken);
+        });
+
+        await store.SendAsync("Rename the story.");
+
+        var previews = await liveStore.LoadStoryPreviewsAsync();
+        Assert.Equal("New Story", previews.Single().Title);
+        Assert.Contains(RoleplayStoreArea.ChatDirection, liveStore.ReplacedAreas);
     }
 
     [Fact]
@@ -407,6 +427,16 @@ public sealed class StoryAssistantStoreTests
         Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript = null,
         IReadOnlyList<AiProvider>? configuredProviders = null)
     {
+        var (store, _) = CreateStoreWithLiveStore(document, script, clearScript, configuredProviders);
+        return store;
+    }
+
+    static (StoryAssistantStore Store, TestLiveRoleplayStore LiveStore) CreateStoreWithLiveStore(
+        RpChatDocument document,
+        Func<StoryAssistantTurnRequest, IStoryAssistantCallbacks, CancellationToken, Task> script,
+        Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript = null,
+        IReadOnlyList<AiProvider>? configuredProviders = null)
+    {
         var activeChat = new ActiveChatContext();
         activeChat.SetAsync(document).GetAwaiter().GetResult();
         var liveStore = new TestLiveRoleplayStore(document, configuredProviders ?? []);
@@ -418,7 +448,7 @@ public sealed class StoryAssistantStoreTests
             modelSelection.SetActiveModelAsync(AiModelRole.Reasoning, provider.Id, model.Id).GetAwaiter().GetResult();
 
         var transcript = new TranscriptStore(activeChat, registry, providers, modelSelection, NullTextGenerationService.Instance, new SceneTransitionService());
-        return new(activeChat, registry, providers, modelSelection, transcript, new ScriptedStoryAssistantService(document, script, clearScript));
+        return (new(activeChat, registry, providers, modelSelection, transcript, new ScriptedStoryAssistantService(document, script, clearScript)), liveStore);
     }
 
     static RpChatDocument CreateDocument() => new()
@@ -622,6 +652,7 @@ public sealed class StoryAssistantStoreTests
     sealed class TestLiveRoleplayStore(RpChatDocument document, IReadOnlyList<AiProvider> providers) : ILiveRoleplayStore
     {
         public event Func<RoleplayStoreNotification, Task>? Changed;
+        public List<RoleplayStoreArea> ReplacedAreas { get; } = [];
 
         public Task<IReadOnlyList<StoryPreview>> LoadStoryPreviewsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<StoryPreview>>([StoryPreviewProjector.FromDocument(document)]);
@@ -645,7 +676,10 @@ public sealed class StoryAssistantStoreTests
         public Task ReplaceProvidersAsync(Guid originSessionId, IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task ReplaceChatAreaAsync(Guid originSessionId, string chatId, RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken = default) =>
-            Changed?.Invoke(new(originSessionId, chatId, area, 1)) ?? Task.CompletedTask;
+        public Task ReplaceChatAreaAsync(Guid originSessionId, string chatId, RpChatDocument document, RoleplayStoreArea area, CancellationToken cancellationToken = default)
+        {
+            ReplacedAreas.Add(area);
+            return Changed?.Invoke(new(originSessionId, chatId, area, 1)) ?? Task.CompletedTask;
+        }
     }
 }

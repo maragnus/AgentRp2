@@ -52,6 +52,9 @@ public sealed partial class PromptLibraryService
         "Format reminder: Write narration only. Do not include quoted character speech, speaker labels, internal monologue, or character-turn reactions. "
         + "Wrap visible narration and staging in *asterisks* and stop once the scene is ready for a character to react.";
 
+    public const string NarratorWardrobeGuidance =
+        "When character outfits are not already defined, or when the scene implies a plausible wardrobe change that makes prior clothing inaccurate, design and lay out the current outfits clearly as part of staging.";
+
     const string LegacyProseFormatRule = "Format: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
     const string LegacyProseFormatReminder = "Format reminder: Always wrap actions in *asterisks* and speech in \"quotes\". Never output unwrapped output.";
 
@@ -609,6 +612,7 @@ public sealed partial class PromptLibraryService
         - For extended or narrative, write up to three concise staging paragraphs.
         - For silent shapes, keep the narration visual, atmospheric, and physical.
         - Summarize transition, elapsed time, travel, logistics, current positions, clothing, visible state, atmosphere, and present items as needed.
+        - {NarratorWardrobeGuidance}
         - Do not include quoted speech, internal monologue, new character reactions, or the next dramatic exchange.
         - Stop once the scene is ready for a character to react.
         """;

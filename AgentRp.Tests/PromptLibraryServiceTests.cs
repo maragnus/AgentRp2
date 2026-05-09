@@ -257,8 +257,10 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("relationshipReconciliation", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Never leave any relationship field empty", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Before calling any durable canon-changing tool, call get_story_transcript", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
+        Assert.Contains("call rename_story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Introduce Characters", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceCharacters].User, StringComparison.Ordinal);
         Assert.Contains("Introduce a Location", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceLocation].User, StringComparison.Ordinal);
         Assert.Contains("Change the Scene", defaults.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User, StringComparison.Ordinal);

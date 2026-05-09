@@ -323,6 +323,7 @@ public sealed class SceneTransitionService
         builder.AppendLine($"Narrator guidance: {request.NarratorGuidance.Guidance.Trim()}");
         builder.AppendLine("Stage the requested scene through the normal narrator pipeline.");
         builder.AppendLine("Focus on location, atmosphere, current mode, elapsed time, travel, mundane logistics, character positions, visible clothing/state, present items, and the transition into this moment.");
+        builder.AppendLine(PromptLibraryService.NarratorWardrobeGuidance);
         builder.AppendLine("You may summarize already-established or user-approved offscreen continuity, and you may resolve low-stakes positioning needed to reach this scene.");
         builder.AppendLine("Do not create the next playable character beat: no dialogue, internal monologue, new emotional reactions, jokes, threats, confessions, reveals, attacks, or decisions for characters.");
         builder.AppendLine("End with the scene staged so a character can react next.");

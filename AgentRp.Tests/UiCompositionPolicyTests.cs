@@ -462,6 +462,35 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
+    public async Task StoryAssistantChatRowsShowLastMessageDateAndFinalDeleteAction()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+        var messageDate = DateTime.UtcNow.AddDays(-1);
+        session.Chat.StoryAssistant.State.Items.Add(new()
+        {
+            Id = "assistant-message-1",
+            Kind = StoryAssistantItemKind.UserMessage,
+            Status = StoryAssistantItemStatus.Applied,
+            Text = "Existing assistant transcript.",
+            CreatedUtc = messageDate,
+            UpdatedUtc = messageDate
+        });
+
+        var component = context.Render<StoryAssistantModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.OnClose, () => Task.CompletedTask));
+
+        Assert.Contains(RelativeDateFormatter.FormatDate(messageDate), component.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 message", component.Markup, StringComparison.Ordinal);
+        Assert.NotNull(component.Find("[aria-label='Delete chat']"));
+    }
+
+    [Fact]
     public async Task StoryAssistantTranscriptRerendersWhenStreamingMessageMutates()
     {
         using var context = new BunitContext();
