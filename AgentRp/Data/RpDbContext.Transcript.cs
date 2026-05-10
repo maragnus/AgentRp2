@@ -48,6 +48,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.SpeechJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.PrivateIntentJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.CharacterAppearancesJson).HasColumnType("nvarchar(max)");
+            builder.Property(x => x.RelationshipUpdatesJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.TraceJson).HasColumnType("nvarchar(max)");
             builder.Property(x => x.ConsumedBySnapshotId).HasMaxLength(80);
             builder.HasIndex(x => new { x.ChatId, x.EndTurnId, x.IsActive });

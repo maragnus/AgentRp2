@@ -46,6 +46,7 @@ public sealed class TranscriptSnapshotRow
     public string SpeechJson { get; set; } = "";
     public string PrivateIntentJson { get; set; } = "{}";
     public string CharacterAppearancesJson { get; set; } = "{}";
+    public string RelationshipUpdatesJson { get; set; } = "[]";
     public string TraceJson { get; set; } = "";
     public string ConsumedBySnapshotId { get; set; } = "";
     public int? ConsumedBySnapshotOrdinal { get; set; }

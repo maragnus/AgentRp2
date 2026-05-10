@@ -2,6 +2,10 @@
 
 This is a list of future tweaks that are planned. Be sure to remove these as they are implemented.
 
+## Low hanging fruit
+
+Creating a snapshot should automatically exclude the last message in the transcript. There needs to always be at least one message after the transcript to continue the story consistently.
+
 ## Story Cards
 - Introduce "Story cards" Story Entities
 - Replaces the story hook to guide the story.

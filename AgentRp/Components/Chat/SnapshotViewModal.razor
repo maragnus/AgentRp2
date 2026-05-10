@@ -1,0 +1,190 @@
+@using AgentRp.Models
+@using AgentRp.Services
+
+<ModalShell Title="Snapshot"
+            Subtitle="@RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)"
+            Icon="flag"
+            MaxWidth="900px"
+            BodyClass="is-flush"
+            OnClose="OnClose">
+    <ModalStackLayout Class="modal-editor-main snapshot-view-main" BodyClass="modal-form-stack snapshot-tab-body snapshot-view-body">
+        <ChildContent>
+            <Section Title="Summary" Class="snapshot-review-section">
+                @if (string.IsNullOrWhiteSpace(Snapshot.Summary))
+                {
+                    <div class="providers-empty-state is-compact">
+                        <FaIcon Name="align-left" />
+                        <strong>No summary</strong>
+                        <span>This snapshot does not have summary text.</span>
+                    </div>
+                }
+                else
+                {
+                    <TranscriptBody Body="@Snapshot.Summary" Class="snapshot-view-summary" />
+                }
+            </Section>
+
+            <Section Title="Snapshot Range" Count="@CoveredTurns.Count" Class="snapshot-review-section">
+                <div class="snapshot-range-grid">
+                    <StatusRow Icon="flag" Class="snapshot-range-status">
+                        <ChildContent>@RangeLabel</ChildContent>
+                        <BadgeContent><Badge Tone="amber">@IncludedCountText</Badge></BadgeContent>
+                    </StatusRow>
+                    <StatusRow Icon="clock" Class="snapshot-range-status">
+                        <ChildContent>@RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)</ChildContent>
+                        <BadgeContent><Badge Tone="blue">Saved</Badge></BadgeContent>
+                    </StatusRow>
+                </div>
+            </Section>
+
+            <div class="snapshot-view-group">
+                <SectionHeader Title="Continuity" Icon="eye" Count="@ContinuityCount" Divider="true" />
+                <SnapshotContinuityList PrivateIntentByCharacterId="Snapshot.PrivateIntentByCharacterId"
+                                        CharacterAppearances="Snapshot.CharacterAppearances"
+                                        Characters="Characters" />
+            </div>
+
+            <div class="snapshot-view-group">
+                <SectionHeader Title="Relationship Changes" Icon="users" Count="@RelationshipItems.Count" Divider="true" />
+                <CharacterRelationshipSummaryList Items="RelationshipItems" EmptyText="No relationship changes." />
+            </div>
+
+            <div class="snapshot-view-group">
+                <SectionHeader Title="Timeline" Icon="clock" Count="@TimelineEntries.Count" Divider="true" />
+                @if (TimelineEntries.Count == 0)
+                {
+                    <div class="providers-empty-state is-compact">
+                        <FaIcon Name="clock" />
+                        <strong>No timeline entries</strong>
+                        <span>This snapshot has no linked timeline entries.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="snapshot-view-timeline-list">
+                        @foreach (var entry in TimelineEntries)
+                        {
+                            <article @key="entry.Id" class="snapshot-view-timeline-entry">
+                                <div class="snapshot-view-timeline-head">
+                                    <strong>@entry.Title</strong>
+                                    @if (!string.IsNullOrWhiteSpace(entry.Date))
+                                    {
+                                        <Badge Tone="amber">@entry.Date</Badge>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(entry.Description))
+                                {
+                                    <p>@entry.Description</p>
+                                }
+                                @if (entry.Characters.Count > 0)
+                                {
+                                    <small>@string.Join(", ", entry.Characters)</small>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="snapshot-view-group">
+                <SectionHeader Title="Covered Turns" Icon="message-sq" Count="@CoveredTurns.Count" Divider="true" />
+                <SnapshotCoveredTurns Turns="CoveredTurns" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <span class="modal-action-spacer"></span>
+            <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
+        </Footer>
+    </ModalStackLayout>
+</ModalShell>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    RpChatDocument? Document => Session.ActiveChat.Current;
+    List<RpCharacter> Characters => Document?.Characters ?? [];
+    List<RpSnapshotDraftTurn> CoveredTurns => Document is null
+        ? []
+        : Document.Transcript.Turns
+            .Where(turn => string.Equals(turn.SnapshotId, Snapshot.Id, StringComparison.Ordinal))
+            .OrderBy(turn => turn.ConsumedBySnapshotOrdinal ?? int.MaxValue)
+            .ThenBy(turn => turn.TurnNumber)
+            .ThenBy(turn => turn.CreatedUtc)
+            .Select(ToSnapshotTurn)
+            .ToList();
+    List<RpTimelineEntry> TimelineEntries => Document is null
+        ? []
+        : Document.Timeline
+            .Where(entry => string.Equals(entry.SnapshotId, Snapshot.Id, StringComparison.Ordinal))
+            .ToList();
+    int ContinuityCount => Snapshot.PrivateIntentByCharacterId.Keys
+        .Concat(Snapshot.CharacterAppearances.Keys)
+        .Distinct(StringComparer.Ordinal)
+        .Count();
+    List<CharacterRelationshipSummaryItem> RelationshipItems => Snapshot.RelationshipUpdates
+        .Select(update =>
+        {
+            var sourceName = CharacterName(update.SourceCharacterId);
+            var targetName = CharacterName(update.TargetCharacterId);
+            return new CharacterRelationshipSummaryItem
+            {
+                Id = update.RelationshipId,
+                Title = $"{sourceName} / {targetName}",
+                SourceName = sourceName,
+                TargetName = targetName,
+                Metadata = RelationshipMetadata(update),
+                RelationshipTypes = update.RelationshipTypes,
+                PrivateTensions = update.PrivateTensions,
+                PublicDynamic = update.PublicDynamic,
+                HowSourceSeesTarget = update.HowSourceSeesTarget,
+                HowTargetSeesSource = update.HowTargetSeesSource
+            };
+        })
+        .ToList();
+    string IncludedCountText => CoveredTurns.Count == 1
+        ? "1 turn"
+        : $"{CoveredTurns.Count} turns";
+    string RangeLabel
+    {
+        get
+        {
+            if (Snapshot.TurnNumberStart > 0 && Snapshot.TurnNumberEnd > 0)
+                return Snapshot.TurnNumberStart == Snapshot.TurnNumberEnd
+                    ? $"Turn {Snapshot.TurnNumberStart}"
+                    : $"Turn {Snapshot.TurnNumberStart} to Turn {Snapshot.TurnNumberEnd}";
+
+            return CoveredTurns.Count == 0
+                ? "No turns linked"
+                : $"{CoveredTurns.First().SpeakerName} to {CoveredTurns.Last().SpeakerName}";
+        }
+    }
+
+    string CharacterName(string characterId) =>
+        Characters.FirstOrDefault(character => character.Id == characterId)?.Name ?? characterId;
+
+    static string RelationshipMetadata(RpTranscriptSnapshotRelationshipUpdate update)
+    {
+        var evidence = update.EvidenceTurnNumbers.Count == 0
+            ? ""
+            : update.EvidenceTurnNumbers.Count == 1
+                ? $"Turn {update.EvidenceTurnNumbers[0]}"
+                : $"Turns {string.Join(", ", update.EvidenceTurnNumbers)}";
+        if (string.IsNullOrWhiteSpace(update.Reason))
+            return evidence;
+        if (string.IsNullOrWhiteSpace(evidence))
+            return update.Reason;
+
+        return $"{evidence} - {update.Reason}";
+    }
+
+    static RpSnapshotDraftTurn ToSnapshotTurn(RpTranscriptTurn turn) => new()
+    {
+        Id = turn.Id,
+        TurnNumber = turn.TurnNumber,
+        SpeakerName = string.IsNullOrWhiteSpace(turn.AuthorName) ? "Narrator" : turn.AuthorName,
+        CreatedUtc = turn.CreatedUtc,
+        Body = turn.Body
+    };
+}

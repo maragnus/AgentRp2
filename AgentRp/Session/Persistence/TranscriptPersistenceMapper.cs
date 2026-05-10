@@ -56,6 +56,7 @@ internal static class TranscriptPersistenceMapper
         Speech = PersistenceJson.Deserialize(row.SpeechJson, new RpMessageSpeechState()),
         PrivateIntentByCharacterId = PersistenceJson.Deserialize(row.PrivateIntentJson, new Dictionary<string, string>(StringComparer.Ordinal)),
         CharacterAppearances = PersistenceJson.Deserialize(row.CharacterAppearancesJson, new Dictionary<string, string>(StringComparer.Ordinal)),
+        RelationshipUpdates = PersistenceJson.Deserialize(row.RelationshipUpdatesJson, new List<RpTranscriptSnapshotRelationshipUpdate>()),
         Scene = PersistenceJson.Deserialize(row.SceneJson, new RpSceneFrame { LocationId = row.SceneLocationId, LocationName = row.SceneLocationName }),
         Trace = PersistenceJson.Deserialize(row.TraceJson, (RpGenerationTrace?)null),
         ConsumedBySnapshotId = row.ConsumedBySnapshotId,
@@ -105,6 +106,7 @@ internal static class TranscriptPersistenceMapper
         row.SpeechJson = PersistenceJson.Serialize(snapshot.Speech);
         row.PrivateIntentJson = PersistenceJson.Serialize(snapshot.PrivateIntentByCharacterId);
         row.CharacterAppearancesJson = PersistenceJson.Serialize(snapshot.CharacterAppearances);
+        row.RelationshipUpdatesJson = PersistenceJson.Serialize(snapshot.RelationshipUpdates);
         row.TraceJson = snapshot.Trace is null ? "" : PersistenceJson.Serialize(snapshot.Trace);
         row.ConsumedBySnapshotId = snapshot.ConsumedBySnapshotId;
         row.ConsumedBySnapshotOrdinal = snapshot.ConsumedBySnapshotOrdinal;

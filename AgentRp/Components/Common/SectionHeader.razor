@@ -1,5 +1,9 @@
 <div class="@CssClass" @onclick="OnClick">
     <span class="section-bar"></span>
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <FaIcon Name="@Icon" />
+    }
     <span class="section-title-text">@Title</span>
     @if (!string.IsNullOrWhiteSpace(Hint))
     {
@@ -17,12 +21,14 @@
 
 @code {
     [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
     [Parameter] public string? Hint { get; set; }
     [Parameter] public int? Count { get; set; }
     [Parameter] public int? MaxCount { get; set; }
+    [Parameter] public bool Divider { get; set; }
     [Parameter] public RenderFragment? RightContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
-    string CssClass => $"section-header {(OnClick.HasDelegate ? "is-clickable" : "")} {Class}".Trim();
+    string CssClass => $"section-header {(OnClick.HasDelegate ? "is-clickable" : "")} {(Divider ? "has-divider" : "")} {Class}".Trim();
 }

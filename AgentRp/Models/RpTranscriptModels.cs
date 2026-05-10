@@ -99,6 +99,7 @@ public sealed class RpTranscriptSnapshot
     public RpMessageSpeechState Speech { get; set; } = new();
     public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
+    public List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
     public RpGenerationTrace? Trace { get; set; }
     public string ConsumedBySnapshotId { get; set; } = "";

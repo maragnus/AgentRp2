@@ -171,6 +171,7 @@ public sealed partial class TranscriptStore
                 Document.Transcript.DeletedSnapshotIds.Add(existing.Id);
             }
 
+            var appliedRelationshipUpdates = draft.RelationshipUpdates.Where(update => update.ApplyChange).Select(CloneSnapshotRelationshipUpdate).ToList();
             var snapshot = new RpTranscriptSnapshot
             {
                 Id = NextSnapshotId(),
@@ -185,6 +186,7 @@ public sealed partial class TranscriptStore
                 Summary = draft.Summary.Trim(),
                 PrivateIntentByCharacterId = CloneMap(draft.PrivateIntentByCharacterId),
                 CharacterAppearances = CloneMap(draft.CharacterAppearances),
+                RelationshipUpdates = appliedRelationshipUpdates.Select(CloneSnapshotRelationshipUpdate).ToList(),
                 Scene = SessionCloner.Clone(draft.Scene),
                 Trace = draft.Trace is null ? null : SessionCloner.Clone(draft.Trace),
                 IsActive = true
@@ -192,7 +194,6 @@ public sealed partial class TranscriptStore
             Document.Transcript.Snapshots.Add(snapshot);
             LinkSnapshotTurns(snapshot, context.CoveredTurns);
             AddSnapshotTimelineEntries(snapshot, draft.TimelineEntries);
-            var appliedRelationshipUpdates = draft.RelationshipUpdates.Where(update => update.ApplyChange).ToList();
             ApplySnapshotRelationshipUpdates(appliedRelationshipUpdates);
 
             await SaveSnapshotCommitAsync(appliedRelationshipUpdates.Count > 0);

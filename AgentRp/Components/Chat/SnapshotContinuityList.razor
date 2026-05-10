@@ -1,0 +1,48 @@
+@using AgentRp.Models
+
+@if (CharacterIds.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="eye" />
+        <strong>No continuity state</strong>
+        <span>@EmptyMessage</span>
+    </div>
+}
+else
+{
+    <div class="snapshot-continuity-list">
+        @foreach (var characterId in CharacterIds)
+        {
+            <Section @key="characterId" Title="@CharacterName(characterId)" Class="snapshot-review-section">
+                @if (PrivateIntentByCharacterId.TryGetValue(characterId, out var intent) && !string.IsNullOrWhiteSpace(intent))
+                {
+                    <FieldRow Label="Private Intent">
+                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@intent"></textarea>
+                    </FieldRow>
+                }
+                @if (CharacterAppearances.TryGetValue(characterId, out var appearance) && !string.IsNullOrWhiteSpace(appearance))
+                {
+                    <FieldRow Label="Scene Continuity">
+                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@appearance"></textarea>
+                    </FieldRow>
+                }
+            </Section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
+    [Parameter] public Dictionary<string, string> CharacterAppearances { get; set; } = [];
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public string EmptyMessage { get; set; } = "This snapshot has no private intents or scene continuity blocks.";
+
+    List<string> CharacterIds => PrivateIntentByCharacterId.Keys
+        .Concat(CharacterAppearances.Keys)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(CharacterName)
+        .ToList();
+
+    string CharacterName(string id) =>
+        Characters.FirstOrDefault(character => character.Id == id)?.Name ?? id;
+}

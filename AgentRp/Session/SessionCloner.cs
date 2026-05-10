@@ -530,12 +530,28 @@ static class SessionCloner
         Speech = Clone(value.Speech),
         PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
         CharacterAppearances = value.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        RelationshipUpdates = value.RelationshipUpdates.Select(CloneSnapshotRelationshipUpdate).ToList(),
         Scene = Clone(value.Scene),
         Trace = value.Trace is null ? null : Clone(value.Trace),
         ConsumedBySnapshotId = value.ConsumedBySnapshotId,
         ConsumedBySnapshotOrdinal = value.ConsumedBySnapshotOrdinal,
         IsActive = value.IsActive,
         Data = Clone(value.Data)
+    };
+
+    static RpTranscriptSnapshotRelationshipUpdate CloneSnapshotRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
+    {
+        RelationshipId = value.RelationshipId,
+        ApplyChange = value.ApplyChange,
+        SourceCharacterId = value.SourceCharacterId,
+        TargetCharacterId = value.TargetCharacterId,
+        RelationshipTypes = [.. value.RelationshipTypes],
+        PrivateTensions = [.. value.PrivateTensions],
+        HowSourceSeesTarget = value.HowSourceSeesTarget,
+        HowTargetSeesSource = value.HowTargetSeesSource,
+        PublicDynamic = value.PublicDynamic,
+        Reason = value.Reason,
+        EvidenceTurnNumbers = [.. value.EvidenceTurnNumbers]
     };
 
     static RpTranscriptSnapshotTimelineEntry Clone(RpTranscriptSnapshotTimelineEntry value) => new()

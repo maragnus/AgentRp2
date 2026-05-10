@@ -33,6 +33,7 @@
                 <SnapshotSpeechButton Snapshot="Snapshot"
                                       Disabled="@TranscriptBusy"
                                       OnOpenEntities="OnOpenEntities" />
+                <AppButton Icon="eye" TooltipText="View snapshot" OnClick="@(_ => ViewModalOpen = true)" />
                 <AppButton Icon="copy" TooltipText="Copy snapshot" OnClick="CopySnapshot" />
                 <AppButton Icon="trash" TooltipText="Delete snapshot" Disabled="@TranscriptBusy" OnClick="@(_ => DeleteModalOpen = true)" />
             </div>
@@ -45,8 +46,14 @@
     <SnapshotDeleteModal Snapshot="Snapshot" OnClose="CloseDeleteModal" />
 }
 
+@if (ViewModalOpen)
+{
+    <SnapshotViewModal Snapshot="Snapshot" OnClose="CloseViewModal" />
+}
+
 @code {
     bool DeleteModalOpen;
+    bool ViewModalOpen;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
@@ -83,6 +90,12 @@
     Task CloseDeleteModal()
     {
         DeleteModalOpen = false;
+        return Task.CompletedTask;
+    }
+
+    Task CloseViewModal()
+    {
+        ViewModalOpen = false;
         return Task.CompletedTask;
     }
 }

@@ -582,6 +582,11 @@
     cursor: pointer;
 }
 
+.section-header.has-divider {
+    padding-top: 14px;
+    border-top: 1px solid var(--c-border);
+}
+
 .section.is-header-only .section-header {
     margin-bottom: 0;
 }
@@ -601,6 +606,11 @@
 
 .sidebar .section-bar {
     display: none;
+}
+
+.section-header > i {
+    color: var(--section-color);
+    font-size: 12px;
 }
 
 .section-title-text,
@@ -2156,6 +2166,64 @@
     line-height: 1.65;
 }
 
+.snapshot-view-body {
+    gap: 18px;
+}
+
+.snapshot-view-summary {
+    color: var(--c-text);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.snapshot-view-group {
+    display: grid;
+    gap: 12px;
+}
+
+.snapshot-view-timeline-list {
+    display: grid;
+    gap: 10px;
+}
+
+.snapshot-view-timeline-entry {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    background: var(--c-surface2);
+}
+
+.snapshot-view-timeline-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.snapshot-view-timeline-head strong {
+    overflow: hidden;
+    color: var(--c-text);
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.snapshot-view-timeline-entry p {
+    margin: 0;
+    color: var(--c-text2);
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+.snapshot-view-timeline-entry small {
+    color: var(--c-text3);
+    font-size: 11px;
+}
+
 @media (max-width: 760px) {
     .snapshot-range-grid,
     .snapshot-timeline-grid {
@@ -2649,7 +2717,7 @@
     display: flex;
     flex-direction: column;
     gap: 5px;
-    margin-bottom: 18px;
+    /* margin-bottom: 18px; */
 }
 
 .field-row-grid {
@@ -5826,6 +5894,15 @@ textarea.field {
     color: var(--c-text);
     font-size: 13px;
     font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.character-relationship-summary-title small {
+    overflow: hidden;
+    color: var(--c-text3);
+    font-size: 11px;
+    line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
 }

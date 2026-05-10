@@ -1,4 +1,5 @@
 using AgentRp.Components.Chat;
+using AgentRp.Components.Entities;
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
@@ -71,6 +72,9 @@ public sealed class TranscriptFeatureTests
         Assert.Equal("Turn 3", snapshotTimelineEntry.Date);
         Assert.Equal("Snapshot system prompt.", snapshot.Trace?.Steps.Single().SystemPrompt);
         Assert.Equal("Snapshot raw output.", snapshot.Trace?.Steps.Single().RawOutput);
+        var relationshipUpdate = Assert.Single(snapshot.RelationshipUpdates);
+        Assert.Equal("relationship-c1-c2", relationshipUpdate.RelationshipId);
+        Assert.Equal("Best friends with sharper tension.", relationshipUpdate.PublicDynamic);
     }
 
     [Fact]
@@ -103,6 +107,85 @@ public sealed class TranscriptFeatureTests
         Assert.Contains("Snapshot user prompt.", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Snapshot raw output.", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Snapshot structured output.", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SnapshotTranscriptRowOpensReadonlySnapshotView()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+
+        var component = context.Render<SnapshotTranscriptRow>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Snapshot, snapshot)
+            .Add(value => value.ShowProcess, false)
+            .Add(value => value.TranscriptBusy, false)
+            .Add(value => value.OnOpenEntities, _ => Task.CompletedTask));
+
+        component.Find("button[title='View snapshot']").Click();
+
+        Assert.Contains("Snapshot Range", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot for turn-3", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Take Bella's affection while reminding Jake she noticed his silence.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot event", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Relationship Changes", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Bella / Gemma", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Best friends with sharper tension.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Covered Turns", component.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("process-row", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SnapshotViewModalShowsCompactEmptyStates()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var component = context.Render<SnapshotViewModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Snapshot, new RpTranscriptSnapshot
+            {
+                Id = "missing-snapshot",
+                CreatedUtc = DateTime.UtcNow
+            })
+            .Add(value => value.OnClose, () => Task.CompletedTask));
+
+        Assert.Contains("No summary", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("No continuity state", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("No relationship changes.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("No timeline entries", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("No covered turns", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CharacterRelationshipSummaryUsesSharedReadonlyDisplay()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        var character = session.Chat.Characters.Items.First(character => character.Id == "c1");
+
+        var component = context.Render<CharacterRelationshipsSummary>(parameters => parameters
+            .Add(value => value.Document, session.ActiveChat.Current)
+            .Add(value => value.Character, character));
+
+        Assert.Contains("Gemma", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Best friends with charged trust.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Bella sees Gemma as her best friend", component.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -203,6 +286,11 @@ public sealed class TranscriptFeatureTests
         Assert.Equal("Best friends with freshly charged honesty.", relationship.NoteExternal);
         Assert.Equal(new[] { "Close Friend" }, relationship.Bonds);
         Assert.Equal(new[] { "Charged" }, relationship.Dynamics);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+        var update = Assert.Single(snapshot.RelationshipUpdates);
+        Assert.Equal("Bella now treats Gemma as trusted but changed.", update.HowSourceSeesTarget);
+        Assert.Equal("Gemma now sees Bella as more willing to meet the pressure.", update.HowTargetSeesSource);
+        Assert.Equal("Best friends with freshly charged honesty.", update.PublicDynamic);
     }
 
     [Fact]
@@ -250,6 +338,27 @@ public sealed class TranscriptFeatureTests
         Assert.Equal(originalPublicDynamic, relationship.NoteExternal);
         Assert.Equal(originalBonds, relationship.Bonds);
         Assert.Equal(originalDynamics, relationship.Dynamics);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+        Assert.Empty(snapshot.RelationshipUpdates);
+    }
+
+    [Fact]
+    public async Task SnapshotRelationshipUpdatesPersistAcrossReload()
+    {
+        var persistence = new SeedRoleplayPersistence();
+        await using var liveStore = new LiveRoleplayStore(persistence, TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
+
+        var reloaded = await persistence.LoadChatDocumentAsync(session.ActiveChat.Current!.Chat.Id);
+        var snapshot = reloaded.Transcript.Snapshots.Single(snapshot => snapshot.TurnId == activeTurnId);
+        var update = Assert.Single(snapshot.RelationshipUpdates);
+        Assert.Equal("relationship-c1-c2", update.RelationshipId);
+        Assert.Equal("Best friends with sharper tension.", update.PublicDynamic);
     }
 
     [Fact]
