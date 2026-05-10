@@ -85,7 +85,7 @@
 
     IReadOnlyList<BrowserEntry> AllEntries =>
     [
-        new("narrator", "__narrator", "Narrator", NarratorProfileService.VoiceLabel(Session.Chat.NarratorProfile.State.VoicePreset), "book-open"),
+        new(EntityTypes.Narrator, EntityIds.Narrator, "Narrator", NarratorProfileService.VoiceLabel(Session.Chat.NarratorProfile.State.VoicePreset), "book-open"),
         .. Session.Chat.Characters.Items.Select(character => new BrowserEntry("character", character.Id, character.Name, character.Summary, "user")),
         .. Session.Chat.Locations.Items.Select(location => new BrowserEntry("location", location.Id, location.Name, location.Summary, "map-pin")),
         .. Session.Chat.Items.Items.Select(item => new BrowserEntry("item", item.Id, item.Name, item.Summary, "box")),

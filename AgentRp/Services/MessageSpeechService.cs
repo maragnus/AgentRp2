@@ -95,7 +95,7 @@ public sealed class MessageSpeechService(
     IModelCapabilityCatalog capabilityCatalog) : IMessageSpeechService
 {
     public const int MaxSpeechCharacters = 2000;
-    public const string NarratorVoiceKey = "__narrator";
+    public const string NarratorVoiceKey = EntityIds.Narrator;
 
     public MessageSpeechAvailability ResolveAvailability(
         RpChatDocument document,

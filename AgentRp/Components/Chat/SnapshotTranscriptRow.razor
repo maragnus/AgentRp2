@@ -12,10 +12,12 @@
 
     <div class="narrative-card snapshot-card">
         <div class="narrative-head">
-            <div class="message-author transcript-speaker">
-                <span class="narrator-avatar snapshot-avatar"><FaIcon Name="flag" /></span>
-                <span>Snapshot</span>
-            </div>
+            <EntityMention EntityType="@EntityTypes.Snapshot"
+                           EntityId="@Snapshot.Id"
+                           Name="Snapshot"
+                           Size="26"
+                           Class="message-author transcript-speaker"
+                           OnOpenEntities="OnOpenEntities" />
             <span class="message-date">@RelativeDateFormatter.FormatDate(Snapshot.CreatedUtc)</span>
             <span class="mode-badge is-snapshot">@IncludedCountText</span>
         </div>

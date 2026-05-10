@@ -1,14 +1,17 @@
+@implements IDisposable
+@inject IEntityNotifier EntityNotifier
+
 @if (CanOpen)
 {
     <button type="button" class="@CssClass" title="@Title" @onclick="Open">
-        <EntityImage EntityType="@NormalizedType" EntityId="@EntityId" Name="@DisplayName" Image="@CurrentImage" Size="@Size" />
+        @IdentityVisual()
         <span class="entity-mention-name">@DisplayName</span>
     </button>
 }
 else
 {
     <span class="@CssClass" title="@Title">
-        <EntityImage EntityType="@NormalizedType" EntityId="@EntityId" Name="@DisplayName" Image="@CurrentImage" Size="@Size" />
+        @IdentityVisual()
         <span class="entity-mention-name">@DisplayName</span>
     </span>
 }
@@ -22,29 +25,131 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
 
+    string CurrentName = "";
+    GalleryImage? CurrentImage;
+
     string NormalizedType => EntityTypes.Normalize(EntityType);
-    string DisplayName => ResolveName();
-    GalleryImage? CurrentImage => ResolveImage(ResolveImageId());
-    bool CanOpen => !string.IsNullOrWhiteSpace(TargetTab) && !string.IsNullOrWhiteSpace(EntityId);
+    string DisplayName => string.IsNullOrWhiteSpace(CurrentName) ? FallbackName : CurrentName;
+    string OpenEntityId => NormalizedType is EntityTypes.Narrator or EntityTypes.Snapshot ? EntityIds.Narrator : EntityId;
+    bool CanOpen => OnOpenEntities.HasDelegate && !string.IsNullOrWhiteSpace(TargetTab) && !string.IsNullOrWhiteSpace(OpenEntityId);
     string TargetTab => NormalizedType switch
     {
         EntityTypes.Character => "characters",
         EntityTypes.Location => "locations",
         EntityTypes.Item => "items",
+        EntityTypes.Narrator => "characters",
+        EntityTypes.Snapshot => "characters",
         _ => ""
     };
     string CssClass => string.Join(" ", new[] { "entity-mention", CanOpen ? "is-clickable" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
     string Title => CanOpen ? $"Open {DisplayName}" : DisplayName;
+    string IconSizeStyle => $"width:{Size}px;height:{Size}px;font-size:{Math.Max(8, (int)Math.Round(Size * .46))}px;";
+    string FallbackName => NormalizedType switch
+    {
+        EntityTypes.Narrator => "Narrator",
+        EntityTypes.Snapshot => "Snapshot",
+        _ => Name
+    };
 
     Task Open() => CanOpen
-        ? OnOpenEntities.InvokeAsync((TargetTab, EntityId))
+        ? OnOpenEntities.InvokeAsync((TargetTab, OpenEntityId))
         : Task.CompletedTask;
+
+    protected override void OnInitialized()
+    {
+        EntityNotifier.Changed += OnEntityChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        ResolveCurrentEntityState();
+    }
+
+    RenderFragment IdentityVisual() => builder =>
+    {
+        var sequence = 0;
+        if (NormalizedType == EntityTypes.Narrator)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "narrator-avatar");
+            builder.AddAttribute(sequence++, "style", IconSizeStyle);
+            builder.OpenComponent<FaIcon>(sequence++);
+            builder.AddAttribute(sequence++, nameof(FaIcon.Name), "book-open");
+            builder.CloseComponent();
+            builder.CloseElement();
+            return;
+        }
+
+        if (NormalizedType == EntityTypes.Snapshot)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "narrator-avatar snapshot-avatar");
+            builder.AddAttribute(sequence++, "style", IconSizeStyle);
+            builder.OpenComponent<FaIcon>(sequence++);
+            builder.AddAttribute(sequence++, nameof(FaIcon.Name), "flag");
+            builder.CloseComponent();
+            builder.CloseElement();
+            return;
+        }
+
+        builder.OpenComponent<EntityImage>(sequence++);
+        builder.AddAttribute(sequence++, nameof(EntityImage.EntityType), NormalizedType);
+        builder.AddAttribute(sequence++, nameof(EntityImage.EntityId), EntityId);
+        builder.AddAttribute(sequence++, nameof(EntityImage.Name), DisplayName);
+        builder.AddAttribute(sequence++, nameof(EntityImage.Image), CurrentImage);
+        builder.AddAttribute(sequence++, nameof(EntityImage.Size), Size);
+        builder.AddAttribute(sequence++, nameof(EntityImage.SubscribeToChanges), false);
+        builder.CloseComponent();
+    };
+
+    async Task OnEntityChanged(EntityChangeNotification notification)
+    {
+        if (!ShouldHandle(notification))
+            return;
+
+        ResolveCurrentEntityState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    bool ShouldHandle(EntityChangeNotification notification)
+    {
+        var chatId = Session.ActiveChat.Current?.Chat.Id ?? "";
+        if (!string.IsNullOrWhiteSpace(notification.ChatId)
+            && !string.Equals(notification.ChatId, chatId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (NormalizedType == EntityTypes.Snapshot)
+        {
+            return string.Equals(notification.EntityType, EntityTypes.Narrator, StringComparison.Ordinal)
+                && string.Equals(notification.EntityId, EntityIds.Narrator, StringComparison.Ordinal);
+        }
+
+        if (!string.IsNullOrWhiteSpace(NormalizedType)
+            && string.Equals(notification.EntityType, NormalizedType, StringComparison.Ordinal)
+            && string.Equals(notification.EntityId, OpenEntityId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(notification.ImageId)
+            && string.Equals(notification.ImageId, CurrentImage?.Id, StringComparison.Ordinal);
+    }
+
+    void ResolveCurrentEntityState()
+    {
+        CurrentName = ResolveName();
+        CurrentImage = ResolveImage(ResolveImageId());
+    }
 
     string ResolveName() => NormalizedType switch
     {
         EntityTypes.Character => Session.Chat.Characters.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
         EntityTypes.Location => Session.Chat.Locations.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
         EntityTypes.Item => Session.Chat.Items.Items.FirstOrDefault(entity => entity.Id == EntityId)?.Name ?? Name,
+        EntityTypes.Narrator => string.IsNullOrWhiteSpace(Name) ? "Narrator" : Name,
+        EntityTypes.Snapshot => string.IsNullOrWhiteSpace(Name) ? "Snapshot" : Name,
         _ => Name
     };
 
@@ -60,4 +165,9 @@ else
         string.IsNullOrWhiteSpace(imageId)
             ? null
             : Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+
+    public void Dispose()
+    {
+        EntityNotifier.Changed -= OnEntityChanged;
+    }
 }

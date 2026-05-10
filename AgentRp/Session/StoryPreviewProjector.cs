@@ -1,4 +1,5 @@
 using AgentRp.Models;
+using AgentRp.Services;
 
 namespace AgentRp.Session;
 
@@ -104,7 +105,7 @@ public static class StoryPreviewProjector
 
     static bool IsSceneCharacter(RpCharacter character, IReadOnlySet<string> sceneCharacterIds)
     {
-        if (character.Id.Equals("__narrator", StringComparison.OrdinalIgnoreCase)
+        if (character.Id.Equals(EntityIds.Narrator, StringComparison.OrdinalIgnoreCase)
             || character.Name.Equals("Narrator", StringComparison.OrdinalIgnoreCase))
             return false;
 

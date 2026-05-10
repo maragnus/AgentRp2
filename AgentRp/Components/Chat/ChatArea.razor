@@ -137,23 +137,18 @@
                     <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
                         <Trigger Context="speaker">
                             <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => speaker.Toggle())">
-                                @if (Session.SpeakingAs is null)
-                                {
-                                    <span class="mini-narrator"><FaIcon Name="book-open" /></span>
-                                }
-                                else
-                                {
-                                    <EntityImage EntityType="character" EntityId="@CurrentSpeaker?.Id" Name="@SpeakerName" Image="@ImageFor(CurrentSpeaker?.ImageId ?? "")" Size="14" />
-                                }
-                                <span>@SpeakerName</span>
+                                <EntityMention EntityType="@SpeakerMentionType"
+                                               EntityId="@SpeakerMentionId"
+                                               Name="@SpeakerName"
+                                               Size="14" />
                                 <FaIcon Name="chevron-down" />
                             </AppButton>
                         </Trigger>
                         <Content>
-                            <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span></SelectableButton>
+                            <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(null))"><EntityMention EntityType="@EntityTypes.Narrator" EntityId="@EntityIds.Narrator" Name="Narrator" Size="20" /></SelectableButton>
                             @foreach (var character in Characters)
                             {
-                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="20" /><span>@character.Name</span></SelectableButton>
+                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><EntityMention EntityType="@EntityTypes.Character" EntityId="@character.Id" Name="@character.Name" Size="20" /></SelectableButton>
                             }
                         </Content>
                     </AnchoredPopover>
@@ -282,6 +277,8 @@
         ? null
         : Characters.FirstOrDefault(character => character.Id == Session.SpeakingAs.Id) ?? Session.SpeakingAs;
     string SpeakerName => CurrentSpeaker?.Name ?? "Narrator";
+    string SpeakerMentionType => CurrentSpeaker is null ? EntityTypes.Narrator : EntityTypes.Character;
+    string SpeakerMentionId => CurrentSpeaker?.Id ?? EntityIds.Narrator;
     string GenerateTitle => TranscriptBusy ? TranscriptBusyMessage : "Generate next turn (Ctrl+Enter)";
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
@@ -349,8 +346,6 @@
         return new(messages[targetIndex], targetIndex - latestSnapshotIndex);
     }
 
-    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
-
     protected override void OnInitialized()
     {
         ActiveChatId = Session.Chats.Active?.ChatId ?? "";
@@ -361,8 +356,6 @@
         Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Transcript.Changed += OnSessionChanged;
         Session.ModelSelection.Changed += OnSessionChanged;
-        Session.Chat.Characters.Changed += OnSessionChanged;
-        Session.Chat.Locations.Changed += OnSessionChanged;
     }
 
     async Task OnSessionChanged()
@@ -627,8 +620,6 @@
         Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Transcript.Changed -= OnSessionChanged;
         Session.ModelSelection.Changed -= OnSessionChanged;
-        Session.Chat.Characters.Changed -= OnSessionChanged;
-        Session.Chat.Locations.Changed -= OnSessionChanged;
     }
 
     sealed record TranscriptDisplayItem(

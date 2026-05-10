@@ -57,7 +57,7 @@
             </Section>
             <SidebarSpeakerRow Name="Narrator" Active="@(Session.SpeakingAs is null)" OnSelect="@(_ => SetSpeakingAs(null))">
                 <Actions>
-                    <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", "__narrator")))" />
+                    <AppButton Icon="edit" TooltipText="Edit narrator" OnClick="@(_ => OnOpenEntities.InvokeAsync(("characters", EntityIds.Narrator)))" />
                 </Actions>
             </SidebarSpeakerRow>
             @foreach (var character in Characters)

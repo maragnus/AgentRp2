@@ -1,8 +1,6 @@
 @using AgentRp.Services
-@implements IDisposable
 @inject ILogger<ChatMessage> Logger
 @inject IServiceProvider Services
-@inject IEntityNotifier EntityNotifier
 
 <article class="narrative-message">
     @if (ShowProcess && Message.Trace is not null)
@@ -12,17 +10,12 @@
 
     <div class="narrative-card">
         <div class="narrative-head">
-            <div class="message-author transcript-speaker">
-                @if (IsNarrator)
-                {
-                    <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
-                }
-                else
-                {
-                    <EntityImage EntityType="character" EntityId="@Message.AuthorCharacterId" Name="@DisplayAuthorName" Image="@ImageFor(AuthorCharacter?.ImageId ?? "")" Size="26" />
-                }
-                <span>@DisplayAuthorName</span>
-            </div>
+            <EntityMention EntityType="@AuthorMentionType"
+                           EntityId="@AuthorMentionId"
+                           Name="@DisplayAuthorName"
+                           Size="26"
+                           Class="message-author transcript-speaker"
+                           OnOpenEntities="OnOpenEntities" />
             <span class="message-date">@RelativeDateFormatter.FormatDate(Message.CreatedUtc)</span>
             <span class="mode-badge @ModeClass">@ModeLabel</span>
         </div>
@@ -69,11 +62,11 @@
                     </Trigger>
                     <Content>
                         <div class="popover-label">Change Author</div>
-                        <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(null))"><span class="mini-narrator large"><FaIcon Name="book-open" /></span><span>Narrator</span>@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
+                        <SelectableButton Class="@($"select-row {(IsNarrator ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(null))"><EntityMention EntityType="@EntityTypes.Narrator" EntityId="@EntityIds.Narrator" Name="Narrator" Size="20" />@if (IsNarrator) { <FaIcon Name="check" /> }</SelectableButton>
                         @foreach (var character in Characters)
                         {
                             var current = Message.AuthorCharacterId == character.Id;
-                            <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(character))"><EntityImage EntityType="character" EntityId="@character.Id" Name="@character.Name" Image="@ImageFor(character.ImageId)" Size="20" /><span>@character.Name</span>@if (current) { <FaIcon Name="check" /> }</SelectableButton>
+                            <SelectableButton @key="character.Id" Class="@($"select-row {(current ? "is-disabled is-active" : "")}")" Disabled="@TranscriptBusy" OnClick="@(_ => RecastTurn(character))"><EntityMention EntityType="@EntityTypes.Character" EntityId="@character.Id" Name="@character.Name" Size="20" />@if (current) { <FaIcon Name="check" /> }</SelectableButton>
                         }
                     </Content>
                 </AnchoredPopover>
@@ -331,6 +324,8 @@
     bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
     RpCharacter? AuthorCharacter => IsNarrator ? null : Characters.FirstOrDefault(character => character.Id == Message.AuthorCharacterId);
     string DisplayAuthorName => AuthorCharacter?.Name ?? Message.AuthorName;
+    string AuthorMentionType => IsNarrator ? EntityTypes.Narrator : EntityTypes.Character;
+    string AuthorMentionId => IsNarrator ? EntityIds.Narrator : Message.AuthorCharacterId;
     string ProseClass => IsNarrator ? "is-narrator" : "is-character";
     string ModeClass => Message.Mode switch
     {
@@ -378,24 +373,6 @@
     protected override void OnParametersSet()
     {
         SelectedTurnShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
-    }
-
-    protected override void OnInitialized()
-    {
-        EntityNotifier.Changed += OnEntityChanged;
-    }
-
-    Task OnEntityChanged(EntityChangeNotification notification)
-    {
-        if (IsNarrator
-            || !string.Equals(notification.EntityType, EntityTypes.Character, StringComparison.Ordinal)
-            || !string.Equals(notification.EntityId, Message.AuthorCharacterId, StringComparison.Ordinal)
-            || notification.ChangeKind is not EntityChangeKinds.Profile and not EntityChangeKinds.Deleted)
-        {
-            return Task.CompletedTask;
-        }
-
-        return InvokeAsync(StateHasChanged);
     }
 
     async Task DeleteSingle()
@@ -580,10 +557,4 @@
 
     ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Reasoning);
 
-    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
-
-    public void Dispose()
-    {
-        EntityNotifier.Changed -= OnEntityChanged;
-    }
 }

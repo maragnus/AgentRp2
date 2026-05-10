@@ -1485,7 +1485,7 @@ public sealed class ChatDirectionStore(ActiveChatContext activeChat, ChatRegistr
     }
 }
 
-public sealed class NarratorProfileStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
+public sealed class NarratorProfileStore(ActiveChatContext activeChat, ChatRegistry registry, IEntityNotifier entityNotifier) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.NarratorProfile;
     public NarratorProfileState State
@@ -1506,6 +1506,11 @@ public sealed class NarratorProfileStore(ActiveChatContext activeChat, ChatRegis
             Document.NarratorProfile = NarratorProfileService.NormalizeState(Document.NarratorProfile);
 
         await SaveActiveDocumentAsync();
+        await entityNotifier.PublishAsync(new(
+            EntityTypes.Narrator,
+            EntityIds.Narrator,
+            EntityChangeKinds.Profile,
+            ChatId: Document?.Chat.Id ?? ""));
     }
 
     public async Task ResetAsync()

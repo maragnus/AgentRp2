@@ -173,7 +173,7 @@
     bool CharacterWizardOpen;
     bool NarratorWizardOpen;
     bool ConfirmDeleteOpen;
-    const string NarratorId = "__narrator";
+    const string NarratorId = EntityIds.Narrator;
     sealed record EntityEntry(string Id, string Title, string Subtitle, string ImageId, bool Active, bool IsNarrator = false);
     readonly (string Key, string Label, string Icon)[] EntityTypes =
     [

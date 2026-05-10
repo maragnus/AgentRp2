@@ -5,6 +5,8 @@ public static class EntityTypes
     public const string Character = "character";
     public const string Location = "location";
     public const string Item = "item";
+    public const string Narrator = "narrator";
+    public const string Snapshot = "snapshot";
 
     public static string Normalize(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -14,8 +16,16 @@ public static class EntityTypes
         "location" => Location,
         "items" => Item,
         "item" => Item,
+        "narrator" => Narrator,
+        "snapshots" => Snapshot,
+        "snapshot" => Snapshot,
         _ => ""
     };
+}
+
+public static class EntityIds
+{
+    public const string Narrator = "__narrator";
 }
 
 public static class EntityChangeKinds

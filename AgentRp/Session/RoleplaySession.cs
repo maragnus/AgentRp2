@@ -194,7 +194,7 @@ public sealed class ChatWorkspace
         Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService, loggerFactory?.CreateLogger<TranscriptStore>());
         StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService, loggerFactory?.CreateLogger<StoryAssistantStore>());
         ChatDirection = new(activeChat, registry);
-        NarratorProfile = new(activeChat, registry);
+        NarratorProfile = new(activeChat, registry, entityNotifier);
         PromptLibrary = new(activeChat, registry);
         CharacterTraitLibrary = new(activeChat, registry);
         ModelTuning = new(activeChat, registry);

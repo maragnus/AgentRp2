@@ -36,6 +36,7 @@
     [Parameter] public string? ChatId { get; set; }
     [Parameter] public int Size { get; set; } = 34;
     [Parameter] public bool Editable { get; set; }
+    [Parameter] public bool SubscribeToChanges { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
     [CascadingParameter] public RoleplaySession? Session { get; set; }
@@ -51,7 +52,8 @@
 
     protected override void OnInitialized()
     {
-        EntityNotifier.Changed += OnEntityChanged;
+        if (SubscribeToChanges)
+            EntityNotifier.Changed += OnEntityChanged;
     }
 
     protected override void OnParametersSet()
@@ -145,6 +147,7 @@
 
     public void Dispose()
     {
-        EntityNotifier.Changed -= OnEntityChanged;
+        if (SubscribeToChanges)
+            EntityNotifier.Changed -= OnEntityChanged;
     }
 }
