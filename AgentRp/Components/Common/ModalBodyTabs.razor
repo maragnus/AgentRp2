@@ -1,0 +1,11 @@
+<div class="@CssClass" role="tablist" aria-label="@AriaLabel">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CssClass => $"modal-body-tabs {Class}".Trim();
+}

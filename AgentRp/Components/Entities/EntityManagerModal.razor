@@ -1,16 +1,17 @@
 @implements IDisposable
 
 <ModalShell Title="Story Entities" MaxWidth="960px" BodyClass="is-flush" OnClose="OnClose">
-    <div class="entity-tabs">
+    <ModalBodyTabs AriaLabel="Story entity sections">
         @foreach (var type in EntityTypes)
         {
-            <SelectableButton @key="type.Key" Class="@($"entity-tab {(Type == type.Key ? "is-active" : "")}")" OnClick="@(_ => SelectType(type.Key))">
-                <FaIcon Name="@type.Icon" />
-                @type.Label
-                <code>@CountFor(type.Key)</code>
-            </SelectableButton>
+            <ModalBodyTab @key="type.Key"
+                          Icon="@type.Icon"
+                          Label="@type.Label"
+                          CountText="@CountFor(type.Key).ToString()"
+                          Active="@(Type == type.Key)"
+                          OnClick="@(_ => SelectType(type.Key))" />
         }
-    </div>
+    </ModalBodyTabs>
     <EntityListEditor TItem="EntityEntry"
                       Items="Entries"
                       SelectedId="@SelectedId"
@@ -70,12 +71,18 @@
             {
                 <EntityHeader Name="Narrator" Subtitle="Story voice" ImageSize="40">
                     <Actions>
-                        <VoicePicker VoiceSelections="Session.Chat.NarratorProfile.State.VoiceSelections"
-                                     ActiveVoiceModel="ActiveVoiceModel"
-                                     Compact
-                                     OwnerName="Narrator"
-                                     OnChanged="Changed" />
-                        <AppButton Variant="secondary" OnClick="@(_ => NarratorWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
+                        <EntityHeaderActionStack>
+                            <TopActions>
+                                <VoicePicker VoiceSelections="Session.Chat.NarratorProfile.State.VoiceSelections"
+                                             ActiveVoiceModel="ActiveVoiceModel"
+                                             Compact
+                                             OwnerName="Narrator"
+                                             OnChanged="Changed" />
+                            </TopActions>
+                            <BottomActions>
+                                <AppButton Variant="secondary" OnClick="@(_ => NarratorWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
+                            </BottomActions>
+                        </EntityHeaderActionStack>
                     </Actions>
                 </EntityHeader>
             }
@@ -83,13 +90,19 @@
             {
                 <EntityHeader Name="@SelectedCharacter.Name" Subtitle="Guided profile" Image="@ImageFor(SelectedCharacter.ImageId)" EntityType="character" EntityId="@SelectedCharacter.Id" ImageSize="40" Editable OnImagePickerRequested="SelectSelectedEntityImage">
                     <Actions>
-                        <VoicePicker VoiceSelections="SelectedCharacter.VoiceSelections"
-                                     ActiveVoiceModel="ActiveVoiceModel"
-                                     Compact
-                                     OwnerName="@SelectedCharacter.Name"
-                                     OnChanged="Changed" />
-                        <AppButton Variant="secondary" OnClick="@(_ => CharacterWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
-                        <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                        <EntityHeaderActionStack>
+                            <TopActions>
+                                <VoicePicker VoiceSelections="SelectedCharacter.VoiceSelections"
+                                             ActiveVoiceModel="ActiveVoiceModel"
+                                             Compact
+                                             OwnerName="@SelectedCharacter.Name"
+                                             OnChanged="Changed" />
+                            </TopActions>
+                            <BottomActions>
+                                <AppButton Variant="secondary" OnClick="@(_ => CharacterWizardOpen = true)"><FaIcon Name="sliders" /> Edit</AppButton>
+                                <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
+                            </BottomActions>
+                        </EntityHeaderActionStack>
                     </Actions>
                 </EntityHeader>
             }

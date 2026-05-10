@@ -134,6 +134,125 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
+    public async Task SnapshotDraftModalShowsRelationshipUpdatesBeforeSave()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+
+        var component = context.Render<SnapshotDraftModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Draft, draft)
+            .Add(value => value.IsLoading, false)
+            .Add(value => value.IsSaving, false)
+            .Add(value => value.CloseDisabled, false)
+            .Add(value => value.OnClose, () => Task.CompletedTask)
+            .Add(value => value.OnSave, _ => Task.CompletedTask));
+
+        component.Find("button[title='Relationships']").Click();
+
+        Assert.Contains("Bella / Gemma", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("The snapshot range changes their emotional stance.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Turns 2, 3", component.Markup, StringComparison.Ordinal);
+        Assert.True(component.Find("input[type='checkbox']").HasAttribute("checked"));
+    }
+
+    [Fact]
+    public async Task SavingSnapshotDraftAppliesEditedRelationshipUpdate()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        RpTranscriptSnapshotDraft? saved = null;
+        var component = context.Render<SnapshotDraftModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Draft, draft)
+            .Add(value => value.IsLoading, false)
+            .Add(value => value.IsSaving, false)
+            .Add(value => value.CloseDisabled, false)
+            .Add(value => value.OnClose, () => Task.CompletedTask)
+            .Add(value => value.OnSave, value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            }));
+
+        component.Find("button[title='Relationships']").Click();
+        var fields = component.FindAll(".snapshot-relationship-update textarea");
+        await fields[0].InputAsync("Bella now treats Gemma as trusted but changed.");
+        await fields[1].InputAsync("Gemma now sees Bella as more willing to meet the pressure.");
+        await fields[2].InputAsync("Best friends with freshly charged honesty.");
+        component.FindAll("button").First(button => button.TextContent.Contains("Save Snapshot", StringComparison.Ordinal)).Click();
+
+        Assert.NotNull(saved);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(saved!);
+
+        var relationship = CharacterRelationshipGraph.Find(session.ActiveChat.Current!, "c1", "c2")!;
+        Assert.Equal("Bella now treats Gemma as trusted but changed.", relationship.NoteAtoB);
+        Assert.Equal("Gemma now sees Bella as more willing to meet the pressure.", relationship.NoteBtoA);
+        Assert.Equal("Best friends with freshly charged honesty.", relationship.NoteExternal);
+        Assert.Equal(new[] { "Close Friend" }, relationship.Bonds);
+        Assert.Equal(new[] { "Charged" }, relationship.Dynamics);
+    }
+
+    [Fact]
+    public async Task UncheckedSnapshotRelationshipUpdateDoesNotMutateRelationship()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var original = CharacterRelationshipGraph.Find(session.ActiveChat.Current!, "c1", "c2")!;
+        var originalSourceNote = original.NoteAtoB;
+        var originalTargetNote = original.NoteBtoA;
+        var originalPublicDynamic = original.NoteExternal;
+        var originalBonds = original.Bonds.ToList();
+        var originalDynamics = original.Dynamics.ToList();
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        RpTranscriptSnapshotDraft? saved = null;
+        var component = context.Render<SnapshotDraftModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Draft, draft)
+            .Add(value => value.IsLoading, false)
+            .Add(value => value.IsSaving, false)
+            .Add(value => value.CloseDisabled, false)
+            .Add(value => value.OnClose, () => Task.CompletedTask)
+            .Add(value => value.OnSave, value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            }));
+
+        component.Find("button[title='Relationships']").Click();
+        await component.Find("input[type='checkbox']").ChangeAsync(false);
+        component.FindAll("button").First(button => button.TextContent.Contains("Save Snapshot", StringComparison.Ordinal)).Click();
+
+        Assert.NotNull(saved);
+        Assert.False(saved!.RelationshipUpdates.Single().ApplyChange);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(saved);
+
+        var relationship = CharacterRelationshipGraph.Find(session.ActiveChat.Current!, "c1", "c2")!;
+        Assert.Equal(originalSourceNote, relationship.NoteAtoB);
+        Assert.Equal(originalTargetNote, relationship.NoteBtoA);
+        Assert.Equal(originalPublicDynamic, relationship.NoteExternal);
+        Assert.Equal(originalBonds, relationship.Bonds);
+        Assert.Equal(originalDynamics, relationship.Dynamics);
+    }
+
+    [Fact]
     public async Task UnwrappingSnapshotKeepsMessagesAndTimelineEntries()
     {
         await using var liveStore = NewLiveStore();
@@ -766,7 +885,23 @@ public sealed class TranscriptFeatureTests
                             StructuredOutputJson = "{\"summary\":\"Snapshot structured output.\"}"
                         }
                     ]
-                }));
+                },
+                RelationshipUpdates:
+                [
+                    new()
+                    {
+                        RelationshipId = "relationship-c1-c2",
+                        SourceCharacterId = "c1",
+                        TargetCharacterId = "c2",
+                        RelationshipTypes = ["Close Friend"],
+                        PrivateTensions = ["Charged"],
+                        HowSourceSeesTarget = "Bella sees Gemma as newly complicated but still trusted.",
+                        HowTargetSeesSource = "Gemma sees Bella as closer after the pressure lands.",
+                        PublicDynamic = "Best friends with sharper tension.",
+                        Reason = "The snapshot range changes their emotional stance.",
+                        EvidenceTurnNumbers = [2, 3]
+                    }
+                ]));
         }
 
         static RpSceneFrame CloneScene(RpSceneFrame source) => new()

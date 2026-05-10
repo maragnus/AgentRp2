@@ -63,12 +63,18 @@ public sealed partial class TranscriptStore
         if (context.CoveredTurns.Count == 0)
             return new() { TurnId = turnId };
 
+        var firstTurn = context.CoveredTurns.First();
+        var lastTurn = context.CoveredTurns.Last();
+        var firstDraftTurn = ToDraftTurn(firstTurn);
+        var lastDraftTurn = ToDraftTurn(lastTurn);
         return new()
         {
             TurnId = turnId,
             CoveredTurnCount = context.CoveredTurns.Count,
-            FirstSpeakerName = ToDraftTurn(context.CoveredTurns.First()).SpeakerName,
-            LastSpeakerName = ToDraftTurn(context.CoveredTurns.Last()).SpeakerName,
+            FirstSpeakerName = firstDraftTurn.SpeakerName,
+            FirstTurnNumber = firstTurn.TurnNumber,
+            LastSpeakerName = lastDraftTurn.SpeakerName,
+            LastTurnNumber = lastTurn.TurnNumber,
             LatestSnapshotUtc = context.LatestSnapshot?.CreatedUtc
         };
     }
@@ -186,9 +192,10 @@ public sealed partial class TranscriptStore
             Document.Transcript.Snapshots.Add(snapshot);
             LinkSnapshotTurns(snapshot, context.CoveredTurns);
             AddSnapshotTimelineEntries(snapshot, draft.TimelineEntries);
-            ApplySnapshotRelationshipUpdates(draft.RelationshipUpdates);
+            var appliedRelationshipUpdates = draft.RelationshipUpdates.Where(update => update.ApplyChange).ToList();
+            ApplySnapshotRelationshipUpdates(appliedRelationshipUpdates);
 
-            await SaveSnapshotCommitAsync(draft.RelationshipUpdates.Count > 0);
+            await SaveSnapshotCommitAsync(appliedRelationshipUpdates.Count > 0);
         });
 
     public async Task DeleteSnapshotAsync(
@@ -315,7 +322,7 @@ public sealed partial class TranscriptStore
 
         var now = DateTime.UtcNow;
         var characterNames = Document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
-        foreach (var update in updates)
+        foreach (var update in updates.Where(update => update.ApplyChange))
         {
             var relationship = Document.CharacterRelationships.FirstOrDefault(relationship =>
                 string.Equals(relationship.Id, update.RelationshipId, StringComparison.Ordinal)
@@ -503,6 +510,7 @@ public sealed partial class TranscriptStore
     static RpTranscriptSnapshotRelationshipUpdate CloneSnapshotRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
     {
         RelationshipId = value.RelationshipId,
+        ApplyChange = value.ApplyChange,
         SourceCharacterId = value.SourceCharacterId,
         TargetCharacterId = value.TargetCharacterId,
         RelationshipTypes = [.. value.RelationshipTypes],

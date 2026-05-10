@@ -1,0 +1,15 @@
+<div class="entity-header-action-stack">
+    @if (TopActions is not null)
+    {
+        <div class="entity-header-action-row is-top">@TopActions</div>
+    }
+    @if (BottomActions is not null)
+    {
+        <div class="entity-header-action-row">@BottomActions</div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? TopActions { get; set; }
+    [Parameter] public RenderFragment? BottomActions { get; set; }
+}

@@ -1,0 +1,72 @@
+<div class="character-relationship-detail @Class">
+    <Section Title="Bond Type">
+        <div class="character-wizard-chip-list">
+            @foreach (var bond in BondTypes)
+            {
+                var selected = RelationshipTypes.Contains(bond);
+                <SelectableButton @key="bond" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(RelationshipTypes, bond))">@bond</SelectableButton>
+            }
+        </div>
+    </Section>
+    <Section Title="Shared Dynamic">
+        <div class="character-wizard-chip-list">
+            @foreach (var dynamic in Dynamics)
+            {
+                var selected = PrivateTensions.Contains(dynamic);
+                <SelectableButton @key="dynamic" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(PrivateTensions, dynamic))">@dynamic</SelectableButton>
+            }
+        </div>
+    </Section>
+    <Section Title="@($"How {SourceName} sees {TargetName}")">
+        <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SourceName} perceive and treat {TargetName}?")" value="@HowSourceSeesTarget" @oninput="SetHowSourceSeesTarget"></textarea>
+    </Section>
+    <Section Title="@($"How {TargetName} sees {SourceName}")">
+        <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {TargetName} perceive and treat {SourceName}?")" value="@HowTargetSeesSource" @oninput="SetHowTargetSeesSource"></textarea>
+    </Section>
+    <Section Title="External Perception">
+        <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" value="@PublicDynamic" @oninput="SetPublicDynamic"></textarea>
+    </Section>
+</div>
+
+@code {
+    [Parameter] public string SourceName { get; set; } = "this character";
+    [Parameter] public string TargetName { get; set; } = "the other character";
+    [Parameter] public List<string> RelationshipTypes { get; set; } = [];
+    [Parameter] public List<string> PrivateTensions { get; set; } = [];
+    [Parameter] public IReadOnlyList<string> BondTypes { get; set; } = [];
+    [Parameter] public IReadOnlyList<string> Dynamics { get; set; } = [];
+    [Parameter] public string HowSourceSeesTarget { get; set; } = "";
+    [Parameter] public EventCallback<string> HowSourceSeesTargetChanged { get; set; }
+    [Parameter] public string HowTargetSeesSource { get; set; } = "";
+    [Parameter] public EventCallback<string> HowTargetSeesSourceChanged { get; set; }
+    [Parameter] public string PublicDynamic { get; set; } = "";
+    [Parameter] public EventCallback<string> PublicDynamicChanged { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+
+    async Task ToggleText(List<string> values, string value)
+    {
+        if (!values.Remove(value))
+            values.Add(value);
+
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task SetHowSourceSeesTarget(ChangeEventArgs args)
+    {
+        await HowSourceSeesTargetChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task SetHowTargetSeesSource(ChangeEventArgs args)
+    {
+        await HowTargetSeesSourceChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await OnChanged.InvokeAsync();
+    }
+
+    async Task SetPublicDynamic(ChangeEventArgs args)
+    {
+        await PublicDynamicChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await OnChanged.InvokeAsync();
+    }
+}

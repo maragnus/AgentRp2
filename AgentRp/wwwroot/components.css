@@ -2037,6 +2037,26 @@
     gap: 10px;
 }
 
+.new-story-tts-control-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: var(--c-text2);
+}
+
+.new-story-tts-control-row > span:nth-child(2) {
+    flex: 1;
+}
+
+.new-story-tts-control {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
 .new-story-rail {
     background: var(--c-surface2);
 }
@@ -5120,7 +5140,7 @@ textarea.field {
     gap: 4px;
 }
 
-.entity-tabs {
+.modal-body-tabs {
     display: flex;
     gap: 0;
     border-bottom: 1px solid var(--c-border);
@@ -5129,7 +5149,7 @@ textarea.field {
     flex-shrink: 0;
 }
 
-.entity-tab {
+.modal-body-tab {
     padding: 10px 14px;
     cursor: pointer;
     display: flex;
@@ -5142,19 +5162,19 @@ textarea.field {
     font-weight: 400;
 }
 
-.entity-tab.is-active {
+.modal-body-tab.is-active {
     color: var(--c-text);
     border-bottom-color: var(--c-amber);
     font-weight: 600;
 }
 
-.entity-tab code {
+.modal-body-tab code {
     color: var(--c-text3);
     font-family: var(--font-technical);
     font-size: 11px;
 }
 
-.entity-tab.is-active code {
+.modal-body-tab.is-active code {
     color: var(--c-amberDim);
 }
 
@@ -5679,6 +5699,26 @@ textarea.field {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+.entity-header-action-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 7px;
+    min-width: 0;
+}
+
+.entity-header-action-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+
+.entity-header-action-row.is-top {
+    width: 100%;
 }
 
 .entity-profile-summary p {
@@ -6356,6 +6396,79 @@ textarea.field {
     resize: vertical;
 }
 
+.snapshot-relationship-list {
+    display: grid;
+    gap: 12px;
+}
+
+.snapshot-relationship-update {
+    overflow: hidden;
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    background: var(--c-surface2);
+}
+
+.snapshot-relationship-update.is-applied {
+    border-color: var(--c-blueDim);
+}
+
+.snapshot-relationship-update.is-skipped {
+    opacity: .74;
+}
+
+.snapshot-relationship-update-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--c-border);
+}
+
+.snapshot-relationship-apply {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--c-text2);
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.snapshot-relationship-apply input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--c-blue);
+}
+
+.snapshot-relationship-title {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    gap: 3px;
+}
+
+.snapshot-relationship-title strong {
+    overflow: hidden;
+    color: var(--c-text);
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.snapshot-relationship-title small {
+    overflow: hidden;
+    color: var(--c-text3);
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.snapshot-relationship-fields {
+    border-top: 0;
+}
+
 .story-assistant {
     height: 580px;
     display: flex;
@@ -6407,34 +6520,6 @@ textarea.field {
 .story-assistant-title-edit .field {
     height: 32px;
     font-weight: 650;
-}
-
-.story-assistant-view-tabs {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px;
-    border: 1px solid var(--c-border);
-    border-radius: 8px;
-    background: var(--c-surface2);
-}
-
-.story-assistant-view-tab {
-    min-height: 28px;
-    padding: 0 9px;
-    border: 0;
-    border-radius: 6px;
-    color: var(--c-text2);
-    background: transparent;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.story-assistant-view-tab.is-active {
-    color: var(--c-text);
-    background: var(--c-surface);
-    box-shadow: inset 0 0 0 1px var(--c-border);
 }
 
 .story-assistant-workspace-body {

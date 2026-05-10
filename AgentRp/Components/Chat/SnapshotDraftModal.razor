@@ -1,4 +1,5 @@
 @using AgentRp.Models
+@using AgentRp.Services
 
 <ModalShell Title="Snapshot Draft" Icon="flag" MaxWidth="900px" BodyClass="is-flush" CloseDisabled="@CloseDisabled" OnClose="Close">
     @if (IsLoading || Draft is null)
@@ -12,12 +13,13 @@
                 @if (IsLoading)
                 {
                     <LoadingState Title="Your snapshot is generating"
-                                  Message="AgentRp is summarizing the new transcript range, preserving the latest private intents and scene continuity blocks, and drafting timeline items for you to review before anything is saved."
+                                  Message="AgentRp is summarizing the new transcript range, preserving private intents and scene continuity blocks, drafting timeline items, and checking relationship canon for review before anything is saved."
                                   Class="snapshot-generation-state">
                         <div class="loading-state-stat-grid">
                             <Badge Tone="blue">@CoveredTurnPreview</Badge>
                             <Badge Tone="violet">Continuity preserved</Badge>
                             <Badge Tone="amber">Timeline draft</Badge>
+                            <Badge Tone="blue">Relationships evolved</Badge>
                         </div>
                         <p class="loading-state-note">@SnapshotBenefitText</p>
                     </LoadingState>
@@ -51,6 +53,10 @@
                 <ModalTab Id="continuity" Title="Continuity" Summary="@ContinuitySummary">
                     <LeadingContent><FaIcon Name="eye" /></LeadingContent>
                     <TrailingContent><Badge Tone="violet">@ContinuityCount</Badge></TrailingContent>
+                </ModalTab>
+                <ModalTab Id="relationships" Title="Relationships" Summary="@RelationshipSummary" Dirty="@RelationshipUpdates.Any(update => update.ApplyChange)">
+                    <LeadingContent><FaIcon Name="users" /></LeadingContent>
+                    <TrailingContent><Badge Tone="blue">@RelationshipUpdates.Count</Badge></TrailingContent>
                 </ModalTab>
                 <ModalTab Id="turns" Title="Covered Turns" Summary="@CoveredTurnsSummary">
                     <LeadingContent><FaIcon Name="message-sq" /></LeadingContent>
@@ -88,6 +94,10 @@
                             {
                                 <Badge Tone="violet">@ContinuitySummary</Badge>
                             }
+                            else if (ActiveTab == "relationships")
+                            {
+                                <Badge Tone="blue">@RelationshipSummary</Badge>
+                            }
                             else if (ActiveTab == "process" && Draft.Trace is not null)
                             {
                                 <Badge Tone="blue">@ProcessSummary</Badge>
@@ -114,6 +124,13 @@
                         else if (ActiveTab == "continuity")
                         {
                             <SnapshotContinuityReview Draft="@Draft" Characters="@Session.Chat.Characters.Items" />
+                        }
+                        else if (ActiveTab == "relationships")
+                        {
+                            <SnapshotRelationshipsEditor Updates="RelationshipUpdates"
+                                                         Characters="Session.Chat.Characters.Items"
+                                                         Library="Session.Chat.CharacterTraitLibrary.State"
+                                                         OnChanged="Refresh" />
                         }
                         else if (ActiveTab == "process" && Draft.Trace is not null)
                         {
@@ -156,8 +173,12 @@
     bool CanSave => !IsLoading && !IsSaving && Draft is not null && !string.IsNullOrWhiteSpace(Summary);
     bool SummaryChanged => Draft is not null && !string.Equals(Summary, Draft.Summary, StringComparison.Ordinal);
     int ContinuityCount => Draft is null ? 0 : Draft.PrivateIntentByCharacterId.Keys.Concat(Draft.CharacterAppearances.Keys).Distinct(StringComparer.Ordinal).Count();
+    List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates => Draft?.RelationshipUpdates ?? [];
     string TimelineSummary => $"{TimelineEntries.Count} item{(TimelineEntries.Count == 1 ? "" : "s")}";
     string ContinuitySummary => $"{ContinuityCount} character{(ContinuityCount == 1 ? "" : "s")}";
+    string RelationshipSummary => RelationshipUpdates.Count == 0
+        ? "No changes"
+        : $"{RelationshipUpdates.Count(update => update.ApplyChange)} of {RelationshipUpdates.Count} applied";
     string CoveredTurnsSummary => Draft is null ? "0 turns" : $"{Draft.IncludedTurns.Count} turn{(Draft.IncludedTurns.Count == 1 ? "" : "s")}";
     string ProcessSummary => Draft?.Trace is null ? "No trace" : $"{Draft.Trace.Steps.Count} step{(Draft.Trace.Steps.Count == 1 ? "" : "s")}";
     string CoveredTurnPreview => Preview is null || Preview.CoveredTurnCount == 0
@@ -165,11 +186,12 @@
         : $"{Preview.CoveredTurnCount} turn{(Preview.CoveredTurnCount == 1 ? "" : "s")} compacted";
     string SnapshotBenefitText => Preview is null || Preview.CoveredTurnCount == 0
         ? "A snapshot lets later generations use a compact continuity record instead of rereading the full covered transcript."
-        : $"This will collapse the range from {Preview.FirstSpeakerName} through {Preview.LastSpeakerName} into one reviewable snapshot row.";
+        : $"This will collapse the range from {FormatPreviewEndpoint(Preview.FirstSpeakerName, Preview.FirstTurnNumber)} through {FormatPreviewEndpoint(Preview.LastSpeakerName, Preview.LastTurnNumber)} into one reviewable snapshot row.";
     string ActiveTabTitle => ActiveTab switch
     {
         "timeline" => "Timeline Items",
         "continuity" => "Continuity",
+        "relationships" => "Relationships",
         "turns" => "Covered Turns",
         "process" => "Process",
         _ => "Summary"
@@ -241,9 +263,13 @@
 
     void AddTimelineEntry() => TimelineEntries.Add(new());
 
+    static string FormatPreviewEndpoint(string speakerName, int turnNumber) =>
+        $"{speakerName} ({TranscriptTurnNumbering.Format(turnNumber)})";
+
     static RpTranscriptSnapshotRelationshipUpdate CloneRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
     {
         RelationshipId = value.RelationshipId,
+        ApplyChange = value.ApplyChange,
         SourceCharacterId = value.SourceCharacterId,
         TargetCharacterId = value.TargetCharacterId,
         RelationshipTypes = [.. value.RelationshipTypes],

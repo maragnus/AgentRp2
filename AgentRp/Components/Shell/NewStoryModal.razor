@@ -19,6 +19,15 @@
                         <div class="modal-error">@ErrorMessage</div>
                     }
 
+                    <NewStoryTtsSetup EnableTts="@EnableTts"
+                                      EnableTtsChanged="SetEnableTts"
+                                      AutoSpeak="@AutoSpeak"
+                                      AutoSpeakChanged="SetAutoSpeak"
+                                      NarratorVoiceSelections="@NarratorVoiceSelections"
+                                      ActiveVoiceModel="@ActiveVoiceModel"
+                                      Disabled="@IsCreating"
+                                      OnVoiceChanged="MarkNarratorVoiceChanged" />
+
                     <Section Title="Start With" Class="new-story-section">
                         <div class="decision-option-list">
                             <DecisionOptionCard Icon="file"
@@ -61,14 +70,6 @@
                         </Section>
                     }
 
-                    <NewStoryTtsSetup EnableTts="@EnableTts"
-                                      EnableTtsChanged="SetEnableTts"
-                                      AutoSpeak="@AutoSpeak"
-                                      AutoSpeakChanged="SetAutoSpeak"
-                                      NarratorVoiceSelections="@NarratorVoiceSelections"
-                                      ActiveVoiceModel="@ActiveVoiceModel"
-                                      Disabled="@IsCreating"
-                                      OnVoiceChanged="MarkNarratorVoiceChanged" />
                 </ChildContent>
                 <Footer>
                     <span class="modal-action-spacer"></span>

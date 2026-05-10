@@ -1,0 +1,76 @@
+@if (Updates.Count == 0)
+{
+    <div class="providers-empty-state is-compact">
+        <FaIcon Name="users" />
+        <strong>No relationship updates</strong>
+        <span>This draft did not find relationship canon changes to review.</span>
+    </div>
+}
+else
+{
+    <div class="snapshot-relationship-list">
+        @foreach (var update in Updates)
+        {
+            var sourceName = CharacterName(update.SourceCharacterId);
+            var targetName = CharacterName(update.TargetCharacterId);
+            <article @key="update.RelationshipId" class="snapshot-relationship-update @(update.ApplyChange ? "is-applied" : "is-skipped")">
+                <header class="snapshot-relationship-update-head">
+                    <label class="snapshot-relationship-apply">
+                        <input type="checkbox" checked="@update.ApplyChange" @onchange="args => SetApply(update, args)" />
+                        <span>Apply</span>
+                    </label>
+                    <div class="snapshot-relationship-title">
+                        <strong>@sourceName / @targetName</strong>
+                        @if (!string.IsNullOrWhiteSpace(update.Reason))
+                        {
+                            <small>@update.Reason</small>
+                        }
+                    </div>
+                    @if (update.EvidenceTurnNumbers.Count > 0)
+                    {
+                        <Badge Tone="blue">@EvidenceText(update)</Badge>
+                    }
+                    @if (!update.ApplyChange)
+                    {
+                        <Badge Tone="amber">Skipped</Badge>
+                    }
+                </header>
+                <CharacterRelationshipFieldsEditor SourceName="@sourceName"
+                                                   TargetName="@targetName"
+                                                   RelationshipTypes="update.RelationshipTypes"
+                                                   PrivateTensions="update.PrivateTensions"
+                                                   BondTypes="Library.BondTypes"
+                                                   Dynamics="Library.Dynamics"
+                                                   HowSourceSeesTarget="@update.HowSourceSeesTarget"
+                                                   HowSourceSeesTargetChanged="value => update.HowSourceSeesTarget = value"
+                                                   HowTargetSeesSource="@update.HowTargetSeesSource"
+                                                   HowTargetSeesSourceChanged="value => update.HowTargetSeesSource = value"
+                                                   PublicDynamic="@update.PublicDynamic"
+                                                   PublicDynamicChanged="value => update.PublicDynamic = value"
+                                                   OnChanged="OnChanged"
+                                                   Class="snapshot-relationship-fields" />
+            </article>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<RpTranscriptSnapshotRelationshipUpdate> Updates { get; set; } = [];
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    async Task SetApply(RpTranscriptSnapshotRelationshipUpdate update, ChangeEventArgs args)
+    {
+        update.ApplyChange = args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        await OnChanged.InvokeAsync();
+    }
+
+    string CharacterName(string characterId) =>
+        Characters.FirstOrDefault(character => character.Id == characterId)?.Name ?? characterId;
+
+    static string EvidenceText(RpTranscriptSnapshotRelationshipUpdate update) =>
+        update.EvidenceTurnNumbers.Count == 1
+            ? $"Turn {update.EvidenceTurnNumbers[0]}"
+            : $"Turns {string.Join(", ", update.EvidenceTurnNumbers)}";
+}

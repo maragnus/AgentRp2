@@ -2,61 +2,72 @@
 @inject ILogger<StoryAssistantModal> Logger
 
 <ModalShell Title="Story Assistant" Icon="story-assistant" MaxWidth="1120px" BodyClass="is-flush" OnClose="OnClose">
-    <ModalSplitLayout Height="720px" RailWidth="270px" Class="story-assistant-modal" RailClass="story-assistant-chat-rail">
-        <RailHeader>
-            <div class="story-assistant-chat-rail-head">
-                <strong>Chats</strong>
-                <AppButton Icon="plus" TooltipText="New chat" AriaLabel="New chat" OnClick="@(_ => Session.Chat.StoryAssistant.CreateChatAsync())" />
-            </div>
-        </RailHeader>
-        <RailContent>
-            @foreach (var chat in Chats)
-            {
-                <SidebarListRow @key="chat.Id"
-                                Title="@chat.Title"
-                                Summary="@ChatSummary(chat)"
-                                Count="@PendingCountText(chat)"
-                                Active="@(chat.Id == ActiveChat.Id)"
-                                Class="story-assistant-chat-row"
-                                OnClick="@(_ => Session.Chat.StoryAssistant.SelectChatAsync(chat.Id))">
-                    <LeadingContent>
-                        <span class="sidebar-row-icon"><FaIcon Name="messages-square" /></span>
-                    </LeadingContent>
-                    <TrailingContent>
-                        <span @onclick:stopPropagation="true">
-                            <AppButton Icon="trash" TooltipText="Delete chat" AriaLabel="Delete chat" OnClick="@(_ => Session.Chat.StoryAssistant.DeleteChatAsync(chat.Id))" />
-                        </span>
-                    </TrailingContent>
-                </SidebarListRow>
-            }
-        </RailContent>
-        <MainContent>
-            <ModalStackLayout Class="story-assistant-workspace"
-                              HeaderClass="story-assistant-workspace-head"
-                              BodyClass="story-assistant-workspace-body"
-                              Header="@WorkspaceHeader">
-                <ChildContent>
-                    @if (ActiveView == "chat")
-                    {
+    <ModalBodyTabs AriaLabel="Story Assistant views">
+        <ModalBodyTab Icon="message-square"
+                      Label="Chats"
+                      Active="@(ActiveView == ChatsView)"
+                      OnClick="@(_ => SetView(ChatsView))" />
+        <ModalBodyTab Icon="database"
+                      Label="Entities"
+                      Active="@(ActiveView == EntitiesView)"
+                      OnClick="@(_ => SetView(EntitiesView))" />
+    </ModalBodyTabs>
+
+    @if (ActiveView == ChatsView)
+    {
+        <ModalSplitLayout Height="100%" RailWidth="270px" Class="story-assistant-modal" RailClass="story-assistant-chat-rail">
+            <RailHeader>
+                <div class="story-assistant-chat-rail-head">
+                    <strong>Chats</strong>
+                    <AppButton Icon="plus" TooltipText="New chat" AriaLabel="New chat" OnClick="@(_ => Session.Chat.StoryAssistant.CreateChatAsync())" />
+                </div>
+            </RailHeader>
+            <RailContent>
+                @foreach (var chat in Chats)
+                {
+                    <SidebarListRow @key="chat.Id"
+                                    Title="@chat.Title"
+                                    Summary="@ChatSummary(chat)"
+                                    Count="@PendingCountText(chat)"
+                                    Active="@(chat.Id == ActiveChat.Id)"
+                                    Class="story-assistant-chat-row"
+                                    OnClick="@(_ => Session.Chat.StoryAssistant.SelectChatAsync(chat.Id))">
+                        <LeadingContent>
+                            <span class="sidebar-row-icon"><FaIcon Name="messages-square" /></span>
+                        </LeadingContent>
+                        <TrailingContent>
+                            <span @onclick:stopPropagation="true">
+                                <AppButton Icon="trash" TooltipText="Delete chat" AriaLabel="Delete chat" OnClick="@(_ => Session.Chat.StoryAssistant.DeleteChatAsync(chat.Id))" />
+                            </span>
+                        </TrailingContent>
+                    </SidebarListRow>
+                }
+            </RailContent>
+            <MainContent>
+                <ModalStackLayout Class="story-assistant-workspace"
+                                  HeaderClass="story-assistant-workspace-head"
+                                  BodyClass="story-assistant-workspace-body"
+                                  Header="@ChatWorkspaceHeader">
+                    <ChildContent>
                         <StoryAssistantPanel ContextChips="ContextChips"
                                              OnRemoveContext="RemoveContext"
                                              OnClearContext="ClearContext" />
-                    }
-                    else
-                    {
-                        <StoryAssistantEntityBrowser OnAttach="AttachContext" />
-                    }
-                </ChildContent>
-            </ModalStackLayout>
-        </MainContent>
-    </ModalSplitLayout>
+                    </ChildContent>
+                </ModalStackLayout>
+            </MainContent>
+        </ModalSplitLayout>
+    }
+    else
+    {
+        <StoryAssistantEntityBrowser OnAttach="AttachContext" />
+    }
 </ModalShell>
 
 @code {
     readonly List<StoryAssistantContextChip> ContextChips = [];
-    const string ChatView = "chat";
+    const string ChatsView = "chats";
     const string EntitiesView = "entities";
-    string ActiveView = ChatView;
+    string ActiveView = ChatsView;
     string TitleDraft = "";
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -65,13 +76,9 @@
     IReadOnlyList<StoryAssistantChat> Chats => Session.Chat.StoryAssistant.Chats.OrderByDescending(chat => chat.UpdatedUtc).ToList();
     StoryAssistantChat ActiveChat => Session.Chat.StoryAssistant.ActiveAssistantChat;
 
-    RenderFragment WorkspaceHeader => @<div class="story-assistant-workspace-title">
+    RenderFragment ChatWorkspaceHeader => @<div class="story-assistant-workspace-title">
         <div class="story-assistant-title-edit">
             <input class="field" value="@TitleDraft" @onchange="RenameActiveChat" aria-label="Assistant chat title" />
-        </div>
-        <div class="story-assistant-view-tabs" role="tablist" aria-label="Story Assistant views">
-            <SelectableButton Class="@ViewClass(ChatView)" OnClick="@(_ => SetView(ChatView))"><FaIcon Name="message-square" /> Chat</SelectableButton>
-            <SelectableButton Class="@ViewClass(EntitiesView)" OnClick="@(_ => SetView(EntitiesView))"><FaIcon Name="database" /> Entities</SelectableButton>
         </div>
     </div>;
 
@@ -98,7 +105,7 @@
         if (!ContextChips.Any(item => item.EntityType == chip.EntityType && item.EntityId == chip.EntityId))
             ContextChips.Add(chip);
 
-        ActiveView = "chat";
+        ActiveView = ChatsView;
         return InvokeAsync(StateHasChanged);
     }
 
@@ -115,7 +122,6 @@
     }
 
     void SetView(string view) => ActiveView = view;
-    string ViewClass(string view) => $"story-assistant-view-tab {(ActiveView == view ? "is-active" : "")}".Trim();
 
     static string ChatSummary(StoryAssistantChat chat)
     {

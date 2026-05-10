@@ -43,35 +43,18 @@ else
                 </SelectableButton>
                 @if (known && expanded)
                 {
-                    <div class="character-relationship-detail">
-                        <Section Title="Bond Type">
-                            <div class="character-wizard-chip-list">
-                                @foreach (var bond in BondTypes)
-                                {
-                                    var selected = rel!.Bonds.Contains(bond);
-                                    <SelectableButton @key="bond" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Bonds, bond))">@bond</SelectableButton>
-                                }
-                            </div>
-                        </Section>
-                        <Section Title="Shared Dynamic">
-                            <div class="character-wizard-chip-list">
-                                @foreach (var dynamic in Dynamics)
-                                {
-                                    var selected = rel!.Dynamics.Contains(dynamic);
-                                    <SelectableButton @key="dynamic" Class="@($"character-wizard-mini-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(rel.Dynamics, dynamic))">@dynamic</SelectableButton>
-                                }
-                            </div>
-                        </Section>
-                        <Section Title="@($"How {SelfName} sees {other.Name}")">
-                            <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SelfName} perceive and treat {other.Name}?")" @bind="rel!.HowSourceSeesTarget" @bind:event="oninput"></textarea>
-                        </Section>
-                        <Section Title="@($"How {other.Name} sees {SelfName}")">
-                            <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {other.Name} perceive and treat {SelfName}?")" @bind="rel!.HowTargetSeesSource" @bind:event="oninput"></textarea>
-                        </Section>
-                        <Section Title="External Perception">
-                            <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" @bind="rel!.PublicDynamic" @bind:event="oninput"></textarea>
-                        </Section>
-                    </div>
+                    <CharacterRelationshipFieldsEditor SourceName="@SelfName"
+                                                       TargetName="@other.Name"
+                                                       RelationshipTypes="rel!.Bonds"
+                                                       PrivateTensions="rel!.Dynamics"
+                                                       BondTypes="BondTypes"
+                                                       Dynamics="Dynamics"
+                                                       HowSourceSeesTarget="@rel!.HowSourceSeesTarget"
+                                                       HowSourceSeesTargetChanged="value => rel!.HowSourceSeesTarget = value"
+                                                       HowTargetSeesSource="@rel!.HowTargetSeesSource"
+                                                       HowTargetSeesSourceChanged="value => rel!.HowTargetSeesSource = value"
+                                                       PublicDynamic="@rel!.PublicDynamic"
+                                                       PublicDynamicChanged="value => rel!.PublicDynamic = value" />
                 }
             </article>
         }
@@ -119,9 +102,4 @@ else
             ExpandedRelationships.Add(other.Id);
     }
 
-    static void ToggleText(List<string> values, string value)
-    {
-        if (!values.Remove(value))
-            values.Add(value);
-    }
 }

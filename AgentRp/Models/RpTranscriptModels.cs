@@ -135,6 +135,7 @@ public sealed class RpTranscriptSnapshotDraft
 public sealed class RpTranscriptSnapshotRelationshipUpdate
 {
     public string RelationshipId { get; set; } = "";
+    public bool ApplyChange { get; set; } = true;
     public string SourceCharacterId { get; set; } = "";
     public string TargetCharacterId { get; set; } = "";
     public List<string> RelationshipTypes { get; set; } = [];
@@ -151,7 +152,9 @@ public sealed class RpTranscriptSnapshotDraftPreview
     public string TurnId { get; set; } = "";
     public int CoveredTurnCount { get; set; }
     public string FirstSpeakerName { get; set; } = "";
+    public int FirstTurnNumber { get; set; }
     public string LastSpeakerName { get; set; } = "";
+    public int LastTurnNumber { get; set; }
     public DateTime? LatestSnapshotUtc { get; set; }
 }
 
