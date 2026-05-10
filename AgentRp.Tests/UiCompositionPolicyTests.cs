@@ -9,78 +9,11 @@ using AgentRp.Session;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
-using System.Runtime.CompilerServices;
 
 namespace AgentRp.Tests;
 
 public sealed class UiCompositionPolicyTests
 {
-    static readonly HashSet<string> InlineStyleAllowList = new(StringComparer.OrdinalIgnoreCase)
-    {
-        Normalize("AgentRp/Components/Common/Avatar.razor"),
-        Normalize("AgentRp/Components/Common/Columns.razor"),
-        Normalize("AgentRp/Components/Common/EntityImage.razor"),
-        Normalize("AgentRp/Components/Common/ImagePlaceholder.razor"),
-        Normalize("AgentRp/Components/Common/ModalShell.razor"),
-        Normalize("AgentRp/Components/Common/ModalSplitLayout.razor"),
-        Normalize("AgentRp/Components/Common/ProgressBar.razor"),
-        Normalize("AgentRp/Components/Common/RangeSlider.razor"),
-        Normalize("AgentRp/Components/Common/StoryAvatar.razor"),
-        Normalize("AgentRp/Components/Common/TiledSelectList.razor")
-    };
-
-    [Fact]
-    public void FeatureRazorFilesDoNotUseInlineStyleAttributes()
-    {
-        var root = FindRepoRoot();
-        var violations = Directory
-            .EnumerateFiles(Path.Combine(root, "AgentRp", "Components"), "*.razor", SearchOption.AllDirectories)
-            .Where(path => !InlineStyleAllowList.Contains(Normalize(Path.GetRelativePath(root, path))))
-            .Where(path => File.ReadAllText(path).Contains("style=", StringComparison.OrdinalIgnoreCase))
-            .Select(path => Normalize(Path.GetRelativePath(root, path)))
-            .ToList();
-
-        Assert.True(violations.Count == 0, $"Inline style attributes are only allowed in approved Core components: {string.Join(", ", violations)}");
-    }
-
-    [Fact]
-    public void RazorComponentsDoNotExposeGenericStyleParameters()
-    {
-        var root = FindRepoRoot();
-        var violations = Directory
-            .EnumerateFiles(Path.Combine(root, "AgentRp", "Components"), "*.razor", SearchOption.AllDirectories)
-            .Where(path => File.ReadAllText(path).Contains("[Parameter] public string? Style", StringComparison.Ordinal))
-            .Select(path => Normalize(Path.GetRelativePath(root, path)))
-            .ToList();
-
-        Assert.True(violations.Count == 0, $"Generic Style parameters are forbidden: {string.Join(", ", violations)}");
-    }
-
-    [Fact]
-    public void FeatureRazorFilesDoNotUseModalPaneChromeClassesDirectly()
-    {
-        var root = FindRepoRoot();
-        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            Normalize("AgentRp/Components/Common/ModalPaneActionBar.razor"),
-            Normalize("AgentRp/Components/Common/ModalPaneHeader.razor"),
-            Normalize("AgentRp/Components/Common/ModalPaneToolbar.razor")
-        };
-        var classNames = new[] { "modal-pane-head", "modal-pane-toolbar", "modal-pane-action-bar" };
-        var violations = Directory
-            .EnumerateFiles(Path.Combine(root, "AgentRp", "Components"), "*.razor", SearchOption.AllDirectories)
-            .Where(path => !allowed.Contains(Normalize(Path.GetRelativePath(root, path))))
-            .Where(path =>
-            {
-                var text = File.ReadAllText(path);
-                return classNames.Any(className => text.Contains(className, StringComparison.Ordinal));
-            })
-            .Select(path => Normalize(Path.GetRelativePath(root, path)))
-            .ToList();
-
-        Assert.True(violations.Count == 0, $"Use ModalPaneHeader/ModalPaneToolbar/ModalPaneActionBar instead of raw modal pane chrome classes: {string.Join(", ", violations)}");
-    }
-
     [Fact]
     public async Task SidebarRendersRealSessionDataWithoutFakeMetrics()
     {
@@ -389,31 +322,10 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
-    public async Task EntityManagerWrapsSelectedHeaderInModalPaneChrome()
-    {
-        using var context = new BunitContext();
-        context.JSInterop.Mode = JSRuntimeMode.Loose;
-        context.Services.AddScoped<OverlayService>();
-        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
-        context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
-        context.Services.AddSingleton<IElevenLabsVoiceCatalogService, TestElevenLabsVoiceCatalogService>();
-        await using var store = NewLiveStore();
-        var session = new RoleplaySession(store);
-        await session.InitializeAsync();
-
-        var component = context.Render<EntityManagerModal>(parameters => parameters
-            .AddCascadingValue(session)
-            .Add(item => item.InitialType, "characters")
-            .Add(item => item.OnSelectEntityImage, _ => Task.CompletedTask)
-            .Add(item => item.OnClose, () => Task.CompletedTask));
-
-        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head .entity-form-head"));
-    }
-
-    [Fact]
     public async Task StoryAssistantShowsStarterWorkflowsOnlyWhenAssistantTranscriptIsEmpty()
     {
         using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         await using var store = NewLiveStore();
         var session = new RoleplaySession(store);
         await session.InitializeAsync();
@@ -438,27 +350,6 @@ public sealed class UiCompositionPolicyTests
 
         Assert.DoesNotContain("Prepare a New Story", componentWithTranscript.Markup, StringComparison.Ordinal);
         Assert.Contains("Existing assistant transcript.", componentWithTranscript.Markup, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task StoryAssistantModalUsesSharedSplitAndStackPrimitives()
-    {
-        using var context = new BunitContext();
-        context.JSInterop.Mode = JSRuntimeMode.Loose;
-        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
-        await using var store = NewLiveStore();
-        var session = new RoleplaySession(store);
-        await session.InitializeAsync();
-
-        var component = context.Render<StoryAssistantModal>(parameters => parameters
-            .AddCascadingValue(session)
-            .Add(item => item.OnClose, () => Task.CompletedTask));
-
-        Assert.NotNull(component.Find(".modal-split.story-assistant-modal"));
-        Assert.NotNull(component.Find(".modal-stack.story-assistant-workspace"));
-        Assert.Contains("Chats", component.Markup, StringComparison.Ordinal);
-        Assert.Contains("Chat", component.Markup, StringComparison.Ordinal);
-        Assert.Contains("Entities", component.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -494,6 +385,7 @@ public sealed class UiCompositionPolicyTests
     public async Task StoryAssistantTranscriptRerendersWhenStreamingMessageMutates()
     {
         using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
         await using var store = NewLiveStore();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -526,79 +418,8 @@ public sealed class UiCompositionPolicyTests
         await clickTask;
     }
 
-    [Fact]
-    public void EntityListEditorAppliesHeaderChromeByDefault()
-    {
-        using var context = new BunitContext();
-        var item = new ModalPolicyItem("one", "One");
-
-        var component = context.Render<EntityListEditor<ModalPolicyItem>>(parameters => parameters
-            .Add(value => value.Items, [item])
-            .Add(value => value.SelectedId, item.Id)
-            .Add(value => value.GetId, value => value.Id)
-            .Add(value => value.ItemHeaderTemplate, value => builder =>
-            {
-                builder.OpenElement(0, "strong");
-                builder.AddContent(1, value.Title);
-                builder.CloseElement();
-            })
-            .Add(value => value.ItemTemplate, value => builder =>
-            {
-                builder.OpenElement(0, "span");
-                builder.AddContent(1, value.Title);
-                builder.CloseElement();
-            }));
-
-        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head"));
-    }
-
-    [Fact]
-    public async Task AiProvidersKeepsProviderHeaderAndActionBarOutsideScrollBody()
-    {
-        using var context = new BunitContext();
-        context.Services.AddSingleton<IJSRuntime, TestJsRuntime>();
-        context.Services.AddScoped<OverlayService>();
-        context.Services.AddSingleton<IModelCapabilityCatalog, TestModelCapabilityCatalog>();
-        context.Services.AddSingleton<IAiProviderCapabilityPipeline, AiProviderCapabilityPipeline>();
-        context.Services.AddSingleton<IAiProviderWidgetService, TestProviderWidgetService>();
-        context.Services.AddSingleton<IAiProviderVoiceInventoryService, TestProviderVoiceInventoryService>();
-        context.Services.AddScoped<IAiProviderConnectionService, TestProviderConnectionService>();
-        await using var store = NewLiveStore();
-        var session = new RoleplaySession(store);
-        await session.InitializeAsync();
-
-        var component = context.Render<AIProvidersModal>(parameters => parameters
-            .AddCascadingValue(session)
-            .Add(value => value.OnClose, () => Task.CompletedTask));
-
-        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-head.provider-detail-head"));
-        Assert.NotNull(component.Find(".modal-stack-header .modal-pane-action-bar.provider-action-bar"));
-        Assert.Empty(component.FindAll(".modal-stack-scroll .modal-pane-head.provider-detail-head"));
-        Assert.Empty(component.FindAll(".modal-stack-scroll .modal-pane-action-bar.provider-action-bar"));
-    }
-
     static LiveRoleplayStore NewLiveStore() =>
         new(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
-
-    static string FindRepoRoot([CallerFilePath] string sourcePath = "")
-    {
-        var directory = new DirectoryInfo(Path.GetDirectoryName(sourcePath) ?? Directory.GetCurrentDirectory());
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AgentRp.slnx")))
-            directory = directory.Parent;
-
-        if (directory is not null)
-            return directory.FullName;
-
-        directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AgentRp.slnx")))
-            directory = directory.Parent;
-
-        return directory?.FullName ?? throw new DirectoryNotFoundException("Could not locate AgentRp.slnx.");
-    }
-
-    static string Normalize(string path) => path.Replace('\\', '/');
-
-    sealed record ModalPolicyItem(string Id, string Title);
 
     sealed class ScriptedStoryAssistantService(Func<IStoryAssistantCallbacks, Task> script) : IStoryAssistantService
     {

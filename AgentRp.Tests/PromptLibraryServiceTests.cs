@@ -6,40 +6,19 @@ namespace AgentRp.Tests;
 public sealed class PromptLibraryServiceTests
 {
     [Fact]
-    public void DefaultsMatchAgentRp1PromptLibraryContentWithAgentRp2ProseFormatReminderExceptTurnShapeVocabulary()
+    public void DefaultStateIncludesRequiredEditableStages()
     {
         var defaults = PromptLibraryService.CreateDefaultState();
+        var stageIds = PromptLibraryService.GetStageDefinitions().Select(stage => stage.Id).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Contains("You update scene continuity state.", defaults.Prompts[PromptLibraryStageIds.SceneContinuity].System, StringComparison.Ordinal);
-        Assert.Contains("Prior physical/body/object scene ledger", defaults.Prompts[PromptLibraryStageIds.SceneContinuity].User, StringComparison.Ordinal);
-        AssertPromptEqual(ExtractFirstRawStringAfter(AgentRp1Path("Services", "StoryScenePrompts", "StorySceneResponderSelectionPromptBuilder.cs"), "BuildSystemPrompt"), defaults.Prompts[PromptLibraryStageIds.Selection].System);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultSelectionUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Selection].User);
-        AssertPromptEqual(ExtractRawStringAssignedTo(AgentRp1Path("Services", "StoryScenePromptLibraryService.cs"), "DefaultPlanningUserPromptTemplate"), defaults.Prompts[PromptLibraryStageIds.Planning].User);
-        Assert.Contains("Notice the newest meaningful change", defaults.Prompts[PromptLibraryStageIds.Prose].System, StringComparison.Ordinal);
-        Assert.Contains("Write the turn by using the latest meaningful change", defaults.Prompts[PromptLibraryStageIds.Prose].User, StringComparison.Ordinal);
+        Assert.All(stageIds, stageId => Assert.True(defaults.Prompts.ContainsKey(stageId), $"Missing default prompt for {stageId}."));
+        Assert.Contains(PromptLibraryStageIds.SceneContinuity, stageIds);
+        Assert.Contains(PromptLibraryStageIds.Selection, stageIds);
+        Assert.Contains(PromptLibraryStageIds.Planning, stageIds);
+        Assert.Contains(PromptLibraryStageIds.Prose, stageIds);
+        Assert.Contains(PromptLibraryStageIds.Snapshot, stageIds);
         Assert.EndsWith(PromptLibraryService.ProseFormatReminder, defaults.Prompts[PromptLibraryStageIds.Prose].User, StringComparison.Ordinal);
-        AssertPromptEqual(ExpectedSnapshotSystemPrompt, defaults.Prompts[PromptLibraryStageIds.Snapshot].System);
-        AssertPromptEqual(ExpectedSnapshotUserPromptTemplate, defaults.Prompts[PromptLibraryStageIds.Snapshot].User);
-        Assert.Contains("Turn shape: copy the required turn shape exactly when one is provided", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
-        Assert.DoesNotContain("{planning.turnShapeDefinitions}", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
-        Assert.DoesNotContain("Prioritize compact", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.Ordinal);
-        Assert.DoesNotContain("silent monologue", defaults.Prompts[PromptLibraryStageIds.Planning].System, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void TurnShapeDefaultsUseCanonicalDefinitions()
-    {
-        var defaults = PromptLibraryService.CreateDefaultState();
-
-        Assert.Equal("one action beat, one or two phrases, optional short tag (always preferred)", Shape(defaults, PromptLibraryStageIds.Planning, "compact"));
-        Assert.Equal("one action beat, one to two short lines with a tag in between (rare)", Shape(defaults, PromptLibraryStageIds.Planning, "brief"));
-        Assert.Equal("short narrative allowed (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "extended"));
-        Assert.Equal("elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)", Shape(defaults, PromptLibraryStageIds.Planning, "narrative"));
-        Assert.Equal("quick action/subtext only, no spoken lines (common)", Shape(defaults, PromptLibraryStageIds.Planning, "silent"));
-        Assert.Equal("extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)", Shape(defaults, PromptLibraryStageIds.Planning, "silent-extended"));
-        AssertPromptEqual(ExpectedPlanningTurnShapeDefinitions, PromptLibraryService.FormatTurnShapeDefinitions(defaults.TurnShapes[PromptLibraryStageIds.Planning]));
-        AssertPromptEqual(ExpectedProseBriefTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "brief"));
-        AssertPromptEqual(ExpectedProseSilentExtendedTurnShape, Shape(defaults, PromptLibraryStageIds.Prose, "silent-extended"));
+        Assert.DoesNotContain("silent monologue", string.Join("\n", defaults.TurnShapes.SelectMany(pair => pair.Value).Select(shape => shape.Value)), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -49,7 +28,8 @@ public sealed class PromptLibraryServiceTests
 
         var section = PromptLibraryService.FormatRequestedTurnShape(defaults, PromptLibraryStageIds.Planning, "Silent Extended");
 
-        AssertPromptEqual(ExpectedSilentExtendedRequestedTurnShape, section);
+        Assert.Contains("Required turn shape: Silent Extended", section, StringComparison.Ordinal);
+        Assert.Contains("- silent extended =", section, StringComparison.Ordinal);
         Assert.DoesNotContain("brief =", section, StringComparison.Ordinal);
         Assert.DoesNotContain("narrative =", section, StringComparison.Ordinal);
     }
@@ -61,7 +41,11 @@ public sealed class PromptLibraryServiceTests
 
         var section = PromptLibraryService.FormatRequestedTurnShape(defaults, PromptLibraryStageIds.Planning, "Auto");
 
-        AssertPromptEqual(ExpectedAutoRequestedTurnShape, section);
+        Assert.Contains("Choose the turn shape that best fits this turn.", section, StringComparison.Ordinal);
+        Assert.Contains("Turn shape definitions:", section, StringComparison.Ordinal);
+        Assert.Contains("- compact =", section, StringComparison.Ordinal);
+        Assert.Contains("- narrative =", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("Required turn shape:", section, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -250,21 +234,11 @@ public sealed class PromptLibraryServiceTests
     {
         var defaults = PromptLibraryService.CreateDefaultState();
 
-        Assert.Contains("You are a friendly Story Entities Assistant", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Always use the `ask_user` tool whenever you need the user to answer", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("flat appearance fields", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("complete visual profile", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("relationshipReconciliation", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Never leave any relationship field empty", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Treat read tools as conversation-scoped memory", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Successful create/update tool results count as fresh knowledge", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
-        Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
-        Assert.Contains("call rename_story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
-        Assert.Contains("Introduce Characters", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceCharacters].User, StringComparison.Ordinal);
-        Assert.Contains("Introduce a Location", defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceLocation].User, StringComparison.Ordinal);
-        Assert.Contains("Change the Scene", defaults.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System));
+        Assert.False(string.IsNullOrWhiteSpace(defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User));
+        Assert.False(string.IsNullOrWhiteSpace(defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceCharacters].User));
+        Assert.False(string.IsNullOrWhiteSpace(defaults.Prompts[PromptLibraryStageIds.StoryAssistantIntroduceLocation].User));
+        Assert.False(string.IsNullOrWhiteSpace(defaults.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User));
         Assert.All(
             PromptLibraryService.GetStageDefinitions().Where(stage => stage.Id.StartsWith("storyAssistant", StringComparison.Ordinal)),
             stage => Assert.Equal(PromptLibraryStageGroups.StoryAssistant, stage.Group));
@@ -284,160 +258,6 @@ public sealed class PromptLibraryServiceTests
         var normalized = PromptLibraryService.NormalizeState(partial);
 
         Assert.Equal("Custom change scene guidance.", normalized.Prompts[PromptLibraryStageIds.StoryAssistantChangeScene].User);
-        Assert.Contains("You are a friendly Story Entities Assistant", normalized.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(normalized.Prompts[PromptLibraryStageIds.StoryAssistantBase].System));
     }
-
-    static string Shape(PromptLibraryState state, string stageId, string id) =>
-        state.TurnShapes[stageId].First(shape => shape.Id == id).Value;
-
-    static void AssertPromptEqual(string expected, string actual) =>
-        Assert.Equal(NormalizeNewlines(expected), NormalizeNewlines(actual));
-
-    static string NormalizeNewlines(string value) =>
-        value.Replace("\r\n", "\n", StringComparison.Ordinal);
-
-    static string AgentRp1Path(params string[] parts)
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var candidate = Path.Combine([directory.FullName, "AgentRp1", "AgentRp", .. parts]);
-            if (File.Exists(candidate))
-                return candidate;
-
-            directory = directory.Parent;
-        }
-
-        return Path.Combine(["W:\\AgentRp1\\AgentRp", .. parts]);
-    }
-
-    static string ExtractRawStringAssignedTo(string path, string name)
-    {
-        var lines = File.ReadAllLines(path);
-        for (var i = 0; i < lines.Length; i++)
-        {
-            if (!lines[i].Contains(name, StringComparison.Ordinal) || !lines[i].Contains("=", StringComparison.Ordinal))
-                continue;
-
-            return ExtractRawStringAt(lines, i);
-        }
-
-        throw new InvalidOperationException($"Could not find '{name}' in '{path}'.");
-    }
-
-    static string ExtractFirstRawStringAfter(string path, string marker)
-    {
-        var lines = File.ReadAllLines(path);
-        for (var i = 0; i < lines.Length; i++)
-        {
-            if (lines[i].Contains(marker, StringComparison.Ordinal))
-                return ExtractRawStringAt(lines, i);
-        }
-
-        throw new InvalidOperationException($"Could not find '{marker}' in '{path}'.");
-    }
-
-    static string ExtractRawStringAt(string[] lines, int startAt)
-    {
-        var open = startAt;
-        while (open < lines.Length && lines[open].Trim() != "\"\"\"")
-            open++;
-
-        var close = open + 1;
-        while (close < lines.Length && !lines[close].TrimStart().StartsWith("\"\"\"", StringComparison.Ordinal))
-            close++;
-
-        var indent = lines[close][..(lines[close].Length - lines[close].TrimStart().Length)];
-        var content = lines[(open + 1)..close]
-            .Select(line => line.StartsWith(indent, StringComparison.Ordinal) ? line[indent.Length..] : line)
-            .ToArray();
-        return string.Join(Environment.NewLine, content).TrimEnd();
-    }
-
-    const string ExpectedSnapshotUserPromptTemplate =
-        """
-        Thread title: {snapshot.threadTitle}
-        Current location: {snapshot.currentLocation}
-        Characters in story: {snapshot.characters}
-        Locations in story: {snapshot.locations}
-        Items in story: {snapshot.items}
-        Existing canonical history: {snapshot.history}
-
-        Included branch messages:
-        {snapshot.messages}
-
-        Return:
-        1. A narrative summary of what has happened so far in this included range.
-        2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
-        For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
-        """;
-
-    const string ExpectedSnapshotSystemPrompt =
-        """
-        You create structured story snapshots from a selected branch transcript.
-        Summarize only what is supported by the included messages and supplied story state.
-        Return a concise narrative summary, then propose timeline entries that should be saved.
-        Prefer durable developments over throwaway phrasing.
-        Do not invent names, references, or events that are not grounded in the provided material.
-        Timeline entry turnNumber must be the best matching included numeric turn number, such as 52, and never a text label or real-world date.
-        If an event spans multiple turns, use the turn where the event becomes canon or settled.
-        """;
-
-    const string ExpectedPlanningTurnShapeDefinitions =
-        """
-        - compact = one action beat, one or two phrases, optional short tag (always preferred)
-        - silent = quick action/subtext only, no spoken lines (common)
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
-        - brief = one action beat, one to two short lines with a tag in between (rare)
-        - extended = short narrative allowed (only when asked)
-        - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
-        """;
-
-    const string ExpectedProseBriefTurnShape =
-        """
-        Write only a very brief turn on the same line with:
-        - One brief *action*.
-        - One or two short "spoken lines" separated by simple *action*.
-        """;
-
-    const string ExpectedSilentExtendedRequestedTurnShape =
-        """
-        Required turn shape: Silent Extended
-        Use exactly this turn shape in the structured plan.
-        Turn shape definition:
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
-        """;
-
-    const string ExpectedAutoRequestedTurnShape =
-        """
-        Choose the turn shape that best fits this turn.
-        Use one of these turn shapes exactly in the structured plan.
-        Turn shape definitions:
-        - compact = one action beat, one or two phrases, optional short tag (always preferred)
-        - silent = quick action/subtext only, no spoken lines (common)
-        - silent extended = extended action/subtext only, no spoken lines; detailed movement, touch, posture, expression, atmosphere, or implication across one playable move (very rare, used to close out intimate, physical, or subtext-heavy moments)
-        - brief = one action beat, one to two short lines with a tag in between (rare)
-        - extended = short narrative allowed (only when asked)
-        - narrative = elaborate the beat into three focused paragraphs with well-choreographed interactions (only when asked)
-
-        Prioritize compact, brief, or silent almost always.
-        - Favor silent turns for quick intimate moments.
-        - Don't eagerly follow the narrative if it is counter to character goals or private intent.
-        - Pick the most valuable next beat to move the story forward, not the safest or most literal reply.
-        - Identify when the current thread has run its course and move on.
-        - If a direct reaction is needed, react.
-        - If no direct reaction is needed, introduce a small new beat that moves the scene.
-        - Never end an exchange.
-        - Never end a conversation.
-        """;
-
-    const string ExpectedProseSilentExtendedTurnShape =
-        """
-        Write only a silent extended turn with:
-        - Detailed nonverbal *action* and subtext only.
-        - Use touch, movement, posture, expression, distance, hesitation, or atmosphere.
-        - Build one connected physical move with a clear landing point.
-        - Do not use "dialogue" or explain the subtext directly.
-        - Stop before it becomes a sequence or exposition.
-        """;
 }

@@ -1,4 +1,5 @@
 using AgentRp.Components.Chat;
+using AgentRp.Components.Common;
 using AgentRp.Components.Entities;
 using AgentRp.Models;
 using AgentRp.Services;
@@ -271,10 +272,12 @@ public sealed class TranscriptFeatureTests
             }));
 
         component.Find("button[title='Relationships']").Click();
-        var fields = component.FindAll(".snapshot-relationship-update textarea");
-        await fields[0].InputAsync("Bella now treats Gemma as trusted but changed.");
-        await fields[1].InputAsync("Gemma now sees Bella as more willing to meet the pressure.");
-        await fields[2].InputAsync("Best friends with freshly charged honesty.");
+        var fields = component.FindComponents<AppTextarea>()
+            .Where(field => string.Equals(field.Instance.Class, "character-relationship-note", StringComparison.Ordinal))
+            .ToList();
+        await fields[0].InvokeAsync(() => fields[0].Instance.NotifyTextValueChanged("Bella now treats Gemma as trusted but changed."));
+        await fields[1].InvokeAsync(() => fields[1].Instance.NotifyTextValueChanged("Gemma now sees Bella as more willing to meet the pressure."));
+        await fields[2].InvokeAsync(() => fields[2].Instance.NotifyTextValueChanged("Best friends with freshly charged honesty."));
         component.FindAll("button").First(button => button.TextContent.Contains("Save Snapshot", StringComparison.Ordinal)).Click();
 
         Assert.NotNull(saved);

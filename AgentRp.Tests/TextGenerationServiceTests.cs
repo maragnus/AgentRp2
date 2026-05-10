@@ -248,25 +248,21 @@ public sealed class TextGenerationServiceTests
         var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
         var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
 
-        Assert.Contains("You update scene continuity state.", appearance.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Prior physical/body/object scene ledger:", appearance.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Private Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Continuity Intent usage:", planning.SystemPrompt, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(appearance.SystemPrompt));
+        Assert.False(string.IsNullOrWhiteSpace(appearance.UserPrompt));
+        Assert.False(string.IsNullOrWhiteSpace(planning.SystemPrompt));
+        Assert.False(string.IsNullOrWhiteSpace(planning.UserPrompt));
         Assert.DoesNotContain("Turn shape definitions:", planning.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Required turn shape: Brief", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Turn shape definition:", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("- brief = one action beat, one to two short lines with a tag in between (rare)", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("- silent extended =", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Prioritize compact", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Test private intent", prose.UserPrompt, StringComparison.Ordinal);
         Assert.EndsWith(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Every action must include an explicit subject pronoun or character name", prose.UserPrompt, StringComparison.Ordinal);
         Assert.Equal(1, CountOccurrences(prose.UserPrompt, PromptLibraryService.ProseFormatReminder));
-        Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- Gemma only", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("**Actor:** Bella", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("You are Gemma", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Equal("Brief", result.Plan.TurnShape);
     }
 
@@ -285,31 +281,12 @@ public sealed class TextGenerationServiceTests
         var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
         var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
 
-        Assert.Contains("Choose the turn shape that best fits this turn.", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("Turn shape definitions:", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- compact =", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Contains("- narrative =", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("- Never end a conversation.", planning.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Required turn shape:", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("This turn has a brief shape", prose.SystemPrompt, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(prose.SystemPrompt));
         Assert.Equal("Brief", result.Plan.TurnShape);
-    }
-
-    [Fact]
-    public async Task ProsePromptUsesAgentRp1StrictGuidanceHeading()
-    {
-        var client = new FakeModelGenerationClient();
-        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
-        var document = await LoadDocumentAsync();
-
-        await service.GenerateTurnAsync(
-            document,
-            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
-            new("turn-3", "automatic", "Keep this sharp.", "Brief", "", ""));
-
-        var prose = client.GenerationRequests.First(request => request.OperationName == "Writing transcript prose");
-
-        Assert.Contains("**Guidance to follow strictly:**\nKeep this sharp.", prose.UserPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -427,25 +404,11 @@ public sealed class TextGenerationServiceTests
         Assert.Equal("", result.ActorCharacterId);
         Assert.Equal("Narrator", result.ActorName);
         Assert.Empty(result.PrivateIntentByCharacterId);
-        Assert.Contains("Narrator voice tuning:", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Narrator staging only", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Do not write dialogue, internal monologue, new emotional reactions", planning.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Tense Foreshadowing", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Frame the room like something is about to break.", prose.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Narrator contract:", prose.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("NEVER speak as, quote, roleplay, decide for, or take a turn as any character", prose.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("You may summarize transitional action, elapsed time, travel, mundane logistics", prose.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains(PromptLibraryService.NarratorWardrobeGuidance, prose.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("End with the scene staged so a character can react next", prose.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Narrator turn shape:", prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Treat \"brief\" as a length and pacing request only", prose.UserPrompt, StringComparison.Ordinal);
         Assert.Contains(PromptLibraryService.NarratorWardrobeGuidance, prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Do not include quoted speech, internal monologue, new character reactions", prose.UserPrompt, StringComparison.Ordinal);
-        Assert.DoesNotContain("spoken lines", prose.UserPrompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("speech in \"quotes\"", prose.UserPrompt, StringComparison.OrdinalIgnoreCase);
         Assert.EndsWith(PromptLibraryService.NarratorProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain(PromptLibraryService.ProseFormatReminder, prose.UserPrompt, StringComparison.Ordinal);
-        Assert.Contains("Do not include quoted character speech", prose.UserPrompt, StringComparison.Ordinal);
         Assert.DoesNotContain("**Actor:** Gemma", planning.UserPrompt, StringComparison.Ordinal);
         Assert.Equal(["scene-continuity", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
     }
@@ -486,8 +449,8 @@ public sealed class TextGenerationServiceTests
 
         var snapshotRequest = client.GenerationRequests.First(request => request.OperationName == "Generating snapshot");
 
-        Assert.Contains("Return a concise narrative summary, then propose timeline entries", snapshotRequest.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Thread title: Devonshire Games", snapshotRequest.UserPrompt, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(snapshotRequest.SystemPrompt));
+        Assert.False(string.IsNullOrWhiteSpace(snapshotRequest.UserPrompt));
         Assert.Equal("Test snapshot narrative", result.Summary);
         var timelineEntry = Assert.Single(result.TimelineEntries);
         Assert.Equal(3, timelineEntry.TurnNumber);

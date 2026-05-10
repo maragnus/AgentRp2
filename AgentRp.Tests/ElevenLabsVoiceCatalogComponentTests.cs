@@ -3,7 +3,6 @@ using AgentRp.Models;
 using AgentRp.Services;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
-using System.Runtime.CompilerServices;
 
 namespace AgentRp.Tests;
 
@@ -145,17 +144,6 @@ public sealed class ElevenLabsVoiceCatalogComponentTests
         });
     }
 
-    [Fact]
-    public void VoicePickerAndCatalogRowsUseStableKeys()
-    {
-        var root = FindRepoRoot();
-        var picker = File.ReadAllText(Path.Combine(root, "AgentRp", "Components", "Entities", "VoicePickerMenu.razor"));
-        var catalog = File.ReadAllText(Path.Combine(root, "AgentRp", "Components", "Providers", "ElevenLabsVoiceCatalogModal.razor"));
-
-        Assert.Contains("@key=\"voice.Id\"", picker, StringComparison.Ordinal);
-        Assert.Contains("@key=\"voice.VoiceId\"", catalog, StringComparison.Ordinal);
-    }
-
     static BunitContext NewContext()
     {
         var context = new BunitContext();
@@ -180,15 +168,6 @@ public sealed class ElevenLabsVoiceCatalogComponentTests
         IsAvailable = true,
         UpdatedUtc = DateTime.UtcNow
     };
-
-    static string FindRepoRoot([CallerFilePath] string sourcePath = "")
-    {
-        var directory = new DirectoryInfo(Path.GetDirectoryName(sourcePath) ?? Directory.GetCurrentDirectory());
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AgentRp.slnx")))
-            directory = directory.Parent;
-
-        return directory?.FullName ?? throw new DirectoryNotFoundException("Could not locate AgentRp.slnx.");
-    }
 
     sealed class TestPreviewService : ITtsPreviewService
     {

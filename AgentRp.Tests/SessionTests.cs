@@ -469,6 +469,7 @@ public sealed class SessionTests
 
     static void ConfigureChatAreaContext(BunitContext context)
     {
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<DialogHelper>();
         context.Services.AddScoped<OverlayService>();
         context.Services.AddScoped<IEntityNotifier, EntityNotifier>();

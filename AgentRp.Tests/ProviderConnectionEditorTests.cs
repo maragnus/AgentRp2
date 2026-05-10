@@ -1,4 +1,5 @@
 using AgentRp.Components.Providers;
+using AgentRp.Components.Common;
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
@@ -58,6 +59,7 @@ public sealed class ProviderConnectionEditorTests
     public async Task EditorDisablesSaveWhenUnchangedAndTestWhenInvalid()
     {
         using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
         context.Services.AddScoped<IAiProviderConnectionService, TestProviderConnectionService>();
         await using var liveStore = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
         var session = new RoleplaySession(liveStore);
@@ -89,7 +91,8 @@ public sealed class ProviderConnectionEditorTests
         var save = component.FindAll("button").First(button => button.TextContent.Contains("Save", StringComparison.Ordinal));
         Assert.True(save.HasAttribute("disabled"));
 
-        await component.Find("input[placeholder='https://...']").InputAsync("not-a-url");
+        var endpointInput = component.FindComponents<AppInput>().Single(input => input.Instance.Placeholder == "https://...");
+        await endpointInput.InvokeAsync(() => endpointInput.Instance.NotifyTextValueChanged("not-a-url"));
 
         var test = component.FindAll("button").First(button => button.TextContent.Contains("Test connection", StringComparison.Ordinal));
         Assert.True(test.HasAttribute("disabled"));

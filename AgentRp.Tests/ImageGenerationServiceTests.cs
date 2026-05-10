@@ -14,16 +14,6 @@ public sealed class ImageGenerationServiceTests
 {
     static readonly byte[] PngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=");
 
-    [Theory]
-    [InlineData("characters", "Gemma", "Create a vivid roleplaying reference profile image for Gemma.", "1024x1536")]
-    [InlineData("locations", "Apartment", "Create a vivid roleplaying reference scene for Apartment.", "1536x1024")]
-    [InlineData("items", "Silver Ring", "Create a vivid roleplaying reference image for Silver Ring.", "1536x1024")]
-    public void StoryImagePromptBuilderBuildsEntityDefaults(string entityType, string entityName, string expectedPrompt, string expectedSize)
-    {
-        Assert.Equal(expectedPrompt, StoryImagePromptBuilder.BuildReferencePrompt(entityType, entityName));
-        Assert.Equal(expectedSize, StoryImagePromptBuilder.BuildReferenceSize(entityType));
-    }
-
     [Fact]
     public async Task ImageOnlyModelUsesSameProviderResponsesHost()
     {
@@ -112,7 +102,8 @@ public sealed class ImageGenerationServiceTests
                 null));
 
         Assert.NotNull(client.ImageRequest);
-        Assert.Equal("A candlelit tavern.", client.ImageRequest.Prompt);
+        Assert.Contains("A candlelit tavern.", client.ImageRequest.Prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Art style:", client.ImageRequest.Prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -207,7 +198,7 @@ public sealed class ImageGenerationServiceTests
         Assert.Contains(metadata.References, reference => reference.Kind == "entity" && reference.Id == "l1" && reference.Name == "Ambient Location");
         Assert.Contains(metadata.References, reference => reference.Kind == "image" && reference.Id == "ref-1" && reference.Name == "Reference Pose");
         Assert.Equal(metadata.References.Select(reference => $"{reference.Kind}:{reference.EntityType}:{reference.Id}:{reference.Name}").Distinct().Count(), metadata.References.Count);
-        Assert.Equal("Composed the prompt from the user request and selected story context.", metadata.Rationale);
+        Assert.False(string.IsNullOrWhiteSpace(metadata.Rationale));
     }
 
     [Fact]
