@@ -198,6 +198,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
                 PromptLibrary = options.CopyPromptLibrary && template is not null ? SessionCloner.Clone(template.PromptLibrary) : PromptLibraryState.CreateDefault(),
                 CharacterTraitLibrary = options.CopyCharacters && template is not null ? SessionCloner.Clone(template.CharacterTraitLibrary) : CharacterTraitLibraryState.CreateDefault()
             };
+            ApplyCreationTtsOptions(document, options);
             if (!options.CopyImages)
                 ClearImageReferences(document);
 
@@ -227,6 +228,28 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
         await NotifyAsync(new(originSessionId, null, RoleplayStoreArea.Chats, version));
         return await LoadStoryPreviewsAsync(cancellationToken);
     }
+
+    static void ApplyCreationTtsOptions(RpChatDocument document, StoryCreationOptions options)
+    {
+        if (!options.EnableTts)
+            return;
+
+        document.Transcript.Options.AutoSpeakNewMessages = options.AutoSpeakNewMessages;
+        foreach (var pair in options.NarratorVoiceSelections)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value.VoiceId))
+                continue;
+
+            document.NarratorProfile.VoiceSelections[pair.Key] = CloneVoiceSelection(pair.Value);
+        }
+    }
+
+    static CharacterVoiceSelection CloneVoiceSelection(CharacterVoiceSelection selection) => new()
+    {
+        VoiceId = selection.VoiceId,
+        VoiceName = selection.VoiceName,
+        UpdatedUtc = selection.UpdatedUtc
+    };
 
     static void ClearImageReferences(RpChatDocument document)
     {

@@ -69,6 +69,68 @@ public sealed class TranscriptFeatureTests
         var snapshotTimelineEntry = Assert.Single(sessionB.Chat.Timeline.Items, entry => entry.SnapshotId == snapshot.Id);
         Assert.Equal("Snapshot event", snapshotTimelineEntry.Title);
         Assert.Equal("Turn 3", snapshotTimelineEntry.Date);
+        Assert.Equal("Snapshot system prompt.", snapshot.Trace?.Steps.Single().SystemPrompt);
+        Assert.Equal("Snapshot raw output.", snapshot.Trace?.Steps.Single().RawOutput);
+    }
+
+    [Fact]
+    public async Task SnapshotTranscriptRowShowsProcessTraceWhenEnabled()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+        await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
+        var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
+
+        var component = context.Render<SnapshotTranscriptRow>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Snapshot, snapshot)
+            .Add(value => value.ShowProcess, true)
+            .Add(value => value.TranscriptBusy, false)
+            .Add(value => value.OnOpenEntities, _ => Task.CompletedTask));
+
+        Assert.Contains("process-row", component.Markup, StringComparison.Ordinal);
+        component.Find(".process-summary").Click();
+        component.Find(".process-step-head").Click();
+
+        Assert.Contains("Snapshot system prompt.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot user prompt.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot raw output.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot structured output.", component.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SnapshotDraftModalShowsProcessTraceBeforeSave()
+    {
+        using var context = new BunitContext();
+        ConfigureSnapshotComponentContext(context);
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
+
+        var component = context.Render<SnapshotDraftModal>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(value => value.Draft, draft)
+            .Add(value => value.IsLoading, false)
+            .Add(value => value.IsSaving, false)
+            .Add(value => value.CloseDisabled, false)
+            .Add(value => value.OnClose, () => Task.CompletedTask)
+            .Add(value => value.OnSave, _ => Task.CompletedTask));
+
+        component.Find("button[title='Process']").Click();
+        component.Find(".process-step-head").Click();
+
+        Assert.Contains("Snapshot system prompt.", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("Snapshot raw output.", component.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -160,14 +222,44 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
+        var voiceKey = ModelSelectionKey.Build("provider", "voice-model");
         session.Chat.NarratorProfile.State.VoicePreset = "mythic-fable";
         session.Chat.NarratorProfile.State.DirectionStrength = 2;
+        session.Chat.NarratorProfile.State.VoiceSelections[voiceKey] = Voice("copied-narrator", "Copied narrator");
         await session.Chat.NarratorProfile.MarkChangedAsync();
 
         await session.Chats.AddAsync(new() { CopyNarratorProfile = true });
 
         Assert.Equal("mythic-fable", session.Chat.NarratorProfile.State.VoicePreset);
         Assert.Equal(2, session.Chat.NarratorProfile.State.DirectionStrength);
+        Assert.Equal("copied-narrator", session.Chat.NarratorProfile.State.VoiceSelections[voiceKey].VoiceId);
+        Assert.False(session.Chat.Transcript.Options.AutoSpeakNewMessages);
+    }
+
+    [Fact]
+    public async Task NewStoryTtsSetupCanReplaceCopiedNarratorVoiceAndAutoSpeak()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+
+        var voiceKey = ModelSelectionKey.Build("provider", "voice-model");
+        session.Chat.NarratorProfile.State.VoiceSelections[voiceKey] = Voice("copied-narrator", "Copied narrator");
+        await session.Chat.NarratorProfile.MarkChangedAsync();
+
+        await session.Chats.AddAsync(new()
+        {
+            CopyNarratorProfile = true,
+            EnableTts = true,
+            AutoSpeakNewMessages = true,
+            NarratorVoiceSelections = new(StringComparer.Ordinal)
+            {
+                [voiceKey] = Voice("replacement-narrator", "Replacement narrator")
+            }
+        });
+
+        Assert.Equal("replacement-narrator", session.Chat.NarratorProfile.State.VoiceSelections[voiceKey].VoiceId);
+        Assert.True(session.Chat.Transcript.Options.AutoSpeakNewMessages);
     }
 
     [Fact]
@@ -286,15 +378,17 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
-    public async Task TranscriptOptionsDefaultToAudioTagsVisibleAndBlocksHidden()
+    public async Task TranscriptOptionsDefaultToAudioTagsHiddenAndBlocksHidden()
     {
         var persistence = new SeedRoleplayPersistence();
         var document = await persistence.LoadChatDocumentAsync("ch1");
 
-        Assert.False(document.Transcript.Options.InjectAudioTags);
-        Assert.False(document.Transcript.Options.HideAudioTags);
+        Assert.True(document.Transcript.Options.InjectAudioTags);
+        Assert.True(document.Transcript.Options.HideAudioTags);
         Assert.False(document.Transcript.Options.ShowAppearanceBlocks);
         Assert.False(document.Transcript.Options.ShowProcessTraces);
+        Assert.False(document.Transcript.Options.AutoSpeakNewMessages);
+        Assert.False(document.Transcript.Options.SpeakActionsInNarratorVoice);
         Assert.Equal("Auto", document.Transcript.Options.TurnShape);
         Assert.False(document.Transcript.Options.TurnShapeLocked);
     }
@@ -335,6 +429,14 @@ public sealed class TranscriptFeatureTests
         Assert.True(reloadedSession.Chat.Transcript.Options.ShowProcessTraces);
         Assert.Equal("Extended", reloadedSession.Chat.Transcript.Options.TurnShape);
         Assert.True(reloadedSession.Chat.Transcript.Options.TurnShapeLocked);
+    }
+
+    static void ConfigureSnapshotComponentContext(BunitContext context)
+    {
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddScoped<DialogHelper>();
+        context.Services.AddScoped<IEntityNotifier, EntityNotifier>();
+        context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
     }
 
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
@@ -419,6 +521,13 @@ public sealed class TranscriptFeatureTests
         Data = scene.Data.DeepClone().AsObject()
     };
 
+    static CharacterVoiceSelection Voice(string id, string name) => new()
+    {
+        VoiceId = id,
+        VoiceName = name,
+        UpdatedUtc = DateTime.UtcNow
+    };
+
     static RoleplaySession NewSession(LiveRoleplayStore liveStore, ITextGenerationService generator) =>
         new(liveStore, new FakeCapabilityCatalog(), generator);
 
@@ -456,7 +565,7 @@ public sealed class TranscriptFeatureTests
             var actor = document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId)
                 ?? document.Characters.First();
             var now = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = $"Completed · {actor.Name} · Appearance -> Selection -> Planning -> Prose",
                 Status = "completed",
@@ -530,7 +639,7 @@ public sealed class TranscriptFeatureTests
                     : new Dictionary<string, string>(StringComparer.Ordinal) { [request.ActorCharacterId] = $"{actorName} test replanned private intent" },
                 CloneScene(request.Scene),
                 $"Replanned for {actorName}: {request.Guidance}".Trim(),
-                new RpTurnTrace
+                new RpGenerationTrace
                 {
                     Summary = $"Completed Â· {actorName} Â· Planning -> Prose",
                     Status = "completed",
@@ -584,7 +693,7 @@ public sealed class TranscriptFeatureTests
                 request.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
                 CloneScene(request.Scene),
                 $"Regenerated for {actorName}: {request.Guidance}".Trim(),
-                new RpTurnTrace
+                new RpGenerationTrace
                 {
                     Summary = $"Completed · {actorName} · Prose",
                     Status = "completed",
@@ -631,7 +740,7 @@ public sealed class TranscriptFeatureTests
                         ItemNames = ["Tesla Model S Plaid"]
                     }
                 ],
-                new RpTurnTrace
+                new RpGenerationTrace
                 {
                     Summary = "Completed · Snapshot",
                     Status = "completed",
@@ -651,7 +760,10 @@ public sealed class TranscriptFeatureTests
                             StartedUtc = now,
                             CompletedUtc = now.AddSeconds(1),
                             DurationSeconds = 1,
-                            RawOutput = "{}"
+                            SystemPrompt = "Snapshot system prompt.",
+                            UserPrompt = "Snapshot user prompt.",
+                            RawOutput = "Snapshot raw output.",
+                            StructuredOutputJson = "{\"summary\":\"Snapshot structured output.\"}"
                         }
                     ]
                 }));

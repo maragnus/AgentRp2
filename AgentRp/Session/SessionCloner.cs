@@ -615,7 +615,7 @@ static class SessionCloner
         ClearsStaleState = value.ClearsStaleState
     };
 
-    public static RpTurnTrace Clone(RpTurnTrace value) => new()
+    public static RpGenerationTrace Clone(RpGenerationTrace value) => new()
     {
         Summary = value.Summary,
         Status = value.Status,
@@ -633,7 +633,7 @@ static class SessionCloner
         Data = Clone(value.Data)
     };
 
-    static RpTurnTraceStep Clone(RpTurnTraceStep value) => new()
+    static RpGenerationTraceStep Clone(RpGenerationTraceStep value) => new()
     {
         Id = value.Id,
         Label = value.Label,

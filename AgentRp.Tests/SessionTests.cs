@@ -683,7 +683,7 @@ public sealed class SessionTests
             Interlocked.Increment(ref _generateCalls);
             Requests.Add(request);
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating · Appearance · Appearance -> Selection -> Planning -> Prose",
                 Status = "running",
@@ -735,7 +735,7 @@ public sealed class SessionTests
             Interlocked.Increment(ref _generateCalls);
             PlanAndProseRequests.Add(request);
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating Â· Planning -> Prose",
                 Status = "running",
@@ -786,7 +786,7 @@ public sealed class SessionTests
             Interlocked.Increment(ref _generateCalls);
             ProseRequests.Add(request);
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating · Prose",
                 Status = "running",
@@ -864,7 +864,7 @@ public sealed class SessionTests
         public async Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating · Prose",
                 Status = "running",
@@ -902,7 +902,7 @@ public sealed class SessionTests
         public async Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating Â· Planning -> Prose",
                 Status = "running",
@@ -941,7 +941,7 @@ public sealed class SessionTests
         public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default)
         {
             var startedUtc = DateTime.UtcNow;
-            var trace = new RpTurnTrace
+            var trace = new RpGenerationTrace
             {
                 Summary = "Generating · Prose",
                 Status = "running",

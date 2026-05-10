@@ -1,0 +1,38 @@
+<Section Title="Read Aloud" Class="new-story-section">
+    <SelectableButton Class="toggle-row" Disabled="@Disabled" OnClick="@(_ => ToggleTts())">
+        <FaIcon Name="volume" />
+        <span>Enable Voice</span>
+        <span class="toggle-pill @(EnableTts ? "is-on" : "")"><span></span></span>
+    </SelectableButton>
+
+    @if (EnableTts)
+    {
+        <div class="new-story-tts-fields">
+            <VoicePicker VoiceSelections="NarratorVoiceSelections"
+                         ActiveVoiceModel="ActiveVoiceModel"
+                         Compact
+                         OwnerName="Narrator"
+                         OnChanged="OnVoiceChanged" />
+            <SelectableButton Class="toggle-row" Disabled="@Disabled" OnClick="@(_ => ToggleAutoSpeak())">
+                <FaIcon Name="volume" />
+                <span>Auto Speak</span>
+                <span class="toggle-pill @(AutoSpeak ? "is-on" : "")"><span></span></span>
+            </SelectableButton>
+        </div>
+    }
+</Section>
+
+@code {
+    [Parameter] public bool EnableTts { get; set; }
+    [Parameter] public EventCallback<bool> EnableTtsChanged { get; set; }
+    [Parameter] public bool AutoSpeak { get; set; }
+    [Parameter] public EventCallback<bool> AutoSpeakChanged { get; set; }
+    [Parameter] public Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections { get; set; } = [];
+    [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnVoiceChanged { get; set; }
+
+    Task ToggleTts() => EnableTtsChanged.InvokeAsync(!EnableTts);
+
+    Task ToggleAutoSpeak() => AutoSpeakChanged.InvokeAsync(!AutoSpeak);
+}

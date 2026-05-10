@@ -49,12 +49,12 @@ public sealed record GeneratedTurnResult(
     Dictionary<string, string> PrivateIntentByCharacterId,
     RpSceneFrame Scene,
     string Body,
-    RpTurnTrace Trace);
+    RpGenerationTrace Trace);
 
 public sealed record GeneratedSnapshotResult(
     string Summary,
     List<RpTranscriptSnapshotTimelineEntry> TimelineEntries,
-    RpTurnTrace Trace,
+    RpGenerationTrace Trace,
     Dictionary<string, string>? CharacterSceneStates = null,
     RpSceneFrame? Scene = null,
     List<RpTranscriptSnapshotRelationshipUpdate>? RelationshipUpdates = null);
@@ -77,15 +77,15 @@ public interface ITextGenerationService
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
-public sealed record TranscriptGenerationProgress(Func<RpTurnTrace, Task> OnChanged, Func<TranscriptProseUpdate, Task>? OnProseChanged = null)
+public sealed record TranscriptGenerationProgress(Func<RpGenerationTrace, Task> OnChanged, Func<TranscriptProseUpdate, Task>? OnProseChanged = null)
 {
-    public Task ReportAsync(RpTurnTrace trace) => OnChanged(trace);
+    public Task ReportAsync(RpGenerationTrace trace) => OnChanged(trace);
     public Task ReportProseAsync(TranscriptProseUpdate update) => OnProseChanged?.Invoke(update) ?? Task.CompletedTask;
 }
 
-public sealed class TranscriptGenerationException(string message, RpTurnTrace trace) : Exception(message)
+public sealed class TranscriptGenerationException(string message, RpGenerationTrace trace) : Exception(message)
 {
-    public RpTurnTrace Trace { get; } = trace;
+    public RpGenerationTrace Trace { get; } = trace;
 }
 
 public sealed class TextGenerationService(
@@ -108,7 +108,7 @@ public sealed class TextGenerationService(
     {
         ApplyCapabilities(providers);
         var selection = ResolveTextModel(providers, modelSelections);
-        var trace = new RpTurnTrace
+        var trace = new RpGenerationTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
@@ -186,7 +186,7 @@ public sealed class TextGenerationService(
     {
         ApplyCapabilities(providers);
         var selection = ResolveTextModel(providers, modelSelections);
-        var trace = new RpTurnTrace
+        var trace = new RpGenerationTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
@@ -263,7 +263,7 @@ public sealed class TextGenerationService(
     {
         ApplyCapabilities(providers);
         var selection = ResolveTextModel(providers, modelSelections);
-        var trace = new RpTurnTrace
+        var trace = new RpGenerationTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
@@ -333,7 +333,7 @@ public sealed class TextGenerationService(
     {
         ApplyCapabilities(providers);
         var selection = ResolveSnapshotModel(providers, modelSelections);
-        var trace = new RpTurnTrace
+        var trace = new RpGenerationTrace
         {
             Status = "running",
             StartedUtc = DateTime.UtcNow,
@@ -410,7 +410,7 @@ public sealed class TextGenerationService(
         ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
@@ -443,7 +443,7 @@ public sealed class TextGenerationService(
         ActiveModelSelection selection,
         TurnPromptContext context,
         GenerateTurnRequest request,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
@@ -486,7 +486,7 @@ public sealed class TextGenerationService(
         RpChatDocument document,
         ActiveModelSelection selection,
         TurnPromptContext context,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
@@ -534,7 +534,7 @@ public sealed class TextGenerationService(
         ActiveModelSelection selection,
         TurnPromptContext context,
         (string Id, string Name) actor,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
@@ -568,7 +568,7 @@ public sealed class TextGenerationService(
         TurnPromptContext context,
         (string Id, string Name) actor,
         PlanningResponse plan,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken,
         RpTurnPlan? progressPlanOverride = null,
@@ -767,7 +767,7 @@ public sealed class TextGenerationService(
         ContinuityIntents = NormalizeContinuityIntents(plan.ContinuityIntents)
     };
 
-    static RpTurnTraceStep CreateStepTrace(
+    static RpGenerationTraceStep CreateStepTrace(
         string id,
         string label,
         ActiveModelSelection selection,
@@ -807,7 +807,7 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
 
-    static void SeedTurnSteps(RpTurnTrace trace, ActiveModelSelection selection, bool structured, bool includeSelection = true)
+    static void SeedTurnSteps(RpGenerationTrace trace, ActiveModelSelection selection, bool structured, bool includeSelection = true)
     {
         var steps = structured
             ? includeSelection
@@ -818,10 +818,10 @@ public sealed class TextGenerationService(
         SeedSteps(trace, selection, steps);
     }
 
-    static void SeedPlanningAndProseSteps(RpTurnTrace trace, ActiveModelSelection selection) =>
+    static void SeedPlanningAndProseSteps(RpGenerationTrace trace, ActiveModelSelection selection) =>
         SeedSteps(trace, selection, [("planning", "Planning"), ("prose", "Prose")]);
 
-    static void SeedSteps(RpTurnTrace trace, ActiveModelSelection selection, IReadOnlyList<(string Id, string Label)> steps)
+    static void SeedSteps(RpGenerationTrace trace, ActiveModelSelection selection, IReadOnlyList<(string Id, string Label)> steps)
     {
         foreach (var (id, label) in steps)
             trace.Steps.Add(new()
@@ -838,7 +838,7 @@ public sealed class TextGenerationService(
         trace.Summary = $"Generating · {string.Join(" -> ", trace.Steps.Select(step => step.Label))}";
     }
 
-    static async Task StartStepAsync(RpTurnTrace trace, string stepId, ActiveModelSelection selection, DateTime startedUtc, TranscriptGenerationProgress? progress)
+    static async Task StartStepAsync(RpGenerationTrace trace, string stepId, ActiveModelSelection selection, DateTime startedUtc, TranscriptGenerationProgress? progress)
     {
         var step = FindStep(trace, stepId);
         step.Status = "running";
@@ -852,7 +852,7 @@ public sealed class TextGenerationService(
         await ReportProgressAsync(progress, trace);
     }
 
-    static async Task CompleteStepAsync(RpTurnTrace trace, RpTurnTraceStep completedStep, TranscriptGenerationProgress? progress)
+    static async Task CompleteStepAsync(RpGenerationTrace trace, RpGenerationTraceStep completedStep, TranscriptGenerationProgress? progress)
     {
         var step = FindStep(trace, completedStep.Id);
         CopyStep(completedStep, step);
@@ -860,7 +860,7 @@ public sealed class TextGenerationService(
         await ReportProgressAsync(progress, trace);
     }
 
-    static RpTurnTraceStep FindStep(RpTurnTrace trace, string stepId)
+    static RpGenerationTraceStep FindStep(RpGenerationTrace trace, string stepId)
     {
         var step = trace.Steps.FirstOrDefault(step => step.Id == stepId);
         if (step is not null)
@@ -871,7 +871,7 @@ public sealed class TextGenerationService(
         return step;
     }
 
-    static void CopyStep(RpTurnTraceStep source, RpTurnTraceStep target)
+    static void CopyStep(RpGenerationTraceStep source, RpGenerationTraceStep target)
     {
         target.Id = source.Id;
         target.Label = source.Label;
@@ -894,7 +894,7 @@ public sealed class TextGenerationService(
         target.Data = source.Data.DeepClone().AsObject();
     }
 
-    static void FailRunningStep(RpTurnTrace trace, string error)
+    static void FailRunningStep(RpGenerationTrace trace, string error)
     {
         var step = trace.Steps.FirstOrDefault(step => step.Status == "running")
             ?? trace.Steps.FirstOrDefault(step => step.Status == "pending");
@@ -910,10 +910,10 @@ public sealed class TextGenerationService(
         step.Error = error;
     }
 
-    static Task ReportProgressAsync(TranscriptGenerationProgress? progress, RpTurnTrace trace) =>
+    static Task ReportProgressAsync(TranscriptGenerationProgress? progress, RpGenerationTrace trace) =>
         progress?.ReportAsync(trace) ?? Task.CompletedTask;
 
-    static void FinalizeTrace(RpTurnTrace trace, string status)
+    static void FinalizeTrace(RpGenerationTrace trace, string status)
     {
         trace.Status = status;
         trace.CompletedUtc = DateTime.UtcNow;

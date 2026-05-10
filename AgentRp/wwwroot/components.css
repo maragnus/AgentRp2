@@ -2039,6 +2039,11 @@
     gap: 10px;
 }
 
+.new-story-tts-fields {
+    display: grid;
+    gap: 10px;
+}
+
 .new-story-rail {
     background: var(--c-surface2);
 }

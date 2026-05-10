@@ -35,7 +35,7 @@ public sealed class TextGenerationServiceTests
         var client = new FakeModelGenerationClient();
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
-        var reports = new List<RpTurnTrace>();
+        var reports = new List<RpGenerationTrace>();
 
         await service.GenerateTurnAsync(
             document,
@@ -96,7 +96,7 @@ public sealed class TextGenerationServiceTests
         var client = new FakeModelGenerationClient();
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
-        var reports = new List<RpTurnTrace>();
+        var reports = new List<RpGenerationTrace>();
 
         await service.GenerateTurnAsync(
             document,
@@ -122,7 +122,7 @@ public sealed class TextGenerationServiceTests
         var client = new FakeModelGenerationClient { FailStreamingText = true };
         var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
         var document = await LoadDocumentAsync();
-        var reports = new List<RpTurnTrace>();
+        var reports = new List<RpGenerationTrace>();
 
         var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateTurnAsync(
             document,
@@ -557,14 +557,14 @@ public sealed class TextGenerationServiceTests
     static async Task<RpChatDocument> LoadDocumentAsync() =>
         await new SeedRoleplayPersistence().LoadChatDocumentAsync("ch1");
 
-    static RpTurnTrace CloneTrace(RpTurnTrace trace) => new()
+    static RpGenerationTrace CloneTrace(RpGenerationTrace trace) => new()
     {
         Summary = trace.Summary,
         Status = trace.Status,
         StartedUtc = trace.StartedUtc,
         CompletedUtc = trace.CompletedUtc,
         DurationSeconds = trace.DurationSeconds,
-        Steps = trace.Steps.Select(step => new RpTurnTraceStep
+        Steps = trace.Steps.Select(step => new RpGenerationTraceStep
         {
             Id = step.Id,
             Label = step.Label,

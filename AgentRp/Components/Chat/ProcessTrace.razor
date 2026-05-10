@@ -93,7 +93,7 @@
     bool LastAutoExpand;
     HashSet<string> OpenSteps = [];
 
-    [Parameter] public RpTurnTrace Trace { get; set; } = new();
+    [Parameter] public RpGenerationTrace Trace { get; set; } = new();
     [Parameter] public bool IsLive { get; set; }
     [Parameter] public bool AutoExpand { get; set; }
 
@@ -128,7 +128,7 @@
     string SummaryText => string.IsNullOrWhiteSpace(Trace.Summary) ? "Generating" : Trace.Summary;
     bool UseFlowSummary => Trace.Status == "running" && Trace.Steps.Count > 0;
 
-    void Toggle(RpTurnTraceStep step)
+    void Toggle(RpGenerationTraceStep step)
     {
         if (!CanExpand(step))
             return;
@@ -137,7 +137,7 @@
             OpenSteps.Remove(step.Id);
     }
 
-    static bool CanExpand(RpTurnTraceStep step) =>
+    static bool CanExpand(RpGenerationTraceStep step) =>
         !string.Equals(step.Status, "pending", StringComparison.Ordinal) &&
         (!string.IsNullOrWhiteSpace(step.SystemPrompt) ||
          !string.IsNullOrWhiteSpace(step.UserPrompt) ||
@@ -145,16 +145,16 @@
          !string.IsNullOrWhiteSpace(step.RawOutput) ||
          !string.IsNullOrWhiteSpace(step.Error));
 
-    static string StepClass(RpTurnTraceStep step) =>
+    static string StepClass(RpGenerationTraceStep step) =>
         $"process-step is-{NormalizeStatus(step.Status)}";
 
-    static string StepStatusClass(RpTurnTraceStep step) =>
+    static string StepStatusClass(RpGenerationTraceStep step) =>
         $"process-step-status is-{NormalizeStatus(step.Status)}";
 
-    static string FlowStepClass(RpTurnTraceStep step) =>
+    static string FlowStepClass(RpGenerationTraceStep step) =>
         $"process-flow-step is-{NormalizeStatus(step.Status)}";
 
-    static string ModelText(RpTurnTraceStep step)
+    static string ModelText(RpGenerationTraceStep step)
     {
         if (string.IsNullOrWhiteSpace(step.ModelId))
             return "";
@@ -162,7 +162,7 @@
         return step.ModelId;
     }
 
-    static string ProviderIconClass(RpTurnTraceStep step) => step.ProviderType.Trim().ToLowerInvariant() switch
+    static string ProviderIconClass(RpGenerationTraceStep step) => step.ProviderType.Trim().ToLowerInvariant() switch
     {
         "claude" => "fa-brands fa-claude",
         "grok" => "fa-brands fa-x-twitter",
@@ -172,12 +172,12 @@
         _ => "fa-solid fa-brain-circuit"
     };
 
-    static int TotalTokens(RpTurnTraceStep step) =>
+    static int TotalTokens(RpGenerationTraceStep step) =>
         step.TotalTokens > 0
             ? step.TotalTokens
             : step.InputTokens + step.OutputTokens;
 
-    static string StepStatusIcon(RpTurnTraceStep step) => NormalizeStatus(step.Status) switch
+    static string StepStatusIcon(RpGenerationTraceStep step) => NormalizeStatus(step.Status) switch
     {
         "running" => "spinner",
         "completed" => "check",

@@ -1,11 +1,12 @@
 @inject NavigationManager Navigation
 @inject ILogger<NewStoryModal> Logger
+@inject IAppSettingsService AppSettings
 
 <ModalShell Title="New Story"
             Subtitle="Choose how this story should start"
             Icon="book-open"
             MaxWidth="860px"
-            Height="560px"
+            Height="640px"
             BodyClass="is-flush"
             CloseDisabled="@IsCreating"
             OnClose="OnClose">
@@ -28,7 +29,7 @@
                                                 Disabled="@IsCreating"
                                                 Description="Start with no entities, direction, gallery, history, or messages."
                                                 Guidance="Best when the next story should not inherit the current setup."
-                                                OnClick="@(_ => Mode = NewStoryStartMode.Blank)" />
+                                                OnClick="@(_ => SetMode(NewStoryStartMode.Blank))" />
                             <DecisionOptionCard Icon="sparkles"
                                                 Title="Story Assistant"
                                                 BadgeText="Guided"
@@ -37,7 +38,7 @@
                                                 Disabled="@IsCreating"
                                                 Description="Start blank, then open the assistant to build the setup."
                                                 Guidance="Best when you want help creating characters, places, items, and premise."
-                                                OnClick="@(_ => Mode = NewStoryStartMode.Assistant)" />
+                                                OnClick="@(_ => SetMode(NewStoryStartMode.Assistant))" />
                             <DecisionOptionCard Icon="copy"
                                                 Title="Copy Current Story"
                                                 BadgeText="Selective"
@@ -59,6 +60,15 @@
                                               OnToggle="ToggleCopySection" />
                         </Section>
                     }
+
+                    <NewStoryTtsSetup EnableTts="@EnableTts"
+                                      EnableTtsChanged="SetEnableTts"
+                                      AutoSpeak="@AutoSpeak"
+                                      AutoSpeakChanged="SetAutoSpeak"
+                                      NarratorVoiceSelections="@NarratorVoiceSelections"
+                                      ActiveVoiceModel="@ActiveVoiceModel"
+                                      Disabled="@IsCreating"
+                                      OnVoiceChanged="MarkNarratorVoiceChanged" />
                 </ChildContent>
                 <Footer>
                     <span class="modal-action-spacer"></span>
@@ -111,7 +121,11 @@
 
     NewStoryStartMode Mode;
     bool IsCreating;
+    bool EnableTts;
+    bool AutoSpeak;
+    bool NarratorVoiceSelectionTouched;
     string ErrorMessage = "";
+    Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections = [];
     HashSet<string> SelectedCopyIds = new(StringComparer.Ordinal)
     {
         Characters,
@@ -128,7 +142,14 @@
     [Parameter] public EventCallback OnOpenAssistant { get; set; }
 
     StoryPreview? ActiveStory => Session.Chats.Active;
-    bool CanCreate => !IsCreating && (Mode != NewStoryStartMode.Copy || ActiveStory is not null);
+    ActiveModelSelection? ActiveVoiceModel => Session.ModelSelection.Resolve(AiModelRole.Voice);
+    bool MustChooseNarratorVoice => EnableTts && ActiveVoiceModel is not null && ActiveVoiceModel.Model.Voices.Count > 0;
+    bool HasNarratorVoiceSelection => ActiveVoiceModel is not null
+        && NarratorVoiceSelections.TryGetValue(ActiveVoiceModel.Key, out var selection)
+        && !string.IsNullOrWhiteSpace(selection.VoiceId);
+    bool CanCreate => !IsCreating
+        && (Mode != NewStoryStartMode.Copy || ActiveStory is not null)
+        && (!MustChooseNarratorVoice || HasNarratorVoiceSelection);
     string SummaryIcon => Mode switch
     {
         NewStoryStartMode.Assistant => "sparkles",
@@ -160,18 +181,55 @@
     ];
     IReadOnlyList<SummaryLine> SummaryLines => BuildSummaryLines();
 
+    protected override async Task OnInitializedAsync()
+    {
+        var preferences = await AppSettings.GetAsync(NewStoryPreferencesState.SettingsKey, NewStoryPreferencesState.Default);
+        EnableTts = preferences.EnableTts;
+    }
+
+    void SetMode(NewStoryStartMode mode)
+    {
+        Mode = mode;
+        SyncNarratorVoiceDraft();
+    }
+
     void SelectCopyMode()
     {
         if (ActiveStory is null)
             return;
 
         Mode = NewStoryStartMode.Copy;
+        SyncNarratorVoiceDraft();
     }
 
     void ToggleCopySection(string id)
     {
         if (!SelectedCopyIds.Remove(id))
             SelectedCopyIds.Add(id);
+
+        if (id == Narrator)
+            SyncNarratorVoiceDraft();
+    }
+
+    async Task SetEnableTts(bool value)
+    {
+        EnableTts = value;
+        if (value)
+            SyncNarratorVoiceDraft();
+
+        await AppSettings.SaveAsync(NewStoryPreferencesState.SettingsKey, new NewStoryPreferencesState(value));
+    }
+
+    Task SetAutoSpeak(bool value)
+    {
+        AutoSpeak = value;
+        return Task.CompletedTask;
+    }
+
+    Task MarkNarratorVoiceChanged()
+    {
+        NarratorVoiceSelectionTouched = true;
+        return Task.CompletedTask;
     }
 
     async Task Create()
@@ -205,8 +263,10 @@
         }
     }
 
-    StoryCreationOptions BuildOptions() => Mode == NewStoryStartMode.Copy
-        ? new()
+    StoryCreationOptions BuildOptions()
+    {
+        var options = Mode == NewStoryStartMode.Copy
+            ? new()
         {
             CopyCharacters = SelectedCopyIds.Contains(Characters),
             CopyLocations = SelectedCopyIds.Contains(Locations),
@@ -217,29 +277,69 @@
             CopyNarratorProfile = SelectedCopyIds.Contains(Narrator),
             CopyPromptLibrary = SelectedCopyIds.Contains(PromptLibrary)
         }
-        : StoryCreationOptions.Blank();
+            : StoryCreationOptions.Blank();
+
+        options.EnableTts = EnableTts;
+        if (EnableTts)
+        {
+            options.AutoSpeakNewMessages = AutoSpeak;
+            options.NarratorVoiceSelections = CloneVoiceSelections(NarratorVoiceSelections);
+        }
+
+        return options;
+    }
 
     static string ChatUrl(string chatId) => $"/{Uri.EscapeDataString(chatId)}";
 
     IReadOnlyList<SummaryLine> BuildSummaryLines()
     {
         if (Mode == NewStoryStartMode.Blank)
-            return [new("file", "Starts from scratch", "No setup sections are copied.")];
+            return AddTtsSummary([new("file", "Starts from scratch", "No setup sections are copied.")]);
         if (Mode == NewStoryStartMode.Assistant)
-            return
+            return AddTtsSummary(
             [
                 new("file", "Starts from scratch", "No setup sections are copied."),
                 new("sparkles", "Opens Story Assistant", "Assistant starts after the story is created.")
-            ];
+            ]);
 
         var selected = CopyItems
             .Where(item => SelectedCopyIds.Contains(item.Id))
             .Select(item => new SummaryLine(item.Icon, item.Label, string.IsNullOrWhiteSpace(item.Count) ? item.Note : item.Count))
             .ToList();
+        AddTtsSummary(selected);
+
         return selected.Count == 0
             ? [new("file", "No setup copied", "This will create an empty story.")]
             : selected;
     }
+
+    List<SummaryLine> AddTtsSummary(List<SummaryLine> lines)
+    {
+        if (EnableTts)
+            lines.Add(new("volume", "Read aloud enabled", AutoSpeak ? "Auto Speak is on." : "Manual playback is ready."));
+
+        return lines;
+    }
+
+    void SyncNarratorVoiceDraft()
+    {
+        if (NarratorVoiceSelectionTouched)
+            return;
+
+        NarratorVoiceSelections = Mode == NewStoryStartMode.Copy && SelectedCopyIds.Contains(Narrator)
+            ? CloneVoiceSelections(Session.Chat.NarratorProfile.State.VoiceSelections)
+            : [];
+    }
+
+    static Dictionary<string, CharacterVoiceSelection> CloneVoiceSelections(Dictionary<string, CharacterVoiceSelection> selections) =>
+        selections.ToDictionary(pair => pair.Key, pair => CloneVoiceSelection(pair.Value), StringComparer.Ordinal);
+
+    static CharacterVoiceSelection CloneVoiceSelection(CharacterVoiceSelection selection) => new()
+    {
+        VoiceId = selection.VoiceId,
+        VoiceName = selection.VoiceName,
+        UpdatedUtc = selection.UpdatedUtc
+    };
 
     static string CountText(int count, string singular)
     {

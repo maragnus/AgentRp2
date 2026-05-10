@@ -22,7 +22,7 @@ public sealed partial class TranscriptStore(
     public RpTranscriptTurn? ActiveLeaf => Document is null ? null : TranscriptGraph.FindTurn(Document.Transcript, Document.Transcript.ActiveLeafTurnId);
     public bool IsBusy { get; private set; }
     public string BusyMessage { get; private set; } = "";
-    public RpTurnTrace? ActiveTrace { get; private set; }
+    public RpGenerationTrace? ActiveTrace { get; private set; }
     public RpTranscriptTurn? ActiveDraftTurn { get; private set; }
 
     readonly object _operationLock = new();
@@ -623,7 +623,7 @@ public sealed partial class TranscriptStore(
         return turn;
     }
 
-    async Task UpdateActiveTraceAsync(RpTurnTrace trace)
+    async Task UpdateActiveTraceAsync(RpGenerationTrace trace)
     {
         ActiveTrace = SessionCloner.Clone(trace);
         await NotifyChangedAsync();
@@ -664,11 +664,11 @@ public sealed partial class TranscriptStore(
         await NotifyChangedAsync();
     }
 
-    RpTurnTrace BuildUnhandledFailureTrace(Exception exception)
+    RpGenerationTrace BuildUnhandledFailureTrace(Exception exception)
     {
         var now = DateTime.UtcNow;
         var trace = ActiveTrace is null
-            ? new RpTurnTrace { StartedUtc = now }
+            ? new RpGenerationTrace { StartedUtc = now }
             : SessionCloner.Clone(ActiveTrace);
         if (trace.StartedUtc == default)
             trace.StartedUtc = now;
@@ -699,7 +699,7 @@ public sealed partial class TranscriptStore(
         bool requestedNarrator,
         string mode,
         string turnShape,
-        RpTurnTrace trace,
+        RpGenerationTrace trace,
         RpTurnPlan? plan = null,
         IReadOnlyDictionary<string, string>? appearances = null,
         IReadOnlyDictionary<string, string>? privateIntents = null,

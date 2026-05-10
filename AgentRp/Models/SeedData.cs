@@ -339,7 +339,7 @@ public static class SeedData
         new("Limits", "emerald", ["No Random Cruelty", "No Instant Vulnerability", "No Psychic Knowledge", "No Solving Every Conflict"])
     ];
 
-    static RpTurnTrace GuidedNarratorTrace(DateTime startedUtc) => new()
+    static RpGenerationTrace GuidedNarratorTrace(DateTime startedUtc) => new()
     {
         Summary = "Completed · Narrator · Scene Continuity -> Planning -> Prose",
         Status = "completed",
@@ -413,7 +413,7 @@ public static class SeedData
         ]
     };
 
-    static RpTurnTrace BellaTrace(DateTime startedUtc) => new()
+    static RpGenerationTrace BellaTrace(DateTime startedUtc) => new()
     {
         Summary = "Completed · Bella · Scene Continuity -> Selection -> Planning -> Prose",
         Status = "completed",
@@ -506,7 +506,7 @@ public static class SeedData
         ]
     };
 
-    static RpTurnTrace GemmaTrace(DateTime startedUtc) => new()
+    static RpGenerationTrace GemmaTrace(DateTime startedUtc) => new()
     {
         Summary = "Completed · Gemma · Scene Continuity -> Selection -> Planning -> Prose",
         Status = "completed",
@@ -599,7 +599,7 @@ public static class SeedData
         ]
     };
 
-    static RpTurnTrace SnapshotTrace(DateTime startedUtc) => new()
+    static RpGenerationTrace SnapshotTrace(DateTime startedUtc) => new()
     {
         Summary = "Completed · Snapshot",
         Status = "completed",

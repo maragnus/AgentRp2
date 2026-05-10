@@ -38,7 +38,7 @@ internal static class TranscriptPersistenceMapper
         ConsumedBySnapshotOrdinal = row.ConsumedBySnapshotOrdinal,
         Speech = PersistenceJson.Deserialize(row.SpeechJson, new RpMessageSpeechState()),
         Scene = PersistenceJson.Deserialize(row.SceneJson, new RpSceneFrame { LocationId = row.SceneLocationId, LocationName = row.SceneLocationName }),
-        Trace = PersistenceJson.Deserialize(row.TraceJson, (RpTurnTrace?)null)
+        Trace = PersistenceJson.Deserialize(row.TraceJson, (RpGenerationTrace?)null)
     };
 
     public static RpTranscriptSnapshot ToModel(TranscriptSnapshotRow row) => new()
@@ -57,7 +57,7 @@ internal static class TranscriptPersistenceMapper
         PrivateIntentByCharacterId = PersistenceJson.Deserialize(row.PrivateIntentJson, new Dictionary<string, string>(StringComparer.Ordinal)),
         CharacterAppearances = PersistenceJson.Deserialize(row.CharacterAppearancesJson, new Dictionary<string, string>(StringComparer.Ordinal)),
         Scene = PersistenceJson.Deserialize(row.SceneJson, new RpSceneFrame { LocationId = row.SceneLocationId, LocationName = row.SceneLocationName }),
-        Trace = PersistenceJson.Deserialize(row.TraceJson, (RpTurnTrace?)null),
+        Trace = PersistenceJson.Deserialize(row.TraceJson, (RpGenerationTrace?)null),
         ConsumedBySnapshotId = row.ConsumedBySnapshotId,
         ConsumedBySnapshotOrdinal = row.ConsumedBySnapshotOrdinal,
         IsActive = row.IsActive

@@ -31,6 +31,9 @@ public sealed class StoryCreationOptions
     public bool CopyStoryDirection { get; set; }
     public bool CopyNarratorProfile { get; set; }
     public bool CopyPromptLibrary { get; set; }
+    public bool EnableTts { get; set; }
+    public bool AutoSpeakNewMessages { get; set; }
+    public Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections { get; set; } = [];
 
     public static StoryCreationOptions Blank() => new();
 }

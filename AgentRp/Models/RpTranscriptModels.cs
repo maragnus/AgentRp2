@@ -27,8 +27,8 @@ public sealed class RpWorkingSceneState
 
 public sealed class RpTranscriptOptionsState
 {
-    public bool InjectAudioTags { get; set; }
-    public bool HideAudioTags { get; set; }
+    public bool InjectAudioTags { get; set; } = true;
+    public bool HideAudioTags { get; set; } = true;
     public bool ShowAppearanceBlocks { get; set; }
     public bool ShowSceneContinuityBlocks
     {
@@ -62,7 +62,7 @@ public sealed class RpTranscriptTurn
     public string SnapshotId { get; set; } = "";
     public RpMessageSpeechState Speech { get; set; } = new();
     public RpSceneFrame Scene { get; set; } = new();
-    public RpTurnTrace? Trace { get; set; }
+    public RpGenerationTrace? Trace { get; set; }
     public string ConsumedBySnapshotId
     {
         get => SnapshotId;
@@ -100,7 +100,7 @@ public sealed class RpTranscriptSnapshot
     public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
-    public RpTurnTrace? Trace { get; set; }
+    public RpGenerationTrace? Trace { get; set; }
     public string ConsumedBySnapshotId { get; set; } = "";
     public int? ConsumedBySnapshotOrdinal { get; set; }
     public bool IsActive { get; set; } = true;
@@ -129,7 +129,7 @@ public sealed class RpTranscriptSnapshotDraft
     public List<RpTranscriptSnapshotTimelineEntry> TimelineEntries { get; set; } = [];
     public List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
-    public RpTurnTrace? Trace { get; set; }
+    public RpGenerationTrace? Trace { get; set; }
 }
 
 public sealed class RpTranscriptSnapshotRelationshipUpdate
@@ -231,7 +231,7 @@ public sealed class RpPhysicalContinuityIntent
     public bool ClearsStaleState { get; set; }
 }
 
-public sealed class RpTurnTrace
+public sealed class RpGenerationTrace
 {
     public string Summary { get; set; } = "";
     public string Status { get; set; } = "";
@@ -245,11 +245,11 @@ public sealed class RpTurnTrace
     public int OutputTokens { get; set; }
     public int TotalTokens { get; set; }
     public double DurationSeconds { get; set; }
-    public List<RpTurnTraceStep> Steps { get; set; } = [];
+    public List<RpGenerationTraceStep> Steps { get; set; } = [];
     public JsonObject Data { get; set; } = new();
 }
 
-public sealed class RpTurnTraceStep
+public sealed class RpGenerationTraceStep
 {
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";

@@ -85,6 +85,7 @@
                 {
                     <SnapshotTranscriptRow @key="item.Snapshot.Id"
                                            Snapshot="item.Snapshot"
+                                           ShowProcess="Options.ShowProcessTraces"
                                            TranscriptBusy="TranscriptBusy"
                                            OnOpenEntities="OnOpenEntities" />
                 }
@@ -269,7 +270,7 @@
     string TurnShapeLockTitle => Options.TurnShapeLocked ? "Keep Turn Shape" : "Reset Turn Shape after generation";
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
-    RpTurnTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
+    RpGenerationTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
     RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
     IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();
     IReadOnlyList<StoryPreview> ResumeStories => Session.Chats.Items.Take(3).ToList();

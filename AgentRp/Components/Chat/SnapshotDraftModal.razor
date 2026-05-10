@@ -56,6 +56,12 @@
                     <LeadingContent><FaIcon Name="message-sq" /></LeadingContent>
                     <TrailingContent><Badge Tone="blue">@Draft.IncludedTurns.Count</Badge></TrailingContent>
                 </ModalTab>
+                @if (Draft.Trace is not null)
+                {
+                    <ModalTab Id="process" Title="Process" Summary="@ProcessSummary">
+                        <LeadingContent><FaIcon Name="zap" /></LeadingContent>
+                    </ModalTab>
+                }
             </ChildContent>
             <RailFooter>
                 <div class="prompt-rail-note">
@@ -82,6 +88,10 @@
                             {
                                 <Badge Tone="violet">@ContinuitySummary</Badge>
                             }
+                            else if (ActiveTab == "process" && Draft.Trace is not null)
+                            {
+                                <Badge Tone="blue">@ProcessSummary</Badge>
+                            }
                             else
                             {
                                 <Badge Tone="blue">@CoveredTurnsSummary</Badge>
@@ -104,6 +114,10 @@
                         else if (ActiveTab == "continuity")
                         {
                             <SnapshotContinuityReview Draft="@Draft" Characters="@Session.Chat.Characters.Items" />
+                        }
+                        else if (ActiveTab == "process" && Draft.Trace is not null)
+                        {
+                            <ProcessTrace Trace="Draft.Trace" AutoExpand="true" />
                         }
                         else
                         {
@@ -145,6 +159,7 @@
     string TimelineSummary => $"{TimelineEntries.Count} item{(TimelineEntries.Count == 1 ? "" : "s")}";
     string ContinuitySummary => $"{ContinuityCount} character{(ContinuityCount == 1 ? "" : "s")}";
     string CoveredTurnsSummary => Draft is null ? "0 turns" : $"{Draft.IncludedTurns.Count} turn{(Draft.IncludedTurns.Count == 1 ? "" : "s")}";
+    string ProcessSummary => Draft?.Trace is null ? "No trace" : $"{Draft.Trace.Steps.Count} step{(Draft.Trace.Steps.Count == 1 ? "" : "s")}";
     string CoveredTurnPreview => Preview is null || Preview.CoveredTurnCount == 0
         ? "Transcript range"
         : $"{Preview.CoveredTurnCount} turn{(Preview.CoveredTurnCount == 1 ? "" : "s")} compacted";
@@ -156,6 +171,7 @@
         "timeline" => "Timeline Items",
         "continuity" => "Continuity",
         "turns" => "Covered Turns",
+        "process" => "Process",
         _ => "Summary"
     };
 

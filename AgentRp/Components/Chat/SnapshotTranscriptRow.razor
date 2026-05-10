@@ -5,6 +5,11 @@
 @inject DialogHelper Dialogs
 
 <article class="narrative-message snapshot-message">
+    @if (ShowProcess && Snapshot.Trace is not null)
+    {
+        <ProcessTrace Trace="Snapshot.Trace" />
+    }
+
     <div class="narrative-card snapshot-card">
         <div class="narrative-head">
             <div class="message-author transcript-speaker">
@@ -43,6 +48,7 @@
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTranscriptSnapshot Snapshot { get; set; } = new();
+    [Parameter] public bool ShowProcess { get; set; }
     [Parameter] public bool TranscriptBusy { get; set; }
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
 
