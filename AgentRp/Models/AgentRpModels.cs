@@ -6,6 +6,7 @@ public sealed class RpCharacter
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
     public string ImageId { get; set; } = "";
     public bool InScene { get; set; }
     public string Summary { get; set; } = "";
@@ -61,6 +62,7 @@ public sealed class RpCharacterRelationship
     public string Id { get; set; } = "";
     public string CharacterAId { get; set; } = "";
     public string CharacterBId { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
     public List<string> Bonds { get; set; } = [];
     public List<string> Dynamics { get; set; } = [];
     public string NoteAtoB { get; set; } = "";
@@ -72,6 +74,7 @@ public sealed class RpLocation
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
     public string ImageId { get; set; } = "";
     public bool IsActive { get; set; }
     public string Summary { get; set; } = "";
@@ -84,6 +87,7 @@ public sealed class RpItem
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
     public string ImageId { get; set; } = "";
     public bool InScene { get; set; }
     public string Summary { get; set; } = "";
@@ -97,6 +101,7 @@ public sealed class RpTimelineEntry
     public string Id { get; set; } = "";
     public string SnapshotId { get; set; } = "";
     public string Title { get; set; } = "";
+    public DateTime UpdatedUtc { get; set; }
     public string Date { get; set; } = "";
     public string Description { get; set; } = "";
     public List<string> Characters { get; set; } = [];

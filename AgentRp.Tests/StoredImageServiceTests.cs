@@ -14,7 +14,7 @@ public sealed class StoredImageServiceTests
     public async Task StoreAsyncWithSuccessfulOptimizationStoresAvifBlobMetadata()
     {
         var dbFactory = new TestDbContextFactory();
-        var blobStorage = new TestImageBlobStorage();
+        var blobStorage = new TestAssetBlobStorage();
         var optimizer = new TestImageOptimizer(new(AvifBytes, "image/avif", ".avif", true, true, "tinify", ""));
         var service = BuildService(dbFactory, blobStorage, optimizer);
 
@@ -39,7 +39,7 @@ public sealed class StoredImageServiceTests
     public async Task StoreAsyncWithOptimizationFailureStoresOriginalBlobMetadata()
     {
         var dbFactory = new TestDbContextFactory();
-        var blobStorage = new TestImageBlobStorage();
+        var blobStorage = new TestAssetBlobStorage();
         var optimizer = new TestImageOptimizer(new(PngBytes, "image/png", ".png", true, false, "tinify", "Tinify failed."));
         var service = BuildService(dbFactory, blobStorage, optimizer);
 
@@ -60,7 +60,7 @@ public sealed class StoredImageServiceTests
     [Fact]
     public async Task StoreAsyncDeletesUploadedBlobWhenDatabaseSaveFails()
     {
-        var blobStorage = new TestImageBlobStorage();
+        var blobStorage = new TestAssetBlobStorage();
         var service = BuildService(new ThrowingDbContextFactory(), blobStorage, new TestImageOptimizer());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.StoreAsync(BuildRequest()));
@@ -71,7 +71,7 @@ public sealed class StoredImageServiceTests
 
     static StoredImageService BuildService(
         IDbContextFactory<RpDbContext> dbFactory,
-        TestImageBlobStorage blobStorage,
+        TestAssetBlobStorage blobStorage,
         IImageOptimizer optimizer) =>
         new(dbFactory, optimizer, blobStorage, NullLogger<StoredImageService>.Instance);
 

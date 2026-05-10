@@ -1,0 +1,69 @@
+@implements IDisposable
+
+<SidebarListRow Title="@Title"
+                Summary="@Summary"
+                Count="@PendingCountText"
+                Class="sidebar-assistant-entry"
+                OnClick="@OnClick">
+    <LeadingContent>
+        <span class="sidebar-row-icon"><FaIcon Name="story-assistant" /></span>
+    </LeadingContent>
+</SidebarListRow>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    StoryAssistantStore Store => Session.Chat.StoryAssistant;
+    StoryAssistantChat Chat => Store.OpenAssistantChatPreview;
+    string Title => string.IsNullOrWhiteSpace(Chat.Title) ? "New chat" : Chat.Title;
+    string Summary => SummaryFor(Chat, Store.OpenAssistantChatPreviewIsEmpty);
+    string PendingCountText
+    {
+        get
+        {
+            var count = Chat.WorkItems.Count(item => item.Status == StoryAssistantWorkItemStatus.Pending);
+            return count == 0 ? "" : count.ToString();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.StoryAssistant.Changed += OnStoryAssistantChanged;
+    }
+
+    Task OnStoryAssistantChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Session.Chat.StoryAssistant.Changed -= OnStoryAssistantChanged;
+    }
+
+    static string SummaryFor(StoryAssistantChat chat, bool isEmpty)
+    {
+        if (isEmpty)
+            return "Start a new chat";
+
+        var lastMessage = chat.Items
+            .Where(item => item.Kind is StoryAssistantItemKind.UserMessage or StoryAssistantItemKind.AssistantMessage)
+            .OrderByDescending(item => item.CreatedUtc)
+            .FirstOrDefault();
+        if (lastMessage is null)
+            return chat.WorkItems.Any(item => item.Status == StoryAssistantWorkItemStatus.Pending)
+                ? "Action waiting"
+                : RelativeDateFormatter.FormatDate(chat.UpdatedUtc);
+
+        var text = MessageText(lastMessage);
+        var date = RelativeDateFormatter.FormatDate(lastMessage.CreatedUtc);
+        return string.IsNullOrWhiteSpace(text) ? date : $"{text} / {date}";
+    }
+
+    static string MessageText(StoryAssistantTranscriptItem item)
+    {
+        var text = item.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(text))
+            return text.Length <= 72 ? text : $"{text[..69]}...";
+
+        return item.Status == StoryAssistantItemStatus.Streaming ? "Thinking..." : "";
+    }
+}

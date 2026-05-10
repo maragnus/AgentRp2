@@ -13,7 +13,7 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
 
     public async Task<RpCharacter> AddAsync()
     {
-        var character = new RpCharacter { Id = NextId(), Name = "New Character" };
+        var character = new RpCharacter { Id = NextId(), Name = "New Character", UpdatedUtc = DateTime.UtcNow };
         Items.Insert(0, character);
         await SaveActiveDocumentAsync();
         return character;
@@ -65,15 +65,24 @@ public sealed class CharacterStore(ActiveChatContext activeChat, ChatRegistry re
 
     public async Task SetImageAsync(string id, string imageId)
     {
-        Items.First(character => character.Id == id).ImageId = imageId;
+        var character = Items.First(character => character.Id == id);
+        character.ImageId = imageId;
+        StoryEntityTimestamps.Touch(character, DateTime.UtcNow);
         await SaveActiveDocumentAsync();
         await entityNotifier.PublishAsync(new(EntityTypes.Character, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public async Task MarkChangedAsync()
+    public async Task MarkChangedAsync(string id = "")
     {
+        var changed = string.IsNullOrWhiteSpace(id)
+            ? Items
+            : Items.Where(character => character.Id == id).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var character in changed)
+            StoryEntityTimestamps.Touch(character, now);
+
         await SaveActiveDocumentAsync();
-        foreach (var character in Items)
+        foreach (var character in changed)
             await entityNotifier.PublishAsync(new(EntityTypes.Character, character.Id, EntityChangeKinds.Profile, character.ImageId, Document?.Chat.Id ?? ""));
     }
 
@@ -123,7 +132,7 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
 
     public async Task<RpLocation> AddAsync()
     {
-        var location = new RpLocation { Id = NextId(), Name = "New Location", Summary = "New location summary." };
+        var location = new RpLocation { Id = NextId(), Name = "New Location", Summary = "New location summary.", UpdatedUtc = DateTime.UtcNow };
         Items.Add(location);
         await SaveActiveDocumentAsync();
         return location;
@@ -168,15 +177,24 @@ public sealed class LocationStore(ActiveChatContext activeChat, ChatRegistry reg
 
     public async Task SetImageAsync(string id, string imageId)
     {
-        Items.First(location => location.Id == id).ImageId = imageId;
+        var location = Items.First(location => location.Id == id);
+        location.ImageId = imageId;
+        StoryEntityTimestamps.Touch(location, DateTime.UtcNow);
         await SaveActiveDocumentAsync();
         await entityNotifier.PublishAsync(new(EntityTypes.Location, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public async Task MarkChangedAsync()
+    public async Task MarkChangedAsync(string id = "")
     {
+        var changed = string.IsNullOrWhiteSpace(id)
+            ? Items
+            : Items.Where(location => location.Id == id).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var location in changed)
+            StoryEntityTimestamps.Touch(location, now);
+
         await SaveActiveDocumentAsync();
-        foreach (var location in Items)
+        foreach (var location in changed)
             await entityNotifier.PublishAsync(new(EntityTypes.Location, location.Id, EntityChangeKinds.Profile, location.ImageId, Document?.Chat.Id ?? ""));
     }
 
@@ -231,7 +249,7 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
 
     public async Task<RpItem> AddAsync()
     {
-        var item = new RpItem { Id = NextId(), Name = "New Item", Summary = "New item summary." };
+        var item = new RpItem { Id = NextId(), Name = "New Item", Summary = "New item summary.", UpdatedUtc = DateTime.UtcNow };
         Items.Add(item);
         await SaveActiveDocumentAsync();
         return item;
@@ -275,15 +293,24 @@ public sealed class ItemStore(ActiveChatContext activeChat, ChatRegistry registr
 
     public async Task SetImageAsync(string id, string imageId)
     {
-        Items.First(item => item.Id == id).ImageId = imageId;
+        var item = Items.First(item => item.Id == id);
+        item.ImageId = imageId;
+        StoryEntityTimestamps.Touch(item, DateTime.UtcNow);
         await SaveActiveDocumentAsync();
         await entityNotifier.PublishAsync(new(EntityTypes.Item, id, EntityChangeKinds.Image, imageId, Document?.Chat.Id ?? ""));
     }
 
-    public async Task MarkChangedAsync()
+    public async Task MarkChangedAsync(string id = "")
     {
+        var changed = string.IsNullOrWhiteSpace(id)
+            ? Items
+            : Items.Where(item => item.Id == id).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var item in changed)
+            StoryEntityTimestamps.Touch(item, now);
+
         await SaveActiveDocumentAsync();
-        foreach (var item in Items)
+        foreach (var item in changed)
             await entityNotifier.PublishAsync(new(EntityTypes.Item, item.Id, EntityChangeKinds.Profile, item.ImageId, Document?.Chat.Id ?? ""));
     }
 
@@ -326,7 +353,7 @@ public sealed class TimelineStore(ActiveChatContext activeChat, ChatRegistry reg
 
     public async Task<RpTimelineEntry> AddAsync()
     {
-        var entry = new RpTimelineEntry { Id = NextId(), Title = "New Event", Date = "today" };
+        var entry = new RpTimelineEntry { Id = NextId(), Title = "New Event", Date = "today", UpdatedUtc = DateTime.UtcNow };
         Items.Add(entry);
         await SaveActiveDocumentAsync();
         return entry;
@@ -338,7 +365,17 @@ public sealed class TimelineStore(ActiveChatContext activeChat, ChatRegistry reg
         await SaveActiveDocumentAsync();
     }
 
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
+    public Task MarkChangedAsync(string id = "")
+    {
+        var changed = string.IsNullOrWhiteSpace(id)
+            ? Items
+            : Items.Where(entry => entry.Id == id).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var entry in changed)
+            StoryEntityTimestamps.Touch(entry, now);
+
+        return SaveActiveDocumentAsync();
+    }
 
     string NextId()
     {
@@ -413,7 +450,7 @@ public sealed class ImageStore(ActiveChatContext activeChat, ChatRegistry regist
     }
 }
 
-public sealed class StoryAssistantStore(
+public sealed partial class StoryAssistantStore(
     ActiveChatContext activeChat,
     ChatRegistry registry,
     ProviderStore providers,
@@ -444,6 +481,8 @@ public sealed class StoryAssistantStore(
     public IReadOnlyList<StoryAssistantTranscriptItem> Items => State.Items;
     public IReadOnlyList<StoryAssistantChat> Chats => State.Chats;
     public StoryAssistantChat ActiveAssistantChat => State.ActiveChat;
+    public StoryAssistantChat OpenAssistantChatPreview => SelectOpenAssistantChat(State);
+    public bool OpenAssistantChatPreviewIsEmpty => IsEmptyAssistantChat(OpenAssistantChatPreview);
     public bool IsBusy { get; private set; }
     public string BusyMessage { get; private set; } = "";
 
@@ -528,6 +567,28 @@ public sealed class StoryAssistantStore(
         await NotifyStoryAssistantChangedAsync("chat selected");
     }
 
+    public async Task OpenLatestOrNewChatAsync()
+    {
+        if (Document is null)
+            return;
+
+        var state = Document.StoryAssistant;
+        var hadChats = state.Chats.Count > 0;
+        var previousActiveChatId = state.ActiveChatId;
+        var targetChat = SelectOpenAssistantChat(state);
+
+        state.ActiveChatId = targetChat.Id;
+        var changed = !hadChats || !string.Equals(previousActiveChatId, state.ActiveChatId, StringComparison.Ordinal);
+        if (!IsBusy)
+            changed = RecoverIdleStreamingMessages(state) || changed;
+
+        if (!changed)
+            return;
+
+        await SaveAssistantStateAsync(CancellationToken.None);
+        await NotifyStoryAssistantChangedAsync("chat prepared for opening");
+    }
+
     public async Task RenameChatAsync(string chatId, string title)
     {
         var chat = State.Chats.FirstOrDefault(chat => chat.Id == chatId);
@@ -585,6 +646,7 @@ public sealed class StoryAssistantStore(
         chat.Items.Clear();
         chat.WorkItems.Clear();
         chat.UpdatedUtc = DateTime.UtcNow;
+        ClearFreshnessReceipts(chat);
         StoryAssistantService.ClearResponseChain(chat);
         await SaveAssistantStateAsync(CancellationToken.None);
         await NotifyStoryAssistantChangedAsync("active chat cleared");
@@ -668,10 +730,11 @@ public sealed class StoryAssistantStore(
         await SaveAssistantStateAsync(document, cancellationToken);
         await NotifyStoryAssistantChangedAsync("assistant send started");
 
+        var modelInputWithFreshness = BuildModelInputWithFreshnessNote(document, assistantChat, modelInput);
         await RunAssistantAsync(
             document,
             assistantChat,
-            StoryAssistantTurnRequest.Start(modelInput, displayMessage),
+            StoryAssistantTurnRequest.Start(modelInputWithFreshness, displayMessage),
             retry,
             displayMessage,
             assistantChat.Items.Count - 1,
@@ -797,6 +860,20 @@ public sealed class StoryAssistantStore(
         chat.Title = CleanTitle(displayMessage);
     }
 
+    static bool IsEmptyAssistantChat(StoryAssistantChat chat) =>
+        chat.Items.Count == 0
+        && chat.WorkItems.Count == 0
+        && chat.ResponseIds.Count == 0
+        && string.IsNullOrWhiteSpace(chat.LastResponseId);
+
+    static StoryAssistantChat SelectOpenAssistantChat(StoryAssistantState state)
+    {
+        var activeChat = state.EnsureActiveChat();
+        return IsEmptyAssistantChat(activeChat)
+            ? activeChat
+            : state.Chats.OrderByDescending(chat => chat.UpdatedUtc).First();
+    }
+
     static StoryAssistantChat CreateNewChat()
     {
         var now = DateTime.UtcNow;
@@ -841,6 +918,7 @@ public sealed class StoryAssistantStore(
     {
         CloseTrailingAssistantMessage(chat);
         item.UpdatedUtc = DateTime.UtcNow;
+        MarkFreshnessFromRecordedToolCall(chat, item);
         chat.Items.Add(item);
         chat.UpdatedUtc = item.UpdatedUtc;
         await SaveAssistantStateAsync(document, cancellationToken);
@@ -850,6 +928,7 @@ public sealed class StoryAssistantStore(
     async Task UpdateToolCallAsync(RpChatDocument document, StoryAssistantChat chat, StoryAssistantTranscriptItem item, CancellationToken cancellationToken)
     {
         item.UpdatedUtc = DateTime.UtcNow;
+        MarkFreshnessFromUpdatedToolCall(chat, item);
         chat.UpdatedUtc = item.UpdatedUtc;
         await SaveAssistantStateAsync(document, cancellationToken);
         await NotifyStoryAssistantChangedAsync("tool call updated");
@@ -879,6 +958,7 @@ public sealed class StoryAssistantStore(
         if (transcriptItem is not null)
             SyncTranscriptItem(transcriptItem, workItem);
 
+        MarkFreshnessFromWorkItem(chat, workItem);
         chat.UpdatedUtc = workItem.UpdatedUtc;
         await SaveAssistantStateAsync(document, cancellationToken);
         await NotifyStoryAssistantChangedAsync("work item updated");
@@ -1381,7 +1461,10 @@ public sealed class ChatDirectionStore(ActiveChatContext activeChat, ChatRegistr
     public async Task MarkChangedAsync()
     {
         if (Document is not null)
+        {
             Document.ChatDirection = ChatDirectionService.NormalizeState(Document.ChatDirection);
+            StoryEntityTimestamps.Touch(Document.ChatDirection, DateTime.UtcNow);
+        }
 
         await SaveActiveDocumentAsync();
     }
@@ -1456,6 +1539,7 @@ public sealed class CharacterTraitLibraryStore(ActiveChatContext activeChat, Cha
         {
             Document.CharacterTraitLibrary = CharacterTraitLibraryService.NormalizeState(Document.CharacterTraitLibrary);
             CharacterTraitLibraryService.ValidateState(Document.CharacterTraitLibrary);
+            StoryEntityTimestamps.Touch(Document.CharacterTraitLibrary, DateTime.UtcNow);
         }
 
         await SaveActiveDocumentAsync();

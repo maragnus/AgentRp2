@@ -11,6 +11,7 @@ internal static class StoryEntityPersistenceMapper
         var model = PersistenceJson.Deserialize(row.ProfileJson, new RpCharacter());
         model.Id = row.Id;
         model.Name = row.Name;
+        model.UpdatedUtc = row.UpdatedUtc;
         model.ImageId = row.ImageId;
         model.InScene = row.InScene;
         return model;
@@ -24,7 +25,7 @@ internal static class StoryEntityPersistenceMapper
         row.InScene = character.InScene;
         row.SortOrder = sortOrder;
         row.ProfileJson = PersistenceJson.Serialize(character);
-        row.UpdatedUtc = now;
+        row.UpdatedUtc = EffectiveUpdatedUtc(character.UpdatedUtc, now);
     }
 
     public static RpCharacterRelationship ToModel(ChatCharacterRelationshipRow row)
@@ -33,6 +34,7 @@ internal static class StoryEntityPersistenceMapper
         model.Id = row.Id;
         model.CharacterAId = row.CharacterAId;
         model.CharacterBId = row.CharacterBId;
+        model.UpdatedUtc = row.UpdatedUtc;
         return model;
     }
 
@@ -43,7 +45,7 @@ internal static class StoryEntityPersistenceMapper
         row.CharacterBId = relationship.CharacterBId;
         row.SortOrder = sortOrder;
         row.DetailsJson = PersistenceJson.Serialize(relationship);
-        row.UpdatedUtc = now;
+        row.UpdatedUtc = EffectiveUpdatedUtc(relationship.UpdatedUtc, now);
     }
 
     public static RpLocation ToModel(ChatLocationRow row)
@@ -51,6 +53,7 @@ internal static class StoryEntityPersistenceMapper
         var model = PersistenceJson.Deserialize(row.DetailsJson, new RpLocation());
         model.Id = row.Id;
         model.Name = row.Name;
+        model.UpdatedUtc = row.UpdatedUtc;
         model.ImageId = row.ImageId;
         model.IsActive = row.IsActive;
         return model;
@@ -64,7 +67,7 @@ internal static class StoryEntityPersistenceMapper
         row.IsActive = location.IsActive;
         row.SortOrder = sortOrder;
         row.DetailsJson = PersistenceJson.Serialize(location);
-        row.UpdatedUtc = now;
+        row.UpdatedUtc = EffectiveUpdatedUtc(location.UpdatedUtc, now);
     }
 
     public static RpItem ToModel(ChatItemRow row)
@@ -72,6 +75,7 @@ internal static class StoryEntityPersistenceMapper
         var model = PersistenceJson.Deserialize(row.DetailsJson, new RpItem());
         model.Id = row.Id;
         model.Name = row.Name;
+        model.UpdatedUtc = row.UpdatedUtc;
         model.ImageId = row.ImageId;
         model.InScene = row.InScene;
         return model;
@@ -85,7 +89,7 @@ internal static class StoryEntityPersistenceMapper
         row.InScene = item.InScene;
         row.SortOrder = sortOrder;
         row.DetailsJson = PersistenceJson.Serialize(item);
-        row.UpdatedUtc = now;
+        row.UpdatedUtc = EffectiveUpdatedUtc(item.UpdatedUtc, now);
     }
 
     public static RpTimelineEntry ToModel(ChatTimelineEntryRow row)
@@ -95,6 +99,7 @@ internal static class StoryEntityPersistenceMapper
         model.SnapshotId = row.SnapshotId;
         model.Title = row.Title;
         model.Date = row.DateText;
+        model.UpdatedUtc = row.UpdatedUtc;
         return model;
     }
 
@@ -106,8 +111,11 @@ internal static class StoryEntityPersistenceMapper
         row.DateText = entry.Date;
         row.SortOrder = sortOrder;
         row.DetailsJson = PersistenceJson.Serialize(entry);
-        row.UpdatedUtc = now;
+        row.UpdatedUtc = EffectiveUpdatedUtc(entry.UpdatedUtc, now);
     }
+
+    static DateTime EffectiveUpdatedUtc(DateTime value, DateTime fallback) =>
+        value == default ? fallback : value;
 
     public static GalleryImage ToModel(ImageAssetRow row) => new()
     {

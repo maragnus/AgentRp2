@@ -108,6 +108,7 @@ public sealed class ChatDirectionService
         return new()
         {
             SchemaVersion = 1,
+            UpdatedUtc = state.UpdatedUtc,
             Genres = NormalizeSelection(state.Genres, Library.Genres, MaxGenres),
             Tones = NormalizeSelection(state.Tones, Library.Tones, MaxTones),
             Themes = NormalizeSelection(state.Themes, Library.Themes, MaxThemes),

@@ -44,7 +44,7 @@ public sealed class CharacterProfileRulesTests
         Assert.Contains("Extra visible appearance details", extraAppearanceDetails.GetProperty("description").GetString(), StringComparison.Ordinal);
         Assert.Contains("complete visual profile", hairColor.GetProperty("description").GetString(), StringComparison.Ordinal);
         Assert.Equal(CharacterProfileRules.MaxHairStyles, hairStyles.GetProperty("maxItems").GetInt32());
-        Assert.Contains("get_character_profile_options", schemaText, StringComparison.Ordinal);
+        Assert.Contains("unknown or stale", schemaText, StringComparison.Ordinal);
     }
 
     [Fact]

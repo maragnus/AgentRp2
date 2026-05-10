@@ -36,6 +36,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.Id).HasMaxLength(80);
             builder.Property(x => x.ChatId).HasMaxLength(80);
             builder.Property(x => x.TurnId).HasMaxLength(80);
+            builder.Property(x => x.BlobName).HasMaxLength(500);
             builder.Property(x => x.Status).HasMaxLength(40).HasDefaultValue(SpeechAssetStatus.Pending);
             builder.Property(x => x.ContentType).HasMaxLength(100);
             builder.Property(x => x.FileName).HasMaxLength(500);
@@ -47,7 +48,6 @@ public sealed partial class RpDbContext
             builder.Property(x => x.InputsJson).HasColumnType("nvarchar(max)").HasDefaultValue("[]");
             builder.Property(x => x.VoiceIdsJson).HasColumnType("nvarchar(max)").HasDefaultValue("{}");
             builder.Property(x => x.ErrorMessage).HasMaxLength(1000).HasDefaultValue("");
-            builder.Property(x => x.Bytes).HasColumnType("varbinary(max)");
             builder.HasIndex(x => new { x.ChatId, x.TurnId });
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
         });

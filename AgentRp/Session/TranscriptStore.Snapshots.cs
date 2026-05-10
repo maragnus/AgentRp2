@@ -128,6 +128,7 @@ public sealed partial class TranscriptStore
                 PrivateIntentByCharacterId = BuildSnapshotPrivateIntents(context.LatestSnapshot, context.CoveredTurns),
                 CharacterAppearances = result.CharacterSceneStates ?? BuildSnapshotAppearances(context.LatestSnapshot, context.CoveredTurns),
                 TimelineEntries = result.TimelineEntries.Select(CloneSnapshotTimelineEntry).ToList(),
+                RelationshipUpdates = result.RelationshipUpdates?.Select(CloneSnapshotRelationshipUpdate).ToList() ?? [],
                 Scene = SessionCloner.Clone(result.Scene ?? context.TargetTurn.Scene),
                 Trace = SessionCloner.Clone(result.Trace)
             };
@@ -185,8 +186,9 @@ public sealed partial class TranscriptStore
             Document.Transcript.Snapshots.Add(snapshot);
             LinkSnapshotTurns(snapshot, context.CoveredTurns);
             AddSnapshotTimelineEntries(snapshot, draft.TimelineEntries);
+            ApplySnapshotRelationshipUpdates(draft.RelationshipUpdates);
 
-            await SaveTranscriptAndTimelineAsync();
+            await SaveSnapshotCommitAsync(draft.RelationshipUpdates.Count > 0);
         });
 
     public async Task DeleteSnapshotAsync(
@@ -303,6 +305,34 @@ public sealed partial class TranscriptStore
                 Significance = "Generated from snapshot."
             };
             Document.Timeline.Add(timelineEntry);
+        }
+    }
+
+    void ApplySnapshotRelationshipUpdates(IEnumerable<RpTranscriptSnapshotRelationshipUpdate> updates)
+    {
+        if (Document is null)
+            return;
+
+        var now = DateTime.UtcNow;
+        var characterNames = Document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
+        foreach (var update in updates)
+        {
+            var relationship = Document.CharacterRelationships.FirstOrDefault(relationship =>
+                string.Equals(relationship.Id, update.RelationshipId, StringComparison.Ordinal)
+                && string.Equals(relationship.CharacterAId, update.SourceCharacterId, StringComparison.Ordinal)
+                && string.Equals(relationship.CharacterBId, update.TargetCharacterId, StringComparison.Ordinal));
+            if (relationship is null)
+                continue;
+
+            var sourceName = characterNames.GetValueOrDefault(update.SourceCharacterId, "");
+            var targetName = characterNames.GetValueOrDefault(update.TargetCharacterId, "");
+            var view = CharacterRelationshipGraph.View(relationship, update.SourceCharacterId, sourceName, update.TargetCharacterId, targetName);
+            view.RelationshipTypes = [.. update.RelationshipTypes];
+            view.PrivateTensions = [.. update.PrivateTensions];
+            view.HowSourceSeesTarget = update.HowSourceSeesTarget.Trim();
+            view.HowTargetSeesSource = update.HowTargetSeesSource.Trim();
+            view.PublicDynamic = update.PublicDynamic.Trim();
+            StoryEntityTimestamps.Touch(relationship, now);
         }
     }
 
@@ -468,6 +498,20 @@ public sealed partial class TranscriptStore
         CharacterNames = [.. value.CharacterNames],
         LocationNames = [.. value.LocationNames],
         ItemNames = [.. value.ItemNames]
+    };
+
+    static RpTranscriptSnapshotRelationshipUpdate CloneSnapshotRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
+    {
+        RelationshipId = value.RelationshipId,
+        SourceCharacterId = value.SourceCharacterId,
+        TargetCharacterId = value.TargetCharacterId,
+        RelationshipTypes = [.. value.RelationshipTypes],
+        PrivateTensions = [.. value.PrivateTensions],
+        HowSourceSeesTarget = value.HowSourceSeesTarget,
+        HowTargetSeesSource = value.HowTargetSeesSource,
+        PublicDynamic = value.PublicDynamic,
+        Reason = value.Reason,
+        EvidenceTurnNumbers = [.. value.EvidenceTurnNumbers]
     };
 }
 

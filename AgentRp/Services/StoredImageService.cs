@@ -33,7 +33,7 @@ public interface IStoredImageService
 public sealed class StoredImageService(
     IDbContextFactory<RpDbContext> dbContextFactory,
     IImageOptimizer imageOptimizer,
-    IImageBlobStorage blobStorage,
+    IAssetBlobStorage blobStorage,
     ILogger<StoredImageService> logger) : IStoredImageService
 {
     public async Task StoreAsync(StoreImageAssetRequest request, CancellationToken cancellationToken = default)

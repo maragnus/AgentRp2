@@ -4,6 +4,7 @@ using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AgentRp.Tests;
 
@@ -204,7 +205,7 @@ public sealed class MessageSpeechServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var coordinator = new RecordingVoiceMessageStreamCoordinator();
-        var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
+        var service = new MessageSpeechService(dbFactory, coordinator, BuildStoredSpeechService(dbFactory), new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider();
         var modelSelections = SelectVoiceModel(document, provider);
@@ -231,7 +232,7 @@ public sealed class MessageSpeechServiceTests
     public async Task LoadInputSnapshotReadsPersistedSpeechInputs()
     {
         var dbFactory = new TestDbContextFactory();
-        var service = new MessageSpeechService(dbFactory, new RecordingVoiceMessageStreamCoordinator(), new NoOpCapabilityCatalog());
+        var service = new MessageSpeechService(dbFactory, new RecordingVoiceMessageStreamCoordinator(), BuildStoredSpeechService(dbFactory), new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var turn = CharacterTurn(document);
         turn.Speech.VoiceMessageId = "speech-1";
@@ -263,11 +264,51 @@ public sealed class MessageSpeechServiceTests
     }
 
     [Fact]
+    public async Task DiscardTurnSpeechDeletesSpeechRowAndBlob()
+    {
+        var dbFactory = new TestDbContextFactory();
+        var blobStorage = new TestAssetBlobStorage();
+        var service = new MessageSpeechService(
+            dbFactory,
+            new RecordingVoiceMessageStreamCoordinator(),
+            BuildStoredSpeechService(dbFactory, blobStorage),
+            new NoOpCapabilityCatalog());
+        var document = CreateDocument();
+        var turn = CharacterTurn(document);
+        turn.Speech.VoiceMessageId = "speech-1";
+        await blobStorage.UploadAsync("audio/chat-1/speech-1", [1, 2], "audio/mpeg");
+        await using (var dbContext = await dbFactory.CreateDbContextAsync())
+        {
+            dbContext.SpeechAssets.Add(new()
+            {
+                Id = "speech-1",
+                ChatId = document.Chat.Id,
+                TurnId = turn.Id,
+                Status = SpeechAssetStatus.Ready,
+                BlobName = "audio/chat-1/speech-1",
+                StoredByteLength = 2,
+                ContentType = "audio/mpeg",
+                FileName = "turn-1.mp3",
+                CreatedUtc = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        await service.DiscardTurnSpeechAsync(turn);
+
+        await using var verifyContext = await dbFactory.CreateDbContextAsync();
+        Assert.False(await verifyContext.SpeechAssets.AnyAsync(asset => asset.Id == "speech-1"));
+        Assert.Contains("audio/chat-1/speech-1", blobStorage.DeletedBlobNames);
+        Assert.False(blobStorage.Blobs.ContainsKey("audio/chat-1/speech-1"));
+        Assert.Equal("", turn.Speech.VoiceMessageId);
+    }
+
+    [Fact]
     public async Task GetOrGenerateAsyncNormalizesElevenV3SingleVoiceInput()
     {
         var dbFactory = new TestDbContextFactory();
         var coordinator = new RecordingVoiceMessageStreamCoordinator();
-        var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
+        var service = new MessageSpeechService(dbFactory, coordinator, BuildStoredSpeechService(dbFactory), new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_v3");
         var modelSelections = SelectVoiceModel(document, provider);
@@ -291,7 +332,7 @@ public sealed class MessageSpeechServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var coordinator = new RecordingVoiceMessageStreamCoordinator();
-        var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
+        var service = new MessageSpeechService(dbFactory, coordinator, BuildStoredSpeechService(dbFactory), new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_multilingual_v2");
         var modelSelections = SelectVoiceModel(document, provider);
@@ -311,7 +352,7 @@ public sealed class MessageSpeechServiceTests
     {
         var dbFactory = new TestDbContextFactory();
         var coordinator = new RecordingVoiceMessageStreamCoordinator();
-        var service = new MessageSpeechService(dbFactory, coordinator, new NoOpCapabilityCatalog());
+        var service = new MessageSpeechService(dbFactory, coordinator, BuildStoredSpeechService(dbFactory), new NoOpCapabilityCatalog());
         var document = CreateDocument();
         var provider = VoiceProvider("elevenlabs", "eleven_v3");
         var modelSelections = SelectVoiceModel(document, provider);
@@ -329,7 +370,10 @@ public sealed class MessageSpeechServiceTests
     }
 
     static MessageSpeechService CreateService(IVoiceMessageStreamCoordinator? streamCoordinator = null) =>
-        new(null!, streamCoordinator ?? new NoOpVoiceMessageStreamCoordinator(), new NoOpCapabilityCatalog());
+        new(null!, streamCoordinator ?? new NoOpVoiceMessageStreamCoordinator(), new NoOpStoredSpeechAssetService(), new NoOpCapabilityCatalog());
+
+    static StoredSpeechAssetService BuildStoredSpeechService(IDbContextFactory<RpDbContext> dbFactory, TestAssetBlobStorage? blobStorage = null) =>
+        new(dbFactory, blobStorage ?? new TestAssetBlobStorage(), NullLogger<StoredSpeechAssetService>.Instance);
 
     static RpChatDocument CreateDocument()
     {
@@ -428,6 +472,15 @@ public sealed class MessageSpeechServiceTests
             Task.FromResult(new VoiceMessageStartResult(true));
 
         public Task CopyLiveAsync(string voiceMessageId, Stream output, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    sealed class NoOpStoredSpeechAssetService : IStoredSpeechAssetService
+    {
+        public Task StoreReadyAsync(string voiceMessageId, byte[] bytes, string contentType, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DeleteAsync(string voiceMessageId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 

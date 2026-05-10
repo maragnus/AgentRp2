@@ -45,6 +45,7 @@ public enum ContentIntensity
 public sealed class ChatDirectionState
 {
     public int SchemaVersion { get; set; } = 1;
+    public DateTime UpdatedUtc { get; set; }
     public List<string> Genres { get; set; } = [];
     public List<string> Tones { get; set; } = [];
     public List<string> Themes { get; set; } = [];
@@ -126,6 +127,7 @@ public sealed class ShapePromptOverrideState
 public sealed class CharacterTraitLibraryState
 {
     public int SchemaVersion { get; set; } = 1;
+    public DateTime UpdatedUtc { get; set; }
     public List<CharacterOption> SceneRoles { get; set; } = [];
     public List<CharacterTraitGroupState> TraitCategories { get; set; } = [];
     public List<CharacterOption> CoreDrives { get; set; } = [];

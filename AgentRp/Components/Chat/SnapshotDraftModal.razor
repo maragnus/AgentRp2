@@ -202,6 +202,7 @@
             PrivateIntentByCharacterId = Draft.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             CharacterAppearances = Draft.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             TimelineEntries = TimelineEntries.Select(entry => entry.ToModel()).ToList(),
+            RelationshipUpdates = Draft.RelationshipUpdates.Select(CloneRelationshipUpdate).ToList(),
             Scene = SessionCloner.Clone(Draft.Scene),
             Trace = Draft.Trace is null ? null : SessionCloner.Clone(Draft.Trace)
         };
@@ -223,4 +224,18 @@
     Task Refresh() => InvokeAsync(StateHasChanged);
 
     void AddTimelineEntry() => TimelineEntries.Add(new());
+
+    static RpTranscriptSnapshotRelationshipUpdate CloneRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
+    {
+        RelationshipId = value.RelationshipId,
+        SourceCharacterId = value.SourceCharacterId,
+        TargetCharacterId = value.TargetCharacterId,
+        RelationshipTypes = [.. value.RelationshipTypes],
+        PrivateTensions = [.. value.PrivateTensions],
+        HowSourceSeesTarget = value.HowSourceSeesTarget,
+        HowTargetSeesSource = value.HowTargetSeesSource,
+        PublicDynamic = value.PublicDynamic,
+        Reason = value.Reason,
+        EvidenceTurnNumbers = [.. value.EvidenceTurnNumbers]
+    };
 }

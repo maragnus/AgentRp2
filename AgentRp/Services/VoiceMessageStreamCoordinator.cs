@@ -32,6 +32,7 @@ public interface IVoiceMessageStreamCoordinator
 public sealed class VoiceMessageStreamCoordinator(
     IDbContextFactory<RpDbContext> dbContextFactory,
     ISpeechGenerationService speechGenerationService,
+    IStoredSpeechAssetService storedSpeechAssetService,
     ILogger<VoiceMessageStreamCoordinator> logger) : IVoiceMessageStreamCoordinator
 {
     readonly ConcurrentDictionary<string, LiveVoiceMessage> liveMessages = new(StringComparer.Ordinal);
@@ -58,6 +59,7 @@ public sealed class VoiceMessageStreamCoordinator(
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var row = await dbContext.SpeechAssets
             .AsNoTracking()
+            .OrderBy(asset => asset.Id)
             .FirstOrDefaultAsync(asset => asset.Id == voiceMessageId, cancellationToken);
         if (row is null)
             return new(false, "Reading aloud failed because the audio was not found.");
@@ -74,6 +76,7 @@ public sealed class VoiceMessageStreamCoordinator(
             .AsSplitQuery()
             .Include(provider => provider.Models)
             .Include(provider => provider.Metrics)
+            .OrderBy(provider => provider.Id)
             .FirstOrDefaultAsync(provider => provider.Id == row.ProviderId, cancellationToken);
         if (providerRow is null)
             return await FailPendingAsync(row.Id, "Reading aloud failed because the voice provider no longer exists.", cancellationToken);
@@ -173,7 +176,7 @@ public sealed class VoiceMessageStreamCoordinator(
             if (bytes.Length == 0)
                 throw new InvalidOperationException("Generating speech failed because the service returned no audio.");
 
-            await MarkReadyAsync(request.VoiceMessageId, bytes, contentType);
+            await storedSpeechAssetService.StoreReadyAsync(request.VoiceMessageId, bytes, contentType);
             Complete(live, null);
         }
         catch (Exception exception)
@@ -246,7 +249,9 @@ public sealed class VoiceMessageStreamCoordinator(
         CancellationToken cancellationToken = default)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var row = await dbContext.SpeechAssets.FirstOrDefaultAsync(asset => asset.Id == voiceMessageId, cancellationToken);
+        var row = await dbContext.SpeechAssets
+            .OrderBy(asset => asset.Id)
+            .FirstOrDefaultAsync(asset => asset.Id == voiceMessageId, cancellationToken);
         if (row is null)
             return;
 
@@ -255,28 +260,15 @@ public sealed class VoiceMessageStreamCoordinator(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    async Task MarkReadyAsync(string voiceMessageId, byte[] bytes, string contentType)
-    {
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
-        var row = await dbContext.SpeechAssets.FirstOrDefaultAsync(asset => asset.Id == voiceMessageId);
-        if (row is null)
-            return;
-
-        row.Status = SpeechAssetStatus.Ready;
-        row.Bytes = bytes;
-        row.ContentType = string.IsNullOrWhiteSpace(contentType) ? "audio/mpeg" : contentType;
-        row.ErrorMessage = "";
-        row.CompletedUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync();
-    }
-
     async Task MarkFailedAsync(
         string voiceMessageId,
         string message,
         CancellationToken cancellationToken = default)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var row = await dbContext.SpeechAssets.FirstOrDefaultAsync(asset => asset.Id == voiceMessageId, cancellationToken);
+        var row = await dbContext.SpeechAssets
+            .OrderBy(asset => asset.Id)
+            .FirstOrDefaultAsync(asset => asset.Id == voiceMessageId, cancellationToken);
         if (row is null)
             return;
 

@@ -4,17 +4,17 @@ using Azure.Storage.Blobs.Models;
 
 namespace AgentRp.Services;
 
-public sealed record StoredImageBlob(Stream Stream, string ContentType);
+public sealed record StoredAssetBlob(Stream Stream, string ContentType);
 
-public interface IImageBlobStorage
+public interface IAssetBlobStorage
 {
     Task UploadAsync(string blobName, byte[] bytes, string contentType, CancellationToken cancellationToken = default);
-    Task<StoredImageBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default);
+    Task<StoredAssetBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default);
     Task<byte[]> ReadBytesAsync(string blobName, CancellationToken cancellationToken = default);
     Task DeleteAsync(string blobName, CancellationToken cancellationToken = default);
 }
 
-public sealed class AzureImageBlobStorage(BlobContainerClient containerClient) : IImageBlobStorage
+public sealed class AzureAssetBlobStorage(BlobContainerClient containerClient) : IAssetBlobStorage
 {
     public async Task UploadAsync(string blobName, byte[] bytes, string contentType, CancellationToken cancellationToken = default)
     {
@@ -33,7 +33,7 @@ public sealed class AzureImageBlobStorage(BlobContainerClient containerClient) :
             cancellationToken);
     }
 
-    public async Task<StoredImageBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default)
+    public async Task<StoredAssetBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default)
     {
         try
         {

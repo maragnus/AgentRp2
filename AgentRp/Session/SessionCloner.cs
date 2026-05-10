@@ -76,6 +76,7 @@ static class SessionCloner
     {
         Id = value.Id,
         Name = value.Name,
+        UpdatedUtc = value.UpdatedUtc,
         ImageId = value.ImageId,
         InScene = value.InScene,
         Summary = value.Summary,
@@ -131,6 +132,7 @@ static class SessionCloner
         Id = value.Id,
         CharacterAId = value.CharacterAId,
         CharacterBId = value.CharacterBId,
+        UpdatedUtc = value.UpdatedUtc,
         Bonds = [.. value.Bonds],
         Dynamics = [.. value.Dynamics],
         NoteAtoB = value.NoteAtoB,
@@ -142,6 +144,7 @@ static class SessionCloner
     {
         Id = value.Id,
         Name = value.Name,
+        UpdatedUtc = value.UpdatedUtc,
         ImageId = value.ImageId,
         IsActive = value.IsActive,
         Summary = value.Summary,
@@ -154,6 +157,7 @@ static class SessionCloner
     {
         Id = value.Id,
         Name = value.Name,
+        UpdatedUtc = value.UpdatedUtc,
         ImageId = value.ImageId,
         InScene = value.InScene,
         Summary = value.Summary,
@@ -167,6 +171,7 @@ static class SessionCloner
         Id = value.Id,
         SnapshotId = value.SnapshotId,
         Title = value.Title,
+        UpdatedUtc = value.UpdatedUtc,
         Date = value.Date,
         Description = value.Description,
         Characters = [.. value.Characters],
@@ -276,6 +281,7 @@ static class SessionCloner
     public static ChatDirectionState Clone(ChatDirectionState value) => new()
     {
         SchemaVersion = value.SchemaVersion,
+        UpdatedUtc = value.UpdatedUtc,
         Genres = [.. value.Genres],
         Tones = [.. value.Tones],
         Themes = [.. value.Themes],
@@ -316,6 +322,10 @@ static class SessionCloner
         Title = value.Title,
         CreatedUtc = value.CreatedUtc,
         UpdatedUtc = value.UpdatedUtc,
+        LastTranscriptReadUtc = value.LastTranscriptReadUtc,
+        LastStoryEntitiesReadUtc = value.LastStoryEntitiesReadUtc,
+        LastCharacterProfileOptionsReadUtc = value.LastCharacterProfileOptionsReadUtc,
+        LastChatDirectionOptionsReadUtc = value.LastChatDirectionOptionsReadUtc,
         LastResponseId = value.LastResponseId,
         ResponseIds = value.ResponseIds.ToList(),
         ResponseProviderId = value.ResponseProviderId,
@@ -665,6 +675,7 @@ static class SessionCloner
     public static CharacterTraitLibraryState Clone(CharacterTraitLibraryState value) => new()
     {
         SchemaVersion = value.SchemaVersion,
+        UpdatedUtc = value.UpdatedUtc,
         SceneRoles = value.SceneRoles.Select(Clone).ToList(),
         TraitCategories = value.TraitCategories.Select(Clone).ToList(),
         CoreDrives = value.CoreDrives.Select(Clone).ToList(),

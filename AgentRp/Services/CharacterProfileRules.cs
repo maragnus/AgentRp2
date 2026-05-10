@@ -76,7 +76,7 @@ public static class CharacterProfileRules
     public static JsonObject CharacterPatchSchema() => new()
     {
         ["type"] = "object",
-        ["description"] = "Character fields to set or replace. Prefer a complete, useful character profile; existing unchanged values do not need to be resent. Before setting controlled profile fields, call get_character_profile_options for the relevant fields.",
+        ["description"] = "Character fields to set or replace. Prefer a complete, useful character profile; existing unchanged values do not need to be resent. Use already-read controlled option ids unless the relevant fields are unknown or stale.",
         ["properties"] = new JsonObject
         {
             ["name"] = StringField("Character name."),
@@ -98,19 +98,19 @@ public static class CharacterProfileRules
             ["voice"] = StringField("Freeform voice notes."),
             ["notes"] = StringField("Freeform private or extra notes."),
             ["pronouns"] = ControlledArray("Pronoun values. Use only the allowed values.", MaxPronouns, PronounOptions),
-            ["sceneRoles"] = ControlledArray("Scene role ids. Call get_character_profile_options with fields ['sceneRoles'] before setting.", MaxSceneRoles),
-            ["traits"] = ControlledArray($"Trait ids. Aim for {RecommendedMinTraits}-{MaxTraits} total when bootstrapping. Call get_character_profile_options with fields ['traits'] before setting.", MaxTraits),
-            ["coreDrive"] = ControlledString("Core drive id. Call get_character_profile_options with fields ['coreDrive'] before setting; empty string clears it."),
-            ["coreFear"] = ControlledString("Core fear id. Call get_character_profile_options with fields ['coreFear'] before setting; empty string clears it."),
-            ["surfaceMask"] = ControlledString("Surface mask id. Call get_character_profile_options with fields ['surfaceMask'] before setting; empty string clears it."),
-            ["hiddenTruth"] = ControlledString("Hidden truth id. Call get_character_profile_options with fields ['hiddenTruth'] before setting; empty string clears it."),
-            ["sentenceStyle"] = ControlledString("Sentence style id. Call get_character_profile_options with fields ['sentenceStyle'] before setting; empty string clears it."),
-            ["honestyStyle"] = ControlledString("Honesty style id. Call get_character_profile_options with fields ['honestyStyle'] before setting; empty string clears it."),
-            ["emotionalLeakage"] = ControlledString("Emotional leakage id. Call get_character_profile_options with fields ['emotionalLeakage'] before setting; empty string clears it."),
-            ["actionFingerprint"] = ControlledString("Action fingerprint id. Call get_character_profile_options with fields ['actionFingerprint'] before setting; empty string clears it."),
-            ["stressPattern"] = ControlledString("Stress pattern id. Call get_character_profile_options with fields ['stressPattern'] before setting; empty string clears it."),
-            ["softSpots"] = ControlledArray("Soft spot ids. Call get_character_profile_options with fields ['softSpots'] before setting.", MaxSoftSpots),
-            ["avoidPatterns"] = ControlledArray("Avoid pattern ids. Call get_character_profile_options with fields ['avoidPatterns'] before setting.", MaxAvoidPatterns)
+            ["sceneRoles"] = ControlledArray("Scene role ids. Use already-read options unless sceneRoles are unknown or stale.", MaxSceneRoles),
+            ["traits"] = ControlledArray($"Trait ids. Aim for {RecommendedMinTraits}-{MaxTraits} total when bootstrapping. Use already-read options unless traits are unknown or stale.", MaxTraits),
+            ["coreDrive"] = ControlledString("Core drive id. Use already-read options unless coreDrive is unknown or stale; empty string clears it."),
+            ["coreFear"] = ControlledString("Core fear id. Use already-read options unless coreFear is unknown or stale; empty string clears it."),
+            ["surfaceMask"] = ControlledString("Surface mask id. Use already-read options unless surfaceMask is unknown or stale; empty string clears it."),
+            ["hiddenTruth"] = ControlledString("Hidden truth id. Use already-read options unless hiddenTruth is unknown or stale; empty string clears it."),
+            ["sentenceStyle"] = ControlledString("Sentence style id. Use already-read options unless sentenceStyle is unknown or stale; empty string clears it."),
+            ["honestyStyle"] = ControlledString("Honesty style id. Use already-read options unless honestyStyle is unknown or stale; empty string clears it."),
+            ["emotionalLeakage"] = ControlledString("Emotional leakage id. Use already-read options unless emotionalLeakage is unknown or stale; empty string clears it."),
+            ["actionFingerprint"] = ControlledString("Action fingerprint id. Use already-read options unless actionFingerprint is unknown or stale; empty string clears it."),
+            ["stressPattern"] = ControlledString("Stress pattern id. Use already-read options unless stressPattern is unknown or stale; empty string clears it."),
+            ["softSpots"] = ControlledArray("Soft spot ids. Use already-read options unless softSpots are unknown or stale.", MaxSoftSpots),
+            ["avoidPatterns"] = ControlledArray("Avoid pattern ids. Use already-read options unless avoidPatterns are unknown or stale.", MaxAvoidPatterns)
         },
         ["additionalProperties"] = false
     };
@@ -126,8 +126,8 @@ public static class CharacterProfileRules
             ["howSourceSeesTarget"] = StringField("How the source character perceives, feels about, or treats the target character."),
             ["howTargetSeesSource"] = StringField("How the target character perceives, feels about, or treats the source character."),
             ["publicDynamic"] = StringField("How others would summarize the visible dynamic between these characters."),
-            ["privateTensions"] = ControlledStringArray("Controlled relationship dynamic values. Call get_character_profile_options with fields ['privateTensions'] before setting."),
-            ["relationshipTypes"] = ControlledStringArray("Controlled bond type values. Call get_character_profile_options with fields ['relationshipTypes'] before setting."),
+            ["privateTensions"] = ControlledStringArray("Controlled relationship dynamic values. Use already-read options unless privateTensions are unknown or stale."),
+            ["relationshipTypes"] = ControlledStringArray("Controlled bond type values. Use already-read options unless relationshipTypes are unknown or stale."),
             ["reason"] = new JsonObject { ["type"] = "string" }
         },
         ["required"] = new JsonArray(CharacterRelationshipRules.RequiredPatchFields.Select(field => (JsonNode?)JsonValue.Create(field)).ToArray()),
@@ -162,7 +162,7 @@ public static class CharacterProfileRules
             controlledFields = ControlledCharacterFields,
             appearanceFields = AppearanceFields,
             appearancePolicy = AppearancePolicy,
-            instruction = "Call get_character_profile_options with specific fields before setting controlled profile ids. For appearance, use the flat appearance fields to build a complete visual profile."
+            instruction = "Use already-read controlled profile ids when available; call get_character_profile_options with specific fields only when the relevant options are unknown or stale. For appearance, use the flat appearance fields to build a complete visual profile."
         };
     }
 

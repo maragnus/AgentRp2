@@ -66,6 +66,12 @@ internal static class ChatDocumentPersistenceMapper
             ModelTuning = DeserializeState(rows.ModelTuning, ModelTuningState.CreateDefault())
         };
 
+        if (rows.ChatDirection is not null && document.ChatDirection.UpdatedUtc == default)
+            document.ChatDirection.UpdatedUtc = rows.ChatDirection.UpdatedUtc;
+
+        if (rows.CharacterTraitLibrary is not null && document.CharacterTraitLibrary.UpdatedUtc == default)
+            document.CharacterTraitLibrary.UpdatedUtc = rows.CharacterTraitLibrary.UpdatedUtc;
+
         TranscriptProjector.Apply(document);
         return document;
     }

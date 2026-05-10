@@ -56,7 +56,8 @@ public sealed record GeneratedSnapshotResult(
     List<RpTranscriptSnapshotTimelineEntry> TimelineEntries,
     RpTurnTrace Trace,
     Dictionary<string, string>? CharacterSceneStates = null,
-    RpSceneFrame? Scene = null);
+    RpSceneFrame? Scene = null,
+    List<RpTranscriptSnapshotRelationshipUpdate>? RelationshipUpdates = null);
 
 public sealed record TranscriptProseUpdate(
     string ParentTurnId,
@@ -369,6 +370,11 @@ public sealed class TextGenerationService(
             var startedUtc = DateTime.UtcNow;
             var completion = await SendStructuredAsync<SnapshotResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Generating snapshot", cancellationToken);
             var result = completion.Value;
+            var relationshipUpdates = NormalizeSnapshotRelationshipUpdates(
+                result.RelationshipUpdates,
+                document,
+                CharacterTraitLibraryService.NormalizeState(document.CharacterTraitLibrary));
+            trace.Data["relationshipUpdateCount"] = relationshipUpdates.Count;
             trace.Steps.Add(CreateStepTrace(
                 "snapshot",
                 "Snapshot",
@@ -386,7 +392,8 @@ public sealed class TextGenerationService(
                 NormalizeSnapshotTimelineEntries(result.TimelineEntries),
                 trace,
                 continuity.CharacterSceneStates,
-                continuity.Scene);
+                continuity.Scene,
+                relationshipUpdates);
         }
         catch (Exception exception) when (exception is not TranscriptGenerationException)
         {
@@ -1235,6 +1242,99 @@ public sealed class TextGenerationService(
     static List<string> NormalizeNames(IReadOnlyList<string>? names) =>
         names?.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
 
+    static List<RpTranscriptSnapshotRelationshipUpdate> NormalizeSnapshotRelationshipUpdates(
+        IReadOnlyList<SnapshotRelationshipUpdateResponse>? updates,
+        RpChatDocument document,
+        CharacterTraitLibraryState traitLibrary)
+    {
+        if (updates is null || updates.Count == 0)
+            return [];
+
+        var relationshipsById = document.CharacterRelationships.ToDictionary(relationship => relationship.Id, StringComparer.Ordinal);
+        var relationshipTypes = ControlledValueMap(traitLibrary.BondTypes);
+        var privateTensions = ControlledValueMap(traitLibrary.Dynamics);
+        return updates
+            .Select(update => NormalizeSnapshotRelationshipUpdate(update, relationshipsById, relationshipTypes, privateTensions))
+            .Where(update => update is not null)
+            .Select(update => update!)
+            .GroupBy(update => update.RelationshipId, StringComparer.Ordinal)
+            .Select(group => group.Last())
+            .ToList();
+    }
+
+    static RpTranscriptSnapshotRelationshipUpdate? NormalizeSnapshotRelationshipUpdate(
+        SnapshotRelationshipUpdateResponse update,
+        IReadOnlyDictionary<string, RpCharacterRelationship> relationshipsById,
+        IReadOnlyDictionary<string, string> relationshipTypes,
+        IReadOnlyDictionary<string, string> privateTensions)
+    {
+        var relationshipId = update.RelationshipId.Trim();
+        if (!relationshipsById.TryGetValue(relationshipId, out var relationship))
+            return null;
+        if (!string.Equals(update.SourceCharacterId.Trim(), relationship.CharacterAId, StringComparison.Ordinal)
+            || !string.Equals(update.TargetCharacterId.Trim(), relationship.CharacterBId, StringComparison.Ordinal))
+            return null;
+
+        var normalizedRelationshipTypes = NormalizeControlledValues(update.RelationshipTypes, relationshipTypes);
+        var normalizedPrivateTensions = NormalizeControlledValues(update.PrivateTensions, privateTensions);
+        var howSourceSeesTarget = update.HowSourceSeesTarget.Trim();
+        var howTargetSeesSource = update.HowTargetSeesSource.Trim();
+        var publicDynamic = update.PublicDynamic.Trim();
+        if (normalizedRelationshipTypes.Count == 0
+            || normalizedPrivateTensions.Count == 0
+            || string.IsNullOrWhiteSpace(howSourceSeesTarget)
+            || string.IsNullOrWhiteSpace(howTargetSeesSource)
+            || string.IsNullOrWhiteSpace(publicDynamic))
+            return null;
+        if (SameValues(relationship.Bonds, normalizedRelationshipTypes)
+            && SameValues(relationship.Dynamics, normalizedPrivateTensions)
+            && string.Equals(relationship.NoteAtoB.Trim(), howSourceSeesTarget, StringComparison.Ordinal)
+            && string.Equals(relationship.NoteBtoA.Trim(), howTargetSeesSource, StringComparison.Ordinal)
+            && string.Equals(relationship.NoteExternal.Trim(), publicDynamic, StringComparison.Ordinal))
+            return null;
+
+        return new()
+        {
+            RelationshipId = relationshipId,
+            SourceCharacterId = relationship.CharacterAId,
+            TargetCharacterId = relationship.CharacterBId,
+            RelationshipTypes = normalizedRelationshipTypes,
+            PrivateTensions = normalizedPrivateTensions,
+            HowSourceSeesTarget = howSourceSeesTarget,
+            HowTargetSeesSource = howTargetSeesSource,
+            PublicDynamic = publicDynamic,
+            Reason = update.Reason.Trim(),
+            EvidenceTurnNumbers = update.EvidenceTurnNumbers?
+                .Where(turnNumber => turnNumber > 0)
+                .Distinct()
+                .OrderBy(turnNumber => turnNumber)
+                .ToList()
+                ?? []
+        };
+    }
+
+    static Dictionary<string, string> ControlledValueMap(IEnumerable<string> values)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values.Select(value => value.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)))
+            map.TryAdd(value, value);
+
+        return map;
+    }
+
+    static List<string> NormalizeControlledValues(IReadOnlyList<string>? values, IReadOnlyDictionary<string, string> controlledValues) =>
+        values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => controlledValues.TryGetValue(value.Trim(), out var controlledValue) ? controlledValue : "")
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
+
+    static bool SameValues(IReadOnlyList<string> current, IReadOnlyList<string> updated) =>
+        current.Where(value => !string.IsNullOrWhiteSpace(value)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .SetEquals(updated.Where(value => !string.IsNullOrWhiteSpace(value)));
+
     public sealed class SnapshotTimelineEntryResponse
     {
         public int TurnNumber { get; set; }
@@ -1245,10 +1345,25 @@ public sealed class TextGenerationService(
         public IReadOnlyList<string>? ItemNames { get; set; }
     }
 
+    public sealed class SnapshotRelationshipUpdateResponse
+    {
+        public string RelationshipId { get; set; } = "";
+        public string SourceCharacterId { get; set; } = "";
+        public string TargetCharacterId { get; set; } = "";
+        public IReadOnlyList<string>? RelationshipTypes { get; set; }
+        public IReadOnlyList<string>? PrivateTensions { get; set; }
+        public string HowSourceSeesTarget { get; set; } = "";
+        public string HowTargetSeesSource { get; set; } = "";
+        public string PublicDynamic { get; set; } = "";
+        public string Reason { get; set; } = "";
+        public IReadOnlyList<int>? EvidenceTurnNumbers { get; set; }
+    }
+
     sealed class SnapshotResponse
     {
         public string NarrativeSummary { get; set; } = "";
         public string Summary { get; set; } = "";
         public IReadOnlyList<SnapshotTimelineEntryResponse>? TimelineEntries { get; set; }
+        public IReadOnlyList<SnapshotRelationshipUpdateResponse>? RelationshipUpdates { get; set; }
     }
 }

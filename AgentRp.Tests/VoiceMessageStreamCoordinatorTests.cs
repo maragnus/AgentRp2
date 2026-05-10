@@ -15,7 +15,7 @@ public sealed class VoiceMessageStreamCoordinatorTests
         var dbFactory = CreateFactory();
         await SeedPendingVoiceMessageAsync(dbFactory, "speech-1");
         var speech = new ControlledSpeechGenerationService();
-        var coordinator = new VoiceMessageStreamCoordinator(dbFactory, speech, NullLogger<VoiceMessageStreamCoordinator>.Instance);
+        var coordinator = BuildCoordinator(dbFactory, speech);
         coordinator.Start(Request("speech-1"));
         await speech.FirstChunkConsumed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -33,7 +33,8 @@ public sealed class VoiceMessageStreamCoordinatorTests
         var dbFactory = CreateFactory();
         await SeedPendingVoiceMessageAsync(dbFactory, "speech-1");
         var speech = new ControlledSpeechGenerationService();
-        var coordinator = new VoiceMessageStreamCoordinator(dbFactory, speech, NullLogger<VoiceMessageStreamCoordinator>.Instance);
+        var blobStorage = new TestAssetBlobStorage();
+        var coordinator = BuildCoordinator(dbFactory, speech, blobStorage);
 
         var first = await coordinator.EnsureStartedAsync("speech-1");
         var second = await coordinator.EnsureStartedAsync("speech-1");
@@ -43,6 +44,12 @@ public sealed class VoiceMessageStreamCoordinatorTests
         Assert.True(first.Started);
         Assert.True(second.Started);
         Assert.Equal(1, speech.Calls);
+        Assert.Equal([1, 2], blobStorage.Blobs["audio/chat-1/speech-1"].Bytes);
+        await using var dbContext = await dbFactory.CreateDbContextAsync();
+        var row = await dbContext.SpeechAssets.AsNoTracking().SingleAsync(asset => asset.Id == "speech-1");
+        Assert.Equal("audio/chat-1/speech-1", row.BlobName);
+        Assert.Equal(2, row.StoredByteLength);
+        Assert.Equal("audio/mpeg", row.ContentType);
     }
 
     [Fact]
@@ -51,7 +58,7 @@ public sealed class VoiceMessageStreamCoordinatorTests
         var dbFactory = CreateFactory();
         await SeedPendingVoiceMessageAsync(dbFactory, "speech-1");
         var speech = new ControlledSpeechGenerationService { Throw = true };
-        var coordinator = new VoiceMessageStreamCoordinator(dbFactory, speech, NullLogger<VoiceMessageStreamCoordinator>.Instance);
+        var coordinator = BuildCoordinator(dbFactory, speech);
 
         coordinator.Start(Request("speech-1"));
         await WaitForStatusAsync(dbFactory, "speech-1", SpeechAssetStatus.Failed);
@@ -125,6 +132,22 @@ public sealed class VoiceMessageStreamCoordinatorTests
     }
 
     static TestDbContextFactory CreateFactory() => new();
+
+    static VoiceMessageStreamCoordinator BuildCoordinator(
+        TestDbContextFactory dbFactory,
+        ISpeechGenerationService speechGenerationService,
+        TestAssetBlobStorage? blobStorage = null)
+    {
+        var storedSpeechAssetService = new StoredSpeechAssetService(
+            dbFactory,
+            blobStorage ?? new TestAssetBlobStorage(),
+            NullLogger<StoredSpeechAssetService>.Instance);
+        return new(
+            dbFactory,
+            speechGenerationService,
+            storedSpeechAssetService,
+            NullLogger<VoiceMessageStreamCoordinator>.Instance);
+    }
 
     sealed class ControlledSpeechGenerationService : ISpeechGenerationService
     {

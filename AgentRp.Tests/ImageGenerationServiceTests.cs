@@ -151,7 +151,7 @@ public sealed class ImageGenerationServiceTests
     public async Task ImageRequestWiresSettingsAndExplicitReferenceMetadata()
     {
         var dbFactory = new TestDbContextFactory();
-        var blobStorage = new TestImageBlobStorage();
+        var blobStorage = new TestAssetBlobStorage();
         await SeedReferenceImageAsync(dbFactory, blobStorage, "chat-1", "ref-1");
         var client = new FakeModelGenerationClient();
         var service = BuildService(dbFactory, client, blobStorage);
@@ -257,7 +257,7 @@ public sealed class ImageGenerationServiceTests
     public async Task ImageDetailsServiceShowsExplicitReferencesWithoutAmbientLocation()
     {
         var dbFactory = new TestDbContextFactory();
-        var blobStorage = new TestImageBlobStorage();
+        var blobStorage = new TestAssetBlobStorage();
         await SeedReferenceImageAsync(dbFactory, blobStorage, "chat-1", "ref-1");
         var client = new FakeModelGenerationClient();
         var generationService = BuildService(dbFactory, client, blobStorage);
@@ -428,18 +428,18 @@ public sealed class ImageGenerationServiceTests
     static ImageGenerationService BuildService(
         TestDbContextFactory dbFactory,
         FakeModelGenerationClient client,
-        TestImageBlobStorage? blobStorage = null,
+        TestAssetBlobStorage? blobStorage = null,
         IImageOptimizer? imageOptimizer = null)
     {
         var storedImageService = new StoredImageService(
             dbFactory,
             imageOptimizer ?? new TestImageOptimizer(),
-            blobStorage ?? new TestImageBlobStorage(),
+            blobStorage ?? new TestAssetBlobStorage(),
             NullLogger<StoredImageService>.Instance);
         return new(client, new NoOpCapabilityCatalog(), storedImageService);
     }
 
-    static async Task SeedReferenceImageAsync(TestDbContextFactory dbFactory, TestImageBlobStorage blobStorage, string chatId, string imageId)
+    static async Task SeedReferenceImageAsync(TestDbContextFactory dbFactory, TestAssetBlobStorage blobStorage, string chatId, string imageId)
     {
         var storedImageService = new StoredImageService(
             dbFactory,

@@ -39,7 +39,8 @@ public sealed class SpeechAssetRow
     public string Id { get; set; } = "";
     public string ChatId { get; set; } = "";
     public string TurnId { get; set; } = "";
-    public byte[] Bytes { get; set; } = [];
+    public string BlobName { get; set; } = "";
+    public long StoredByteLength { get; set; }
     public string Status { get; set; } = SpeechAssetStatus.Pending;
     public string ContentType { get; set; } = "";
     public string FileName { get; set; } = "";

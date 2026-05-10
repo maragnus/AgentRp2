@@ -157,6 +157,7 @@ public sealed class StoryEntityPatchServiceTests
         Assert.Equal("Lucia", document.Characters[0].Name);
         Assert.Equal("Sharper summary", document.Characters[0].Summary);
         Assert.Equal("Keeps the old backstory.", document.Characters[0].Backstory);
+        Assert.NotEqual(default, document.Characters[0].UpdatedUtc);
         var reconciliation = json.RootElement.GetProperty("relationshipReconciliation");
         Assert.Equal("c1", reconciliation.GetProperty("characterId").GetString());
         Assert.Equal(1, reconciliation.GetProperty("incompleteCount").GetInt32());

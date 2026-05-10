@@ -55,7 +55,7 @@ public static class ChatDirectionRules
             ["updates"] = new JsonObject
             {
                 ["type"] = "object",
-                ["description"] = "Only the chat direction fields to set or replace. Before setting controlled fields, call get_chat_direction_options.",
+                ["description"] = "Only the chat direction fields to set or replace. Use already-read options unless the relevant options are unknown or stale.",
                 ["properties"] = new JsonObject
                 {
                     ["genres"] = ControlledArray("Genre ids.", ChatDirectionService.MaxGenres),
@@ -82,7 +82,7 @@ public static class ChatDirectionRules
     {
         current = Shape(ChatDirectionService.NormalizeState(state)),
         controlledFields = ControlledFields,
-        instruction = "Call get_chat_direction_options before setting controlled chat direction ids or content intensities."
+        instruction = "Use already-read chat direction options when available; call get_chat_direction_options only when relevant options are unknown or stale."
     };
 
     public static object Options(ChatDirectionState state, IReadOnlyList<string> requestedFields)
@@ -121,7 +121,7 @@ public static class ChatDirectionRules
 
         foreach (var property in updates.EnumerateObject())
             if (!PatchFields.Contains(property.Name, StringComparer.Ordinal))
-                throw new InvalidOperationException($"The chat direction patch contains unsupported field '{property.Name}'. Call get_chat_direction_options if you need the current shape, then retry with only supported fields.");
+                throw new InvalidOperationException($"The chat direction patch contains unsupported field '{property.Name}'. Call get_chat_direction_options only if you need the current shape, then retry with only supported fields.");
 
         ValidateOptionArray(updates, "genres", "genres", ChatDirectionService.Library.Genres, ChatDirectionService.MaxGenres);
         ValidateOptionArray(updates, "tones", "tones", ChatDirectionService.Library.Tones, ChatDirectionService.MaxTones);
@@ -206,14 +206,14 @@ public static class ChatDirectionRules
     static JsonObject IntensityField(string description) => new()
     {
         ["type"] = "string",
-        ["description"] = $"{description} Call get_chat_direction_options before setting.",
+        ["description"] = $"{description} Use already-read options unless this field is unknown or stale.",
         ["enum"] = new JsonArray(Enum.GetNames<ContentIntensity>().Select(name => (JsonNode?)JsonValue.Create(name)).ToArray())
     };
 
     static JsonObject ControlledArray(string description, int max) => new()
     {
         ["type"] = "array",
-        ["description"] = $"{description} Call get_chat_direction_options before setting.",
+        ["description"] = $"{description} Use already-read options unless this field is unknown or stale.",
         ["uniqueItems"] = true,
         ["maxItems"] = max,
         ["items"] = new JsonObject { ["type"] = "string" }

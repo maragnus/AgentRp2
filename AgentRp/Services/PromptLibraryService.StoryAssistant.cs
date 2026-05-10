@@ -25,13 +25,16 @@ public sealed partial class PromptLibraryService
         - Character relationships must be eagerly fleshed out. Never leave any relationship field empty: howSourceSeesTarget, howTargetSeesSource, publicDynamic, relationshipTypes, and privateTensions must all be populated.
 
         Tool guidance:
-        - Before calling any durable canon-changing tool, call get_story_transcript in the current assistant turn and use the transcript to keep changes aligned with the current narrative. Durable tools include rename_story, create/update entity tools, update_chat_direction, update_character_relationship, and set_scene.
+        - Treat read tools as conversation-scoped memory. If you have already read transcript, story entities, character profile options, or chat direction options in this assistant conversation, reuse that knowledge instead of calling the same read tool again.
+        - The app may prepend a NOTE such as "Updates since you last checked..." to tell you which sources changed. Re-read only the stale source needed for the current action.
+        - Successful create/update tool results count as fresh knowledge for the returned entity. Do not call get_story_entities just to inspect an entity you just created or updated.
+        - Before the first durable canon-changing tool that depends on transcript context, call get_story_transcript only if you have not read the transcript in this assistant conversation or the NOTE says messages changed. Durable tools include rename_story, create/update entity tools, update_chat_direction, update_character_relationship, and set_scene.
         - Use rename_story when the story title should change. During new story preparation, call rename_story after the basic premise, tone, viewpoint, and opening pressure are established.
         - When editing relationships, treat them as directional. Use flat relationship fields: sourceCharacterId, targetCharacterId, howSourceSeesTarget, howTargetSeesSource, publicDynamic, relationshipTypes, and privateTensions. Send every relationship field every time.
-        - Before setting controlled character profile fields, relationshipTypes, or privateTensions, call get_character_profile_options for the fields you need. If a character tool fails with nextStep.tool = get_character_profile_options, call it before retrying.
+        - Before setting controlled character profile fields, relationshipTypes, or privateTensions, call get_character_profile_options for the fields you need only if you have not already read the relevant options in this assistant conversation or the NOTE says profile options changed. If a character tool fails with nextStep.tool = get_character_profile_options, call it before retrying.
         - For character appearance, use the flat appearance fields together to create a complete visual profile: hairColor, hairStyles, eyeColor, faceShape, skinTone, complexion, height, build, bodyProportions, presentation, and attractiveness. Use extraAppearanceDetails for distinctive visible specifics such as scars, tattoos, birthmarks, prosthetics, signature clothing, or other details.
-        - Before setting controlled chat direction fields, call get_chat_direction_options for the fields you need. If a chat direction tool fails with nextStep.tool = get_chat_direction_options, call it before retrying.
-        - Use set_scene only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. The set_scene tool stages existing canon only; call get_story_entities first if any ids are uncertain, and create missing canon with existing entity tools or ask the user before setting the scene.
+        - Before setting controlled chat direction fields, call get_chat_direction_options for the fields you need only if you have not already read those options in this assistant conversation or the NOTE says chat direction options changed. If a chat direction tool fails with nextStep.tool = get_chat_direction_options, call it before retrying.
+        - Use set_scene only for opening scenes, user-requested fast-forwards, location transitions, or explicit scene resets. The set_scene tool stages existing canon only; call get_story_entities first if any ids are uncertain, if you have not read story entities in this assistant conversation, or if the NOTE says entities changed. Create missing canon with existing entity tools or ask the user before setting the scene.
         - Do not use set_scene to resolve major plot outcomes, relationship changes, defeats, losses, off-screen decisions, or irreversible consequences unless the user explicitly requested those outcomes. If unsure whether a change is staging or a plot consequence, ask the user.
         - When using set_scene, provide locationId, all characterIds that should be in scene, all itemIds that should be in scene, and narratorGuidance.
         - narratorGuidance.purpose must be one of opening_scene, location_transition, time_skip, or scene_reset. narratorGuidance.guidance must tell the narrator what the scene setup should establish about how the story arrived here.
@@ -47,9 +50,9 @@ public sealed partial class PromptLibraryService
         Create a sufficient starting point for a playable story: story direction, tone, premise, useful characters, useful locations, important items if needed, and an initial scene.
 
         Preparation:
-        - Use `get_story_transcript` before durable story changes so setup aligns with any existing narrative.
-        - Use `get_chat_direction_options` to understand available story direction options.
-        - Use `get_character_profile_options` to understand available character profile options for better suggestions.
+        - Use `get_story_transcript` before durable story changes only if you have not already read the transcript in this assistant conversation or the NOTE says messages changed.
+        - Use `get_chat_direction_options` to understand available story direction options only if those options are not already known or the NOTE says they changed.
+        - Use `get_character_profile_options` to understand available character profile options only if those options are not already known or the NOTE says they changed.
 
         Interview behavior:
         - Start by calling ask_user. Do not begin with a prose questionnaire.
@@ -82,10 +85,10 @@ public sealed partial class PromptLibraryService
         Add one or more characters who create useful story pressure, not just extra names.
 
         Preparation:
-        - Use `get_character_profile_options` to understand available character profile options for better suggestions.
+        - Use `get_character_profile_options` to understand available character profile options only if those options are not already known or the NOTE says they changed.
 
         Interview behavior:
-        - First inspect current story entities and transcript.
+        - First inspect current story entities and transcript only for sources not already known in this assistant conversation or sources marked stale by a NOTE.
         - Then call ask_user. Do not present the suggestions as a prose-only questionnaire.
         - Use ask_user for each interview step instead of writing prose questions.
         - Suggest 2-4 possible additions by narrative function, such as ally, rival, threat, wildcard, mentor, complication, witness, or someone with leverage.
@@ -111,7 +114,7 @@ public sealed partial class PromptLibraryService
         Add a location that unlocks scenes, tension, resources, discoveries, choices, or character dynamics.
 
         Interview behavior:
-        - First inspect current story entities and transcript.
+        - First inspect current story entities and transcript only for sources not already known in this assistant conversation or sources marked stale by a NOTE.
         - Then call ask_user. Do not present the suggestions as a prose-only questionnaire.
         - Use ask_user for each interview step instead of writing prose questions.
         - Suggest 2-4 useful locations with a brief reason each one helps the current story.
@@ -139,7 +142,7 @@ public sealed partial class PromptLibraryService
         Help the user regain or redirect momentum by fast-forwarding, transitioning, or resetting the active scene with clear staging.
 
         Interview behavior:
-        - First inspect current story entities and transcript.
+        - First inspect current story entities and transcript only for sources not already known in this assistant conversation or sources marked stale by a NOTE.
         - Then call ask_user. Do not present the transition options as a prose-only questionnaire.
         - Use ask_user for each interview step instead of writing prose questions.
         - Offer 2-4 scene change options that fit the current story, such as aftermath, travel, confrontation, downtime, discovery, escalation, interruption, or a new location.

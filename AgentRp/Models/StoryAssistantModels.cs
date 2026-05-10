@@ -77,6 +77,10 @@ public sealed class StoryAssistantState
     [JsonIgnore] public string ResponseModelId { get => ActiveChat.ResponseModelId; set => ActiveChat.ResponseModelId = value; }
     [JsonIgnore] public bool RemoteThreadLost { get => ActiveChat.RemoteThreadLost; set => ActiveChat.RemoteThreadLost = value; }
     [JsonIgnore] public string RemoteThreadError { get => ActiveChat.RemoteThreadError; set => ActiveChat.RemoteThreadError = value; }
+    [JsonIgnore] public DateTime LastTranscriptReadUtc { get => ActiveChat.LastTranscriptReadUtc; set => ActiveChat.LastTranscriptReadUtc = value; }
+    [JsonIgnore] public DateTime LastStoryEntitiesReadUtc { get => ActiveChat.LastStoryEntitiesReadUtc; set => ActiveChat.LastStoryEntitiesReadUtc = value; }
+    [JsonIgnore] public DateTime LastCharacterProfileOptionsReadUtc { get => ActiveChat.LastCharacterProfileOptionsReadUtc; set => ActiveChat.LastCharacterProfileOptionsReadUtc = value; }
+    [JsonIgnore] public DateTime LastChatDirectionOptionsReadUtc { get => ActiveChat.LastChatDirectionOptionsReadUtc; set => ActiveChat.LastChatDirectionOptionsReadUtc = value; }
     [JsonIgnore] public List<StoryAssistantTranscriptItem> Items { get => ActiveChat.Items; set => ActiveChat.Items = value; }
     [JsonIgnore] public List<StoryAssistantWorkItem> WorkItems { get => ActiveChat.WorkItems; set => ActiveChat.WorkItems = value; }
 
@@ -113,6 +117,10 @@ public sealed class StoryAssistantChat
     public string Title { get; set; } = "New chat";
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
+    public DateTime LastTranscriptReadUtc { get; set; }
+    public DateTime LastStoryEntitiesReadUtc { get; set; }
+    public DateTime LastCharacterProfileOptionsReadUtc { get; set; }
+    public DateTime LastChatDirectionOptionsReadUtc { get; set; }
     public string LastResponseId { get; set; } = "";
     public List<string> ResponseIds { get; set; } = [];
     public string ResponseProviderId { get; set; } = "";

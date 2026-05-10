@@ -171,6 +171,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         var traitLibrary = CharacterTraitLibraryService.NormalizeState(document.CharacterTraitLibrary);
         var currentLocation = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId)?.Name;
         var physicalSceneStateText = FormatPhysicalSceneState(scene, presentCharacters);
+        var relationshipRefreshText = FormatSnapshotRelationshipRefresh(document, traitLibrary);
 
         return new(
             ThreadTitle: document.Chat.Title,
@@ -182,7 +183,8 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             Messages: FormatSnapshotMessages(snapshotTurns),
             TranscriptText: FormatTranscriptWithEarlierSummary(FormatTranscript(document, snapshotTurns, latestSnapshot?.Scene, includeTurnLabels: true), latestSnapshot?.Summary ?? ""),
             CharacterAppearancesText: FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary),
-            PhysicalSceneStateText: physicalSceneStateText);
+            PhysicalSceneStateText: physicalSceneStateText,
+            RelationshipRefreshText: relationshipRefreshText);
     }
 
     public Dictionary<string, string> BuildTokens(TurnPromptContext context, string planningOutput, string stageId = "")
@@ -285,6 +287,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         ["{snapshot.items}"] = context.Items,
         ["{snapshot.history}"] = context.History,
         ["{snapshot.messages}"] = context.Messages,
+        ["{snapshot.relationships}"] = context.RelationshipRefreshText,
         ["{context.transcript}"] = context.TranscriptText,
         ["{context.characterAppearances}"] = context.CharacterAppearancesText,
         ["{context.physicalSceneState}"] = context.PhysicalSceneStateText,
@@ -742,6 +745,59 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         return values.Count == 0 ? "None" : string.Join(", ", values);
     }
 
+    static string FormatSnapshotRelationshipRefresh(RpChatDocument document, CharacterTraitLibraryState traitLibrary)
+    {
+        var characterNames = document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
+        var relationshipBlocks = document.CharacterRelationships
+            .OrderBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterAId, ""), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterBId, ""), StringComparer.OrdinalIgnoreCase)
+            .Select(relationship => FormatSnapshotRelationshipBlock(relationship, characterNames))
+            .Where(block => !string.IsNullOrWhiteSpace(block))
+            .ToList();
+
+        var builder = new StringBuilder();
+        builder.AppendLine("**Relationship canon to refresh:**");
+        builder.AppendLine("- Review each relationship below for new evidence about awareness, meeting status, recognition, emotional stance, public dynamic, bond type (`relationshipTypes`), or shared dynamic (`privateTensions`).");
+        builder.AppendLine("- When the transcript gives a clearer current version of a relationship, return a complete relationship update for that pair using the existing controlled values and updated prose.");
+        builder.AppendLine("- Use the relationshipId, sourceCharacterId, and targetCharacterId exactly as shown in the row.");
+        builder.AppendLine("- Use only the provided relationshipTypes and privateTensions values.");
+        builder.AppendLine("- Prefer useful canon updates that improve future scene consistency.");
+        builder.AppendLine("- Carry forward existing relationship details that are still true, and incorporate the new transcript evidence into the complete updated row.");
+        builder.AppendLine("- Each relationship update should include relationshipId, sourceCharacterId, targetCharacterId, relationshipTypes, privateTensions, howSourceSeesTarget, howTargetSeesSource, publicDynamic, reason, and evidenceTurnNumbers.");
+        builder.AppendLine();
+        builder.AppendLine($"**relationshipTypes:** {FormatSnapshotControlledValues(traitLibrary.BondTypes)}");
+        builder.AppendLine($"**privateTensions:** {FormatSnapshotControlledValues(traitLibrary.Dynamics)}");
+        builder.AppendLine();
+        builder.AppendLine("**Relationships:**");
+        builder.AppendLine(relationshipBlocks.Count == 0 ? "None" : string.Join($"{Environment.NewLine}{Environment.NewLine}", relationshipBlocks));
+        return builder.ToString().TrimEnd();
+    }
+
+    static string FormatSnapshotRelationshipBlock(RpCharacterRelationship relationship, IReadOnlyDictionary<string, string> characterNames)
+    {
+        var sourceName = characterNames.GetValueOrDefault(relationship.CharacterAId, "");
+        var targetName = characterNames.GetValueOrDefault(relationship.CharacterBId, "");
+        if (string.IsNullOrWhiteSpace(sourceName) || string.IsNullOrWhiteSpace(targetName))
+            return "";
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"Relationship: {sourceName} / {targetName} (relationshipId: {relationship.Id})");
+        builder.AppendLine($"Source: {sourceName} (sourceCharacterId: {relationship.CharacterAId})");
+        builder.AppendLine($"Target: {targetName} (targetCharacterId: {relationship.CharacterBId})");
+        builder.AppendLine($"relationshipTypes: {FormatSnapshotControlledValues(relationship.Bonds)}");
+        builder.AppendLine($"privateTensions: {FormatSnapshotControlledValues(relationship.Dynamics)}");
+        builder.AppendLine($"howSourceSeesTarget (how {sourceName} sees {targetName}): {PromptInlineText(relationship.NoteAtoB, "Unknown")}");
+        builder.AppendLine($"howTargetSeesSource (how {targetName} sees {sourceName}): {PromptInlineText(relationship.NoteBtoA, "Unknown")}");
+        builder.Append($"publicDynamic (outsider view): {PromptInlineText(relationship.NoteExternal, "Unknown")}");
+        return builder.ToString();
+    }
+
+    static string FormatSnapshotControlledValues(IReadOnlyList<string> values)
+    {
+        var normalized = values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => PromptInlineText(value)).ToList();
+        return normalized.Count == 0 ? "None" : string.Join(", ", normalized);
+    }
+
     static string FormatCharacterReference(RpCharacter character)
     {
         var pronouns = CharacterProfileRules.FormatPronouns(character.Pronouns);
@@ -1009,7 +1065,8 @@ public sealed record SnapshotPromptContext(
     string Messages,
     string TranscriptText,
     string CharacterAppearancesText,
-    string PhysicalSceneStateText);
+    string PhysicalSceneStateText,
+    string RelationshipRefreshText);
 
 enum PrivateIntentTranscriptScope
 {

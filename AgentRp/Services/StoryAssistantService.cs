@@ -617,7 +617,7 @@ public sealed partial class StoryEntityPatchService(
     async Task<StoryAssistantToolExecutionResult> CreateCharacterAsync(RpChatDocument document, string callId, string toolName, string args, IStoryAssistantCallbacks callbacks, CancellationToken token)
     {
         using var json = Parse(args);
-        var character = new RpCharacter { Id = NextId(document.Characters.Select(item => item.Id), "c"), Name = "New Character" };
+        var character = new RpCharacter { Id = NextId(document.Characters.Select(item => item.Id), "c"), Name = "New Character", UpdatedUtc = DateTime.UtcNow };
         var updates = Updates(json.RootElement);
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(character, updates);
@@ -636,6 +636,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         CharacterProfileRules.ValidateCharacterPatch(updates, document.CharacterTraitLibrary);
         ApplyCharacter(after, updates);
+        StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         if (CharacterProfileRules.HasAppearancePatch(updates))
             CharacterProfileRules.ValidateCompleteAppearance(after);
         var risk = updates.TryGetProperty("name", out _) || updates.TryGetProperty("backstory", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
@@ -652,6 +653,7 @@ public sealed partial class StoryEntityPatchService(
         ChatDirectionRules.ValidatePatch(updates);
         ChatDirectionRules.Apply(after, updates);
         after = ChatDirectionService.NormalizeState(after);
+        StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         var risk = ChatDirectionRules.Risk(updates);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, "Update chat direction", "chatDirection", document.Chat.Id, "Chat Direction", args, ChatDirectionRules.JsonObject(before), ChatDirectionRules.JsonObject(after), risk);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.ChatDirection, () => document.ChatDirection = after, ChatDirectionRules.JsonObject(document.ChatDirection), token);
@@ -663,7 +665,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, LocationFields, "location");
         RequirePatchString(updates, "name", "Creating a location");
-        var location = new RpLocation { Id = NextId(document.Locations.Select(item => item.Id), "l") };
+        var location = new RpLocation { Id = NextId(document.Locations.Select(item => item.Id), "l"), UpdatedUtc = DateTime.UtcNow };
         ApplyLocation(location, updates);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {location.Name}", "location", location.Id, location.Name, args, new(), LocationJsonObject(location), StoryAssistantChangeRisk.Low);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Locations, () => document.Locations.Add(location), new(), token);
@@ -679,6 +681,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, LocationFields, "location");
         ApplyLocation(after, updates);
+        StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         var risk = updates.TryGetProperty("name", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "location", id, after.Name, args, LocationJsonObject(before), LocationJsonObject(after), risk);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Locations, () => Copy(after, existing), LocationJsonObject(existing), token);
@@ -690,7 +693,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, ItemFields, "item");
         RequirePatchString(updates, "name", "Creating an item");
-        var itemEntity = new RpItem { Id = NextId(document.Items.Select(item => item.Id), "i") };
+        var itemEntity = new RpItem { Id = NextId(document.Items.Select(item => item.Id), "i"), UpdatedUtc = DateTime.UtcNow };
         ApplyItem(itemEntity, updates);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {itemEntity.Name}", "item", itemEntity.Id, itemEntity.Name, args, new(), ItemJsonObject(itemEntity), StoryAssistantChangeRisk.Low);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Items, () => document.Items.Add(itemEntity), new(), token);
@@ -706,6 +709,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, ItemFields, "item");
         ApplyItem(after, updates);
+        StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         var risk = updates.TryGetProperty("name", out _) ? StoryAssistantChangeRisk.Major : StoryAssistantChangeRisk.Low;
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Name}", "item", id, after.Name, args, ItemJsonObject(before), ItemJsonObject(after), risk);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Items, () => Copy(after, existing), ItemJsonObject(existing), token);
@@ -717,7 +721,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, TimelineFields, "timeline entry");
         RequirePatchString(updates, "title", "Creating a timeline entry");
-        var entry = new RpTimelineEntry { Id = NextId(document.Timeline.Select(item => item.Id), "t") };
+        var entry = new RpTimelineEntry { Id = NextId(document.Timeline.Select(item => item.Id), "t"), UpdatedUtc = DateTime.UtcNow };
         ApplyTimeline(entry, updates);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {entry.Title}", "timeline", entry.Id, entry.Title, args, new(), TimelineJsonObject(entry), StoryAssistantChangeRisk.Major);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => document.Timeline.Add(entry), new(), token);
@@ -733,6 +737,7 @@ public sealed partial class StoryEntityPatchService(
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, TimelineFields, "timeline entry");
         ApplyTimeline(after, updates);
+        StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Title}", "timeline", id, after.Title, args, TimelineJsonObject(before), TimelineJsonObject(after), StoryAssistantChangeRisk.Major);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => Copy(after, existing), TimelineJsonObject(existing), token);
     }
@@ -1089,6 +1094,44 @@ public sealed partial class StoryEntityPatchService(
             default:
                 throw new InvalidOperationException($"Resolving Story Assistant action failed because '{workItem.ToolName}' is not a supported durable mutation.");
         }
+
+        TouchAcceptedMutation(document, workItem, DateTime.UtcNow);
+    }
+
+    static void TouchAcceptedMutation(RpChatDocument document, StoryAssistantWorkItem workItem, DateTime timestamp)
+    {
+        switch (workItem.EntityType)
+        {
+            case "character":
+                if (document.Characters.FirstOrDefault(item => item.Id == workItem.EntityId) is { } character)
+                    StoryEntityTimestamps.Touch(character, timestamp);
+                break;
+            case "relationship":
+                using (var json = Parse(workItem.ArgumentsJson))
+                {
+                    var root = json.RootElement;
+                    var sourceId = RequiredString(root, "sourceCharacterId");
+                    var targetId = RequiredString(root, "targetCharacterId");
+                    if (CharacterRelationshipGraph.Find(document, sourceId, targetId) is { } relationship)
+                        StoryEntityTimestamps.Touch(relationship, timestamp);
+                }
+                break;
+            case "chatDirection":
+                StoryEntityTimestamps.Touch(document.ChatDirection, timestamp);
+                break;
+            case "location":
+                if (document.Locations.FirstOrDefault(item => item.Id == workItem.EntityId) is { } location)
+                    StoryEntityTimestamps.Touch(location, timestamp);
+                break;
+            case "item":
+                if (document.Items.FirstOrDefault(item => item.Id == workItem.EntityId) is { } item)
+                    StoryEntityTimestamps.Touch(item, timestamp);
+                break;
+            case "timeline":
+                if (document.Timeline.FirstOrDefault(item => item.Id == workItem.EntityId) is { } entry)
+                    StoryEntityTimestamps.Touch(entry, timestamp);
+                break;
+        }
     }
 
     static void ApplyRelationship(RpChatDocument document, JsonElement root)
@@ -1096,6 +1139,8 @@ public sealed partial class StoryEntityPatchService(
         var sourceId = RequiredString(root, "sourceCharacterId");
         var targetId = RequiredString(root, "targetCharacterId");
         CharacterRelationshipGraph.ApplyPatch(document, sourceId, targetId, root);
+        if (CharacterRelationshipGraph.Find(document, sourceId, targetId) is { } relationship)
+            StoryEntityTimestamps.Touch(relationship, DateTime.UtcNow);
     }
 
     static SetSceneRequest SceneRequest(string args)

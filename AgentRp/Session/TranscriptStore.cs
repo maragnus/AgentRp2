@@ -788,6 +788,23 @@ public sealed partial class TranscriptStore(
         await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Timeline);
     }
 
+    async Task SaveSnapshotCommitAsync(bool relationshipsChanged)
+    {
+        if (Document is null)
+            return;
+
+        TranscriptProjector.Apply(Document);
+        await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Transcript);
+        await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Timeline);
+        if (relationshipsChanged)
+            await Registry.ReplaceAreaAsync(Document, RoleplayStoreArea.Characters);
+
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Transcript);
+        await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Timeline);
+        if (relationshipsChanged)
+            await NotifyActiveDocumentChangedAsync(RoleplayStoreArea.Characters);
+    }
+
     async Task DiscardSpeechAsync(RpTranscriptTurn turn)
     {
         if (messageSpeechService is not null)

@@ -127,8 +127,23 @@ public sealed class RpTranscriptSnapshotDraft
     public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
     public Dictionary<string, string> CharacterAppearances { get; set; } = [];
     public List<RpTranscriptSnapshotTimelineEntry> TimelineEntries { get; set; } = [];
+    public List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates { get; set; } = [];
     public RpSceneFrame Scene { get; set; } = new();
     public RpTurnTrace? Trace { get; set; }
+}
+
+public sealed class RpTranscriptSnapshotRelationshipUpdate
+{
+    public string RelationshipId { get; set; } = "";
+    public string SourceCharacterId { get; set; } = "";
+    public string TargetCharacterId { get; set; } = "";
+    public List<string> RelationshipTypes { get; set; } = [];
+    public List<string> PrivateTensions { get; set; } = [];
+    public string HowSourceSeesTarget { get; set; } = "";
+    public string HowTargetSeesSource { get; set; } = "";
+    public string PublicDynamic { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public List<int> EvidenceTurnNumbers { get; set; } = [];
 }
 
 public sealed class RpTranscriptSnapshotDraftPreview

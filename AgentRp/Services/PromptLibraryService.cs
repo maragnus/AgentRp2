@@ -129,6 +129,7 @@ public sealed partial class PromptLibraryService
         Placeholder("{snapshot.locations}", "Snapshot location catalog.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.items}", "Snapshot item catalog.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.history}", "Snapshot canonical history summary.", PromptLibraryStageIds.Snapshot),
+        Placeholder("{snapshot.relationships}", "Snapshot relationship canon refresh instructions and current relationship rows.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.messages}", "Snapshot included branch messages.", PromptLibraryStageIds.Snapshot)
     ];
 
@@ -713,12 +714,15 @@ public sealed partial class PromptLibraryService
         Items in story: {snapshot.items}
         Existing canonical history: {snapshot.history}
 
+        {snapshot.relationships}
+
         Included branch messages:
         {snapshot.messages}
 
         Return:
         1. A narrative summary of what has happened so far in this included range.
         2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
+        3. Relationship updates that refresh relationship canon from the included transcript.
         For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
         """;
 

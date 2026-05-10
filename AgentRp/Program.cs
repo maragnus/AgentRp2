@@ -41,6 +41,7 @@ builder.Services.AddSingleton<ISpeechGenerationService, SpeechGenerationService>
 builder.Services.AddScoped<ITtsPreviewService, TtsPreviewService>();
 builder.Services.AddScoped<ITtsAudioPlaybackService, TtsAudioPlaybackService>();
 builder.Services.AddScoped<IMessageSpeechService, MessageSpeechService>();
+builder.Services.AddSingleton<IStoredSpeechAssetService, StoredSpeechAssetService>();
 builder.Services.AddSingleton<IVoiceMessageStreamCoordinator, VoiceMessageStreamCoordinator>();
 builder.Services.AddSingleton<IAudioTagGuideService, AudioTagGuideService>();
 builder.Services.AddScoped<IEntityNotifier, EntityNotifier>();
@@ -48,7 +49,7 @@ builder.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>()
 builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
 builder.Services.AddSingleton<IGlobalModelSelectionStore, GlobalModelSelectionStore>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
-builder.Services.AddScoped<IImageBlobStorage, AzureImageBlobStorage>();
+builder.Services.AddSingleton<IAssetBlobStorage, AzureAssetBlobStorage>();
 builder.Services.AddScoped<IStoredImageService, StoredImageService>();
 builder.Services.AddScoped<IImageDetailsService, ImageDetailsService>();
 builder.Services.AddScoped<IImageCropService, ImageCropService>();
@@ -89,50 +90,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStoryImageEndpoints();
-
-app.MapGet("/story-audio/{voiceMessageId}", async (
-    string voiceMessageId,
-    HttpContext context,
-    IDbContextFactory<RpDbContext> dbContextFactory,
-    IVoiceMessageStreamCoordinator streamCoordinator,
-    CancellationToken cancellationToken) =>
-{
-    await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-    var audio = await dbContext.SpeechAssets
-        .AsNoTracking()
-        .Where(x => x.Id == voiceMessageId)
-        .Select(x => new { x.Status, x.Bytes, x.ContentType, x.FileName, x.ErrorMessage, x.CreatedUtc, x.CompletedUtc })
-        .FirstOrDefaultAsync(cancellationToken);
-
-    if (audio is null)
-        return Results.NotFound();
-
-    if (audio.Status == SpeechAssetStatus.Ready && audio.Bytes.Length > 0)
-    {
-        context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-        context.Response.Headers.ETag = $"\"{voiceMessageId}-{audio.Bytes.Length}-{(audio.CompletedUtc ?? audio.CreatedUtc).Ticks}\"";
-        return Results.File(audio.Bytes, audio.ContentType, audio.FileName, enableRangeProcessing: true);
-    }
-
-    if (audio.Status == SpeechAssetStatus.Failed)
-        return Results.Problem(
-            detail: string.IsNullOrWhiteSpace(audio.ErrorMessage) ? "Reading aloud failed while generating the audio." : audio.ErrorMessage,
-            title: "Reading aloud failed",
-            statusCode: StatusCodes.Status500InternalServerError);
-
-    var start = await streamCoordinator.EnsureStartedAsync(voiceMessageId, cancellationToken);
-    if (!start.Started)
-        return Results.Problem(
-            detail: start.ErrorMessage,
-            title: "Reading aloud failed",
-            statusCode: StatusCodes.Status500InternalServerError);
-
-    context.Response.Headers.CacheControl = "no-store";
-    return Results.Stream(
-        stream => streamCoordinator.CopyLiveAsync(voiceMessageId, stream, context.RequestAborted),
-        string.IsNullOrWhiteSpace(audio.ContentType) ? "audio/mpeg" : audio.ContentType,
-        audio.FileName);
-});
+app.MapStoryAudioEndpoints();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

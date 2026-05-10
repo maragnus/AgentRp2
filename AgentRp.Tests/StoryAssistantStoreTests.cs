@@ -48,6 +48,61 @@ public sealed class StoryAssistantStoreTests
     }
 
     [Fact]
+    public async Task OpeningAssistantSelectsMostRecentChatWhenActiveChatHasMessages()
+    {
+        var document = CreateDocument();
+        var store = CreateStore(document, (_, _) => Task.CompletedTask);
+        var olderChat = store.ActiveAssistantChat;
+        olderChat.Items.Add(AddUserMessage("Earlier planning."));
+        olderChat.UpdatedUtc = DateTime.UtcNow.AddMinutes(-5);
+
+        await store.CreateChatAsync();
+        var recentChat = store.ActiveAssistantChat;
+        recentChat.Items.Add(AddUserMessage("Recent planning."));
+        recentChat.UpdatedUtc = DateTime.UtcNow;
+        await store.SelectChatAsync(olderChat.Id);
+
+        Assert.Equal(recentChat.Id, store.OpenAssistantChatPreview.Id);
+
+        await store.OpenLatestOrNewChatAsync();
+
+        Assert.Equal(recentChat.Id, store.ActiveAssistantChat.Id);
+    }
+
+    [Fact]
+    public async Task OpeningAssistantKeepsEmptyActiveChatAsNewChat()
+    {
+        var document = CreateDocument();
+        var now = DateTime.UtcNow;
+        var emptyChat = new StoryAssistantChat
+        {
+            Id = "assistant-chat-empty",
+            Title = "New chat",
+            CreatedUtc = now.AddMinutes(-10),
+            UpdatedUtc = now.AddMinutes(-10)
+        };
+        var recentChat = new StoryAssistantChat
+        {
+            Id = "assistant-chat-recent",
+            Title = "Recent chat",
+            CreatedUtc = now,
+            UpdatedUtc = now,
+            Items = [AddUserMessage("Recent planning.")]
+        };
+        document.StoryAssistant.Chats.AddRange([recentChat, emptyChat]);
+        document.StoryAssistant.ActiveChatId = emptyChat.Id;
+        var store = CreateStore(document, (_, _) => Task.CompletedTask);
+
+        Assert.Equal(emptyChat.Id, store.OpenAssistantChatPreview.Id);
+        Assert.True(store.OpenAssistantChatPreviewIsEmpty);
+
+        await store.OpenLatestOrNewChatAsync();
+
+        Assert.Equal(emptyChat.Id, store.ActiveAssistantChat.Id);
+        Assert.Empty(store.ActiveAssistantChat.Items);
+    }
+
+    [Fact]
     public async Task SendingInOneAssistantChatDoesNotMutateAnotherChat()
     {
         var document = CreateDocument();
@@ -98,6 +153,75 @@ public sealed class StoryAssistantStoreTests
         Assert.Equal(StoryAssistantItemKind.UserMessage, document.StoryAssistant.Items[0].Kind);
         Assert.Equal(StoryAssistantItemKind.ToolCall, document.StoryAssistant.Items[1].Kind);
         Assert.Equal(StoryAssistantItemStatus.Read, document.StoryAssistant.Items[1].Status);
+        Assert.NotEqual(default, document.StoryAssistant.LastStoryEntitiesReadUtc);
+    }
+
+    [Fact]
+    public async Task SendPrependsFreshnessNoteForStaleTranscriptAndEntities()
+    {
+        var document = CreateDocument();
+        var readAt = DateTime.UtcNow.AddMinutes(-5);
+        document.StoryAssistant.LastTranscriptReadUtc = readAt;
+        document.StoryAssistant.LastStoryEntitiesReadUtc = readAt;
+        document.Characters[0].UpdatedUtc = readAt.AddMinutes(1);
+        document.Locations.Add(new()
+        {
+            Id = "l1",
+            Name = "Poolside Bar",
+            UpdatedUtc = readAt.AddMinutes(2)
+        });
+        document.Transcript.Turns.Add(new()
+        {
+            Id = "turn-1",
+            CreatedUtc = readAt.AddMinutes(3),
+            UpdatedUtc = readAt.AddMinutes(3),
+            AuthorName = "Lucia",
+            Body = "New story beat."
+        });
+        document.Transcript.ActiveLeafTurnId = "turn-1";
+        StoryAssistantTurnRequest? captured = null;
+        var store = CreateStore(document, (request, _, _) =>
+        {
+            captured = request;
+            return Task.CompletedTask;
+        });
+
+        await store.SendAsync("Tweak the cast.");
+
+        Assert.NotNull(captured);
+        Assert.StartsWith("NOTE: Updates since you last checked:", captured.ModelInput, StringComparison.Ordinal);
+        Assert.Contains("added 1 message", captured.ModelInput, StringComparison.Ordinal);
+        Assert.Contains("Lucia", captured.ModelInput, StringComparison.Ordinal);
+        Assert.Contains("Poolside Bar", captured.ModelInput, StringComparison.Ordinal);
+        Assert.EndsWith("Tweak the cast.", captured.ModelInput, StringComparison.Ordinal);
+        Assert.Equal("Tweak the cast.", document.StoryAssistant.Items[0].Text);
+    }
+
+    [Fact]
+    public async Task AcceptedMutationOutputRefreshesStoryEntitiesReceipt()
+    {
+        var document = CreateDocument();
+        var staleRead = DateTime.UtcNow.AddMinutes(-5);
+        document.StoryAssistant.LastStoryEntitiesReadUtc = staleRead;
+        var store = CreateStore(document, async callbacks =>
+        {
+            await callbacks.UpdateToolCallAsync(new()
+            {
+                Id = "tool-update",
+                Kind = StoryAssistantItemKind.ToolCall,
+                Status = StoryAssistantItemStatus.Applied,
+                Operation = StoryAssistantOperationKind.Update,
+                ToolName = "update_character",
+                ToolCallId = "call-update",
+                EntityType = "character",
+                EntityId = "c1",
+                EntityName = "Lucia"
+            }, CancellationToken.None);
+        });
+
+        await store.SendAsync("Update Lucia.");
+
+        Assert.True(document.StoryAssistant.LastStoryEntitiesReadUtc > staleRead);
     }
 
     [Fact]

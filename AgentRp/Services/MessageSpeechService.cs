@@ -91,6 +91,7 @@ public interface IMessageSpeechService
 public sealed class MessageSpeechService(
     IDbContextFactory<RpDbContext> dbContextFactory,
     IVoiceMessageStreamCoordinator streamCoordinator,
+    IStoredSpeechAssetService storedSpeechAssetService,
     IModelCapabilityCatalog capabilityCatalog) : IMessageSpeechService
 {
     public const int MaxSpeechCharacters = 2000;
@@ -205,7 +206,6 @@ public sealed class MessageSpeechService(
             ChatId = document.Chat.Id,
             TurnId = ownerId,
             Status = SpeechAssetStatus.Pending,
-            Bytes = [],
             ContentType = "audio/mpeg",
             FileName = $"{ownerId}-{voiceMessageId}.mp3",
             ProviderId = plan.VoiceModel.Provider.Id,
@@ -292,10 +292,7 @@ public sealed class MessageSpeechService(
     {
         var voiceMessageId = speech.VoiceMessageId;
         if (!string.IsNullOrWhiteSpace(voiceMessageId))
-        {
-            await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            await dbContext.SpeechAssets.Where(asset => asset.Id == voiceMessageId).ExecuteDeleteAsync(cancellationToken);
-        }
+            await storedSpeechAssetService.DeleteAsync(voiceMessageId, cancellationToken);
 
         setSpeech(new());
     }

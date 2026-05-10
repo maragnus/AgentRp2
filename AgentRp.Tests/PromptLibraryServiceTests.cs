@@ -257,7 +257,8 @@ public sealed class PromptLibraryServiceTests
         Assert.Contains("extraAppearanceDetails", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("relationshipReconciliation", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Never leave any relationship field empty", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
-        Assert.Contains("Before calling any durable canon-changing tool, call get_story_transcript", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Treat read tools as conversation-scoped memory", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
+        Assert.Contains("Successful create/update tool results count as fresh knowledge", defaults.Prompts[PromptLibraryStageIds.StoryAssistantBase].System, StringComparison.Ordinal);
         Assert.Contains("Prepare a New Story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("Do not begin with a prose questionnaire", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);
         Assert.Contains("call rename_story", defaults.Prompts[PromptLibraryStageIds.StoryAssistantPrepareStory].User, StringComparison.Ordinal);

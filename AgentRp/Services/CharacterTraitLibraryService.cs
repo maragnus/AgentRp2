@@ -62,8 +62,8 @@ public sealed class CharacterTraitLibraryService
         BodyProportions = [new("narrow-shoulders", "Narrow Shoulders", "Narrow shoulders."), new("broad-shoulders", "Broad Shoulders", "Broad shoulders."), new("narrow-waist", "Narrow Waist", "Narrow waist."), new("wide-hips", "Wide Hips", "Wide hips."), new("long-legs", "Long Legs", "Long legs."), new("short-legs", "Short Legs", "Short legs."), new("long-torso", "Long Torso", "Long torso."), new("compact-frame", "Compact Frame", "Compact frame."), new("small-chest", "Small Chest", "Small chest."), new("broad-chest", "Broad Chest", "Broad chest."), new("full-chest", "Full Chest", "Full chest."), new("balanced-proportions", "Balanced Proportions", "Balanced proportions.")],
         Presentations = [new("upright", "Upright", "Upright bearing."), new("relaxed", "Relaxed", "Relaxed bearing."), new("slouched", "Slouched", "Slouched bearing."), new("rigid", "Rigid", "Rigid bearing."), new("graceful", "Graceful", "Graceful movement."), new("confident", "Confident", "Confident bearing."), new("cautious", "Cautious", "Cautious movement."), new("energetic", "Energetic", "Energetic movement."), new("elegant", "Elegant", "Elegant bearing."), new("masculine", "Masculine", "Masculine presentation."), new("feminine", "Feminine", "Feminine presentation."), new("androgynous", "Androgynous", "Androgynous presentation."), new("delicate", "Delicate", "Delicate presence."), new("rugged", "Rugged", "Rugged presence."), new("imposing", "Imposing", "Imposing presence.")],
         AttractivenessLevels = [new("unattractive", "Unattractive", "Unattractive appearance."), new("plain", "Plain", "Plain appearance."), new("average", "Average", "Average attractiveness."), new("attractive", "Attractive", "Attractive appearance."), new("very-attractive", "Very Attractive", "Very attractive appearance."), new("striking", "Striking", "Striking appearance."), new("otherworldly", "Otherworldly", "Otherworldly appearance.")],
-        BondTypes = ["Close Friend", "Romantic Interest", "Rival", "Mentor", "Mentee", "Ally", "Complicated", "Estranged", "Family", "Colleague", "Acquaintance"],
-        Dynamics = ["Power struggle", "Protective", "Competitive", "Dependent", "Avoidant", "Charged", "Playful rivalry", "Unspoken tension", "Loyal", "Complicated history"]
+        BondTypes = ["Not Established", "Acquaintance", "Close Friend", "Romantic Interest", "Rival", "Mentor", "Mentee", "Ally", "Complicated", "Estranged", "Family", "Colleague"],
+        Dynamics = ["Have Not Met", "Awareness", "Strangers", "Power struggle", "Protective", "Competitive", "Dependent", "Avoidant", "Charged", "Playful rivalry", "Unspoken tension", "Loyal", "Complicated history"]
     };
 
     public static CharacterTraitLibraryState NormalizeState(CharacterTraitLibraryState? state)
@@ -75,6 +75,7 @@ public sealed class CharacterTraitLibraryService
         return new()
         {
             SchemaVersion = defaults.SchemaVersion,
+            UpdatedUtc = state.UpdatedUtc,
             SceneRoles = NormalizeOptions(state.SceneRoles, defaults.SceneRoles),
             TraitCategories = NormalizeGroups(state.TraitCategories, defaults.TraitCategories),
             CoreDrives = NormalizeOptions(state.CoreDrives, defaults.CoreDrives),

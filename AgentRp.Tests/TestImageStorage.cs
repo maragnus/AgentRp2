@@ -2,7 +2,7 @@ using AgentRp.Services;
 
 namespace AgentRp.Tests;
 
-internal sealed class TestImageBlobStorage : IImageBlobStorage
+internal sealed class TestAssetBlobStorage : IAssetBlobStorage
 {
     readonly Dictionary<string, (byte[] Bytes, string ContentType)> blobs = [];
 
@@ -15,12 +15,12 @@ internal sealed class TestImageBlobStorage : IImageBlobStorage
         return Task.CompletedTask;
     }
 
-    public Task<StoredImageBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default)
+    public Task<StoredAssetBlob?> OpenReadAsync(string blobName, CancellationToken cancellationToken = default)
     {
         if (!blobs.TryGetValue(blobName, out var blob))
-            return Task.FromResult<StoredImageBlob?>(null);
+            return Task.FromResult<StoredAssetBlob?>(null);
 
-        return Task.FromResult<StoredImageBlob?>(new(new MemoryStream(blob.Bytes), blob.ContentType));
+        return Task.FromResult<StoredAssetBlob?>(new(new MemoryStream(blob.Bytes), blob.ContentType));
     }
 
     public Task<byte[]> ReadBytesAsync(string blobName, CancellationToken cancellationToken = default) =>

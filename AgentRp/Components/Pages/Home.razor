@@ -185,6 +185,12 @@ else
 
     async Task OpenModal(string name)
     {
+        if (name == "storyAssistant")
+        {
+            await OpenStoryAssistant();
+            return;
+        }
+
         await Overlays.CloseAllAsync($"Opening modal '{name}'");
         if (name is "gallery" or "generate")
             ClearPendingEntityImage();
@@ -205,6 +211,7 @@ else
     async Task OpenStoryAssistant()
     {
         await Overlays.CloseAllAsync("Opening Story Assistant");
+        await Session.Chat.StoryAssistant.OpenLatestOrNewChatAsync();
         Modal = "storyAssistant";
     }
 

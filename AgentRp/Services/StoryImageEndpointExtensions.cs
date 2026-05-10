@@ -10,7 +10,7 @@ public static class StoryImageEndpointExtensions
         endpoints.MapGet("/story-images/{imageId}", async (
             string imageId,
             IDbContextFactory<RpDbContext> dbContextFactory,
-            IImageBlobStorage blobStorage,
+            IAssetBlobStorage blobStorage,
             CancellationToken cancellationToken) =>
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);

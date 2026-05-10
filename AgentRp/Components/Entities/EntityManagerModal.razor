@@ -349,10 +349,10 @@
     Task Changed() => Type switch
     {
         "characters" when SelectedId == NarratorId => Session.Chat.NarratorProfile.MarkChangedAsync(),
-        "characters" => Session.Chat.Characters.MarkChangedAsync(),
-        "locations" => Session.Chat.Locations.MarkChangedAsync(),
-        "items" => Session.Chat.Items.MarkChangedAsync(),
-        _ => Session.Chat.Timeline.MarkChangedAsync()
+        "characters" => Session.Chat.Characters.MarkChangedAsync(SelectedId ?? ""),
+        "locations" => Session.Chat.Locations.MarkChangedAsync(SelectedId ?? ""),
+        "items" => Session.Chat.Items.MarkChangedAsync(SelectedId ?? ""),
+        _ => Session.Chat.Timeline.MarkChangedAsync(SelectedId ?? "")
     };
 
     public void Dispose()
