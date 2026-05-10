@@ -1,12 +1,12 @@
 <div class="entity-form-editor">
     <Section Title="Event" Class="entity-form-section">
-        <FieldRow Label="Title"><input class="field" @bind="Entry.Title" @bind:after="Changed" /></FieldRow>
-        <FieldRow Label="Date"><input class="field" @bind="Entry.Date" @bind:after="Changed" /></FieldRow>
-        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Entry.Description" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Title"><AppInput Value="@Entry.Title" ValueChanged="SetTitle" /></FieldRow>
+        <FieldRow Label="Date"><AppInput Value="@Entry.Date" ValueChanged="SetDate" /></FieldRow>
+        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Entry.Description" ValueChanged="SetDescription" /></FieldRow>
     </Section>
     <Section Title="Story Context" Class="entity-form-section">
-        <FieldRow Label="Characters"><input class="field" value="@string.Join(", ", Entry.Characters)" @onchange="UpdateCharacters" /></FieldRow>
-        <FieldRow Label="Significance"><textarea class="field" rows="4" @bind="Entry.Significance" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Characters"><AppInput Value="@string.Join(", ", Entry.Characters)" ValueChanged="UpdateCharacters" /></FieldRow>
+        <FieldRow Label="Significance"><AppTextarea Rows="4" Value="@Entry.Significance" ValueChanged="SetSignificance" /></FieldRow>
     </Section>
 </div>
 
@@ -14,9 +14,20 @@
     [Parameter] public RpTimelineEntry Entry { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     Task Changed() => OnChanged.InvokeAsync();
-    async Task UpdateCharacters(ChangeEventArgs args)
+    async Task SetTitle(string value) => await Update(() => Entry.Title = value);
+    async Task SetDate(string value) => await Update(() => Entry.Date = value);
+    async Task SetDescription(string value) => await Update(() => Entry.Description = value);
+    async Task SetSignificance(string value) => await Update(() => Entry.Significance = value);
+
+    async Task UpdateCharacters(string value)
     {
-        Entry.Characters = (args.Value?.ToString() ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        Entry.Characters = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        await Changed();
+    }
+
+    async Task Update(Action update)
+    {
+        update();
         await Changed();
     }
 }

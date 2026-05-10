@@ -22,6 +22,8 @@ internal sealed record ChatDocumentRows(
 
 internal static class ChatDocumentPersistenceMapper
 {
+    const string CyoaDataKey = "cyoa";
+
     public static RpChatDocument CreateEmpty(string chatId, RpChatRow? chat) => new()
     {
         Chat = chat is null ? new RpChat { Id = chatId } : ChatPersistenceMapper.ToModel(chat)
@@ -81,6 +83,9 @@ internal static class ChatDocumentPersistenceMapper
         if (row is null)
             return new() { ActiveLeafTurnId = activeLeafTurnId };
 
+        var data = PersistenceJson.Deserialize(row.DataJson, new JsonObject());
+        var cyoa = DeserializeCyoa(data);
+        data.Remove(CyoaDataKey);
         return new()
         {
             SchemaVersion = row.SchemaVersion,
@@ -89,7 +94,8 @@ internal static class ChatDocumentPersistenceMapper
             Options = PersistenceJson.Deserialize(row.OptionsJson, new RpTranscriptOptionsState()),
             ActiveLeafTurnId = activeLeafTurnId,
             BranchSelections = PersistenceJson.Deserialize(row.BranchSelectionsJson, new Dictionary<string, string>(StringComparer.Ordinal)),
-            Data = PersistenceJson.Deserialize(row.DataJson, new JsonObject())
+            Cyoa = cyoa,
+            Data = data
         };
     }
 
@@ -100,8 +106,22 @@ internal static class ChatDocumentPersistenceMapper
         row.WorkingSceneJson = PersistenceJson.Serialize(transcript.WorkingScene);
         row.OptionsJson = PersistenceJson.Serialize(transcript.Options);
         row.BranchSelectionsJson = PersistenceJson.Serialize(transcript.BranchSelections);
-        row.DataJson = PersistenceJson.Serialize(transcript.Data);
+        row.DataJson = PersistenceJson.Serialize(DataWithCyoa(transcript));
         row.UpdatedUtc = now;
+    }
+
+    static RpCyoaState DeserializeCyoa(JsonObject data)
+    {
+        return data.TryGetPropertyValue(CyoaDataKey, out var node) && node is not null
+            ? PersistenceJson.Deserialize(node.ToJsonString(), new RpCyoaState())
+            : new();
+    }
+
+    static JsonObject DataWithCyoa(RpTranscriptState transcript)
+    {
+        var data = (JsonObject?)transcript.Data.DeepClone() ?? new();
+        data[CyoaDataKey] = JsonNode.Parse(PersistenceJson.Serialize(transcript.Cyoa));
+        return data;
     }
 
     public static void Apply(ChatDirectionState state, ChatDirectionStateRow row, DateTime now)

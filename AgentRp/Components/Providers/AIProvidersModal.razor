@@ -80,7 +80,7 @@
                         {
                             <AppField Label="Endpoint URL" Hint="@EndpointHint">
                                 <LabelAction><span class="field-status-pill @(OnboardMeta.EndpointRequired ? "is-required" : "")">@(OnboardMeta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
-                                <ChildContent><input class="field" value="@OnboardEndpoint" placeholder="https://your-endpoint.example.com/v1" @oninput="args => OnboardEndpoint = args.Value?.ToString() ?? string.Empty" /></ChildContent>
+                                <ChildContent><AppInput Value="@OnboardEndpoint" ValueChanged="value => OnboardEndpoint = value" Placeholder="https://your-endpoint.example.com/v1" UpdateMode="TextUpdateMode.Change" /></ChildContent>
                             </AppField>
                         }
                         <AppField Label="@OnboardMeta.KeyLabel" Hint="Stored locally only, never sent to our servers.">

@@ -4,7 +4,7 @@
 <ModalSplitLayout Height="100%" RailWidth="280px" Class="story-entity-browser" MainClass="story-entity-browser-main">
     <RailHeader>
         <div class="story-entity-browser-head">
-            <input class="field" value="@Search" @oninput="SearchChanged" placeholder="Search entities" />
+            <AppInput Value="@Search" ValueChanged="SearchChanged" Placeholder="Search entities" UpdateMode="TextUpdateMode.Live" />
         </div>
     </RailHeader>
     <RailContent>
@@ -150,9 +150,9 @@
 
     Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
-    void SearchChanged(ChangeEventArgs args)
+    void SearchChanged(string value)
     {
-        Search = args.Value?.ToString() ?? "";
+        Search = value;
         if (SelectedEntry is null)
             SelectedKey = FilteredEntries.FirstOrDefault()?.Key ?? "";
     }

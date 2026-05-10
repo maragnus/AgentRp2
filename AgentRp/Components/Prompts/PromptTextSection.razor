@@ -5,7 +5,7 @@
         </AppButton>
     </RightContent>
     <ChildContent>
-        <textarea class="field mono prompt-textarea" rows="6" value="@Value" @onchange="HandleChange"></textarea>
+        <AppTextarea Class="mono prompt-textarea" Rows="6" Value="@Value" ValueChanged="HandleChange" />
     </ChildContent>
 </Section>
 
@@ -16,5 +16,5 @@
     [Parameter] public bool IsDirty { get; set; }
     [Parameter] public EventCallback OnReset { get; set; }
 
-    Task HandleChange(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    Task HandleChange(string value) => ValueChanged.InvokeAsync(value);
 }

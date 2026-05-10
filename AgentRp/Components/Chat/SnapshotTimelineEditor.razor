@@ -22,10 +22,10 @@ else
                 <ChildContent>
                     <div class="snapshot-timeline-grid">
                         <FieldRow Label="When">
-                            <input class="field" value="@FormatWhen(entry)" placeholder="Turn 52" @onchange="args => UpdateTurnNumber(entry, args)" />
+                            <AppInput Value="@FormatWhen(entry)" ValueChanged="value => UpdateTurnNumber(entry, value)" Placeholder="Turn 52" />
                         </FieldRow>
                         <FieldRow Label="Title">
-                            <input class="field" value="@entry.Title" placeholder="Timeline title" @oninput="args => Update(value => entry.Title = value, args)" />
+                            <AppInput Value="@entry.Title" ValueChanged="value => Update(updated => entry.Title = updated, value)" Placeholder="Timeline title" UpdateMode="TextUpdateMode.Change" />
                         </FieldRow>
                     </div>
                     <FieldRow Label="Description">
@@ -47,15 +47,9 @@ else
         await OnChanged.InvokeAsync();
     }
 
-    async Task UpdateTurnNumber(SnapshotDraftTimelineEntryEditor entry, ChangeEventArgs args)
+    async Task UpdateTurnNumber(SnapshotDraftTimelineEntryEditor entry, string value)
     {
-        entry.TurnNumber = ParseTurnNumber(args.Value?.ToString());
-        await OnChanged.InvokeAsync();
-    }
-
-    async Task Update(Action<string> setValue, ChangeEventArgs args)
-    {
-        setValue(args.Value?.ToString() ?? string.Empty);
+        entry.TurnNumber = ParseTurnNumber(value);
         await OnChanged.InvokeAsync();
     }
 

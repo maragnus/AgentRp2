@@ -1,0 +1,106 @@
+@using AgentRp.Models
+
+<div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
+    <AppTextarea Rows="3"
+                 Value="@Draft"
+                 ValueChanged="UpdateDraft"
+                 IsEmpty="@DraftIsEmpty"
+                 IsEmptyChanged="SetDraftIsEmpty"
+                 UpdateMode="TextUpdateMode.Empty"
+                 Disabled="@TranscriptBusy"
+                 Placeholder="Guide the next turn, or leave blank to let AI continue the scene..."
+                 @onkeydown="OnKeyDown" />
+    <div class="claude-composer-actions">
+        <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
+            <Trigger Context="speaker">
+                <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => speaker.Toggle())">
+                    <EntityMention EntityType="@SpeakerMentionType"
+                                   EntityId="@SpeakerMentionId"
+                                   Name="@SpeakerName"
+                                   Size="14" />
+                    <FaIcon Name="chevron-down" />
+                </AppButton>
+            </Trigger>
+            <Content>
+                <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => OnPickSpeaker.InvokeAsync(null))">
+                    <EntityMention EntityType="@EntityTypes.Narrator" EntityId="@EntityIds.Narrator" Name="Narrator" Size="20" />
+                </SelectableButton>
+                @foreach (var character in Characters)
+                {
+                    <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => OnPickSpeaker.InvokeAsync(character))">
+                        <EntityMention EntityType="@EntityTypes.Character" EntityId="@character.Id" Name="@character.Name" Size="20" />
+                    </SelectableButton>
+                }
+            </Content>
+        </AnchoredPopover>
+
+        <div class="toolbar-spacer"></div>
+
+        <TurnShapePicker SelectedShape="@TurnShape" Disabled="@TranscriptBusy" ShapeSelected="OnPickShape" />
+        <AppButton Icon="@TurnShapeLockIcon"
+                   Variant="secondary"
+                   Size="xs"
+                   Class="composer-lock-button"
+                   Active="@TurnShapeLocked"
+                   Disabled="@TranscriptBusy"
+                   TooltipText="@TurnShapeLockTitle"
+                   OnClick="@(_ => OnToggleTurnShapeLocked.InvokeAsync())" />
+
+        <span class="v-divider"></span>
+
+        @if (TranscriptBusy)
+        {
+            <span class="composer-busy-status"><span class="spinner" aria-hidden="true"></span>@TranscriptBusyMessage</span>
+        }
+        <span class="shortcut">Ctrl+Enter</span>
+        <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" TooltipText="@GenerateTitle" OnClick="@OnGenerate">
+            <FaIcon Name="sparkle" /> Generate
+        </AppButton>
+        <AppButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || DraftIsEmpty)" TooltipText="Post manual turn" OnClick="@OnPostManual" />
+    </div>
+</div>
+
+@code {
+    string LoadedDraft = "";
+    bool DraftIsEmpty = true;
+
+    [Parameter] public string Draft { get; set; } = "";
+    [Parameter] public EventCallback<string> DraftChanged { get; set; }
+    [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public string SpeakerName { get; set; } = "Narrator";
+    [Parameter] public string SpeakerMentionType { get; set; } = EntityTypes.Narrator;
+    [Parameter] public string SpeakerMentionId { get; set; } = EntityIds.Narrator;
+    [Parameter] public string TurnShape { get; set; } = TurnShapePickerOptions.Auto;
+    [Parameter] public bool TurnShapeLocked { get; set; }
+    [Parameter] public string TurnShapeLockIcon { get; set; } = "lock-open";
+    [Parameter] public string TurnShapeLockTitle { get; set; } = "";
+    [Parameter] public bool TranscriptBusy { get; set; }
+    [Parameter] public string TranscriptBusyMessage { get; set; } = "";
+    [Parameter] public bool CanGenerate { get; set; }
+    [Parameter] public string GenerateTitle { get; set; } = "";
+    [Parameter] public EventCallback<RpCharacter?> OnPickSpeaker { get; set; }
+    [Parameter] public EventCallback<string> OnPickShape { get; set; }
+    [Parameter] public EventCallback OnToggleTurnShapeLocked { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
+    [Parameter] public EventCallback OnGenerate { get; set; }
+    [Parameter] public EventCallback OnPostManual { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (string.Equals(LoadedDraft, Draft, StringComparison.Ordinal))
+            return;
+
+        LoadedDraft = Draft;
+        DraftIsEmpty = string.IsNullOrWhiteSpace(Draft);
+    }
+
+    async Task UpdateDraft(string value)
+    {
+        Draft = value;
+        LoadedDraft = value;
+        DraftIsEmpty = string.IsNullOrWhiteSpace(value);
+        await DraftChanged.InvokeAsync(Draft);
+    }
+
+    void SetDraftIsEmpty(bool value) => DraftIsEmpty = value;
+}

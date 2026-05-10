@@ -18,13 +18,28 @@
         </div>
     </Section>
     <Section Title="@($"How {SourceName} sees {TargetName}")">
-        <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {SourceName} perceive and treat {TargetName}?")" value="@HowSourceSeesTarget" @oninput="SetHowSourceSeesTarget"></textarea>
+        <AppTextarea Class="character-relationship-note"
+                     Rows="1"
+                     Placeholder="@($"How does {SourceName} perceive and treat {TargetName}?")"
+                     Value="@HowSourceSeesTarget"
+                     ValueChanged="SetHowSourceSeesTarget"
+                     UpdateMode="TextUpdateMode.Change" />
     </Section>
     <Section Title="@($"How {TargetName} sees {SourceName}")">
-        <textarea class="character-relationship-note" rows="1" placeholder="@($"How does {TargetName} perceive and treat {SourceName}?")" value="@HowTargetSeesSource" @oninput="SetHowTargetSeesSource"></textarea>
+        <AppTextarea Class="character-relationship-note"
+                     Rows="1"
+                     Placeholder="@($"How does {TargetName} perceive and treat {SourceName}?")"
+                     Value="@HowTargetSeesSource"
+                     ValueChanged="SetHowTargetSeesSource"
+                     UpdateMode="TextUpdateMode.Change" />
     </Section>
     <Section Title="External Perception">
-        <textarea class="character-relationship-note" rows="1" placeholder="How would others describe this relationship from the outside?" value="@PublicDynamic" @oninput="SetPublicDynamic"></textarea>
+        <AppTextarea Class="character-relationship-note"
+                     Rows="1"
+                     Placeholder="How would others describe this relationship from the outside?"
+                     Value="@PublicDynamic"
+                     ValueChanged="SetPublicDynamic"
+                     UpdateMode="TextUpdateMode.Change" />
     </Section>
 </div>
 
@@ -52,21 +67,21 @@
         await OnChanged.InvokeAsync();
     }
 
-    async Task SetHowSourceSeesTarget(ChangeEventArgs args)
+    async Task SetHowSourceSeesTarget(string value)
     {
-        await HowSourceSeesTargetChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await HowSourceSeesTargetChanged.InvokeAsync(value);
         await OnChanged.InvokeAsync();
     }
 
-    async Task SetHowTargetSeesSource(ChangeEventArgs args)
+    async Task SetHowTargetSeesSource(string value)
     {
-        await HowTargetSeesSourceChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await HowTargetSeesSourceChanged.InvokeAsync(value);
         await OnChanged.InvokeAsync();
     }
 
-    async Task SetPublicDynamic(ChangeEventArgs args)
+    async Task SetPublicDynamic(string value)
     {
-        await PublicDynamicChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        await PublicDynamicChanged.InvokeAsync(value);
         await OnChanged.InvokeAsync();
     }
 }

@@ -162,7 +162,11 @@
                                 @foreach (var character in Characters)
                                 {
                                     <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                        <textarea class="field plan-field" rows="3" placeholder="@($"What is physically true for {character.Name}?")" value="@GetAppearance(character.Id)" @onchange="@((ChangeEventArgs args) => SetAppearance(character.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                        <AppTextarea Class="plan-field"
+                                                     Rows="3"
+                                                     Placeholder="@($"What is physically true for {character.Name}?")"
+                                                     Value="@GetAppearance(character.Id)"
+                                                     ValueChanged="value => SetAppearance(character.Id, value)" />
                                     </Section>
                                 }
                             }
@@ -181,25 +185,25 @@
 
                                 <Section Title="Scene Beat" Class="edit-plan-section">
                                     <FieldRow Label="Beat">
-                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What story beat does this turn serve?" @bind="Beat"></textarea>
+                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What story beat does this turn serve?" @bind-Value="Beat" />
                                     </FieldRow>
                                     <FieldRow Label="Change Introduced">
-                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What shifts as a result of this turn?" @bind="ChangeIntroduced"></textarea>
+                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What shifts as a result of this turn?" @bind-Value="ChangeIntroduced" />
                                     </FieldRow>
                                 </Section>
 
                                 <Section Title="Character Aim" Class="edit-plan-section">
                                     <FieldRow Label="Intent">
-                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What does the character intend to do?" @bind="Intent"></textarea>
+                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What does the character intend to do?" @bind-Value="Intent" />
                                     </FieldRow>
                                     <FieldRow Label="Immediate Goal">
-                                        <input class="field plan-field" placeholder="What does the character want right now?" @bind="ImmediateGoal" />
+                                        <AppInput Class="plan-field" Placeholder="What does the character want right now?" @bind-Value="ImmediateGoal" />
                                     </FieldRow>
                                     <FieldRow Label="Why Now">
-                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="Why is the character acting at this moment?" @bind="WhyNow"></textarea>
+                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="Why is the character acting at this moment?" @bind-Value="WhyNow" />
                                     </FieldRow>
                                     <FieldRow Label="Guardrails">
-                                        <textarea class="field plan-field" rows="@PlanTextareaRows" placeholder="What should the AI avoid or preserve?" @bind="Guardrails"></textarea>
+                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What should the AI avoid or preserve?" @bind-Value="Guardrails" />
                                     </FieldRow>
                                 </Section>
                             }
@@ -213,7 +217,11 @@
                                 else
                                 {
                                     <Section @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section">
-                                        <textarea class="field plan-field" rows="3" placeholder="@($"What private intention is {activeCharacter.Name} carrying?")" value="@GetPrivateIntent(activeCharacter.Id)" @onchange="@((ChangeEventArgs args) => SetPrivateIntent(activeCharacter.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                        <AppTextarea Class="plan-field"
+                                                     Rows="3"
+                                                     Placeholder="@($"What private intention is {activeCharacter.Name} carrying?")"
+                                                     Value="@GetPrivateIntent(activeCharacter.Id)"
+                                                     ValueChanged="value => SetPrivateIntent(activeCharacter.Id, value)" />
                                     </Section>
                                 }
                             }
@@ -234,7 +242,7 @@
                                     }
                                     else if (SpeechInputSnapshot.Inputs.Count == 1)
                                     {
-                                        <textarea class="field plan-field speech-input-field" rows="8" readonly value="@SpeechInputSnapshot.Inputs[0].Text"></textarea>
+                                        <AppTextarea Class="plan-field speech-input-field" Rows="8" readonly Value="@SpeechInputSnapshot.Inputs[0].Text" />
                                     }
                                     else
                                     {
@@ -243,7 +251,7 @@
                                             {
                                                 var input = SpeechInputSnapshot.Inputs[i];
                                                 <FieldRow @key="SpeechInputKey(input, i)" Label="@SpeechInputLabel(input, i)">
-                                                    <textarea class="field plan-field speech-input-field" rows="4" readonly value="@input.Text"></textarea>
+                                                    <AppTextarea Class="plan-field speech-input-field" Rows="4" readonly Value="@input.Text" />
                                                 </FieldRow>
                                             }
                                         </div>
@@ -277,7 +285,7 @@
     <ModalShell Title="Edit Message" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
         <ChildContent>
             <Section Title="Body">
-                <textarea class="field plan-field" rows="8" @bind="BodyDraft"></textarea>
+                <AppTextarea Class="plan-field" Rows="8" @bind-Value="BodyDraft" />
             </Section>
         </ChildContent>
         <Footer>

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections;
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
@@ -57,6 +58,96 @@ public sealed class TextGenerationServiceTests
             report.Steps.First(step => step.Id == "selection").Status == "running");
         Assert.Equal("completed", reports.Last().Status);
         Assert.All(reports.Last().Steps, step => Assert.Equal("completed", step.Status));
+    }
+
+    [Fact]
+    public async Task SelectedCyoaTurnPrependsChoicesAndRunsFullStructuredTurnPipeline()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+        var choicesStarted = DateTime.UtcNow.AddSeconds(-5);
+        var decision = new RpCyoaPendingDecision
+        {
+            Id = "cyoa-test",
+            ParentTurnId = "turn-3",
+            Mode = RpCyoaModes.Adventure,
+            ActorCharacterId = "c2",
+            ActorName = "Gemma",
+            CreatedUtc = choicesStarted,
+            Trace = new()
+            {
+                Summary = "Completed - Gemma - Choices",
+                Status = "completed",
+                StartedUtc = choicesStarted,
+                CompletedUtc = choicesStarted.AddSeconds(1),
+                Steps =
+                [
+                    new()
+                    {
+                        Id = "cyoa-options",
+                        Label = "Choices",
+                        Status = "completed",
+                        StartedUtc = choicesStarted,
+                        CompletedUtc = choicesStarted.AddSeconds(1),
+                        DurationSeconds = 1
+                    }
+                ]
+            }
+        };
+        var option = new RpCyoaOption
+        {
+            Id = "option-continue",
+            Direction = RpCyoaDirections.Continue,
+            Title = "Keep pressure on",
+            Summary = "Gemma presses the current beat.",
+            Guidance = "Press the current beat.",
+            ActorCharacterId = "c2",
+            ActorName = "Gemma",
+            Plan = new()
+            {
+                TurnShape = "Brief",
+                Beat = "Seed beat",
+                Intent = "Seed intent",
+                ImmediateGoal = "Seed goal",
+                WhyNow = "Seed why now",
+                ChangeIntroduced = "Seed change",
+                Guardrails = "Seed guardrails"
+            }
+        };
+
+        var result = await service.GenerateSelectedCyoaTurnAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
+            new(decision, option, ""));
+
+        Assert.Equal(["AppearanceResponse", "PlanningResponse"], client.StructuredCalls);
+        Assert.Equal(1, client.StreamingTextCalls);
+        Assert.Equal(["cyoa-options", "scene-continuity", "planning", "prose"], result.Trace.Steps.Select(step => step.Id));
+        Assert.All(result.Trace.Steps, step => Assert.Equal("completed", step.Status));
+        Assert.Equal("Gemma", result.ActorName);
+        var planning = client.GenerationRequests.First(request => request.OperationName == "Planning transcript turn");
+        Assert.Contains("Press the current beat.", planning.UserPrompt, StringComparison.Ordinal);
+        Assert.Contains("Choice planning seed:", planning.UserPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CyoaFastForwardDecisionUsesConcreteOptionTextWhenSceneGuidanceIsBlank()
+    {
+        var client = new FakeModelGenerationClient();
+        var service = new TextGenerationService(client, new NoOpCapabilityCatalog(), new TranscriptPromptContextBuilder());
+        var document = await LoadDocumentAsync();
+
+        var result = await service.GenerateCyoaDecisionAsync(
+            document,
+            [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
+            ActiveModelSelectionsState.CreateDefault(),
+            new("turn-3", RpCyoaModes.Adventure, "c2", "Gemma", false));
+
+        var fastForward = result.Decision.Options.Single(option => option.Direction == RpCyoaDirections.FastForward);
+        Assert.NotNull(fastForward.SceneProposal);
+        Assert.Equal("Fast-forward six hours to sunrise. Alex and Elena have spent the night reviewing leads off the notebook and are now outlining next steps at the same desks as the city wakes up.", fastForward.SceneProposal.Guidance);
     }
 
     [Fact]
@@ -697,6 +788,26 @@ public sealed class TextGenerationServiceTests
                     [new("c2", "Gemma", "near the couch", "standing", "turned toward Bella", "", "", "holding a glass", "", "", "", "", "", "", "holding water")],
                     [new("glass-water-1", "Glass of water", "c2", "c2", "left hand", "", "full and cold", "full glass of cold water held by Gemma in left hand")]);
                 return (T)(object)response;
+            }
+
+            if (type.Name == "CyoaDecisionResponse")
+            {
+                var response = Activator.CreateInstance(type, nonPublic: true)
+                    ?? throw new InvalidOperationException($"Could not create {type.Name}.");
+                var optionType = type.DeclaringType?.GetNestedType("CyoaOptionResponse", BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException("Could not find CYOA option response type.");
+                var option = Activator.CreateInstance(optionType, nonPublic: true)
+                    ?? throw new InvalidOperationException($"Could not create {optionType.Name}.");
+                SetProperty(optionType, option, "Direction", "fast-forward");
+                SetProperty(optionType, option, "Title", "Wait it out");
+                SetProperty(optionType, option, "Summary", "Fast-forward six hours to sunrise. Alex and Elena have spent the night reviewing leads off the notebook and are now outlining next steps at the same desks as the city wakes up.");
+                SetProperty(optionType, option, "Guidance", "");
+                SetProperty(optionType, option, "SceneGuidance", "");
+                var options = (IList)(Activator.CreateInstance(typeof(List<>).MakeGenericType(optionType))
+                    ?? throw new InvalidOperationException("Could not create CYOA option response list."));
+                options.Add(option);
+                type.GetProperty("Options", BindingFlags.Public | BindingFlags.Instance)?.SetValue(response, options);
+                return (T)response;
             }
 
             var value = Activator.CreateInstance(type, nonPublic: true)

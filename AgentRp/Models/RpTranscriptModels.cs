@@ -15,7 +15,120 @@ public sealed class RpTranscriptState
     public List<RpTranscriptSnapshot> Snapshots { get; set; } = [];
     public string ActiveLeafTurnId { get; set; } = "";
     public Dictionary<string, string> BranchSelections { get; set; } = [];
+    public RpCyoaState Cyoa { get; set; } = new();
     public JsonObject Data { get; set; } = new();
+}
+
+public static class RpCyoaModes
+{
+    public const string Off = "off";
+    public const string Adventure = "adventure";
+    public const string Director = "director";
+
+    public static bool IsActive(string mode) =>
+        string.Equals(mode, Adventure, StringComparison.Ordinal)
+        || string.Equals(mode, Director, StringComparison.Ordinal);
+}
+
+public static class RpCyoaDirections
+{
+    public const string Continue = "continue";
+    public const string Escalate = "escalate";
+    public const string Pivot = "pivot";
+    public const string FastForward = "fast-forward";
+
+    public static readonly IReadOnlyList<string> All =
+    [
+        Continue,
+        Escalate,
+        Pivot,
+        FastForward
+    ];
+
+    public static string Normalize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Continue;
+
+        var key = value.Trim()
+            .Replace("_", "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal)
+            .ToLowerInvariant();
+        return key switch
+        {
+            "continue" => Continue,
+            "escalate" => Escalate,
+            "pivot" => Pivot,
+            "fast-forward" or "fastforward" => FastForward,
+            _ => Continue
+        };
+    }
+
+    public static string Label(string direction) => Normalize(direction) switch
+    {
+        Continue => "Continue",
+        Escalate => "Escalate",
+        Pivot => "Pivot",
+        FastForward => "Fast Forward",
+        _ => "Continue"
+    };
+}
+
+public sealed class RpCyoaState
+{
+    public const int MaxAutoplayTurns = 4;
+
+    public string Mode { get; set; } = RpCyoaModes.Off;
+    public List<string> ControlledCharacterIds { get; set; } = [];
+    public RpCyoaPendingDecision? PendingDecision { get; set; }
+    public int AutoplayRemaining { get; set; } = MaxAutoplayTurns;
+}
+
+public sealed class RpCyoaPendingDecision
+{
+    public string Id { get; set; } = "";
+    public string ParentTurnId { get; set; } = "";
+    public string Mode { get; set; } = RpCyoaModes.Off;
+    public string ActorCharacterId { get; set; } = "";
+    public string ActorName { get; set; } = "";
+    public bool RequestedNarrator { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public List<RpCyoaOption> Options { get; set; } = [];
+    public RpGenerationTrace? Trace { get; set; }
+    public RpCyoaFastForwardReview? FastForwardReview { get; set; }
+}
+
+public sealed class RpCyoaOption
+{
+    public string Id { get; set; } = "";
+    public string Direction { get; set; } = RpCyoaDirections.Continue;
+    public string Title { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string Guidance { get; set; } = "";
+    public string ActorCharacterId { get; set; } = "";
+    public string ActorName { get; set; } = "";
+    public bool RequestedNarrator { get; set; }
+    public RpTurnPlan Plan { get; set; } = new();
+    public Dictionary<string, string> AppearanceByCharacterId { get; set; } = [];
+    public Dictionary<string, string> PrivateIntentByCharacterId { get; set; } = [];
+    public RpSceneFrame Scene { get; set; } = new();
+    public RpCyoaSceneProposal? SceneProposal { get; set; }
+}
+
+public sealed class RpCyoaSceneProposal
+{
+    public string LocationId { get; set; } = "";
+    public string LocationName { get; set; } = "";
+    public List<string> CharacterIds { get; set; } = [];
+    public List<string> ItemIds { get; set; } = [];
+    public string Purpose { get; set; } = "time-skip";
+    public string Guidance { get; set; } = "";
+}
+
+public sealed class RpCyoaFastForwardReview
+{
+    public string OptionId { get; set; } = "";
+    public RpCyoaSceneProposal Proposal { get; set; } = new();
 }
 
 public sealed class RpWorkingSceneState

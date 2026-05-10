@@ -85,7 +85,7 @@
                                         <code class="@(dirty ? "is-dirty" : "")">@shape.Label</code>
                                         <AppButton Icon="refresh" TooltipText="Reset" Disabled="@(!dirty)" OnClick="@(_ => ResetTurnShape(shape.Id))" />
                                     </div>
-                                    <textarea class="field mono" rows="2" value="@shape.Value" @onchange="@((ChangeEventArgs args) => UpdateTurnShape(shape.Id, args.Value?.ToString() ?? ""))"></textarea>
+                                    <AppTextarea Class="mono" Rows="2" Value="@shape.Value" ValueChanged="value => UpdateTurnShape(shape.Id, value)" />
                                 </div>
                             }
                         </div>

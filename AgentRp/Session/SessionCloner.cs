@@ -456,7 +456,63 @@ static class SessionCloner
         Snapshots = value.Snapshots.Select(Clone).ToList(),
         ActiveLeafTurnId = value.ActiveLeafTurnId,
         BranchSelections = value.BranchSelections.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        Cyoa = Clone(value.Cyoa),
         Data = Clone(value.Data)
+    };
+
+    public static RpCyoaState Clone(RpCyoaState value) => new()
+    {
+        Mode = value.Mode,
+        ControlledCharacterIds = [.. value.ControlledCharacterIds],
+        PendingDecision = value.PendingDecision is null ? null : Clone(value.PendingDecision),
+        AutoplayRemaining = value.AutoplayRemaining
+    };
+
+    static RpCyoaPendingDecision Clone(RpCyoaPendingDecision value) => new()
+    {
+        Id = value.Id,
+        ParentTurnId = value.ParentTurnId,
+        Mode = value.Mode,
+        ActorCharacterId = value.ActorCharacterId,
+        ActorName = value.ActorName,
+        RequestedNarrator = value.RequestedNarrator,
+        CreatedUtc = value.CreatedUtc,
+        Options = value.Options.Select(Clone).ToList(),
+        Trace = value.Trace is null ? null : Clone(value.Trace),
+        FastForwardReview = value.FastForwardReview is null ? null : Clone(value.FastForwardReview)
+    };
+
+    static RpCyoaOption Clone(RpCyoaOption value) => new()
+    {
+        Id = value.Id,
+        Direction = value.Direction,
+        Title = value.Title,
+        Summary = value.Summary,
+        Guidance = value.Guidance,
+        ActorCharacterId = value.ActorCharacterId,
+        ActorName = value.ActorName,
+        RequestedNarrator = value.RequestedNarrator,
+        Plan = Clone(value.Plan),
+        AppearanceByCharacterId = value.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        PrivateIntentByCharacterId = value.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        Scene = Clone(value.Scene),
+        SceneProposal = value.SceneProposal is null ? null : Clone(value.SceneProposal)
+    };
+
+    public static RpCyoaSceneProposal Clone(RpCyoaSceneProposal value) => new()
+    {
+        LocationId = value.LocationId,
+        LocationName = value.LocationName,
+        CharacterIds = [.. value.CharacterIds],
+        ItemIds = [.. value.ItemIds],
+        Purpose = value.Purpose,
+        Guidance = value.Guidance
+    };
+
+    static RpCyoaFastForwardReview Clone(RpCyoaFastForwardReview value) => new()
+    {
+        OptionId = value.OptionId,
+        Proposal = Clone(value.Proposal)
     };
 
     public static RpWorkingSceneState Clone(RpWorkingSceneState value) => new()

@@ -39,6 +39,39 @@ public sealed record GeneratePlanAndProseRequest(
     IReadOnlyDictionary<string, string> AppearanceByCharacterId,
     RpSceneFrame Scene);
 
+public sealed record SelectCyoaActorRequest(
+    string ParentTurnId,
+    IReadOnlyList<string> ControlledCharacterIds,
+    bool ForceControlled);
+
+public sealed record CyoaActorSelection(
+    string ActorCharacterId,
+    string ActorName,
+    bool RequestedNarrator);
+
+public sealed record GenerateCyoaDecisionRequest(
+    string ParentTurnId,
+    string Mode,
+    string ActorCharacterId,
+    string ActorName,
+    bool RequestedNarrator);
+
+public sealed record GeneratedCyoaDecision(
+    RpCyoaPendingDecision Decision,
+    RpGenerationTrace Trace);
+
+public sealed record GenerateSelectedCyoaTurnRequest(
+    RpCyoaPendingDecision Decision,
+    RpCyoaOption? Option,
+    string CustomGuidance);
+
+public sealed record GenerateAutonomousCyoaTurnRequest(
+    string ParentTurnId,
+    string Mode,
+    string ActorCharacterId,
+    string ActorName,
+    bool RequestedNarrator);
+
 public sealed record GenerateSnapshotRequest(string TurnId);
 
 public sealed record GeneratedTurnResult(
@@ -74,6 +107,10 @@ public interface ITextGenerationService
     Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<CyoaActorSelection> SelectCyoaActorAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, SelectCyoaActorRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateCyoaDecisionRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSelectedCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateAutonomousCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
     Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
@@ -311,6 +348,334 @@ public sealed class TextGenerationService(
                 CloneMap(request.AppearanceByCharacterId),
                 CloneMap(request.PrivateIntentByCharacterId),
                 SessionCloner.Clone(request.Scene),
+                prose,
+                trace);
+        }
+        catch (Exception exception) when (exception is not TranscriptGenerationException)
+        {
+            FailRunningStep(trace, exception.Message);
+            FinalizeTrace(trace, "failed");
+            trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
+            throw new TranscriptGenerationException(exception.Message, trace);
+        }
+    }
+
+    public async Task<CyoaActorSelection> SelectCyoaActorAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        SelectCyoaActorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers, modelSelections);
+        if (!selection.Capabilities.CanGenerateStructuredText)
+            return FallbackCyoaActor(document, request);
+
+        var scene = TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId);
+        var presentCharacters = document.Characters
+            .Where(character => scene.InSceneCharacterIds.Contains(character.Id, StringComparer.Ordinal))
+            .ToList();
+        var candidates = request.ForceControlled
+            ? presentCharacters.Where(character => request.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal)).ToList()
+            : presentCharacters;
+        if (candidates.Count == 0)
+            return FallbackCyoaActor(document, request);
+
+        var active = TranscriptGraph.FindTurn(document.Transcript, request.ParentTurnId);
+        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Selection);
+        var systemPrompt = """
+            Choose who should act next in this fictional scene.
+            Return only structured data.
+
+            Choose exactly one candidate by name.
+            Do not choose the active speaker when another candidate has a reasonable reason to act.
+            If forceControlled is true, choose only from the controlled candidates.
+            """;
+        var userPrompt = $"""
+            forceControlled: {request.ForceControlled}
+            Active speaker: {PromptText(active?.AuthorName, "None")}
+
+            Candidates:
+            {FormatCyoaActorCandidates(candidates, request.ControlledCharacterIds)}
+
+            Recent transcript:
+            {FormatCyoaRecentTranscript(document, request.ParentTurnId)}
+            """;
+        var completion = await SendStructuredAsync<CyoaActorSelectionResponse>(
+            selection,
+            tuning,
+            systemPrompt,
+            userPrompt,
+            "Selecting CYOA actor",
+            cancellationToken);
+        var actor = ResolveCharacter(document.Characters, completion.Value.CharacterName);
+        if (actor is null || !candidates.Any(candidate => string.Equals(candidate.Id, actor.Id, StringComparison.Ordinal)))
+            return FallbackCyoaActor(document, request);
+
+        return new(actor.Id, actor.Name, false);
+    }
+
+    public async Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GenerateCyoaDecisionRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers, modelSelections);
+        var trace = new RpGenerationTrace
+        {
+            Status = "running",
+            StartedUtc = DateTime.UtcNow,
+            ProviderId = selection.Provider.Id,
+            ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
+            ModelId = selection.Model.Id
+        };
+        try
+        {
+            if (!selection.Capabilities.CanGenerateStructuredText)
+                throw new InvalidOperationException("Generating CYOA choices failed because the reasoning model has structured output disabled.");
+
+            SeedSteps(trace, selection, [("cyoa-options", "Choices")]);
+            await ReportProgressAsync(progress, trace);
+            var scene = SessionCloner.Clone(TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId));
+            var actor = request.RequestedNarrator
+                ? null
+                : document.Characters.FirstOrDefault(character => string.Equals(character.Id, request.ActorCharacterId, StringComparison.Ordinal));
+            var context = promptContextBuilder.BuildTurnContext(
+                document,
+                request.ParentTurnId,
+                "",
+                TurnShapeRules.AutoLabel,
+                actor,
+                request.RequestedNarrator,
+                scene);
+            var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Planning);
+            var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Planning);
+            var prompt = BuildCyoaDecisionPrompt(document, request, tokens["{context}"], scene);
+            var startedUtc = DateTime.UtcNow;
+            await StartStepAsync(trace, "cyoa-options", selection, startedUtc, progress);
+            var completion = await SendStructuredAsync<CyoaDecisionResponse>(
+                selection,
+                tuning,
+                prompt.SystemPrompt,
+                prompt.UserPrompt,
+                "Generating CYOA choices",
+                cancellationToken);
+            var decision = BuildCyoaDecision(document, request, scene, completion.Value);
+            await CompleteStepAsync(trace, CreateStepTrace(
+                "cyoa-options",
+                "Choices",
+                selection,
+                startedUtc,
+                DateTime.UtcNow,
+                prompt.SystemPrompt,
+                prompt.UserPrompt,
+                completion,
+                JsonSerializer.Serialize(completion.Value, AppJsonSerializerOptions.IndentedWeb),
+                ""), progress);
+            trace.Data["actorName"] = string.IsNullOrWhiteSpace(request.ActorName) ? "Narrator" : request.ActorName;
+            FinalizeTrace(trace, "completed");
+            decision.Trace = SessionCloner.Clone(trace);
+            await ReportProgressAsync(progress, trace);
+            return new(decision, trace);
+        }
+        catch (Exception exception) when (exception is not TranscriptGenerationException)
+        {
+            FailRunningStep(trace, exception.Message);
+            FinalizeTrace(trace, "failed");
+            trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
+            throw new TranscriptGenerationException(exception.Message, trace);
+        }
+    }
+
+    public async Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GenerateSelectedCyoaTurnRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers, modelSelections);
+        var trace = CreateSelectedCyoaTrace(request.Decision, selection);
+        try
+        {
+            if (!selection.Capabilities.CanGenerateStructuredText)
+                throw new InvalidOperationException("Generating the selected CYOA turn failed because the reasoning model has structured output disabled.");
+
+            var option = request.Option;
+            var requestedNarrator = option?.RequestedNarrator ?? request.Decision.RequestedNarrator;
+            (string Id, string Name) actor = requestedNarrator
+                ? ("", "Narrator")
+                : (
+                    option?.ActorCharacterId ?? request.Decision.ActorCharacterId,
+                    string.IsNullOrWhiteSpace(option?.ActorName) ? request.Decision.ActorName : option.ActorName);
+            if (string.IsNullOrWhiteSpace(actor.Name))
+                actor.Name = "Narrator";
+
+            var guidance = ResolveSelectedCyoaGuidance(request);
+            var planningGuidance = BuildSelectedCyoaPlanningGuidance(guidance, option);
+            var requestedTurnShape = ResolveTurnShape(option?.Plan.TurnShape ?? "", TurnShapeRules.AutoLabel);
+            var turnRequest = new GenerateTurnRequest(
+                request.Decision.ParentTurnId,
+                "guided",
+                guidance,
+                requestedTurnShape,
+                actor.Id,
+                actor.Name,
+                requestedNarrator);
+            var context = promptContextBuilder.BuildTurnContext(
+                document,
+                request.Decision.ParentTurnId,
+                planningGuidance,
+                requestedTurnShape,
+                document.Characters.FirstOrDefault(character => character.Id == actor.Id),
+                requestedNarrator);
+
+            SeedSelectedCyoaTurnSteps(trace, selection);
+            await ReportProgressAsync(progress, trace);
+
+            var continuity = await RunSceneContinuityStepAsync(document, selection, context, turnRequest, trace, progress, cancellationToken);
+            var selectedContext = promptContextBuilder.BuildTurnContext(
+                document,
+                request.Decision.ParentTurnId,
+                planningGuidance,
+                requestedTurnShape,
+                document.Characters.FirstOrDefault(character => character.Id == actor.Id),
+                requestedNarrator,
+                continuity.Scene,
+                continuity.CharacterSceneStates);
+            var plan = await RunPlanningStepAsync(document, selection, selectedContext, actor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, selectedContext, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
+            trace.Data["actorName"] = actor.Name;
+            FinalizeTrace(trace, "completed");
+            await ReportProgressAsync(progress, trace);
+
+            var privateIntents = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(actor.Id))
+                privateIntents[actor.Id] = plan.PrivateIntent;
+
+            return new(
+                actor.Id,
+                actor.Name,
+                CreateTurnPlan(plan, selectedContext.RequestedTurnShape),
+                continuity.CharacterSceneStates,
+                privateIntents,
+                continuity.Scene,
+                prose,
+                trace);
+        }
+        catch (Exception exception) when (exception is not TranscriptGenerationException)
+        {
+            FailRunningStep(trace, exception.Message);
+            FinalizeTrace(trace, "failed");
+            trace.Data["error"] = exception.Message;
+            await ReportProgressAsync(progress, trace);
+            throw new TranscriptGenerationException(exception.Message, trace);
+        }
+    }
+
+    public async Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(
+        RpChatDocument document,
+        IReadOnlyList<AiProvider> providers,
+        ActiveModelSelectionsState modelSelections,
+        GenerateAutonomousCyoaTurnRequest request,
+        TranscriptGenerationProgress? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ApplyCapabilities(providers);
+        var selection = ResolveTextModel(providers, modelSelections);
+        var trace = new RpGenerationTrace
+        {
+            Status = "running",
+            StartedUtc = DateTime.UtcNow,
+            ProviderId = selection.Provider.Id,
+            ProviderName = selection.Provider.Name,
+            ProviderType = selection.Provider.Type,
+            ModelId = selection.Model.Id
+        };
+        try
+        {
+            var baseContext = promptContextBuilder.BuildTurnContext(
+                document,
+                request.ParentTurnId,
+                "",
+                TurnShapeRules.AutoLabel,
+                document.Characters.FirstOrDefault(character => character.Id == request.ActorCharacterId),
+                request.RequestedNarrator);
+            SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText, false);
+            await ReportProgressAsync(progress, trace);
+            if (!selection.Capabilities.CanGenerateStructuredText)
+            {
+                var dumbTurnRequest = new GenerateTurnRequest(
+                    request.ParentTurnId,
+                    request.Mode,
+                    "",
+                    TurnShapeRules.AutoLabel,
+                    request.ActorCharacterId,
+                    request.ActorName,
+                    request.RequestedNarrator);
+                return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, dumbTurnRequest, baseContext, trace, progress, cancellationToken);
+            }
+
+            var turnRequestForContinuity = new GenerateTurnRequest(
+                request.ParentTurnId,
+                request.Mode,
+                "",
+                TurnShapeRules.AutoLabel,
+                request.ActorCharacterId,
+                request.ActorName,
+                request.RequestedNarrator);
+            var continuity = await RunSceneContinuityStepAsync(document, selection, baseContext, turnRequestForContinuity, trace, progress, cancellationToken);
+            var actor = request.RequestedNarrator ? ("", "Narrator") : (request.ActorCharacterId, request.ActorName);
+            var direction = await RunAutonomousDirectionChoiceAsync(document, selection, baseContext, actor, cancellationToken);
+            if (direction == RpCyoaDirections.FastForward)
+                direction = RpCyoaDirections.Pivot;
+
+            var directionGuidance = BuildDirectionGuidance(direction, autonomous: true);
+            var context = promptContextBuilder.BuildTurnContext(
+                document,
+                request.ParentTurnId,
+                directionGuidance,
+                TurnShapeRules.AutoLabel,
+                document.Characters.FirstOrDefault(character => character.Id == request.ActorCharacterId),
+                request.RequestedNarrator,
+                continuity.Scene,
+                continuity.CharacterSceneStates);
+            var plan = await RunPlanningStepAsync(document, selection, context, actor, trace, progress, cancellationToken);
+            var turnRequest = new GenerateTurnRequest(
+                request.ParentTurnId,
+                request.Mode,
+                "",
+                TurnShapeRules.AutoLabel,
+                actor.Item1,
+                actor.Item2,
+                request.RequestedNarrator,
+                continuity.Scene);
+            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
+            trace.Data["actorName"] = actor.Item2;
+            FinalizeTrace(trace, "completed");
+            await ReportProgressAsync(progress, trace);
+
+            var privateIntents = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(plan.PrivateIntent) && !string.IsNullOrWhiteSpace(actor.Item1))
+                privateIntents[actor.Item1] = plan.PrivateIntent;
+
+            return new(
+                actor.Item1,
+                actor.Item2,
+                CreateTurnPlan(plan, context.RequestedTurnShape),
+                continuity.CharacterSceneStates,
+                privateIntents,
+                continuity.Scene,
                 prose,
                 trace);
         }
@@ -645,6 +1010,317 @@ public sealed class TextGenerationService(
             body));
     }
 
+    async Task<string> RunAutonomousDirectionChoiceAsync(
+        RpChatDocument document,
+        ActiveModelSelection selection,
+        TurnPromptContext context,
+        (string Id, string Name) actor,
+        CancellationToken cancellationToken)
+    {
+        if (!selection.Capabilities.CanGenerateStructuredText)
+            return RpCyoaDirections.Continue;
+
+        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Planning);
+        var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "", PromptLibraryStageIds.Planning);
+        var systemPrompt = """
+            Choose the best direction category for the next autonomous character turn.
+            Return only structured data.
+
+            Allowed directions:
+            - Continue: keep the current path moving.
+            - Escalate: increase pressure, intimacy, risk, urgency, or emotional stakes.
+            - Pivot: redirect focus, topic, tactic, or attention without jumping time or scene.
+            - Fast Forward: suggest that the scene may soon skip time, wait, or move location.
+
+            Autonomous Fast Forward is only a suggestion signal. Do not execute a time skip or scene change.
+            """;
+        var userPrompt = $"""
+            Actor: {actor.Name}
+
+            {tokens["{context}"]}
+
+            Pick exactly one direction for this actor's next turn.
+            """;
+        var completion = await SendStructuredAsync<CyoaDirectionChoiceResponse>(
+            selection,
+            tuning,
+            systemPrompt,
+            userPrompt,
+            "Choosing CYOA direction",
+            cancellationToken);
+        return RpCyoaDirections.Normalize(completion.Value.Direction);
+    }
+
+    static PromptRenderResult BuildCyoaDecisionPrompt(
+        RpChatDocument document,
+        GenerateCyoaDecisionRequest request,
+        string context,
+        RpSceneFrame scene)
+    {
+        var isDirector = string.Equals(request.Mode, RpCyoaModes.Director, StringComparison.Ordinal);
+        var actorLine = isDirector
+            ? "Director options may target the narrator or one present character."
+            : $"All options are for {PromptText(request.ActorName, "the controlled character")}.";
+        var systemPrompt = $"""
+            You create inline choice options for a fictional story transcript.
+            Return only structured data.
+
+            Create exactly one option for each direction:
+            - Continue
+            - Escalate
+            - Pivot
+            - Fast Forward
+
+            {actorLine}
+            Each option needs a concise user-facing title, a short summary, guidance, and a concrete single-turn plan.
+            Fast Forward options must propose a user-approved time skip, wait, location change, or scene reset; do not write prose for the jump.
+            """;
+        var userPrompt = $"""
+            Mode: {request.Mode}
+            Current actor: {(request.RequestedNarrator ? "Narrator" : PromptText(request.ActorName, "Unknown"))}
+
+            Existing locations:
+            {FormatReferenceNames(document.Locations.Select(location => location.Name))}
+
+            Present characters:
+            {FormatReferenceNames(document.Characters.Where(character => scene.InSceneCharacterIds.Contains(character.Id, StringComparer.Ordinal)).Select(character => character.Name))}
+
+            Present items:
+            {FormatReferenceNames(document.Items.Where(item => scene.InSceneItemIds.Contains(item.Id, StringComparer.Ordinal)).Select(item => item.Name))}
+
+            {context}
+            """;
+        return new(systemPrompt, userPrompt);
+    }
+
+    static RpCyoaPendingDecision BuildCyoaDecision(
+        RpChatDocument document,
+        GenerateCyoaDecisionRequest request,
+        RpSceneFrame scene,
+        CyoaDecisionResponse response)
+    {
+        var optionsByDirection = response.Options
+            .Select(option => (Direction: RpCyoaDirections.Normalize(option.Direction), Option: option))
+            .GroupBy(pair => pair.Direction, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Option, StringComparer.Ordinal);
+        var options = RpCyoaDirections.All
+            .Select(direction => BuildCyoaOption(document, request, scene, direction, optionsByDirection.TryGetValue(direction, out var option) ? option : null))
+            .ToList();
+        return new()
+        {
+            Id = $"cyoa-{Guid.NewGuid():N}",
+            ParentTurnId = request.ParentTurnId,
+            Mode = request.Mode,
+            ActorCharacterId = request.ActorCharacterId,
+            ActorName = request.ActorName,
+            RequestedNarrator = request.RequestedNarrator,
+            CreatedUtc = DateTime.UtcNow,
+            Options = options
+        };
+    }
+
+    static RpCyoaOption BuildCyoaOption(
+        RpChatDocument document,
+        GenerateCyoaDecisionRequest request,
+        RpSceneFrame scene,
+        string direction,
+        CyoaOptionResponse? response)
+    {
+        var isDirector = string.Equals(request.Mode, RpCyoaModes.Director, StringComparison.Ordinal);
+        var requestedNarrator = request.RequestedNarrator;
+        var actorId = request.ActorCharacterId;
+        var actorName = request.ActorName;
+        if (isDirector)
+        {
+            var target = ResolveCharacter(document.Characters, response?.ActorName ?? "");
+            requestedNarrator = target is null;
+            actorId = target?.Id ?? "";
+            actorName = target?.Name ?? "Narrator";
+        }
+
+        var turnShape = ResolveTurnShape(response?.TurnShape ?? "", TurnShapeRules.BriefLabel);
+        var title = FirstNonBlank(response?.Title, RpCyoaDirections.Label(direction));
+        var summary = FirstNonBlank(response?.Summary, BuildDirectionGuidance(direction, autonomous: false));
+        var guidance = FirstNonBlank(response?.Guidance, summary, BuildDirectionGuidance(direction, autonomous: false));
+        var plan = new RpTurnPlan
+        {
+            TurnShape = turnShape,
+            Beat = FirstNonBlank(response?.Beat, summary, $"{RpCyoaDirections.Label(direction)} the scene."),
+            Intent = FirstNonBlank(response?.Intent, guidance, BuildDirectionGuidance(direction, autonomous: false)),
+            ImmediateGoal = FirstNonBlank(response?.ImmediateGoal, "Make one clear playable move."),
+            WhyNow = FirstNonBlank(response?.WhyNow, "The user selected this direction."),
+            ChangeIntroduced = FirstNonBlank(response?.ChangeIntroduced, summary, "The scene moves forward."),
+            Guardrails = FirstNonBlank(response?.Guardrails, "Keep the turn grounded in the current scene."),
+            ContinuityIntents = NormalizeContinuityIntents(response?.ContinuityIntents)
+        };
+        var privateIntents = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!requestedNarrator && !string.IsNullOrWhiteSpace(response?.PrivateIntent))
+            privateIntents[actorId] = response.PrivateIntent.Trim();
+
+        return new()
+        {
+            Id = $"cyoa-option-{Guid.NewGuid():N}",
+            Direction = direction,
+            Title = title,
+            Summary = summary,
+            Guidance = guidance,
+            ActorCharacterId = actorId,
+            ActorName = actorName,
+            RequestedNarrator = requestedNarrator,
+            Plan = plan,
+            PrivateIntentByCharacterId = privateIntents,
+            Scene = SessionCloner.Clone(scene),
+            SceneProposal = direction == RpCyoaDirections.FastForward
+                ? BuildSceneProposal(document, scene, response, title, summary, guidance, plan)
+                : null
+        };
+    }
+
+    static RpCyoaSceneProposal BuildSceneProposal(
+        RpChatDocument document,
+        RpSceneFrame scene,
+        CyoaOptionResponse? response,
+        string title,
+        string summary,
+        string guidance,
+        RpTurnPlan plan)
+    {
+        var location = ResolveLocation(document.Locations, response?.LocationName ?? "")
+            ?? document.Locations.FirstOrDefault(location => string.Equals(location.Id, scene.LocationId, StringComparison.Ordinal))
+            ?? document.Locations.FirstOrDefault();
+        var characterIds = ResolveCharacterIds(document.Characters, response?.CharacterNames);
+        if (characterIds.Count == 0)
+            characterIds = [.. scene.InSceneCharacterIds];
+
+        var itemIds = ResolveItemIds(document.Items, response?.ItemNames);
+        if (itemIds.Count == 0)
+            itemIds = [.. scene.InSceneItemIds];
+
+        return new()
+        {
+            LocationId = location?.Id ?? scene.LocationId,
+            LocationName = location?.Name ?? scene.LocationName,
+            CharacterIds = characterIds,
+            ItemIds = itemIds,
+            Purpose = NormalizeScenePurpose(response?.ScenePurpose),
+            Guidance = FirstNonBlank(
+                response?.SceneGuidance,
+                response?.Guidance,
+                response?.Summary,
+                response?.Beat,
+                guidance,
+                summary,
+                plan.Beat,
+                plan.Intent,
+                title,
+                "Move the scene forward in time while preserving established continuity.")
+        };
+    }
+
+    static string FirstNonBlank(params string?[] values) =>
+        values.Select(value => value?.Trim() ?? "")
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+        ?? "";
+
+    static string NormalizeScenePurpose(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "time-skip";
+
+        var key = value.Trim().Replace("_", "-", StringComparison.Ordinal).ToLowerInvariant();
+        return key switch
+        {
+            "location-transition" or "location" => "location-transition",
+            "scene-reset" or "reset" => "scene-reset",
+            _ => "time-skip"
+        };
+    }
+
+    static string BuildDirectionGuidance(string direction, bool autonomous) => RpCyoaDirections.Normalize(direction) switch
+    {
+        RpCyoaDirections.Continue => "Continue the current narrative path and add one fresh playable beat.",
+        RpCyoaDirections.Escalate => "Escalate the current narrative path by increasing pressure, stakes, intimacy, conflict, urgency, or consequence.",
+        RpCyoaDirections.Pivot => autonomous
+            ? "Pivot without jumping time or changing scene: redirect topic, focus, tactic, attention, or emotional angle."
+            : "Change direction by redirecting topic, focus, tactic, attention, or emotional angle.",
+        RpCyoaDirections.FastForward => "Suggest moving time forward, waiting, changing location, or resetting the scene for user approval.",
+        _ => "Continue the current narrative path."
+    };
+
+    static CyoaActorSelection FallbackCyoaActor(RpChatDocument document, SelectCyoaActorRequest request)
+    {
+        var scene = TranscriptGraph.GetSceneForNextTurn(document.Transcript, request.ParentTurnId);
+        var candidates = document.Characters
+            .Where(character => scene.InSceneCharacterIds.Contains(character.Id, StringComparer.Ordinal))
+            .Where(character => !request.ForceControlled || request.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal))
+            .ToList();
+        var actor = candidates.FirstOrDefault()
+            ?? document.Characters.FirstOrDefault(character => request.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal))
+            ?? document.Characters.FirstOrDefault();
+        return actor is null
+            ? new("", "Narrator", true)
+            : new(actor.Id, actor.Name, false);
+    }
+
+    static RpCharacter? ResolveCharacter(IEnumerable<RpCharacter> characters, string idOrName) =>
+        characters.FirstOrDefault(character =>
+            string.Equals(character.Id, idOrName, StringComparison.Ordinal)
+            || string.Equals(character.Name, idOrName, StringComparison.OrdinalIgnoreCase));
+
+    static RpLocation? ResolveLocation(IEnumerable<RpLocation> locations, string idOrName) =>
+        locations.FirstOrDefault(location =>
+            string.Equals(location.Id, idOrName, StringComparison.Ordinal)
+            || string.Equals(location.Name, idOrName, StringComparison.OrdinalIgnoreCase));
+
+    static List<string> ResolveCharacterIds(IReadOnlyList<RpCharacter> characters, IReadOnlyList<string>? names) =>
+        names?.Select(name => ResolveCharacter(characters, name)?.Id ?? "")
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList()
+        ?? [];
+
+    static List<string> ResolveItemIds(IReadOnlyList<RpItem> items, IReadOnlyList<string>? names) =>
+        names?.Select(name => items.FirstOrDefault(item =>
+                string.Equals(item.Id, name, StringComparison.Ordinal)
+                || string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))?.Id ?? "")
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList()
+        ?? [];
+
+    static string FormatCyoaActorCandidates(IReadOnlyList<RpCharacter> characters, IReadOnlyList<string> controlledIds) =>
+        string.Join(Environment.NewLine, characters.Select(character =>
+            $"- {character.Name}{(controlledIds.Contains(character.Id, StringComparer.Ordinal) ? " (controlled)" : "")}: {PromptText(character.Summary, "No summary")}"));
+
+    static string FormatCyoaRecentTranscript(RpChatDocument document, string parentTurnId)
+    {
+        var activePath = TranscriptGraph.GetActivePath(document.Transcript);
+        var parentIndex = activePath.FindIndex(turn => string.Equals(turn.Id, parentTurnId, StringComparison.Ordinal));
+        if (parentIndex >= 0)
+            activePath = activePath.Take(parentIndex + 1).ToList();
+
+        var lines = activePath
+            .TakeLast(8)
+            .Where(turn => !string.IsNullOrWhiteSpace(turn.Body))
+            .Select(turn => $"- {turn.AuthorName}: {PromptText(turn.Body)}")
+            .ToList();
+        return lines.Count == 0 ? "None" : string.Join(Environment.NewLine, lines);
+    }
+
+    static string FormatReferenceNames(IEnumerable<string> names)
+    {
+        var values = names.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).ToList();
+        return values.Count == 0 ? "None" : string.Join(Environment.NewLine, values.Select(name => $"- {name}"));
+    }
+
+    static string PromptText(string? value, string fallback = "Unknown")
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+
+        return value.Trim().ReplaceLineEndings(" ");
+    }
+
     static PlanningResponse CreateDumbProsePlan(TurnPromptContext context, GenerateTurnRequest request)
     {
         var guidance = string.IsNullOrWhiteSpace(request.Guidance)
@@ -821,6 +1497,9 @@ public sealed class TextGenerationService(
     static void SeedPlanningAndProseSteps(RpGenerationTrace trace, ActiveModelSelection selection) =>
         SeedSteps(trace, selection, [("planning", "Planning"), ("prose", "Prose")]);
 
+    static void SeedSelectedCyoaTurnSteps(RpGenerationTrace trace, ActiveModelSelection selection) =>
+        SeedSteps(trace, selection, [("scene-continuity", "Scene Continuity"), ("planning", "Planning"), ("prose", "Prose")]);
+
     static void SeedSteps(RpGenerationTrace trace, ActiveModelSelection selection, IReadOnlyList<(string Id, string Label)> steps)
     {
         foreach (var (id, label) in steps)
@@ -836,6 +1515,69 @@ public sealed class TextGenerationService(
             });
 
         trace.Summary = $"Generating · {string.Join(" -> ", trace.Steps.Select(step => step.Label))}";
+    }
+
+    static RpGenerationTrace CreateSelectedCyoaTrace(RpCyoaPendingDecision decision, ActiveModelSelection selection)
+    {
+        var trace = decision.Trace is null
+            ? new()
+            {
+                StartedUtc = DateTime.UtcNow,
+                ProviderId = selection.Provider.Id,
+                ProviderName = selection.Provider.Name,
+                ProviderType = selection.Provider.Type,
+                ModelId = selection.Model.Id
+            }
+            : SessionCloner.Clone(decision.Trace);
+        trace.Status = "running";
+        trace.CompletedUtc = default;
+        trace.DurationSeconds = 0;
+        trace.InputTokens = trace.Steps.Sum(step => step.InputTokens);
+        trace.OutputTokens = trace.Steps.Sum(step => step.OutputTokens);
+        trace.TotalTokens = trace.Steps.Sum(step => step.TotalTokens);
+        if (trace.StartedUtc == default)
+            trace.StartedUtc = DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(trace.ProviderId))
+        {
+            trace.ProviderId = selection.Provider.Id;
+            trace.ProviderName = selection.Provider.Name;
+            trace.ProviderType = selection.Provider.Type;
+            trace.ModelId = selection.Model.Id;
+        }
+
+        return trace;
+    }
+
+    static string ResolveSelectedCyoaGuidance(GenerateSelectedCyoaTurnRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.CustomGuidance))
+            return request.CustomGuidance.Trim();
+
+        return request.Option?.Guidance.Trim() ?? "";
+    }
+
+    static string BuildSelectedCyoaPlanningGuidance(string guidance, RpCyoaOption? option)
+    {
+        if (option is null)
+            return guidance;
+
+        var plan = option.Plan;
+        return $"""
+            {guidance}
+
+            Selected choice:
+            Title: {option.Title}
+            Summary: {option.Summary}
+            Direction intent: {BuildDirectionGuidance(option.Direction, autonomous: false)}
+
+            Choice planning seed:
+            Beat: {plan.Beat}
+            Intent: {plan.Intent}
+            Immediate Goal: {plan.ImmediateGoal}
+            Why Now: {plan.WhyNow}
+            Change Introduced: {plan.ChangeIntroduced}
+            Guardrails: {plan.Guardrails}
+            """;
     }
 
     static async Task StartStepAsync(RpGenerationTrace trace, string stepId, ActiveModelSelection selection, DateTime startedUtc, TranscriptGenerationProgress? progress)
@@ -1214,6 +1956,46 @@ public sealed class TextGenerationService(
         public string Guardrails { get; set; } = "";
         public string PrivateIntent { get; set; } = "";
         public IReadOnlyList<RpPhysicalContinuityIntent>? ContinuityIntents { get; set; }
+    }
+
+    sealed class CyoaActorSelectionResponse
+    {
+        public string CharacterName { get; set; } = "";
+        public string Reason { get; set; } = "";
+    }
+
+    sealed class CyoaDirectionChoiceResponse
+    {
+        public string Direction { get; set; } = "";
+        public string Reason { get; set; } = "";
+    }
+
+    sealed class CyoaDecisionResponse
+    {
+        public IReadOnlyList<CyoaOptionResponse> Options { get; set; } = [];
+    }
+
+    sealed class CyoaOptionResponse
+    {
+        public string Direction { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Summary { get; set; } = "";
+        public string Guidance { get; set; } = "";
+        public string ActorName { get; set; } = "";
+        public string TurnShape { get; set; } = "";
+        public string Beat { get; set; } = "";
+        public string Intent { get; set; } = "";
+        public string ImmediateGoal { get; set; } = "";
+        public string WhyNow { get; set; } = "";
+        public string ChangeIntroduced { get; set; } = "";
+        public string Guardrails { get; set; } = "";
+        public string PrivateIntent { get; set; } = "";
+        public IReadOnlyList<RpPhysicalContinuityIntent>? ContinuityIntents { get; set; }
+        public string LocationName { get; set; } = "";
+        public IReadOnlyList<string>? CharacterNames { get; set; }
+        public IReadOnlyList<string>? ItemNames { get; set; }
+        public string ScenePurpose { get; set; } = "";
+        public string SceneGuidance { get; set; } = "";
     }
 
     static string ResolveSnapshotSummary(SnapshotResponse response)

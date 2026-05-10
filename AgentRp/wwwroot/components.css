@@ -1598,6 +1598,35 @@
     border-color: var(--c-border);
 }
 
+.cyoa-card {
+    display: grid;
+    gap: 14px;
+}
+
+.cyoa-custom,
+.cyoa-review {
+    display: grid;
+    gap: 10px;
+}
+
+.cyoa-guidance-field {
+    min-height: 0;
+}
+
+.cyoa-actions {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.cyoa-review-target {
+    align-items: center;
+    color: var(--c-text);
+    display: flex;
+    gap: 8px;
+}
+
 .narrative-head {
     display: flex;
     align-items: center;

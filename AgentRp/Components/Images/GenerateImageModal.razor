@@ -57,7 +57,7 @@
                         </AppSelect>
                     </FieldRow>
                     <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
-                        <textarea class="field generate-prompt" rows="2" @bind="Prompt" placeholder="Describe the scene you want to generate..."></textarea>
+                        <AppTextarea Class="generate-prompt" Rows="2" @bind-Value="Prompt" Placeholder="Describe the scene you want to generate..." />
                     </FieldRow>
                     @if (!string.IsNullOrWhiteSpace(LastFinalPrompt) || !string.IsNullOrWhiteSpace(LastRationale))
                     {

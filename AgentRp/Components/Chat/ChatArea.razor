@@ -52,6 +52,48 @@
                         </SelectableButton>
                     }
                     <div class="divider"></div>
+                    <div class="popover-label">CYOA</div>
+                    <SelectableButton Class="@($"toggle-row {(Cyoa.Mode == RpCyoaModes.Off ? "is-active" : "")}")" OnClick="@(_ => SetCyoaMode(RpCyoaModes.Off))">
+                        <FaIcon Name="xmark" />
+                        <span>Off</span>
+                        @if (Cyoa.Mode == RpCyoaModes.Off)
+                        {
+                            <FaIcon Name="check" />
+                        }
+                    </SelectableButton>
+                    <SelectableButton Class="@($"toggle-row {(Cyoa.Mode == RpCyoaModes.Adventure ? "is-active" : "")}")" Disabled="@(Characters.Count == 0)" OnClick="@(_ => SetCyoaMode(RpCyoaModes.Adventure))">
+                        <FaIcon Name="route" />
+                        <span>Adventure</span>
+                        @if (Cyoa.Mode == RpCyoaModes.Adventure)
+                        {
+                            <FaIcon Name="check" />
+                        }
+                    </SelectableButton>
+                    <SelectableButton Class="@($"toggle-row {(Cyoa.Mode == RpCyoaModes.Director ? "is-active" : "")}")" OnClick="@(_ => SetCyoaMode(RpCyoaModes.Director))">
+                        <FaIcon Name="clapperboard" />
+                        <span>Director</span>
+                        @if (Cyoa.Mode == RpCyoaModes.Director)
+                        {
+                            <FaIcon Name="check" />
+                        }
+                    </SelectableButton>
+                    @if (Cyoa.Mode == RpCyoaModes.Adventure)
+                    {
+                        <div class="divider"></div>
+                        <div class="popover-label">Playable Cast</div>
+                        @foreach (var character in Characters)
+                        {
+                            var controlled = Cyoa.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal);
+                            <SelectableButton @key="character.Id" Class="@($"select-row {(controlled ? "is-active" : "")}")" OnClick="@(_ => ToggleCyoaControlledCharacter(character.Id))">
+                                <EntityMention EntityType="@EntityTypes.Character" EntityId="@character.Id" Name="@character.Name" Size="20" />
+                                @if (controlled)
+                                {
+                                    <FaIcon Name="check" />
+                                }
+                            </SelectableButton>
+                        }
+                    }
+                    <div class="divider"></div>
                     <div class="popover-label">Visible Blocks</div>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowAppearanceBlocks())">
                         <FaIcon Name="eye" />
@@ -122,62 +164,48 @@
             {
                 <ProcessTrace @key="ActiveTrace.StartedUtc" Trace="ActiveTrace" IsLive="true" AutoExpand="Options.ShowProcessTraces" />
             }
+            @if (Cyoa.PendingDecision is not null)
+            {
+                <CyoaDecisionPanel @key="Cyoa.PendingDecision.Id"
+                                   Decision="Cyoa.PendingDecision"
+                                   Disabled="@TranscriptBusy"
+                                   OnSelectOption="SelectCyoaOption"
+                                   OnCustomGuidance="SubmitCyoaCustomGuidance"
+                                   OnSkip="SkipCyoaDecision"
+                                   OnApplyFastForward="ApplyCyoaFastForward"
+                                   OnCancelFastForward="CancelCyoaFastForward" />
+            }
         </ChildContent>
         <FooterContent>
-            @if (BuildSnapshotSuggestion() is { } snapshotSuggestion)
+            @if (!CyoaActive && BuildSnapshotSuggestion() is { } snapshotSuggestion)
             {
                 <SnapshotSuggestionBanner CoveredMessageCount="@snapshotSuggestion.CoveredMessageCount"
                                           RetainedMessageCount="@SnapshotSuggestionRetainedMessageCount"
                                           Disabled="@TranscriptBusy"
                                           OnCreateSnapshot="OpenSuggestedSnapshotDraft" />
             }
-            <div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
-                <textarea rows="3" @bind="Draft" @bind:event="oninput" @onkeydown="HandleKeyDown" disabled="@TranscriptBusy" placeholder="Guide the next turn, or leave blank to let AI continue the scene…"></textarea>
-                <div class="claude-composer-actions">
-                    <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
-                        <Trigger Context="speaker">
-                            <AppButton Variant="secondary" Size="xs" Class="composer-action-button" Active="@speaker.IsOpen" Disabled="@TranscriptBusy" OnClick="@(_ => speaker.Toggle())">
-                                <EntityMention EntityType="@SpeakerMentionType"
-                                               EntityId="@SpeakerMentionId"
-                                               Name="@SpeakerName"
-                                               Size="14" />
-                                <FaIcon Name="chevron-down" />
-                            </AppButton>
-                        </Trigger>
-                        <Content>
-                            <SelectableButton Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(null))"><EntityMention EntityType="@EntityTypes.Narrator" EntityId="@EntityIds.Narrator" Name="Narrator" Size="20" /></SelectableButton>
-                            @foreach (var character in Characters)
-                            {
-                                <SelectableButton @key="character.Id" Class="select-row" Disabled="@TranscriptBusy" OnClick="@(_ => PickSpeaker(character))"><EntityMention EntityType="@EntityTypes.Character" EntityId="@character.Id" Name="@character.Name" Size="20" /></SelectableButton>
-                            }
-                        </Content>
-                    </AnchoredPopover>
-
-                    <div class="toolbar-spacer"></div>
-
-                    <TurnShapePicker SelectedShape="@TurnShape" Disabled="@TranscriptBusy" ShapeSelected="PickShape" />
-                    <AppButton Icon="@TurnShapeLockIcon"
-                               Variant="secondary"
-                               Size="xs"
-                               Class="composer-lock-button"
-                               Active="@Options.TurnShapeLocked"
-                               Disabled="@TranscriptBusy"
-                               TooltipText="@TurnShapeLockTitle"
-                               OnClick="@(_ => ToggleTurnShapeLocked())" />
-
-                    <span class="v-divider"></span>
-
-                    @if (TranscriptBusy)
-                    {
-                        <span class="composer-busy-status"><span class="spinner" aria-hidden="true"></span>@TranscriptBusyMessage</span>
-                    }
-                    <span class="shortcut">Ctrl+↵</span>
-                    <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" TooltipText="@GenerateTitle" OnClick="@GenerateTurn">
-                        <FaIcon Name="sparkle" /> Generate
-                    </AppButton>
-                    <AppButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || Draft.Trim().Length == 0)" TooltipText="Post manual turn" OnClick="@(_ => PostManual())" />
-                </div>
-            </div>
+            @if (!CyoaActive)
+            {
+                <TranscriptComposer @bind-Draft="Draft"
+                                    Characters="Characters"
+                                    SpeakerName="@SpeakerName"
+                                    SpeakerMentionType="@SpeakerMentionType"
+                                    SpeakerMentionId="@SpeakerMentionId"
+                                    TurnShape="@TurnShape"
+                                    TurnShapeLocked="@Options.TurnShapeLocked"
+                                    TurnShapeLockIcon="@TurnShapeLockIcon"
+                                    TurnShapeLockTitle="@TurnShapeLockTitle"
+                                    TranscriptBusy="@TranscriptBusy"
+                                    TranscriptBusyMessage="@TranscriptBusyMessage"
+                                    CanGenerate="@CanGenerate"
+                                    GenerateTitle="@GenerateTitle"
+                                    OnPickSpeaker="PickSpeaker"
+                                    OnPickShape="PickShape"
+                                    OnToggleTurnShapeLocked="ToggleTurnShapeLocked"
+                                    OnKeyDown="HandleKeyDown"
+                                    OnGenerate="GenerateTurn"
+                                    OnPostManual="PostManual" />
+            }
         </FooterContent>
     </InlineFooterScrollRegion>
     }
@@ -258,6 +286,7 @@
     ITtsAudioPlaybackService? Playback => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<ITtsAudioPlaybackService>(Services);
     RpChat Chat => Session.ActiveChat.Current!.Chat;
     RpTranscriptOptionsState Options => Session.Chat.Transcript.Options;
+    RpCyoaState Cyoa => Session.Chat.Transcript.Cyoa;
     string TurnShape => string.IsNullOrWhiteSpace(Options.TurnShape)
         ? TurnShapePickerOptions.Auto
         : TurnShapePickerOptions.Normalize(Options.TurnShape);
@@ -283,6 +312,7 @@
     bool TranscriptBusy => Session.Chat.Transcript.IsBusy;
     string TranscriptBusyMessage => string.IsNullOrWhiteSpace(Session.Chat.Transcript.BusyMessage) ? "Working..." : Session.Chat.Transcript.BusyMessage;
     bool CanGenerate => !TranscriptBusy;
+    bool CyoaActive => RpCyoaModes.IsActive(Cyoa.Mode);
     bool CanSpeakActionsInNarratorVoice => string.Equals(Session.ModelSelection.Resolve(AiModelRole.Voice)?.Provider.Type, "elevenlabs", StringComparison.OrdinalIgnoreCase);
     string TranscriptScrollClass => string.Join(" ", new[]
     {
@@ -429,6 +459,30 @@
 
     async Task ToggleSpeakActionsInNarratorVoice() =>
         await Session.Chat.Transcript.SetSpeakActionsInNarratorVoiceAsync(!Options.SpeakActionsInNarratorVoice);
+
+    async Task SetCyoaMode(string mode) =>
+        await Session.Chat.Transcript.SetCyoaModeAsync(mode);
+
+    async Task ToggleCyoaControlledCharacter(string characterId) =>
+        await Session.Chat.Transcript.ToggleCyoaControlledCharacterAsync(characterId);
+
+    async Task SelectCyoaOption(string optionId) =>
+        await Session.Chat.Transcript.SelectCyoaOptionAsync(optionId);
+
+    async Task SubmitCyoaCustomGuidance(string guidance) =>
+        await Session.Chat.Transcript.SubmitCyoaCustomGuidanceAsync(guidance);
+
+    async Task SkipCyoaDecision() =>
+        await Session.Chat.Transcript.SkipCyoaDecisionAsync();
+
+    async Task ApplyCyoaFastForward(string guidance)
+    {
+        await Session.Chat.Transcript.UpdateCyoaFastForwardGuidanceAsync(guidance);
+        await Session.Chat.Transcript.ApplyCyoaFastForwardAsync();
+    }
+
+    async Task CancelCyoaFastForward() =>
+        await Session.Chat.Transcript.CancelCyoaFastForwardAsync();
 
     async Task OpenSnapshotDraft(string turnId)
     {
@@ -610,7 +664,10 @@
             ActiveDraftTurn?.Body.Length,
             ActiveTrace?.StartedUtc.Ticks,
             ActiveTrace?.Status,
-            ActiveTrace?.Steps.Count);
+            ActiveTrace?.Steps.Count,
+            Cyoa.Mode,
+            Cyoa.PendingDecision?.Id,
+            Cyoa.PendingDecision?.FastForwardReview?.OptionId);
     }
 
     public void Dispose()

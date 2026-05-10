@@ -61,7 +61,12 @@
                                                  Selected="@Profile.VoicePreset"
                                                  OnSelect="SetVoice" />
                             <Section Title="Custom Guidance" Hint="— optional">
-                                <textarea class="character-wizard-textarea" rows="4" placeholder="Anything this narrator should consistently honor?" @bind="Profile.CustomGuidance" @bind:event="oninput"></textarea>
+                                <AppTextarea Class="character-wizard-textarea"
+                                             Rows="4"
+                                             Placeholder="Anything this narrator should consistently honor?"
+                                             Value="@Profile.CustomGuidance"
+                                             ValueChanged="value => Profile.CustomGuidance = value"
+                                             UpdateMode="TextUpdateMode.Change" />
                             </Section>
                         </div>
                     }

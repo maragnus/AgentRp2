@@ -78,7 +78,7 @@
 
     RenderFragment ChatWorkspaceHeader => @<div class="story-assistant-workspace-title">
         <div class="story-assistant-title-edit">
-            <input class="field" value="@TitleDraft" @onchange="RenameActiveChat" aria-label="Assistant chat title" />
+            <AppInput Value="@TitleDraft" ValueChanged="RenameActiveChat" aria-label="Assistant chat title" />
         </div>
     </div>;
 
@@ -94,9 +94,9 @@
         StateHasChanged();
     });
 
-    async Task RenameActiveChat(ChangeEventArgs args)
+    async Task RenameActiveChat(string value)
     {
-        TitleDraft = args.Value?.ToString() ?? "";
+        TitleDraft = value;
         await Session.Chat.StoryAssistant.RenameChatAsync(ActiveChat.Id, TitleDraft);
     }
 

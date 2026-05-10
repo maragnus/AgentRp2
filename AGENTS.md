@@ -139,6 +139,15 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - Modal and editor components should own their own draft, delete/save busy flags, validation errors, selected item IDs, and local reloads. Parents should pass stable IDs and receive explicit `OnSaved`, `OnDeleted`, `OnChanged`, or `OnClose` callbacks.
 - Repeated components and repeated root elements in `.razor` loops must use `@key` with stable domain identifiers so Blazor preserves element/component identity across item additions, deletions, and refreshes.
 
+## Text Input Components
+- Do not use raw `<textarea>` or `<input type="text">` in app-owned UI. Use shared text input components instead: `AppTextarea` for multiline text and `AppInput` or another existing shared primitive for single-line text.
+- Never wire raw `@oninput` handlers to `<textarea>` or text inputs in Razor components. Use `AppTextarea` or the appropriate shared text input component and its `TextUpdateMode` support instead.
+- Before adding text input behavior, check whether `AppTextarea`, `AppInput`, `AppTextInputBase`, or another shared input primitive already supports the use case. Extend the shared component when reasonable instead of recreating input/update behavior locally.
+- Choose the lightest `TextUpdateMode` that satisfies the workflow:
+  - `TextUpdateMode.Empty`: preferred default. Use when the component only needs to know whether the field is empty/non-empty or can wait until commit/change. This is the most efficient option.
+  - `TextUpdateMode.Change`: use only when the current value must be read after normal change/commit behavior.
+  - `TextUpdateMode.Live`: use only for special cases that genuinely need rapid live updates from the value, such as live previews, counters, immediate validation, or interactive generation controls.
+
 ## Async Feedback
 - Async user-action buttons must use a `BusyButton` component instead of hand-rolled button busy state. A `BusyButton` must disable itself while work is running and show an activity spinner so users can see that the action is in progress.
 - Successful async actions must not show toast popups.

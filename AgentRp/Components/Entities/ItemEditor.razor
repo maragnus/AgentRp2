@@ -1,12 +1,12 @@
 <div class="entity-form-editor">
     <Section Title="Identity" Class="entity-form-section">
-        <FieldRow Label="Name"><input class="field" @bind="Item.Name" @bind:after="Changed" /></FieldRow>
-        <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Item.Summary" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Name"><AppInput Value="@Item.Name" ValueChanged="SetName" /></FieldRow>
+        <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Item.Summary" ValueChanged="SetSummary" /></FieldRow>
     </Section>
     <Section Title="Object Details" Class="entity-form-section">
-        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Item.Description" @bind:after="Changed"></textarea></FieldRow>
-        <FieldRow Label="History"><textarea class="field" rows="4" @bind="Item.History" @bind:after="Changed"></textarea></FieldRow>
-        <FieldRow Label="Properties"><textarea class="field" rows="4" @bind="Item.Properties" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Item.Description" ValueChanged="SetDescription" /></FieldRow>
+        <FieldRow Label="History"><AppTextarea Rows="4" Value="@Item.History" ValueChanged="SetHistory" /></FieldRow>
+        <FieldRow Label="Properties"><AppTextarea Rows="4" Value="@Item.Properties" ValueChanged="SetProperties" /></FieldRow>
     </Section>
 </div>
 
@@ -14,4 +14,15 @@
     [Parameter] public RpItem Item { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     Task Changed() => OnChanged.InvokeAsync();
+    async Task SetName(string value) => await Update(() => Item.Name = value);
+    async Task SetSummary(string value) => await Update(() => Item.Summary = value);
+    async Task SetDescription(string value) => await Update(() => Item.Description = value);
+    async Task SetHistory(string value) => await Update(() => Item.History = value);
+    async Task SetProperties(string value) => await Update(() => Item.Properties = value);
+
+    async Task Update(Action update)
+    {
+        update();
+        await Changed();
+    }
 }

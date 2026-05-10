@@ -3,7 +3,7 @@
 
 <Section Title="Connection" Class="provider-section">
     <AppField Label="Display Name">
-        <input class="field" value="@Draft.Name" @oninput="args => SetName(args.Value?.ToString() ?? string.Empty)" />
+        <AppInput Value="@Draft.Name" ValueChanged="SetName" UpdateMode="TextUpdateMode.Change" />
     </AppField>
     <AppField Label="@Meta.KeyLabel" Hint="Stored locally, never sent to our servers.">
         <LabelAction>
@@ -24,22 +24,22 @@
     {
         <AppField Label="Endpoint URL">
             <LabelAction><span class="field-status-pill @(Meta.EndpointRequired ? "is-required" : "")">@(Meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
-            <ChildContent><input class="field" value="@Draft.Endpoint" placeholder="https://..." @oninput="args => SetEndpoint(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+            <ChildContent><AppInput Value="@Draft.Endpoint" ValueChanged="SetEndpoint" Placeholder="https://..." UpdateMode="TextUpdateMode.Change" /></ChildContent>
         </AppField>
     }
     @if (Provider.Type is "openai" or "claude")
     {
         <AppField Label="Project">
-            <ChildContent><input class="field" value="@Draft.ProjectId" @oninput="args => SetProjectId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+            <ChildContent><AppInput Value="@Draft.ProjectId" ValueChanged="SetProjectId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
         </AppField>
         <AppField Label="Account">
-            <ChildContent><input class="field" value="@Draft.AccountId" @oninput="args => SetAccountId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+            <ChildContent><AppInput Value="@Draft.AccountId" ValueChanged="SetAccountId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
         </AppField>
     }
     @if (Provider.Type == "grok")
     {
         <AppField Label="Team">
-            <ChildContent><input class="field" value="@Draft.TeamId" @oninput="args => SetTeamId(args.Value?.ToString() ?? string.Empty)" /></ChildContent>
+            <ChildContent><AppInput Value="@Draft.TeamId" ValueChanged="SetTeamId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
         </AppField>
     }
 

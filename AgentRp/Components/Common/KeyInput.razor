@@ -1,9 +1,10 @@
 <div class="key-input-wrap">
-    <input class="field mono key-input"
-           type="@(Show ? "text" : "password")"
-           value="@Value"
-           placeholder="@Placeholder"
-           @oninput="HandleInput" />
+    <AppInput Class="mono key-input"
+              Type="@(Show ? "text" : "password")"
+              Value="@Value"
+              ValueChanged="HandleInput"
+              Placeholder="@Placeholder"
+              UpdateMode="TextUpdateMode.Change" />
     <AppButton Icon="eye"
                TooltipText="@(Show ? "Hide key" : "Show key")"
                Active="@Show"
@@ -18,5 +19,5 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "sk-...";
 
-    Task HandleInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    Task HandleInput(string value) => ValueChanged.InvokeAsync(value);
 }

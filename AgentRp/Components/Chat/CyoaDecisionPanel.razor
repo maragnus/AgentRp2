@@ -1,0 +1,146 @@
+@using AgentRp.Models
+
+<article class="narrative-message cyoa-decision">
+    <div class="narrative-card cyoa-card">
+        <div class="narrative-head">
+            <EntityMention EntityType="@ActorMentionType"
+                           EntityId="@ActorMentionId"
+                           Name="@ActorName"
+                           Size="26"
+                           Class="message-author transcript-speaker" />
+            <span class="mode-badge is-guided">@ModeLabel</span>
+        </div>
+
+        @if (Decision.FastForwardReview is not null)
+        {
+            var proposal = Decision.FastForwardReview.Proposal;
+            <div class="cyoa-review">
+                <div class="cyoa-review-target">
+                    <FaIcon Name="forward" />
+                    <strong>@(string.IsNullOrWhiteSpace(proposal.LocationName) ? "Move the scene forward" : proposal.LocationName)</strong>
+                </div>
+                <AppTextarea Class="cyoa-guidance-field"
+                             Rows="4"
+                             Value="@FastForwardGuidance"
+                             ValueChanged="SetFastForwardGuidance"
+                             IsEmpty="@FastForwardGuidanceIsEmpty"
+                             IsEmptyChanged="SetFastForwardGuidanceIsEmpty"
+                             UpdateMode="TextUpdateMode.Empty" />
+                <div class="cyoa-actions">
+                    <AppButton Variant="secondary" Disabled="@Disabled" OnClick="@(_ => OnCancelFastForward.InvokeAsync())">Back</AppButton>
+                    <BusyButton Variant="primary" Disabled="@(Disabled || FastForwardGuidanceIsEmpty)" OnClick="ApplyFastForward">
+                        <FaIcon Name="check" />Apply
+                    </BusyButton>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="decision-option-list cyoa-option-list">
+                @foreach (var option in Decision.Options)
+                {
+                    <DecisionOptionCard @key="option.Id"
+                                        Icon="@DirectionIcon(option.Direction)"
+                                        Title="@option.Title"
+                                        Description="@option.Summary"
+                                        BadgeText="@ActorBadge(option)"
+                                        BadgeTone="blue"
+                                        Disabled="@Disabled"
+                                        OnClick="@(_ => OnSelectOption.InvokeAsync(option.Id))" />
+                }
+            </div>
+
+            <div class="cyoa-custom">
+                <AppTextarea Class="cyoa-guidance-field"
+                             Rows="3"
+                             Placeholder="@CustomPlaceholder"
+                             Value="@CustomGuidance"
+                             ValueChanged="SetCustomGuidance"
+                             IsEmpty="@CustomGuidanceIsEmpty"
+                             IsEmptyChanged="SetCustomGuidanceIsEmpty"
+                             UpdateMode="TextUpdateMode.Empty" />
+                <div class="cyoa-actions">
+                    @if (IsAdventure)
+                    {
+                        <AppButton Variant="secondary" Disabled="@Disabled" OnClick="@(_ => OnSkip.InvokeAsync())">Skip</AppButton>
+                    }
+                    <BusyButton Variant="primary" Disabled="@(Disabled || CustomGuidanceIsEmpty)" OnClick="SubmitCustom">
+                        <FaIcon Name="sparkle" />Use Guidance
+                    </BusyButton>
+                </div>
+            </div>
+        }
+    </div>
+</article>
+
+@code {
+    string LoadedDecisionId = "";
+    string CustomGuidance = "";
+    string FastForwardGuidance = "";
+    bool CustomGuidanceIsEmpty = true;
+    bool FastForwardGuidanceIsEmpty = true;
+    const string DefaultFastForwardGuidance = "Move the scene forward in time while preserving established continuity.";
+
+    [Parameter] public RpCyoaPendingDecision Decision { get; set; } = new();
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnSelectOption { get; set; }
+    [Parameter] public EventCallback<string> OnCustomGuidance { get; set; }
+    [Parameter] public EventCallback OnSkip { get; set; }
+    [Parameter] public EventCallback<string> OnApplyFastForward { get; set; }
+    [Parameter] public EventCallback OnCancelFastForward { get; set; }
+
+    bool IsAdventure => string.Equals(Decision.Mode, RpCyoaModes.Adventure, StringComparison.Ordinal);
+    bool IsDirector => string.Equals(Decision.Mode, RpCyoaModes.Director, StringComparison.Ordinal);
+    string ModeLabel => IsDirector ? "Director" : "Adventure";
+    string ActorName => Decision.RequestedNarrator ? "Narrator" : Decision.ActorName;
+    string ActorMentionType => Decision.RequestedNarrator ? EntityTypes.Narrator : EntityTypes.Character;
+    string ActorMentionId => Decision.RequestedNarrator ? EntityIds.Narrator : Decision.ActorCharacterId;
+    string CustomPlaceholder => IsDirector ? "Guide the next story beat." : $"Guide {ActorName}'s next move.";
+    string ActorBadge(RpCyoaOption option) => IsDirector && !string.IsNullOrWhiteSpace(option.ActorName)
+        ? option.RequestedNarrator ? "Narrator" : option.ActorName
+        : "";
+    static string DirectionIcon(string direction) => RpCyoaDirections.Normalize(direction) switch
+    {
+        RpCyoaDirections.Escalate => "chart-line",
+        RpCyoaDirections.Pivot => "shuffle",
+        RpCyoaDirections.FastForward => "forward",
+        _ => "play"
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (string.Equals(LoadedDecisionId, Decision.Id, StringComparison.Ordinal))
+            return;
+
+        LoadedDecisionId = Decision.Id;
+        CustomGuidance = "";
+        CustomGuidanceIsEmpty = true;
+        FastForwardGuidance = string.IsNullOrWhiteSpace(Decision.FastForwardReview?.Proposal.Guidance)
+            ? DefaultFastForwardGuidance
+            : Decision.FastForwardReview.Proposal.Guidance;
+        FastForwardGuidanceIsEmpty = string.IsNullOrWhiteSpace(FastForwardGuidance);
+    }
+
+    void SetCustomGuidance(string value) => CustomGuidance = value;
+
+    void SetFastForwardGuidance(string value) => FastForwardGuidance = value;
+
+    void SetCustomGuidanceIsEmpty(bool value) => CustomGuidanceIsEmpty = value;
+
+    void SetFastForwardGuidanceIsEmpty(bool value) => FastForwardGuidanceIsEmpty = value;
+
+    async Task SubmitCustom()
+    {
+        var guidance = CustomGuidance.Trim();
+        if (guidance.Length == 0)
+            return;
+
+        CustomGuidance = "";
+        await OnCustomGuidance.InvokeAsync(guidance);
+    }
+
+    async Task ApplyFastForward()
+    {
+        await OnApplyFastForward.InvokeAsync(FastForwardGuidance.Trim());
+    }
+}

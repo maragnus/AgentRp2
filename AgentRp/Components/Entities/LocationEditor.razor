@@ -1,12 +1,12 @@
 <div class="entity-form-editor">
     <Section Title="Identity" Class="entity-form-section">
-        <FieldRow Label="Name"><input class="field" @bind="Location.Name" @bind:after="Changed" /></FieldRow>
-        <FieldRow Label="Summary"><textarea class="field" rows="3" @bind="Location.Summary" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Name"><AppInput Value="@Location.Name" ValueChanged="SetName" /></FieldRow>
+        <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Location.Summary" ValueChanged="SetSummary" /></FieldRow>
     </Section>
     <Section Title="Scene Texture" Class="entity-form-section">
-        <FieldRow Label="Description"><textarea class="field" rows="5" @bind="Location.Description" @bind:after="Changed"></textarea></FieldRow>
-        <FieldRow Label="Atmosphere"><textarea class="field" rows="4" @bind="Location.Atmosphere" @bind:after="Changed"></textarea></FieldRow>
-        <FieldRow Label="Features"><textarea class="field" rows="4" @bind="Location.Features" @bind:after="Changed"></textarea></FieldRow>
+        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Location.Description" ValueChanged="SetDescription" /></FieldRow>
+        <FieldRow Label="Atmosphere"><AppTextarea Rows="4" Value="@Location.Atmosphere" ValueChanged="SetAtmosphere" /></FieldRow>
+        <FieldRow Label="Features"><AppTextarea Rows="4" Value="@Location.Features" ValueChanged="SetFeatures" /></FieldRow>
     </Section>
 </div>
 
@@ -14,4 +14,15 @@
     [Parameter] public RpLocation Location { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     Task Changed() => OnChanged.InvokeAsync();
+    async Task SetName(string value) => await Update(() => Location.Name = value);
+    async Task SetSummary(string value) => await Update(() => Location.Summary = value);
+    async Task SetDescription(string value) => await Update(() => Location.Description = value);
+    async Task SetAtmosphere(string value) => await Update(() => Location.Atmosphere = value);
+    async Task SetFeatures(string value) => await Update(() => Location.Features = value);
+
+    async Task Update(Action update)
+    {
+        update();
+        await Changed();
+    }
 }

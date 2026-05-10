@@ -830,6 +830,18 @@ public sealed class SessionTests
                 trace);
         }
 
+        public Task<CyoaActorSelection> SelectCyoaActorAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, SelectCyoaActorRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateCyoaDecisionRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSelectedCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateAutonomousCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
@@ -982,6 +994,18 @@ public sealed class SessionTests
             trace.Steps[0].Error = "Prose failed for test.";
             throw new TranscriptGenerationException("Prose failed for test.", trace);
         }
+
+        public Task<CyoaActorSelection> SelectCyoaActorAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, SelectCyoaActorRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateCyoaDecisionRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSelectedCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateAutonomousCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

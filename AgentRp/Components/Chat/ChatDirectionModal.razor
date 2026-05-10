@@ -6,7 +6,7 @@
         <RailHeader>
             <div class="chat-direction-rail-header">
                 <label for="chat-direction-title">Story Title</label>
-                <input id="chat-direction-title" class="chat-direction-title-field" value="@DraftTitle" @onchange="SetDraftTitle" />
+                <AppInput id="chat-direction-title" Class="chat-direction-title-field" Value="@DraftTitle" ValueChanged="SetDraftTitle" />
             </div>
         </RailHeader>
         <ChildContent>
@@ -64,13 +64,13 @@
                     else
                     {
                         <FieldRow Label="Setting">
-                            <textarea class="field" rows="5" @bind="Draft.Setting" placeholder="Where this story lives, socially and physically."></textarea>
+                            <AppTextarea Rows="5" Value="@Draft.Setting" ValueChanged="value => Draft.Setting = value" Placeholder="Where this story lives, socially and physically." />
                         </FieldRow>
                         <FieldRow Label="Premise">
-                            <textarea class="field" rows="5" @bind="Draft.Premise" placeholder="The current story promise or direction."></textarea>
+                            <AppTextarea Rows="5" Value="@Draft.Premise" ValueChanged="value => Draft.Premise = value" Placeholder="The current story promise or direction." />
                         </FieldRow>
                         <FieldRow Label="Custom Guidance">
-                            <textarea class="field" rows="5" @bind="Draft.CustomGuidance" placeholder="Any extra direction this story should consistently honor."></textarea>
+                            <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" Placeholder="Any extra direction this story should consistently honor." />
                         </FieldRow>
                     }
                 </ChildContent>
@@ -183,7 +183,7 @@
         Draft.Premise != Saved.Premise ||
         Draft.CustomGuidance != Saved.CustomGuidance;
 
-    void SetDraftTitle(ChangeEventArgs args) => DraftTitle = args.Value?.ToString() ?? "";
+    void SetDraftTitle(string value) => DraftTitle = value;
 
     static Task ToggleLimited(List<string> values, string value, int max)
     {

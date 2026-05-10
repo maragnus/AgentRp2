@@ -1,9 +1,10 @@
 <div class="@CssClass">
     <FaIcon Name="search" />
-    <input class="field search-field"
-           placeholder="@Placeholder"
-           value="@Value"
-           @oninput="HandleInput" />
+    <AppInput Class="search-field"
+              Placeholder="@Placeholder"
+              Value="@Value"
+              ValueChanged="HandleInput"
+              UpdateMode="TextUpdateMode.Live" />
 </div>
 
 @code {
@@ -14,5 +15,5 @@
 
     string CssClass => $"search-field-wrap {Class}".Trim();
 
-    Task HandleInput(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    Task HandleInput(string value) => ValueChanged.InvokeAsync(value);
 }

@@ -17,13 +17,13 @@ else
                 @if (PrivateIntentByCharacterId.TryGetValue(characterId, out var intent) && !string.IsNullOrWhiteSpace(intent))
                 {
                     <FieldRow Label="Private Intent">
-                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@intent"></textarea>
+                        <AppTextarea Class="snapshot-readonly-field" Rows="3" readonly Value="@intent" />
                     </FieldRow>
                 }
                 @if (CharacterAppearances.TryGetValue(characterId, out var appearance) && !string.IsNullOrWhiteSpace(appearance))
                 {
                     <FieldRow Label="Scene Continuity">
-                        <textarea class="field snapshot-readonly-field" rows="3" readonly value="@appearance"></textarea>
+                        <AppTextarea Class="snapshot-readonly-field" Rows="3" readonly Value="@appearance" />
                     </FieldRow>
                 }
             </Section>

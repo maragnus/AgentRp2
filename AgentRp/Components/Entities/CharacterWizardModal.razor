@@ -72,10 +72,19 @@
                     {
                         <div class="character-wizard-step-stack">
                             <Section Title="Name">
-                                <input class="character-wizard-name-input" placeholder="Character name..." @bind="Character.Name" @bind:event="oninput" />
+                                <AppInput Class="character-wizard-name-input"
+                                          Placeholder="Character name..."
+                                          Value="@Character.Name"
+                                          ValueChanged="value => Character.Name = value"
+                                          UpdateMode="TextUpdateMode.Change" />
                             </Section>
                             <Section Title="Summary" Hint="— one sentence, optional">
-                                <textarea class="character-wizard-textarea" rows="2" placeholder="Who is this character in a sentence?" @bind="Character.Summary" @bind:event="oninput"></textarea>
+                                <AppTextarea Class="character-wizard-textarea"
+                                             Rows="2"
+                                             Placeholder="Who is this character in a sentence?"
+                                             Value="@Character.Summary"
+                                             ValueChanged="value => Character.Summary = value"
+                                             UpdateMode="TextUpdateMode.Change" />
                             </Section>
                             <Section Title="Pronouns">
                                 <div class="character-wizard-chip-list">

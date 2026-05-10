@@ -128,7 +128,7 @@
 
                 <Section Title="Stop Conditions" Class="tuning-section">
                     <FieldRow Label="Stop Sequences" Hint="Enter one stop sequence per line.">
-                        <textarea class="field mono" rows="3" @bind="Current.StopSequences" disabled="@(ActiveCapabilities.StopSequences != TuningSupport.Supported)" placeholder="One stop sequence per line…"></textarea>
+                        <AppTextarea Class="mono" Rows="3" @bind-Value="Current.StopSequences" Disabled="@(ActiveCapabilities.StopSequences != TuningSupport.Supported)" Placeholder="One stop sequence per line…" />
                     </FieldRow>
                 </Section>
             </ChildContent>
