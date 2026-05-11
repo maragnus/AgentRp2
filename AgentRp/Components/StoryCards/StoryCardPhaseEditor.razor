@@ -74,11 +74,11 @@
                             <small>@requirement.ChildCardType</small>
                         </span>
                         <span class="story-card-requirement-count">
-                            <span>Need</span>
                             <AppNumberInput Value="@requirement.RequiredCount.ToString()"
                                             ValueChanged="value => SetRequiredCount(requirement, value)"
                                             Disabled="@(!Editable)"
                                             Min="1"
+                                            PrefixText="Need"
                                             AriaLabel="@($"{requirement.ChildTitle} required count")"
                                             DecrementTooltipText="Decrease required count"
                                             IncrementTooltipText="Increase required count" />

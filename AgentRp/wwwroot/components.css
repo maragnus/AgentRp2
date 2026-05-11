@@ -2913,37 +2913,6 @@
     border-color: var(--c-amberDim);
 }
 
-.app-number-input {
-    display: inline-grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: stretch;
-    gap: var(--space-control-gap);
-    min-width: 0;
-}
-
-.app-number-input-field {
-    min-width: 0;
-    appearance: textfield;
-}
-
-.app-number-input-field::-webkit-outer-spin-button,
-.app-number-input-field::-webkit-inner-spin-button {
-    margin: 0;
-    appearance: none;
-}
-
-.app-number-input-actions {
-    display: inline-flex;
-    align-items: stretch;
-    gap: var(--space-icon-gap);
-}
-
-.app-number-input-button {
-    height: 100%;
-    min-height: 100%;
-    aspect-ratio: 1;
-}
-
 .key-input-wrap {
     position: relative;
 }
@@ -5120,8 +5089,20 @@ textarea.field {
 .voice-picker-inline {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-row-gap);
     min-width: 0;
+}
+
+.voice-picker-field-group {
+    width: 100%;
+}
+
+.voice-picker-field-group > .voice-picker-anchor {
+    flex: 1 1 auto;
+}
+
+.voice-picker-field-group .voice-picker-selected-button {
+    width: 100%;
+    max-width: none;
 }
 
 .voice-picker-provider-button {
@@ -7485,7 +7466,7 @@ textarea.field {
 }
 
 .story-card-requirement-count .app-number-input {
-    width: 124px;
+    width: 158px;
 }
 
 .story-card-requirement-empty {

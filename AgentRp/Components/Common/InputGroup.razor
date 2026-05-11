@@ -1,0 +1,10 @@
+<div class="@CssClass">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CssClass => string.Join(" ", new[] { "input-group", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+}

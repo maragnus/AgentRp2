@@ -1,0 +1,94 @@
+.input-group {
+    --input-group-radius: var(--radius-row);
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    min-width: 0;
+    vertical-align: middle;
+    isolation: isolate;
+}
+
+.input-group > :where(.field, .select, .btn, .input-group-addon, .popover-anchor),
+.input-group > .popover-anchor > .btn {
+    position: relative;
+    border-radius: 0;
+}
+
+.input-group-addon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-row-gap) var(--space-row-gap);
+    border: var(--border-subtle);
+    background: var(--c-surface3);
+    color: var(--c-text2);
+    font-size: var(--text-control);
+    font-weight: var(--weight-medium);
+    line-height: var(--line-body);
+    white-space: nowrap;
+}
+
+.input-group > :where(.field, .select) {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+}
+
+.input-group > .popover-anchor {
+    flex: 0 1 auto;
+}
+
+.input-group > .btn,
+.input-group > .popover-anchor > .btn {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 0;
+    border: var(--border-subtle);
+    background: var(--c-surface3);
+    color: var(--c-text2);
+}
+
+.input-group > .btn:hover,
+.input-group > .btn.is-active,
+.input-group > .popover-anchor > .btn:hover,
+.input-group > .popover-anchor > .btn.is-active {
+    background: var(--c-surface4);
+    color: var(--c-text);
+}
+
+.input-group > :where(.field, .select, .btn, .input-group-addon, .popover-anchor):not(:first-child) {
+    margin-left: calc(var(--space-border) * -1);
+}
+
+.input-group > :where(.field, .select, .btn, .input-group-addon):first-child,
+.input-group > .popover-anchor:first-child > .btn {
+    border-top-left-radius: var(--input-group-radius);
+    border-bottom-left-radius: var(--input-group-radius);
+}
+
+.input-group > :where(.field, .select, .btn, .input-group-addon):last-child,
+.input-group > .popover-anchor:last-child > .btn {
+    border-top-right-radius: var(--input-group-radius);
+    border-bottom-right-radius: var(--input-group-radius);
+}
+
+.input-group > :where(.field, .select, .btn):focus,
+.input-group > :where(.field, .select, .btn):focus-visible,
+.input-group > :where(.field, .select, .btn).is-active,
+.input-group > .popover-anchor:focus-within {
+    z-index: 2;
+}
+
+.app-number-input-field {
+    appearance: textfield;
+}
+
+.app-number-input-field::-webkit-outer-spin-button,
+.app-number-input-field::-webkit-inner-spin-button {
+    margin: 0;
+    appearance: none;
+}
+
+.app-number-input > .btn {
+    aspect-ratio: 1;
+}

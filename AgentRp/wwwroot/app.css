@@ -2,6 +2,7 @@
 @import url("./light.css");
 @import url("./dark.css");
 @import url("./components.css");
+@import url("./controls.css");
 @import url("./voice-catalog.css");
 
 :root {

@@ -1,6 +1,19 @@
 @inherits AppTextInputBase<AppNumberInput>
 
-<div class="@CssClass">
+<InputGroup Class="@CssClass">
+    @if (!string.IsNullOrWhiteSpace(PrefixText) || PrefixContent is not null)
+    {
+        <InputGroupAddon>
+            @if (PrefixContent is not null)
+            {
+                @PrefixContent
+            }
+            else
+            {
+                @PrefixText
+            }
+        </InputGroupAddon>
+    }
     <input @attributes="AdditionalAttributes"
            class="@InputCssClass"
            type="number"
@@ -13,23 +26,19 @@
            disabled="@Disabled"
            aria-label="@AriaLabel"
            @onchange="HandleNativeChange" />
-    <div class="app-number-input-actions">
-        <AppButton Icon="minus"
-                   Class="app-number-input-button"
-                   Size="@ButtonSize"
-                   Disabled="@Disabled"
-                   TooltipText="@DecrementTooltipText"
-                   AriaLabel="@DecrementAriaLabel"
-                   OnClick="@(_ => StepValue(-1))" />
-        <AppButton Icon="plus"
-                   Class="app-number-input-button"
-                   Size="@ButtonSize"
-                   Disabled="@Disabled"
-                   TooltipText="@IncrementTooltipText"
-                   AriaLabel="@IncrementAriaLabel"
-                   OnClick="@(_ => StepValue(1))" />
-    </div>
-</div>
+    <AppButton Icon="minus"
+               Size="@ButtonSize"
+               Disabled="@Disabled"
+               TooltipText="@DecrementTooltipText"
+               AriaLabel="@DecrementAriaLabel"
+               OnClick="@(_ => StepValue(-1))" />
+    <AppButton Icon="plus"
+               Size="@ButtonSize"
+               Disabled="@Disabled"
+               TooltipText="@IncrementTooltipText"
+               AriaLabel="@IncrementAriaLabel"
+               OnClick="@(_ => StepValue(1))" />
+</InputGroup>
 
 @code {
     [Parameter] public string? Min { get; set; }
@@ -38,6 +47,8 @@
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? InputClass { get; set; }
+    [Parameter] public string? PrefixText { get; set; }
+    [Parameter] public RenderFragment? PrefixContent { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string ButtonSize { get; set; } = "sm";
     [Parameter] public string DecrementTooltipText { get; set; } = "Decrease";

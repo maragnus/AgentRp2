@@ -3,80 +3,21 @@
 <div class="@CssClass" title="@Title">
     @if (Compact)
     {
-        <div class="voice-picker-inline">
-            <ActiveModelPicker Role="AiModelRole.Voice"
-                               AnchorClass=""
-                               PopoverClass="sidebar-model-popover voice-model-popover"
-                               DebugName="@($"VoicePicker model picker for {OwnerName}")"
-                               ModelSelections="ModelSelections"
-                               ModelSelectionsChanged="ModelSelectionsChanged">
-                <TriggerContent Context="modelPicker">
-                    <AppButton Variant="secondary"
-                               Size="sm"
-                               Class="@ProviderButtonClass(modelPicker.IsOpen)"
-                               TooltipText="@ModelPickerTitle"
-                               OnClick="@(_ => modelPicker.Toggle())">
-                        <span class="voice-picker-provider-glyph">
-                            @if (modelPicker.ActiveModel is null)
-                            {
-                                <FaIcon Name="waveform-lines" />
-                            }
-                            else
-                            {
-                                <ProviderBadge Type="@modelPicker.ActiveModel.Provider.Type" Size="20" />
-                            }
-                        </span>
-                        <FaIcon Name="chevron-down" />
-                    </AppButton>
-                </TriggerContent>
-            </ActiveModelPicker>
-            <VoicePickerMenu VoiceSelections="VoiceSelections"
-                             ActiveVoiceModel="ActiveVoiceModel"
-                             Voices="AvailableVoices"
-                             Compact="Compact"
-                             OwnerName="@OwnerName"
-                             OnChanged="OnChanged"
-                             OnBookmarkChanged="SetBookmarked" />
-            @if (CanOpenCatalog)
-            {
-                <AppButton Variant="secondary"
-                           Size="sm"
-                           Class="voice-picker-catalog-button"
-                           TooltipText="Open ElevenLabs voice catalog"
-                           AriaLabel="Open ElevenLabs voice catalog"
-                           OnClick="@(_ => VoiceCatalogOpen = true)">
-                    <FaIcon Name="book-open" />
-                </AppButton>
-            }
-            @if (SelectedVoice is not null && ActiveVoiceModel is not null)
-            {
-                <TtsSampleButton Provider="@ActiveVoiceModel.Provider"
-                                 Model="@ActiveVoiceModel.Model"
-                                 Voice="@SelectedVoice"
-                                 PreviewUrl="@SelectedVoice.PreviewUrl" />
-            }
-        </div>
+        <InputGroup Class="voice-picker-inline">
+            @ProviderPicker
+            @VoiceMenu
+            @CatalogButton
+            @SampleButton
+        </InputGroup>
     }
     else
     {
         <div class="voice-picker-stack">
             <FieldRow Label="@ModelLabel">
-                <VoicePickerMenu VoiceSelections="VoiceSelections"
-                                 ActiveVoiceModel="ActiveVoiceModel"
-                                 Voices="AvailableVoices"
-                                 Compact="Compact"
-                                 OwnerName="@OwnerName"
-                                 OnChanged="OnChanged"
-                                 OnBookmarkChanged="SetBookmarked" />
-                @if (CanOpenCatalog)
-                {
-                    <AppButton Variant="secondary"
-                               Size="sm"
-                               Class="voice-picker-catalog-button"
-                               OnClick="@(_ => VoiceCatalogOpen = true)">
-                        <FaIcon Name="book-open" />Voice Catalog
-                    </AppButton>
-                }
+                <InputGroup Class="voice-picker-field-group">
+                    @VoiceMenu
+                    @CatalogButton
+                </InputGroup>
             </FieldRow>
         </div>
     }
@@ -125,6 +66,69 @@
     string Title => ActiveVoiceModel is null
         ? $"No voice model selected for {OwnerName}."
         : $"Speech voice for {OwnerName} using {ModelLabel}.";
+
+    RenderFragment ProviderPicker => @<ActiveModelPicker Role="AiModelRole.Voice"
+                                                         AnchorClass=""
+                                                         PopoverClass="sidebar-model-popover voice-model-popover"
+                                                         DebugName="@($"VoicePicker model picker for {OwnerName}")"
+                                                         ModelSelections="ModelSelections"
+                                                         ModelSelectionsChanged="ModelSelectionsChanged">
+        <TriggerContent Context="modelPicker">
+            <AppButton Variant="secondary"
+                       Size="sm"
+                       Class="@ProviderButtonClass(modelPicker.IsOpen)"
+                       TooltipText="@ModelPickerTitle"
+                       OnClick="@(_ => modelPicker.Toggle())">
+                <span class="voice-picker-provider-glyph">
+                    @if (modelPicker.ActiveModel is null)
+                    {
+                        <FaIcon Name="waveform-lines" />
+                    }
+                    else
+                    {
+                        <ProviderBadge Type="@modelPicker.ActiveModel.Provider.Type" Size="20" />
+                    }
+                </span>
+                <FaIcon Name="chevron-down" />
+            </AppButton>
+        </TriggerContent>
+    </ActiveModelPicker>;
+
+    RenderFragment VoiceMenu => @<VoicePickerMenu VoiceSelections="VoiceSelections"
+                                                  ActiveVoiceModel="ActiveVoiceModel"
+                                                  Voices="AvailableVoices"
+                                                  Compact="Compact"
+                                                  OwnerName="@OwnerName"
+                                                  OnChanged="OnChanged"
+                                                  OnBookmarkChanged="SetBookmarked" />;
+
+    RenderFragment CatalogButton => @<text>
+        @if (CanOpenCatalog)
+        {
+            <AppButton Variant="secondary"
+                       Size="sm"
+                       Class="voice-picker-catalog-button"
+                       TooltipText="Open ElevenLabs voice catalog"
+                       AriaLabel="Open ElevenLabs voice catalog"
+                       OnClick="@(_ => VoiceCatalogOpen = true)">
+                <FaIcon Name="book-open" />
+                @if (!Compact)
+                {
+                    <span>Voice Catalog</span>
+                }
+            </AppButton>
+        }
+    </text>;
+
+    RenderFragment SampleButton => @<text>
+        @if (SelectedVoice is not null && ActiveVoiceModel is not null)
+        {
+            <TtsSampleButton Provider="@ActiveVoiceModel.Provider"
+                             Model="@ActiveVoiceModel.Model"
+                             Voice="@SelectedVoice"
+                             PreviewUrl="@SelectedVoice.PreviewUrl" />
+        }
+    </text>;
 
     string ProviderButtonClass(bool open) => string.Join(" ", new[]
     {
