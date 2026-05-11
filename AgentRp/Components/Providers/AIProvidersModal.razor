@@ -258,7 +258,7 @@
                 </div>
             </Section>
 
-            <Section Title="Tuning Support">
+            <FormSection Title="Tuning Support">
                 <div class="setup-tuning-grid">
                     <FieldRow Label="Temperature"><AppSelect Value="@SetupTemperature" ValueChanged="value => SetupTemperature = value">@TuningOptions()</AppSelect></FieldRow>
                     <FieldRow Label="Top P"><AppSelect Value="@SetupTopP" ValueChanged="value => SetupTopP = value">@TuningOptions()</AppSelect></FieldRow>
@@ -268,7 +268,7 @@
                     <FieldRow Label="Presence Penalty"><AppSelect Value="@SetupPresencePenalty" ValueChanged="value => SetupPresencePenalty = value">@TuningOptions()</AppSelect></FieldRow>
                     <FieldRow Label="Stop Sequences"><AppSelect Value="@SetupStopSequences" ValueChanged="value => SetupStopSequences = value">@TuningOptions()</AppSelect></FieldRow>
                 </div>
-            </Section>
+            </FormSection>
         </ChildContent>
 
         <Footer>

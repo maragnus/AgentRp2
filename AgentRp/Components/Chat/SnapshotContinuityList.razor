@@ -13,7 +13,7 @@ else
     <div class="snapshot-continuity-list">
         @foreach (var characterId in CharacterIds)
         {
-            <Section @key="characterId" Title="@CharacterName(characterId)" Class="snapshot-review-section">
+            <FormSection @key="characterId" Title="@CharacterName(characterId)" Class="snapshot-review-section">
                 @if (PrivateIntentByCharacterId.TryGetValue(characterId, out var intent) && !string.IsNullOrWhiteSpace(intent))
                 {
                     <FieldRow Label="Private Intent">
@@ -26,7 +26,7 @@ else
                         <AppTextarea Class="snapshot-readonly-field" Rows="3" readonly Value="@appearance" />
                     </FieldRow>
                 }
-            </Section>
+            </FormSection>
         }
     </div>
 }

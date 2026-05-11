@@ -1,0 +1,106 @@
+:root {
+    --font-family-ui: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-family-content: var(--font-family-ui);
+    --font-family-display: var(--font-family-ui);
+    --font-family-mono: "DM Mono", Consolas, monospace;
+    --font-app: var(--font-family-ui);
+    --font-heading: var(--font-family-display);
+    --font-control: var(--font-family-ui);
+    --font-transcript-speaker: var(--font-family-ui);
+    --font-transcript-body: var(--font-family-content);
+    --font-technical: var(--font-family-mono);
+
+    --space-border: 1px;
+    --space-icon-gap: 4px;
+    --space-control-gap: 6px;
+    --space-row-gap: 8px;
+    --space-section-gap: 12px;
+    --space-panel-gap: 16px;
+    --space-layout-gap: 24px;
+
+    --border-subtle: var(--space-border) solid var(--c-border);
+    --border-muted: var(--space-border) solid var(--c-borderMid);
+    --border-transparent: var(--space-border) solid transparent;
+    --border-control: 1.5px solid var(--c-border);
+    --border-control-muted: 1.5px solid var(--c-borderMid);
+    --border-surface: 1.5px solid var(--c-surface);
+    --border-surface-ring: 2px solid var(--c-surface);
+    --border-selected: var(--space-border) solid var(--section-color);
+    --border-on-image: 2px solid white;
+    --border-spinner: 2px solid currentColor;
+    --border-dashed-muted: var(--space-border) dashed var(--c-borderMid);
+
+    --text-meta: 10px;
+    --text-caption: 11px;
+    --text-control: 12px;
+    --text-body: 13px;
+    --text-title: 16px;
+
+    --weight-normal: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-strong: 650;
+    --weight-bold: 700;
+
+    --tracking-normal: 0;
+    --tracking-label-tight: .06em;
+    --tracking-label: .08em;
+    --tracking-label-wide: .09em;
+    --tracking-caption: .02em;
+    --tracking-code: .04em;
+
+    --line-icon: 1;
+    --line-control: 1.25;
+    --line-body: 1.45;
+    --line-prose: 1.6;
+
+    --radius-control: 6px;
+    --radius-row: 6px;
+    --radius-panel: 6px;
+    --radius-modal: 14px;
+    --radius-pill: 999px;
+
+    --elevation-raised: 0 6px 18px rgba(0,0,0,.24);
+    --elevation-floating: 0 14px 42px rgba(0,0,0,.34);
+    --elevation-modal: 0 28px 80px rgba(0,0,0,.46);
+    --ring-surface: 0 0 0 2px var(--c-surface);
+    --ring-focus: 0 0 0 2px color-mix(in oklab, var(--section-color) 22%, transparent);
+    --ring-dark: 0 0 0 1px rgba(0, 0, 0, .35);
+    --inset-subtle: inset 0 1px 0 rgba(255,255,255,.03);
+    --crop-scrim: 0 0 0 999rem rgba(0, 0, 0, .4), var(--ring-dark);
+
+    --opacity-hidden: 0;
+    --opacity-visible: 1;
+    --opacity-disabled: .45;
+    --opacity-muted: .6;
+    --opacity-subtle: .75;
+    --opacity-raised: .85;
+
+    --motion-fast: 100ms;
+    --motion-control: 120ms;
+    --motion-standard: 150ms;
+    --motion-emphasis: 200ms;
+    --motion-progress: 300ms;
+    --motion-modal: 500ms;
+    --motion-spin: 700ms;
+    --motion-reconnect: 1.5s;
+    --ease-standard: ease;
+    --ease-linear: linear;
+    --ease-reconnect: cubic-bezier(.05, .89, .25, 1.02);
+    --ease-rejoining: cubic-bezier(0, 0.2, 0.8, 1);
+
+    --icon-size-sm: 11px;
+    --icon-size-md: 13px;
+    --icon-size-lg: 16px;
+    --icon-size-xl: 24px;
+    --icon-size-xxl: 28px;
+
+    --avatar-size-sm: 22px;
+    --avatar-size-md: 26px;
+    --control-size-xs: 20px;
+    --control-size-sm: 26px;
+    --control-size-md: 32px;
+    --control-size-lg: 34px;
+    --control-size-xl: 40px;
+    --empty-icon-size: 54px;
+}

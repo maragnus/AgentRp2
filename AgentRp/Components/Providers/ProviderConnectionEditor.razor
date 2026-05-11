@@ -1,7 +1,7 @@
 @inject IAiProviderConnectionService ProviderConnectionService
 @inject ILogger<ProviderConnectionEditor> Logger
 
-<Section Title="Connection" Class="provider-section">
+<FormSection Title="Connection" Class="provider-section">
     <AppField Label="Display Name">
         <AppInput Value="@Draft.Name" ValueChanged="SetName" UpdateMode="TextUpdateMode.Change" />
     </AppField>
@@ -64,7 +64,7 @@
             <FaIcon Name="zap" />Test connection
         </BusyButton>
     </div>
-</Section>
+</FormSection>
 
 @code {
     ProviderConnectionDraft Draft = new();

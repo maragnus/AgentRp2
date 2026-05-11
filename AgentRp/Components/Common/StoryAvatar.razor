@@ -1,20 +1,20 @@
 @if (!string.IsNullOrWhiteSpace(ImageUrl))
 {
-    <span class="@BuildWrapperClass()" style="@BuildImageStyle()" title="@Name"></span>
+    <span class="@BuildClass("app-story-avatar-frame")" style="@BuildImageStyle()" title="@Name"></span>
 }
 else
 {
-    <span class="@($"{Class} app-story-avatar-initials")" title="@Name">@Initial</span>
+    <span class="@BuildClass("app-story-avatar-initials")" title="@Name">@Initial</span>
 }
 
 @code {
     [Parameter] public string Name { get; set; } = "";
     [Parameter] public string? ImageUrl { get; set; }
     [Parameter] public ImageAvatarCropView Crop { get; set; } = ImageAvatarCropView.Default;
-    [Parameter] public string Class { get; set; } = "app-story-avatar";
+    [Parameter] public string Class { get; set; } = "";
 
     string Initial => string.IsNullOrWhiteSpace(Name) ? "?" : Name[..1].ToUpperInvariant();
-    string BuildWrapperClass() => $"{Class} app-story-avatar-frame";
+    string BuildClass(string stateClass) => string.Join(" ", new[] { "app-story-avatar", Class, stateClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
     string BuildImageStyle() =>
         $"background-image: url(\"{EscapeCssString(ImageUrl!)}\"); background-position: {Crop.FocusXPercent}% {Crop.FocusYPercent}%; background-size: {Crop.ZoomPercent}%;";
 

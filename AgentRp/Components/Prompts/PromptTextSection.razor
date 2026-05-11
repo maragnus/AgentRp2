@@ -1,4 +1,4 @@
-<Section Title="@Label">
+<FormSection Title="@Label">
     <RightContent>
         <AppButton Variant="ghost" Size="xs" Disabled="@(!IsDirty)" TooltipText="Reset to default" OnClick="@(_ => OnReset.InvokeAsync())">
             <FaIcon Name="refresh" /> Reset
@@ -7,7 +7,7 @@
     <ChildContent>
         <AppTextarea Class="mono prompt-textarea" Rows="6" Value="@Value" ValueChanged="HandleChange" />
     </ChildContent>
-</Section>
+</FormSection>
 
 @code {
     [Parameter] public string Label { get; set; } = "";

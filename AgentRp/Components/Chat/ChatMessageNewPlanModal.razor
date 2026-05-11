@@ -2,12 +2,12 @@
 
 <ModalShell Title="New Plan" Subtitle="@Subtitle" Icon="sparkle" MaxWidth="680px" CloseDisabled="@TranscriptBusy" OnClose="Close">
     <ChildContent>
-        <Section Title="Guidance" Hint="Creates a new branch from this message.">
+        <FormSection Title="Guidance" Hint="Creates a new branch from this message.">
             <AppTextarea Rows="8"
                          Value="@GuidanceDraft"
                          ValueChanged="SetGuidance"
                          Placeholder="Guide the revised turn." />
-        </Section>
+        </FormSection>
         <Section Title="Turn Shape">
             <TurnShapePicker SelectedShape="@TurnShapeDraft"
                              Disabled="@TranscriptBusy"

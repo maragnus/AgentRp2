@@ -25,7 +25,6 @@
         </ChildContent>
         <RailFooter>
             <div class="prompt-rail-note">
-                <div class="divider"></div>
                 <p>Direction is attached to this story and rendered into planning, selection, scene continuity, and prose prompts.</p>
             </div>
         </RailFooter>
@@ -63,15 +62,17 @@
                     }
                     else
                     {
-                        <FieldRow Label="Setting">
-                            <AppTextarea Rows="5" Value="@Draft.Setting" ValueChanged="value => Draft.Setting = value" Placeholder="Where this story lives, socially and physically." />
-                        </FieldRow>
-                        <FieldRow Label="Premise">
-                            <AppTextarea Rows="5" Value="@Draft.Premise" ValueChanged="value => Draft.Premise = value" Placeholder="The current story promise or direction." />
-                        </FieldRow>
-                        <FieldRow Label="Custom Guidance">
-                            <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" Placeholder="Any extra direction this story should consistently honor." />
-                        </FieldRow>
+                        <div class="field-stack">
+                            <FieldRow Label="Setting">
+                                <AppTextarea Rows="5" Value="@Draft.Setting" ValueChanged="value => Draft.Setting = value" Placeholder="Where this story lives, socially and physically." />
+                            </FieldRow>
+                            <FieldRow Label="Premise">
+                                <AppTextarea Rows="5" Value="@Draft.Premise" ValueChanged="value => Draft.Premise = value" Placeholder="The current story promise or direction." />
+                            </FieldRow>
+                            <FieldRow Label="Custom Guidance">
+                                <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" Placeholder="Any extra direction this story should consistently honor." />
+                            </FieldRow>
+                        </div>
                     }
                 </ChildContent>
                 <Footer>

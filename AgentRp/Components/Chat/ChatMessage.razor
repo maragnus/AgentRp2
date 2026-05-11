@@ -130,7 +130,6 @@
                 </ChildContent>
                 <RailFooter>
                     <div class="prompt-rail-note">
-                        <div class="divider"></div>
                         <p>Saved plan fields are reused when regenerating this turn.</p>
                     </div>
                 </RailFooter>
@@ -161,13 +160,13 @@
                             {
                                 @foreach (var character in Characters)
                                 {
-                                    <Section @key="character.Id" Title="@character.Name" Class="edit-plan-section">
+                                    <FormSection @key="character.Id" Title="@character.Name" Class="edit-plan-section">
                                         <AppTextarea Class="plan-field"
                                                      Rows="3"
                                                      Placeholder="@($"What is physically true for {character.Name}?")"
                                                      Value="@GetAppearance(character.Id)"
                                                      ValueChanged="value => SetAppearance(character.Id, value)" />
-                                    </Section>
+                                    </FormSection>
                                 }
                             }
                             else if (ActivePlanTab == "plan")
@@ -183,16 +182,16 @@
                                     </div>
                                 </Section>
 
-                                <Section Title="Scene Beat" Class="edit-plan-section">
+                                <FormSection Title="Scene Beat" Class="edit-plan-section">
                                     <FieldRow Label="Beat">
                                         <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What story beat does this turn serve?" @bind-Value="Beat" />
                                     </FieldRow>
                                     <FieldRow Label="Change Introduced">
                                         <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What shifts as a result of this turn?" @bind-Value="ChangeIntroduced" />
                                     </FieldRow>
-                                </Section>
+                                </FormSection>
 
-                                <Section Title="Character Aim" Class="edit-plan-section">
+                                <FormSection Title="Character Aim" Class="edit-plan-section">
                                     <FieldRow Label="Intent">
                                         <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What does the character intend to do?" @bind-Value="Intent" />
                                     </FieldRow>
@@ -205,7 +204,7 @@
                                     <FieldRow Label="Guardrails">
                                         <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What should the AI avoid or preserve?" @bind-Value="Guardrails" />
                                     </FieldRow>
-                                </Section>
+                                </FormSection>
                             }
                             else if (ActivePlanTab == "private")
                             {
@@ -216,18 +215,18 @@
                                 }
                                 else
                                 {
-                                    <Section @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section">
+                                    <FormSection @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section">
                                         <AppTextarea Class="plan-field"
                                                      Rows="3"
                                                      Placeholder="@($"What private intention is {activeCharacter.Name} carrying?")"
                                                      Value="@GetPrivateIntent(activeCharacter.Id)"
                                                      ValueChanged="value => SetPrivateIntent(activeCharacter.Id, value)" />
-                                    </Section>
+                                    </FormSection>
                                 }
                             }
                             else
                             {
-                                <Section Title="TTS Input" Hint="@SpeechInputHint" Class="edit-plan-section">
+                                <FormSection Title="TTS Input" Hint="@SpeechInputHint" Class="edit-plan-section">
                                     @if (SpeechInputLoading)
                                     {
                                         <StatusRow Icon="spinner">Loading speech input...</StatusRow>
@@ -256,7 +255,7 @@
                                             }
                                         </div>
                                     }
-                                </Section>
+                                </FormSection>
                             }
                         </ChildContent>
                         <Footer>
@@ -284,9 +283,9 @@
 {
     <ModalShell Title="Edit Message" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="edit" MaxWidth="760px" OnClose="@(() => EditBody = false)">
         <ChildContent>
-            <Section Title="Body">
+            <FormSection Title="Body">
                 <AppTextarea Class="plan-field" Rows="8" @bind-Value="BodyDraft" />
-            </Section>
+            </FormSection>
         </ChildContent>
         <Footer>
             <AppButton Variant="secondary" OnClick="@(_ => EditBody = false)">Cancel</AppButton>

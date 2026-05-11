@@ -60,14 +60,14 @@
                                                  Items="VoiceOptions"
                                                  Selected="@Profile.VoicePreset"
                                                  OnSelect="SetVoice" />
-                            <Section Title="Custom Guidance" Hint="— optional">
+                            <FormSection Title="Custom Guidance" Hint="— optional">
                                 <AppTextarea Class="character-wizard-textarea"
                                              Rows="4"
                                              Placeholder="Anything this narrator should consistently honor?"
                                              Value="@Profile.CustomGuidance"
                                              ValueChanged="value => Profile.CustomGuidance = value"
                                              UpdateMode="TextUpdateMode.Change" />
-                            </Section>
+                            </FormSection>
                         </div>
                     }
                     else if (Step == 1)
@@ -139,7 +139,7 @@
 
     RenderFragment SliderSection(string title, string hint, int value, Action<int> setValue) => builder =>
     {
-        builder.OpenComponent<Section>(0);
+        builder.OpenComponent<FormSection>(0);
         builder.AddAttribute(1, "Title", title);
         builder.AddAttribute(2, "Hint", $"— {LevelLabel(value)}");
         builder.AddAttribute(3, "ChildContent", (RenderFragment)(child =>

@@ -1,7 +1,6 @@
-<div>
-    <div class="number-setting-label">@Label</div>
+<FieldRow Label="@Label" Class="number-setting">
     <input class="field mono" type="number" placeholder="model default" value="@Value" disabled="@Disabled" @onchange="HandleChange" />
-</div>
+</FieldRow>
 
 @code {
     [Parameter] public string Label { get; set; } = "";

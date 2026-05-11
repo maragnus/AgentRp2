@@ -17,30 +17,30 @@
             }
         </div>
     </Section>
-    <Section Title="@($"How {SourceName} sees {TargetName}")">
+    <FormSection Title="@($"How {SourceName} sees {TargetName}")">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="@($"How does {SourceName} perceive and treat {TargetName}?")"
                      Value="@HowSourceSeesTarget"
                      ValueChanged="SetHowSourceSeesTarget"
                      UpdateMode="TextUpdateMode.Change" />
-    </Section>
-    <Section Title="@($"How {TargetName} sees {SourceName}")">
+    </FormSection>
+    <FormSection Title="@($"How {TargetName} sees {SourceName}")">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="@($"How does {TargetName} perceive and treat {SourceName}?")"
                      Value="@HowTargetSeesSource"
                      ValueChanged="SetHowTargetSeesSource"
                      UpdateMode="TextUpdateMode.Change" />
-    </Section>
-    <Section Title="External Perception">
+    </FormSection>
+    <FormSection Title="External Perception">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="How would others describe this relationship from the outside?"
                      Value="@PublicDynamic"
                      ValueChanged="SetPublicDynamic"
                      UpdateMode="TextUpdateMode.Change" />
-    </Section>
+    </FormSection>
 </div>
 
 @code {

@@ -1,13 +1,13 @@
-<div class="entity-form-editor">
-    <Section Title="Identity" Class="entity-form-section">
+<div class="form-stack entity-form-editor">
+    <FormSection Title="Identity">
         <FieldRow Label="Name"><AppInput Value="@Item.Name" ValueChanged="SetName" /></FieldRow>
         <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Item.Summary" ValueChanged="SetSummary" /></FieldRow>
-    </Section>
-    <Section Title="Object Details" Class="entity-form-section">
+    </FormSection>
+    <FormSection Title="Object Details">
         <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Item.Description" ValueChanged="SetDescription" /></FieldRow>
         <FieldRow Label="History"><AppTextarea Rows="4" Value="@Item.History" ValueChanged="SetHistory" /></FieldRow>
         <FieldRow Label="Properties"><AppTextarea Rows="4" Value="@Item.Properties" ValueChanged="SetProperties" /></FieldRow>
-    </Section>
+    </FormSection>
 </div>
 
 @code {

@@ -15,7 +15,7 @@ else
         @for (var index = 0; index < Entries.Count; index++)
         {
             var entry = Entries[index];
-            <Section @key="entry.Id" Title="@EntryTitle(entry, index)" Hint="@EntryHint(entry)" Class="snapshot-review-section snapshot-timeline-entry">
+            <FormSection @key="entry.Id" Title="@EntryTitle(entry, index)" Hint="@EntryHint(entry)" Class="snapshot-review-section snapshot-timeline-entry">
                 <RightContent>
                     <AppButton Icon="trash" TooltipText="Remove timeline item" OnClick="@(_ => Remove(entry.Id))" />
                 </RightContent>
@@ -32,7 +32,7 @@ else
                         <AppTextarea Rows="3" Value="@entry.Description" ValueChanged="value => Update(updated => entry.Description = updated, value)" />
                     </FieldRow>
                 </ChildContent>
-            </Section>
+            </FormSection>
         }
     </div>
 }
