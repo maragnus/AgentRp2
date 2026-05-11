@@ -72,6 +72,8 @@
     [Parameter] public string PopoverClass { get; set; } = "sidebar-model-popover";
     [Parameter] public string AnchorClass { get; set; } = "is-block";
     [Parameter] public string? DebugName { get; set; }
+    [Parameter] public ActiveModelSelectionsState? ModelSelections { get; set; }
+    [Parameter] public EventCallback<ActiveModelSelectionsState> ModelSelectionsChanged { get; set; }
     [Parameter] public RenderFragment<ActiveModelPickerContext> TriggerContent { get; set; } = _ => builder => { };
     [Parameter] public EventCallback OnOpenProviders { get; set; }
     [Parameter] public EventCallback OnSelected { get; set; }
@@ -80,7 +82,9 @@
     IReadOnlyList<ModelGroup> Groups => BuildGroups();
     OverlayLayer EffectiveLayer => Layer ?? AmbientLayer;
 
-    ActiveModelSelection? ResolveActiveModel() => Session.ModelSelection.Resolve(Role);
+    ActiveModelSelection? ResolveActiveModel() => ModelSelections is null
+        ? Session.ModelSelection.Resolve(Role)
+        : TextModelTuningCatalog.TryResolveActiveModel(Session.Providers.Items, Role, ModelSelections);
 
     protected override void OnInitialized()
     {
@@ -112,7 +116,24 @@
         ErrorMessage = null;
         try
         {
-            await Session.ModelSelection.SetActiveModelAsync(Role, providerId, modelId);
+            var selection = TextModelTuningCatalog.TryResolveModel(Session.Providers.Items, Role, providerId, modelId)
+                ?? throw new InvalidOperationException($"Selecting the AI model failed because the model is not enabled for {AiProviderModelSelectionRules.Label(Role)}.");
+
+            if (ModelSelections is null)
+            {
+                await Session.ModelSelection.SetActiveModelAsync(Role, providerId, modelId);
+            }
+            else
+            {
+                var updated = SessionCloner.Clone(ModelSelections);
+                updated.Values[Role] = new()
+                {
+                    ProviderId = selection.Provider.Id,
+                    ModelId = selection.Model.Id
+                };
+                await ModelSelectionsChanged.InvokeAsync(updated);
+            }
+
             await OnSelected.InvokeAsync();
             await picker.Close();
         }

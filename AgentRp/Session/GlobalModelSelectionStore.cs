@@ -163,13 +163,7 @@ public sealed class GlobalModelSelectionStore(
     }
 
     static ActiveModelSelection? ResolveExplicit(AiModelRole role, string providerId, string modelId, IReadOnlyList<AiProvider> providers)
-    {
-        var provider = providers.FirstOrDefault(provider => provider.Id == providerId);
-        var model = provider?.Models.FirstOrDefault(model => model.Id == modelId);
-        return provider?.Enabled == true && model is not null && AiProviderModelSelectionRules.IsSelectedForRole(model, role)
-            ? new(provider, model, model.Capabilities, role)
-            : null;
-    }
+        => TextModelTuningCatalog.TryResolveModel(providers, role, providerId, modelId);
 }
 
 public sealed class ModelSelectionStore : IDisposable
@@ -200,6 +194,8 @@ public sealed class ModelSelectionStore : IDisposable
     public event Func<ModelSelectionChangeNotification, Task>? SelectionChanged;
 
     public ActiveModelSelectionsState State => SessionCloner.Clone(_activeChat.Current?.ModelSelections ?? _globalStore.Snapshot());
+
+    public ActiveModelSelectionsState GlobalState => _globalStore.Snapshot();
 
     public Task LoadAsync(CancellationToken cancellationToken = default) =>
         _globalStore.LoadAsync(cancellationToken);
@@ -282,13 +278,7 @@ public sealed class ModelSelectionStore : IDisposable
     }
 
     static ActiveModelSelection? ResolveExplicit(AiModelRole role, string providerId, string modelId, IReadOnlyList<AiProvider> providers)
-    {
-        var provider = providers.FirstOrDefault(provider => provider.Id == providerId);
-        var model = provider?.Models.FirstOrDefault(model => model.Id == modelId);
-        return provider?.Enabled == true && model is not null && AiProviderModelSelectionRules.IsSelectedForRole(model, role)
-            ? new(provider, model, model.Capabilities, role)
-            : null;
-    }
+        => TextModelTuningCatalog.TryResolveModel(providers, role, providerId, modelId);
 
     public void Dispose()
     {

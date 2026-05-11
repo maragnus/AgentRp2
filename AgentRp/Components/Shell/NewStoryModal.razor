@@ -25,6 +25,8 @@
                                       AutoSpeakChanged="SetAutoSpeak"
                                       NarratorVoiceSelections="@NarratorVoiceSelections"
                                       ActiveVoiceModel="@ActiveVoiceModel"
+                                      ModelSelections="@DraftModelSelections"
+                                      ModelSelectionsChanged="SetDraftModelSelections"
                                       Disabled="@IsCreating"
                                       OnVoiceChanged="MarkNarratorVoiceChanged" />
 
@@ -123,9 +125,11 @@
     bool IsCreating;
     bool EnableTts;
     bool AutoSpeak;
+    bool ModelSelectionTouched;
     bool NarratorVoiceSelectionTouched;
     string ErrorMessage = "";
     Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections = [];
+    ActiveModelSelectionsState DraftModelSelections = ActiveModelSelectionsState.CreateDefault();
     HashSet<string> SelectedCopyIds = new(StringComparer.Ordinal)
     {
         Characters,
@@ -141,7 +145,7 @@
     [Parameter] public EventCallback OnOpenAssistant { get; set; }
 
     StoryPreview? ActiveStory => Session.Chats.Active;
-    ActiveModelSelection? ActiveVoiceModel => Session.ModelSelection.Resolve(AiModelRole.Voice);
+    ActiveModelSelection? ActiveVoiceModel => TextModelTuningCatalog.TryResolveActiveModel(Session.Providers.Items, AiModelRole.Voice, DraftModelSelections);
     bool MustChooseNarratorVoice => EnableTts && ActiveVoiceModel is not null && ActiveVoiceModel.Model.Voices.Count > 0;
     bool HasNarratorVoiceSelection => ActiveVoiceModel is not null
         && NarratorVoiceSelections.TryGetValue(ActiveVoiceModel.Key, out var selection)
@@ -183,11 +187,14 @@
     {
         var preferences = await AppSettings.GetAsync(NewStoryPreferencesState.SettingsKey, NewStoryPreferencesState.Default);
         EnableTts = preferences.EnableTts;
+        SyncModelSelectionDraft();
+        SyncNarratorVoiceDraft();
     }
 
     void SetMode(NewStoryStartMode mode)
     {
         Mode = mode;
+        SyncModelSelectionDraft();
         SyncNarratorVoiceDraft();
     }
 
@@ -197,6 +204,7 @@
             return;
 
         Mode = NewStoryStartMode.Copy;
+        SyncModelSelectionDraft();
         SyncNarratorVoiceDraft();
     }
 
@@ -227,6 +235,14 @@
     Task MarkNarratorVoiceChanged()
     {
         NarratorVoiceSelectionTouched = true;
+        return Task.CompletedTask;
+    }
+
+    Task SetDraftModelSelections(ActiveModelSelectionsState selections)
+    {
+        DraftModelSelections = SessionCloner.Clone(selections);
+        ModelSelectionTouched = true;
+        SyncNarratorVoiceDraft();
         return Task.CompletedTask;
     }
 
@@ -282,6 +298,7 @@
             options.AutoSpeakNewMessages = AutoSpeak;
             options.NarratorVoiceSelections = CloneVoiceSelections(NarratorVoiceSelections);
         }
+        options.ModelSelections = SessionCloner.Clone(DraftModelSelections);
 
         return options;
     }
@@ -326,6 +343,16 @@
         NarratorVoiceSelections = Mode == NewStoryStartMode.Copy && SelectedCopyIds.Contains(Narrator)
             ? CloneVoiceSelections(Session.Chat.NarratorProfile.State.VoiceSelections)
             : [];
+    }
+
+    void SyncModelSelectionDraft()
+    {
+        if (ModelSelectionTouched)
+            return;
+
+        DraftModelSelections = Mode == NewStoryStartMode.Copy && Session.ActiveChat.Current is not null
+            ? SessionCloner.Clone(Session.ActiveChat.Current.ModelSelections)
+            : Session.ModelSelection.GlobalState;
     }
 
     static Dictionary<string, CharacterVoiceSelection> CloneVoiceSelections(Dictionary<string, CharacterVoiceSelection> selections) =>

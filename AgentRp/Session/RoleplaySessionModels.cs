@@ -32,6 +32,7 @@ public sealed class StoryCreationOptions
     public bool EnableTts { get; set; }
     public bool AutoSpeakNewMessages { get; set; }
     public Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections { get; set; } = [];
+    public ActiveModelSelectionsState ModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
 
     public static StoryCreationOptions Blank() => new();
 }

@@ -7,7 +7,9 @@
             <ActiveModelPicker Role="AiModelRole.Voice"
                                AnchorClass=""
                                PopoverClass="sidebar-model-popover voice-model-popover"
-                               DebugName="@($"VoicePicker model picker for {OwnerName}")">
+                               DebugName="@($"VoicePicker model picker for {OwnerName}")"
+                               ModelSelections="ModelSelections"
+                               ModelSelectionsChanged="ModelSelectionsChanged">
                 <TriggerContent Context="modelPicker">
                     <AppButton Variant="secondary"
                                Size="sm"
@@ -95,6 +97,8 @@
 
     [Parameter] public Dictionary<string, CharacterVoiceSelection> VoiceSelections { get; set; } = [];
     [Parameter] public ActiveModelSelection? ActiveVoiceModel { get; set; }
+    [Parameter] public ActiveModelSelectionsState? ModelSelections { get; set; }
+    [Parameter] public EventCallback<ActiveModelSelectionsState> ModelSelectionsChanged { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public string OwnerName { get; set; } = "entity";
     [Parameter] public EventCallback OnChanged { get; set; }

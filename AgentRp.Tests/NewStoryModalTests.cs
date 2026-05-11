@@ -1,3 +1,4 @@
+using AgentRp.Components.Common;
 using AgentRp.Components.Shell;
 using AgentRp.Models;
 using AgentRp.Services;
@@ -78,6 +79,50 @@ public sealed class NewStoryModalTests
         Assert.True(session.Chat.Transcript.Options.AutoSpeakNewMessages);
     }
 
+    [Fact]
+    public async Task NewStoryModalVoiceModelSelectionCreatesStoryWhenNoStoryIsActive()
+    {
+        using var context = CreateContext(out _);
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync(selectFirstStory: false);
+        await AddVoiceProviderAsync(session);
+        var component = RenderModal(context, session);
+        var overlays = context.Render<OverlayHost>();
+
+        await ClickByText(component, "Enable Voice");
+        await SelectVoiceModelAsync(component, overlays, "second-voice-model");
+        await SelectNarratorVoiceAsync(component, overlays, "Second Voice");
+        await ClickByText(component, "Create Story");
+
+        var activeVoice = session.ActiveChat.Current?.ModelSelections.Values[AiModelRole.Voice];
+        Assert.NotNull(activeVoice);
+        Assert.Equal("voice-provider", activeVoice!.ProviderId);
+        Assert.Equal("second-voice-model", activeVoice.ModelId);
+        Assert.True(session.Chat.NarratorProfile.State.VoiceSelections.ContainsKey(ModelSelectionKey.Build("voice-provider", "second-voice-model")));
+    }
+
+    [Fact]
+    public async Task NewStoryModalVoiceModelSelectionDoesNotMutateActiveStory()
+    {
+        using var context = CreateContext(out _);
+        await using var store = NewLiveStore();
+        var session = new RoleplaySession(store);
+        await session.InitializeAsync();
+        await AddVoiceProviderAsync(session);
+        await session.ModelSelection.SetActiveModelAsync(AiModelRole.Voice, "voice-provider", "first-voice-model");
+        var originalDocument = session.ActiveChat.Current!;
+        var component = RenderModal(context, session);
+        var overlays = context.Render<OverlayHost>();
+
+        await ClickByText(component, "Enable Voice");
+        await SelectVoiceModelAsync(component, overlays, "second-voice-model");
+
+        var activeVoice = originalDocument.ModelSelections.Values[AiModelRole.Voice];
+        Assert.Equal("voice-provider", activeVoice.ProviderId);
+        Assert.Equal("first-voice-model", activeVoice.ModelId);
+    }
+
     static BunitContext CreateContext(out InMemoryAppSettingsService settings)
     {
         var context = new BunitContext();
@@ -87,6 +132,8 @@ public sealed class NewStoryModalTests
         context.Services.AddScoped<OverlayService>();
         context.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
         context.Services.AddSingleton<IElevenLabsVoiceCatalogService, EmptyElevenLabsVoiceCatalogService>();
+        context.Services.AddSingleton<ITtsPreviewService, TestPreviewService>();
+        context.Services.AddSingleton<ITtsAudioPlaybackService, TestPlaybackService>();
         return context;
     }
 
@@ -101,11 +148,59 @@ public sealed class NewStoryModalTests
         await ButtonByText(component, text).ClickAsync(new MouseEventArgs());
     }
 
+    static async Task SelectVoiceModelAsync(IRenderedComponent<NewStoryModal> component, IRenderedComponent<OverlayHost> overlays, string modelId)
+    {
+        await component.Find(".voice-picker-provider-button").ClickAsync(new MouseEventArgs());
+        var option = overlays.FindAll(".sidebar-model-option")
+            .First(button => button.TextContent.Contains(modelId, StringComparison.Ordinal));
+        await option.ClickAsync(new MouseEventArgs());
+    }
+
+    static async Task SelectNarratorVoiceAsync(IRenderedComponent<NewStoryModal> component, IRenderedComponent<OverlayHost> overlays, string voiceName)
+    {
+        await component.Find(".voice-picker-selected-button").ClickAsync(new MouseEventArgs());
+        var option = overlays.FindAll(".voice-picker-option-main")
+            .First(button => button.TextContent.Contains(voiceName, StringComparison.Ordinal));
+        await option.ClickAsync(new MouseEventArgs());
+    }
+
     static AngleSharp.Dom.IElement ButtonByText(IRenderedComponent<NewStoryModal> component, string text = "Create Story") =>
         component.FindAll("button").First(button => button.TextContent.Contains(text, StringComparison.Ordinal));
 
     static LiveRoleplayStore NewLiveStore() =>
         new(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+
+    static async Task AddVoiceProviderAsync(RoleplaySession session)
+    {
+        await session.Providers.AddAsync(new()
+        {
+            Id = "voice-provider",
+            Name = "Voice Provider",
+            Type = "elevenlabs",
+            Enabled = true,
+            Models =
+            [
+                new()
+                {
+                    Id = "first-voice-model",
+                    DisplayName = "First Voice Model",
+                    Enabled = true,
+                    Roles = [AiModelRole.Voice],
+                    Capabilities = new() { TextInput = true, SpeechOutput = true },
+                    Voices = [new() { Id = "first-voice", DisplayName = "First Voice" }]
+                },
+                new()
+                {
+                    Id = "second-voice-model",
+                    DisplayName = "Second Voice Model",
+                    Enabled = true,
+                    Roles = [AiModelRole.Voice],
+                    Capabilities = new() { TextInput = true, SpeechOutput = true },
+                    Voices = [new() { Id = "second-voice", DisplayName = "Second Voice" }]
+                }
+            ]
+        });
+    }
 
     sealed class EmptyElevenLabsVoiceCatalogService : IElevenLabsVoiceCatalogService
     {
@@ -132,5 +227,31 @@ public sealed class NewStoryModalTests
 
         static ElevenLabsVoiceCatalogSnapshot EmptySnapshot() =>
             new([], [], [], [], [], [], null, "", 0, 0);
+    }
+
+    sealed class TestPreviewService : ITtsPreviewService
+    {
+        public Task<TtsPreviewAudio> GenerateSampleAsync(AiProvider provider, AiProviderModel model, AiProviderVoice voice, string text, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TtsPreviewAudio([], "audio/mpeg"));
+    }
+
+    sealed class TestPlaybackService : ITtsAudioPlaybackService
+    {
+        public string ActiveKey => "";
+        public event Func<Task>? Changed;
+        public event Func<string, string, Task>? Failed;
+        public bool IsPlaying(string key) => false;
+        public bool TryGetCachedUrl(string key, out string url)
+        {
+            url = "";
+            return false;
+        }
+
+        public Task CacheAudioAsync(string key, byte[] bytes, string contentType) => Task.CompletedTask;
+        public Task PlayUrlAsync(string key, string url) => Task.CompletedTask;
+        public Task StopAsync() => Task.CompletedTask;
+        public Task ReplaceCachedAudioAsync(string key, byte[] bytes, string contentType) => Task.CompletedTask;
+        public Task NotifyAsync() => Changed?.Invoke() ?? Task.CompletedTask;
+        public Task FailAsync(string key, string message) => Failed?.Invoke(key, message) ?? Task.CompletedTask;
     }
 }

@@ -202,7 +202,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 				ChatDirection = ((options.CopyStoryDirection && template != null) ? SessionCloner.Clone(template.ChatDirection) : ChatDirectionState.CreateDefault()),
 				NarratorProfile = ((options.CopyNarratorProfile && template != null) ? SessionCloner.Clone(template.NarratorProfile) : NarratorProfileState.CreateDefault()),
 				CharacterTraitLibrary = ((options.CopyCharacters && template != null) ? SessionCloner.Clone(template.CharacterTraitLibrary) : CharacterTraitLibraryState.CreateDefault()),
-				ModelSelections = ((template != null) ? SessionCloner.Clone(template.ModelSelections) : ActiveModelSelectionsState.CreateDefault())
+				ModelSelections = SessionCloner.Clone(options.ModelSelections)
 			};
 			ApplyCreationTtsOptions(document, options);
 			if (!options.CopyImages)

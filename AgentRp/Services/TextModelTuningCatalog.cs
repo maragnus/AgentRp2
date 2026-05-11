@@ -104,6 +104,19 @@ public static class TextModelTuningCatalog
         return null;
     }
 
+    public static ActiveModelSelection? TryResolveModel(
+        IReadOnlyList<AiProvider> providers,
+        AiModelRole role,
+        string providerId,
+        string modelId)
+    {
+        var provider = providers.FirstOrDefault(provider => provider.Id == providerId);
+        var model = provider?.Models.FirstOrDefault(model => model.Id == modelId);
+        return provider?.Enabled == true && model is not null && AiProviderModelSelectionRules.IsSelectedForRole(model, role)
+            ? new(provider, model, model.Capabilities, role)
+            : null;
+    }
+
     public static ResponseTuningOptions Filter(ModelTuningStepState tuning, ModelGenerationCapabilities capabilities) => new(
         FilterTemperature(tuning.Temperature, capabilities.Temperature),
         capabilities.TopP == TuningSupport.Supported && TryParseFloat(tuning.TopP, out var topP) ? topP : null,
