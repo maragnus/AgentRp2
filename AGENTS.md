@@ -12,8 +12,6 @@ The final result should look like we understood this requirement from day one. F
 
 ## Data Architecture
 
-Before changing story persistence, transcript persistence, story previews, chat listing, or active chat loading, reread [DATA_OVERHAUL.md](DATA_OVERHAUL.md) and [TRANSCRIPT_OVERHAUL.md](TRANSCRIPT_OVERHAUL.md). Those documents are the current architectural source of truth.
-
 AgentRp2 uses a destructive story-data posture while it is still in design. Prefer a clean schema and coherent persistence model over compatibility shims for old chats. Preserve non-story local setup such as providers and app settings where practical, but do not preserve weak story storage.
 
 Do not add new chat-level `*Json` blobs for hot, queryable, or frequently changing story state. Chat list data, active scene state, entity names, entity image ids, image crop data, transcript branch ids, counts, dates, sort order, and other preview/search fields belong in relational rows/columns or explicit projections. JSON is acceptable for cold row-owned detail payloads such as deep profiles, settings documents, prompt overrides, generation metadata, and trace/debug payloads.
@@ -66,10 +64,12 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - NEVER manually edit project/package references. MUST use `dotnet add ...` and `dotnet sln add ...`.
 - NEVER use `UriKind.Absolute` or `Uri.TryCreate(..., UriKind.Absolute, ...)` to validate an absolute URL. ONLY use `StartsWith("https://")` or `StartsWith("http://")` with case-insensitive comparison.
 - Breaking changes are acceptable. Prefer the correct design over migrations, compatibility shims, or shoehorned extensions.
+- NEVER mix `RenderTreeBuilder` with `.razor` pages.
+  - `RenderTreeBuilder` may only be used via `protected override void ComponentBase.BuildRenderTree(RenderTreeBuilder builder)`. 
+  - Instead, use inline components in `@code` block: `private RenderFragment<PhaseCardInstance> PhaseEditor => (PhaseCardInstance context) => @<div>@context</div>;`
 
 ## AI Integration Rules
 - Never manually construct or send HTTP requests directly to model generation endpoints. Text, image, tool, and agent model calls must go through the official OpenAI package or Microsoft.Extensions.AI abstractions.
-- AgentRp1 is the working prototype and behavioral source of truth for Responses/Open Responses generation. If implementation reveals a reason to deviate from this plan or from AgentRp1 behavior, stop and consult the user before changing direction.
 - All text and image generation must use the app-owned Responses/Open Responses abstraction backed by the official OpenAI SDK `ResponsesClient`. Do not use `IChatClient` for this app's generation contract.
 - OpenAI, Claude, Grok, and future providers must be treated as Responses/Open Responses-compatible providers that differ only by endpoint, API key, model id, provider metadata, and resolved capabilities.
 - Do not use Chat Completions, Anthropic Messages, provider-native image endpoints, or any other provider-specific generation transport. Do not add code that posts to `chat/completions`, `messages`, `images/generations`, or similar generation endpoints.
@@ -96,6 +96,7 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - EntityFramework queries with `.Include()` must always specify `.AsSplitQuery()` or `.AsSingleQuery()` responsibly, usually based on the impact: Consider impact of the included entity, or one-to-many versus one-to-one, or `.ToList` versus `.Single`/`.First` usage.
 - EntityFramework `.Single`/`.First` must include `.OrderBy` to prevent warnings
 - EntityFramework shouls always use `.AsNoTracking()` on queries intended to be read-only.
+- NEVER use `dynamic` types
 
 ## React To Blazor Translation
 - Translate Claude/React inline styles into maintainable global CSS. Use `app.css` for resets, layout, typography, and app shell structure; `components.css` for reusable UI component classes; and `light.css` / `dark.css` for theme variables and theme-only overrides. Preserve the Claude Design visually, but do not preserve its inline-style implementation unless a value is truly dynamic and cannot reasonably be expressed with classes or CSS custom properties. Avoid component-scoped `.razor.css` by default.
@@ -140,13 +141,17 @@ Reusable layout and behavior CSS must be owned by common components or common ut
 - Repeated components and repeated root elements in `.razor` loops must use `@key` with stable domain identifiers so Blazor preserves element/component identity across item additions, deletions, and refreshes.
 
 ## Text Input Components
-- Do not use raw `<textarea>` or `<input type="text">` in app-owned UI. Use shared text input components instead: `AppTextarea` for multiline text and `AppInput` or another existing shared primitive for single-line text.
-- Never wire raw `@oninput` handlers to `<textarea>` or text inputs in Razor components. Use `AppTextarea` or the appropriate shared text input component and its `TextUpdateMode` support instead.
-- Before adding text input behavior, check whether `AppTextarea`, `AppInput`, `AppTextInputBase`, or another shared input primitive already supports the use case. Extend the shared component when reasonable instead of recreating input/update behavior locally.
-- Choose the lightest `TextUpdateMode` that satisfies the workflow:
-  - `TextUpdateMode.Empty`: preferred default. Use when the component only needs to know whether the field is empty/non-empty or can wait until commit/change. This is the most efficient option.
-  - `TextUpdateMode.Change`: use only when the current value must be read after normal change/commit behavior.
-  - `TextUpdateMode.Live`: use only for special cases that genuinely need rapid live updates from the value, such as live previews, counters, immediate validation, or interactive generation controls.
+- Text input rules apply to behavior, not just markup.
+- Never use raw text `<input>`, `<textarea>`, raw `@oninput`, or hand-rolled input tracking in app-owned UI.
+- Use `AppInput` for single-line text and `AppTextarea` for multiline text.
+- Prefer `@bind-Value` for normal fields.
+- Use `Value` + `ValueChanged` only when an adapter/write-through method is genuinely needed.
+- If UI state depends on whether text is empty, use `@bind-IsEmpty` with `UpdateMode="TextUpdateMode.Empty"`. 
+    - NEVER use `IsEmpty` / `IsEmptyChanged`, always refactor so `@bind-IsEmpty` is used.
+- Do not drive text-field UI state with direct checks like `string.IsNullOrWhiteSpace(...)` in Razor markup.
+- Use `TextUpdateMode.Change` only when committed text value is needed, and `TextUpdateMode.Live` only for true live behavior like previews, counters, or immediate validation.
+- Before adding custom input behavior, extend `AppInput`, `AppTextarea`, or `AppTextInputBase` instead of duplicating it locally.
+Ideal usage: `<AppInput @bind-Value="Draft" @bind-IsEmpty="DraftIsEmpty" UpdateMode="TextUpdateMode.Empty" />`
 
 ## Async Feedback
 - Async user-action buttons must use a `BusyButton` component instead of hand-rolled button busy state. A `BusyButton` must disable itself while work is running and show an activity spinner so users can see that the action is in progress.

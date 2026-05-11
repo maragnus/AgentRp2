@@ -12,6 +12,7 @@ public sealed class RpChatDocument
     public List<RpItem> Items { get; set; } = [];
     public List<RpTimelineEntry> Timeline { get; set; } = [];
     public List<GalleryImage> Images { get; set; } = [];
+    public List<StoryCardInstance> StoryCards { get; set; } = [];
     public RpTranscriptState Transcript { get; set; } = new();
     public StoryAssistantState StoryAssistant { get; set; } = new();
     public ChatDirectionState ChatDirection { get; set; } = ChatDirectionState.CreateDefault();
@@ -32,6 +33,7 @@ public sealed class StoryCreationOptions
     public bool EnableTts { get; set; }
     public bool AutoSpeakNewMessages { get; set; }
     public Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections { get; set; } = [];
+    public List<string> StoryCardTemplateIds { get; set; } = [];
     public ActiveModelSelectionsState ModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
 
     public static StoryCreationOptions Blank() => new();

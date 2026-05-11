@@ -1,0 +1,65 @@
+@namespace AgentRp.Components.StoryCards
+
+<FormSection Title="@ChildTitle(Child.Title, Child.FallbackTitle)" Class="story-card-child-section">
+    <FieldRow Label="Title">
+        <AppInput Value="@Child.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+    </FieldRow>
+    @if (Child.HasAssignment)
+    {
+        <FieldRow Label="Assigned">
+            <span class="story-card-assignment">@Child.AssignmentText</span>
+        </FieldRow>
+    }
+    <FieldRow Label="Selection">
+        <AppTextarea Rows="4" Value="@Child.SelectionInstructions" ValueChanged="SetSelection" Disabled="@(!Editable)" />
+    </FieldRow>
+    <FieldRow Label="Creation">
+        <AppTextarea Rows="4" Value="@Child.CreationInstructions" ValueChanged="SetCreation" Disabled="@(!Editable)" />
+    </FieldRow>
+    <FieldRow Label="Ongoing Context">
+        <AppTextarea Rows="4" Value="@Child.OngoingContext" ValueChanged="SetOngoing" Disabled="@(!Editable)" />
+    </FieldRow>
+    @if (Child.IncludePrivate)
+    {
+        <FieldRow Label="Private Context">
+            <AppTextarea Rows="4" Value="@Child.PrivateContext" ValueChanged="SetPrivate" Disabled="@(!Editable)" />
+        </FieldRow>
+    }
+</FormSection>
+
+@code {
+    [Parameter] public StoryCardChildEditorRow Child { get; set; } = default!;
+    [Parameter] public bool Editable { get; set; }
+
+    Task SetTitle(string value)
+    {
+        Child.Title = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetSelection(string value)
+    {
+        Child.SelectionInstructions = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetCreation(string value)
+    {
+        Child.CreationInstructions = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetOngoing(string value)
+    {
+        Child.OngoingContext = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetPrivate(string value)
+    {
+        Child.PrivateContext = value;
+        return Task.CompletedTask;
+    }
+
+    static string ChildTitle(string title, string fallback) => string.IsNullOrWhiteSpace(title) ? fallback : title;
+}

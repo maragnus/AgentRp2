@@ -1,0 +1,164 @@
+@namespace AgentRp.Components.StoryCards
+
+<FormSection Title="@ChildTitle(Phase.Title)" Class="story-card-child-section">
+    <FieldRow Label="Title">
+        <AppInput Value="@Phase.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+    </FieldRow>
+    <FieldRow Label="Setup">
+        <AppTextarea Rows="4" Value="@Phase.SetupInstructions" ValueChanged="SetSetup" Disabled="@(!Editable)" />
+    </FieldRow>
+    <FieldRow Label="Planning Context">
+        <AppTextarea Rows="4" Value="@Phase.PlanningContext" ValueChanged="SetPlanning" Disabled="@(!Editable)" />
+    </FieldRow>
+    <FieldRow Label="End Condition">
+        <AppTextarea Rows="3" Value="@Phase.EndCondition" ValueChanged="SetEnd" Disabled="@(!Editable)" />
+    </FieldRow>
+    <div class="story-card-toggle-row">
+        <span>Optional</span>
+        <ToggleSwitch Value="@Phase.IsOptional" ValueChanged="SetOptional" Disabled="@(!Editable)" TooltipText="Toggle optional phase" />
+        <span>Ending</span>
+        <ToggleSwitch Value="@Phase.IsEnding" ValueChanged="SetEnding" Disabled="@(!Editable)" TooltipText="Toggle ending phase" />
+        @if (Editable)
+        {
+            <span class="toolbar-spacer"></span>
+            <AppButton Icon="trash" TooltipText="Remove phase" OnClick="@(_ => OnRemove.InvokeAsync(Phase.Id))" />
+        }
+    </div>
+
+    <div class="story-card-requirements">
+        <div class="story-card-requirements-toolbar">
+            <strong>Setup Needs</strong>
+            <span class="toolbar-spacer"></span>
+            @if (Editable)
+            {
+                <div class="story-card-requirement-adds" aria-label="Add setup needs">
+                    <span class="story-card-add-label" aria-hidden="true"><FaIcon Name="plus" /></span>
+                    <StoryCardRequirementPicker PhaseId="@Phase.Id"
+                                                ChildCardType="@StoryCardChildCardType.Role"
+                                                Icon="users"
+                                                Options="@Roles"
+                                                Requirements="@Requirements"
+                                                OnAddExistingRequirement="OnAddExistingRequirement"
+                                                OnAddNewRequirement="OnAddNewRequirement" />
+                    <StoryCardRequirementPicker PhaseId="@Phase.Id"
+                                                ChildCardType="@StoryCardChildCardType.Location"
+                                                Icon="map-pin"
+                                                Options="@Locations"
+                                                Requirements="@Requirements"
+                                                OnAddExistingRequirement="OnAddExistingRequirement"
+                                                OnAddNewRequirement="OnAddNewRequirement" />
+                    <StoryCardRequirementPicker PhaseId="@Phase.Id"
+                                                ChildCardType="@StoryCardChildCardType.Item"
+                                                Icon="box"
+                                                Options="@Items"
+                                                Requirements="@Requirements"
+                                                OnAddExistingRequirement="OnAddExistingRequirement"
+                                                OnAddNewRequirement="OnAddNewRequirement" />
+                </div>
+            }
+        </div>
+
+        @if (Requirements.Count == 0)
+        {
+            <div class="story-card-requirement-empty">No setup needs yet.</div>
+        }
+        else
+        {
+            <div class="story-card-requirement-list">
+                @foreach (var requirement in Requirements)
+                {
+                    <div @key="requirement.Id" class="story-card-requirement-row">
+                        <span class="story-card-row-icon"><FaIcon Name="@TypeIcon(requirement.ChildCardType)" /></span>
+                        <span class="story-card-row-main">
+                            <strong>@requirement.ChildTitle</strong>
+                            <small>@requirement.ChildCardType</small>
+                        </span>
+                        <span class="story-card-requirement-count">
+                            <span>Need</span>
+                            <AppNumberInput Value="@requirement.RequiredCount.ToString()"
+                                            ValueChanged="value => SetRequiredCount(requirement, value)"
+                                            Disabled="@(!Editable)"
+                                            Min="1"
+                                            AriaLabel="@($"{requirement.ChildTitle} required count")"
+                                            DecrementTooltipText="Decrease required count"
+                                            IncrementTooltipText="Increase required count" />
+                        </span>
+                        <AppButton Icon="chevron-right"
+                                   TooltipText="Open child card"
+                                   OnClick="@(_ => OnOpenChild.InvokeAsync(new StoryCardChildReference(requirement.ChildCardType, requirement.ChildCardId)))" />
+                        @if (Editable)
+                        {
+                            <AppButton Icon="x" TooltipText="Remove setup need" OnClick="@(_ => OnRemoveRequirement.InvokeAsync(requirement.Id))" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</FormSection>
+
+@code {
+    [Parameter] public StoryCardPhaseEditorRow Phase { get; set; } = default!;
+    [Parameter] public IReadOnlyList<StoryCardRequirementEditorRow> Requirements { get; set; } = [];
+    [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Roles { get; set; } = [];
+    [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Items { get; set; } = [];
+    [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Locations { get; set; } = [];
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public EventCallback<StoryCardExistingRequirementRequest> OnAddExistingRequirement { get; set; }
+    [Parameter] public EventCallback<StoryCardNewRequirementRequest> OnAddNewRequirement { get; set; }
+    [Parameter] public EventCallback<string> OnRemoveRequirement { get; set; }
+    [Parameter] public EventCallback<StoryCardChildReference> OnOpenChild { get; set; }
+    [Parameter] public EventCallback<string> OnRemove { get; set; }
+
+    Task SetTitle(string value)
+    {
+        Phase.Title = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetSetup(string value)
+    {
+        Phase.SetupInstructions = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetPlanning(string value)
+    {
+        Phase.PlanningContext = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetEnd(string value)
+    {
+        Phase.EndCondition = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetOptional(bool value)
+    {
+        Phase.IsOptional = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetEnding(bool value)
+    {
+        Phase.IsEnding = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetRequiredCount(StoryCardRequirementEditorRow requirement, string value)
+    {
+        requirement.RequiredCount = int.TryParse(value, out var count) ? count : 1;
+        return Task.CompletedTask;
+    }
+
+    static string TypeIcon(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "users",
+        StoryCardChildCardType.Item => "box",
+        StoryCardChildCardType.Location => "map-pin",
+        _ => "circle"
+    };
+
+    static string ChildTitle(string title) => string.IsNullOrWhiteSpace(title) ? "Phase" : title;
+}

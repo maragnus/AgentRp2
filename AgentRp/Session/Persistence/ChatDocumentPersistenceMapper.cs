@@ -13,6 +13,7 @@ internal sealed record ChatDocumentRows(
     List<ChatItemRow> Items,
     List<ChatTimelineEntryRow> Timeline,
     List<ImageAssetRow> Images,
+    List<StoryCardInstance> StoryCards,
     ChatTranscriptStateRow? TranscriptState,
     ChatDirectionStateRow? ChatDirection,
     NarratorProfileStateRow? NarratorProfile,
@@ -58,6 +59,7 @@ internal static class ChatDocumentPersistenceMapper
                 .ThenByDescending(row => row.CreatedUtc)
                 .Select(StoryEntityPersistenceMapper.ToModel)
                 .ToList(),
+            StoryCards = rows.StoryCards,
             Transcript = transcript,
             StoryAssistant = new(),
             ChatDirection = DeserializeState(rows.ChatDirection, ChatDirectionState.CreateDefault()),

@@ -1,0 +1,228 @@
+@namespace AgentRp.Components.StoryCards
+@implements IDisposable
+@inject ILogger<StoryCardsStoryTab> Logger
+
+<div class="story-card-story-tab">
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="modal-error">@ErrorMessage</div>
+    }
+
+    <Section Title="Story Cards" Count="@Cards.Count">
+        <RightContent>
+            <AppButton Icon="plus" TooltipText="Inject story card" OnClick="@(_ => PickerOpen = true)" />
+        </RightContent>
+        <ChildContent>
+            @if (Cards.Count == 0)
+            {
+                <EmptyState Icon="cards" Title="No story cards" Message="Inject a card when the story needs a reusable arc, role, item, or location structure." />
+            }
+            else
+            {
+                <div class="story-card-instance-list">
+                    @foreach (var card in Cards)
+                    {
+                        <div @key="card.Id" class="@InstanceRowClass(card)" @onclick="@(() => Select(card.Id))">
+                            <span class="story-card-row-icon"><FaIcon Name="@StatusIcon(card.Status)" /></span>
+                            <span class="story-card-row-main">
+                                <strong>@card.Title</strong>
+                                <small>@InstanceSummary(card)</small>
+                            </span>
+                            <Badge Tone="@StatusTone(card.Status)">@card.Status</Badge>
+                        </div>
+                    }
+                </div>
+            }
+        </ChildContent>
+    </Section>
+
+    @if (SelectedDraft is not null)
+    {
+        <Section Title="Selected Card" Class="story-card-selected-panel">
+            <div class="story-card-status-actions">
+                <Badge Tone="@StatusTone(SelectedDraft.Status)">@SelectedDraft.Status</Badge>
+                <span>@TurnRange(SelectedDraft)</span>
+                <span class="toolbar-spacer"></span>
+                @if (CanInspect)
+                {
+                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Active)" OnClick="@(() => SetStatus(StoryCardStatus.Active))">Active</BusyButton>
+                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Dormant)" OnClick="@(() => SetStatus(StoryCardStatus.Dormant))">Dormant</BusyButton>
+                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Concluded)" OnClick="@(() => SetStatus(StoryCardStatus.Concluded))">Concluded</BusyButton>
+                }
+            </div>
+            @if (!CanInspect)
+            {
+                <p class="story-card-summary-text">@SelectedDraft.Summary</p>
+            }
+        </Section>
+
+        @if (CanInspect)
+        {
+            <StoryCardAssignmentsEditor Instance="SelectedDraft"
+                                        Characters="Session.Chat.Characters.Items"
+                                        Items="Session.Chat.Items.Items"
+                                        Locations="Session.Chat.Locations.Items" />
+            <StoryCardEditor Instance="SelectedDraft" Editable="true" Height="520px">
+                <Footer>
+                    <span class="modal-action-spacer"></span>
+                    <BusyButton OnClick="SaveSelected"><FaIcon Name="check" />Save Card</BusyButton>
+                </Footer>
+            </StoryCardEditor>
+        }
+
+        @if (SelectedDraft.History.Count > 0)
+        {
+            <Section Title="History" Count="@SelectedDraft.History.Count">
+                <div class="story-card-history-list">
+                    @foreach (var item in SelectedDraft.History)
+                    {
+                        <div @key="item.Id" class="story-card-history-row">
+                            <FaIcon Name="clock" />
+                            <span><strong>@item.Title</strong><small>@HistorySummary(item)</small></span>
+                        </div>
+                    }
+                </div>
+            </Section>
+        }
+    }
+</div>
+
+@if (PickerOpen)
+{
+    <StoryCardCatalogModal PickerMode="true" OnUseTemplate="Inject" OnClose="ClosePicker" />
+}
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+
+    StoryCardInstance? SelectedDraft;
+    string SelectedId = "";
+    string ErrorMessage = "";
+    bool PickerOpen;
+    List<StoryCardInstance> Cards => Session.Chat.StoryCards.Items;
+    bool CanInspect => Session.Chat.StoryCards.CanInspectInternals();
+
+    protected override void OnInitialized()
+    {
+        Session.Chat.StoryCards.Changed += OnStoreChanged;
+        Select(Cards.FirstOrDefault()?.Id ?? "");
+    }
+
+    Task OnStoreChanged()
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedId))
+            Select(SelectedId);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    void Select(string id)
+    {
+        SelectedId = id;
+        SelectedDraft = Cards.FirstOrDefault(card => card.Id == id) is { } card ? SessionCloner.Clone(card) : null;
+    }
+
+    async Task Inject(string templateId)
+    {
+        ErrorMessage = "";
+        try
+        {
+            PickerOpen = false;
+            var instance = await Session.Chat.StoryCards.InjectAsync(templateId);
+            Select(instance.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Adding the story card failed.",
+                "Injecting story card template {TemplateId} failed for chat {ChatId}.",
+                templateId,
+                Session.Chats.Active?.ChatId);
+        }
+    }
+
+    Task ClosePicker()
+    {
+        PickerOpen = false;
+        return Task.CompletedTask;
+    }
+
+    async Task SetStatus(StoryCardStatus status)
+    {
+        if (SelectedDraft is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await Session.Chat.StoryCards.SetStatusAsync(SelectedDraft.Id, status);
+            Select(SelectedDraft.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Updating story card status failed.",
+                "Updating story card {StoryCardInstanceId} status failed.",
+                SelectedDraft.Id);
+        }
+    }
+
+    async Task SaveSelected()
+    {
+        if (SelectedDraft is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await Session.Chat.StoryCards.SaveInstanceAsync(SelectedDraft);
+            Select(SelectedDraft.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Saving the story card failed.",
+                "Saving story card instance {StoryCardInstanceId} failed.",
+                SelectedDraft.Id);
+        }
+    }
+
+    string InstanceRowClass(StoryCardInstance card) =>
+        $"story-card-instance-row {(SelectedId == card.Id ? "is-selected" : "")}";
+
+    string InstanceSummary(StoryCardInstance card) =>
+        string.IsNullOrWhiteSpace(card.Summary) ? TurnRange(card) : $"{card.Summary} · {TurnRange(card)}";
+
+    string TurnRange(StoryCardInstance card)
+    {
+        var end = card.EndTurnNumber ?? Session.Chats.Active?.LastGeneratedTurnNumber ?? Session.ActiveChat.Current?.Chat.LastGeneratedTurnNumber ?? 0;
+        return $"Turns {card.StartTurnNumber} to {end}";
+    }
+
+    static string StatusIcon(StoryCardStatus status) => status switch
+    {
+        StoryCardStatus.Dormant => "pause",
+        StoryCardStatus.Concluded => "check",
+        _ => "play"
+    };
+
+    static string StatusTone(StoryCardStatus status) => status switch
+    {
+        StoryCardStatus.Dormant => "amber",
+        StoryCardStatus.Concluded => "emerald",
+        _ => "blue"
+    };
+
+    static string HistorySummary(StoryCardHistoryItem item) =>
+        $"{item.Details} · {TranscriptTurnNumbering.Format(new RpSnapshotDraftTurn { TurnNumber = item.TurnNumber })}";
+
+    public void Dispose()
+    {
+        Session.Chat.StoryCards.Changed -= OnStoreChanged;
+    }
+}

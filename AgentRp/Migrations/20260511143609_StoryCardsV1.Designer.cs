@@ -4,6 +4,7 @@ using AgentRp.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgentRp.Migrations
 {
     [DbContext(typeof(RpDbContext))]
-    partial class RpDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260511143609_StoryCardsV1")]
+    partial class StoryCardsV1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1077,50 +1080,6 @@ namespace AgentRp.Migrations
                     b.ToTable("StoryCardHistory");
                 });
 
-            modelBuilder.Entity("AgentRp.Data.StoryCardInstanceAssignmentRow", b =>
-                {
-                    b.Property<string>("ChatId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("StoryCardInstanceId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("Id")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("EntityId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("EntityName")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.HasKey("ChatId", "StoryCardInstanceId", "Id");
-
-                    b.HasIndex("ChatId", "StoryCardInstanceId", "SortOrder");
-
-                    b.ToTable("StoryCardInstanceAssignments", (string)null);
-                });
-
             modelBuilder.Entity("AgentRp.Data.StoryCardInstanceItemRow", b =>
                 {
                     b.Property<string>("ChatId")
@@ -1136,6 +1095,14 @@ namespace AgentRp.Migrations
                         .HasColumnType("nvarchar(80)");
 
                     b.Property<string>("CreationInstructions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -1183,6 +1150,14 @@ namespace AgentRp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("OngoingContext")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1207,53 +1182,6 @@ namespace AgentRp.Migrations
                     b.HasIndex("ChatId", "StoryCardInstanceId", "SortOrder");
 
                     b.ToTable("StoryCardInstanceLocations", (string)null);
-                });
-
-            modelBuilder.Entity("AgentRp.Data.StoryCardInstancePhaseRequirementRow", b =>
-                {
-                    b.Property<string>("ChatId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("StoryCardInstanceId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("Id")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("PhaseId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<int>("RequiredCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SourceTemplateChildId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.HasKey("ChatId", "StoryCardInstanceId", "Id");
-
-                    b.HasIndex("ChatId", "StoryCardInstanceId", "SortOrder");
-
-                    b.ToTable("StoryCardInstancePhaseRequirements", (string)null);
                 });
 
             modelBuilder.Entity("AgentRp.Data.StoryCardInstancePhaseRow", b =>
@@ -1360,6 +1288,14 @@ namespace AgentRp.Migrations
                         .HasColumnType("nvarchar(80)");
 
                     b.Property<string>("CreationInstructions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -1541,44 +1477,6 @@ namespace AgentRp.Migrations
                     b.HasIndex("StoryCardTemplateId", "SortOrder");
 
                     b.ToTable("StoryCardTemplateLocations", (string)null);
-                });
-
-            modelBuilder.Entity("AgentRp.Data.StoryCardTemplatePhaseRequirementRow", b =>
-                {
-                    b.Property<string>("StoryCardTemplateId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("Id")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ChildCardType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("PhaseId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<int>("RequiredCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.HasKey("StoryCardTemplateId", "Id");
-
-                    b.HasIndex("StoryCardTemplateId", "SortOrder");
-
-                    b.ToTable("StoryCardTemplatePhaseRequirements", (string)null);
                 });
 
             modelBuilder.Entity("AgentRp.Data.StoryCardTemplatePhaseRow", b =>

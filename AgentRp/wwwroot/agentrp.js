@@ -326,6 +326,35 @@ window.agentRp = {
 
         return { track };
     })(),
+    numberInputs: (() => {
+        function step(element, direction) {
+            if (!element || element.disabled) {
+                return;
+            }
+
+            const previous = element.value;
+
+            try {
+                if (direction < 0) {
+                    element.stepDown();
+                } else {
+                    element.stepUp();
+                }
+            } catch {
+                return;
+            }
+
+            if (element.value === previous) {
+                return;
+            }
+
+            element.focus({ preventScroll: true });
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+            element.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+
+        return { step };
+    })(),
     audio: (() => {
         let current = null;
 

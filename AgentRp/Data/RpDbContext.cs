@@ -30,11 +30,28 @@ public sealed partial class RpDbContext(DbContextOptions<RpDbContext> options) :
     public DbSet<AppSettingRow> AppSettings => Set<AppSettingRow>();
     public DbSet<ImageAssetRow> ImageAssets => Set<ImageAssetRow>();
     public DbSet<SpeechAssetRow> SpeechAssets => Set<SpeechAssetRow>();
+    public DbSet<StoryCardTemplateRow> StoryCardTemplates => Set<StoryCardTemplateRow>();
+    public DbSet<StoryCardTemplatePhaseRow> StoryCardTemplatePhases => Set<StoryCardTemplatePhaseRow>();
+    public DbSet<StoryCardTemplatePhaseTransitionRow> StoryCardTemplatePhaseTransitions => Set<StoryCardTemplatePhaseTransitionRow>();
+    public DbSet<StoryCardTemplatePhaseRequirementRow> StoryCardTemplatePhaseRequirements => Set<StoryCardTemplatePhaseRequirementRow>();
+    public DbSet<StoryCardTemplateRoleRow> StoryCardTemplateRoles => Set<StoryCardTemplateRoleRow>();
+    public DbSet<StoryCardTemplateItemRow> StoryCardTemplateItems => Set<StoryCardTemplateItemRow>();
+    public DbSet<StoryCardTemplateLocationRow> StoryCardTemplateLocations => Set<StoryCardTemplateLocationRow>();
+    public DbSet<StoryCardInstanceRow> StoryCardInstances => Set<StoryCardInstanceRow>();
+    public DbSet<StoryCardInstancePhaseRow> StoryCardInstancePhases => Set<StoryCardInstancePhaseRow>();
+    public DbSet<StoryCardInstancePhaseTransitionRow> StoryCardInstancePhaseTransitions => Set<StoryCardInstancePhaseTransitionRow>();
+    public DbSet<StoryCardInstancePhaseRequirementRow> StoryCardInstancePhaseRequirements => Set<StoryCardInstancePhaseRequirementRow>();
+    public DbSet<StoryCardInstanceRoleRow> StoryCardInstanceRoles => Set<StoryCardInstanceRoleRow>();
+    public DbSet<StoryCardInstanceItemRow> StoryCardInstanceItems => Set<StoryCardInstanceItemRow>();
+    public DbSet<StoryCardInstanceLocationRow> StoryCardInstanceLocations => Set<StoryCardInstanceLocationRow>();
+    public DbSet<StoryCardInstanceAssignmentRow> StoryCardInstanceAssignments => Set<StoryCardInstanceAssignmentRow>();
+    public DbSet<StoryCardHistoryRow> StoryCardHistory => Set<StoryCardHistoryRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureUsers(modelBuilder);
         ConfigureStory(modelBuilder);
+        ConfigureStoryCards(modelBuilder);
         ConfigureTranscript(modelBuilder);
         ConfigureProviders(modelBuilder);
         ConfigureAssets(modelBuilder);

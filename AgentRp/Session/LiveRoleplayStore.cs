@@ -23,6 +23,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 	}
 
 	private readonly IRoleplayPersistence _persistence;
+	private readonly IStoryCardCatalogService? _storyCardCatalog;
 
 	private readonly BackgroundSessionWorker _worker = new BackgroundSessionWorker();
 
@@ -53,9 +54,20 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 	{
 	}
 
+	public LiveRoleplayStore(IRoleplayPersistence persistence, IStoryCardCatalogService storyCardCatalog)
+		: this(persistence, storyCardCatalog, TimeSpan.FromMinutes(10L), TimeSpan.FromMinutes(1L))
+	{
+	}
+
 	public LiveRoleplayStore(IRoleplayPersistence persistence, TimeSpan inactiveChatTtl, TimeSpan cleanupInterval)
+		: this(persistence, null, inactiveChatTtl, cleanupInterval)
+	{
+	}
+
+	public LiveRoleplayStore(IRoleplayPersistence persistence, IStoryCardCatalogService? storyCardCatalog, TimeSpan inactiveChatTtl, TimeSpan cleanupInterval)
 	{
 		_persistence = persistence;
+		_storyCardCatalog = storyCardCatalog;
 		_inactiveChatTtl = inactiveChatTtl;
 		_cleanupTimer = new Timer(delegate
 		{
@@ -238,6 +250,23 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 				LastAccess = DateTimeOffset.UtcNow,
 				Sessions = { originSessionId }
 			};
+		}
+		if (options.StoryCardTemplateIds.Count > 0)
+		{
+			if (_storyCardCatalog is null)
+				throw new InvalidOperationException("Creating a story with story cards failed because the story card catalog is not available.");
+
+			var selectedTemplateIds = options.StoryCardTemplateIds.Take(2).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+			var storyCards = new List<StoryCardInstance>();
+			foreach (var templateId in selectedTemplateIds)
+				storyCards.Add(await _storyCardCatalog.CreateInstanceAsync(user, document.Chat.Id, templateId, document.Chat.LastGeneratedTurnNumber, injected: false, cancellationToken));
+
+			lock (_gate)
+			{
+				document.StoryCards = storyCards;
+				if (_loadedChats.TryGetValue(document.Chat.Id, out var loaded))
+					loaded.Document.StoryCards = storyCards.Select(SessionCloner.Clone).ToList();
+			}
 		}
 		QueueSaveStoryPreviews();
 		QueueCreateDocument(user, document);

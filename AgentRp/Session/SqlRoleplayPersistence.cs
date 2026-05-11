@@ -93,7 +93,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 					select x).ToListAsync(cancellationToken), await (from x in dbContext.ImageAssets.AsNoTracking()
 					where x.ChatId == chatId
 					orderby x.SortOrder, x.CreatedUtc descending
-					select x).ToListAsync(cancellationToken), await (from x in dbContext.ChatTranscriptStates.AsNoTracking()
+					select x).ToListAsync(cancellationToken), await StoryCardInstancePersistenceStore.LoadAsync(dbContext, chatId, cancellationToken), await (from x in dbContext.ChatTranscriptStates.AsNoTracking()
 					where x.ChatId == chatId
 					orderby x.ChatId
 					select x).FirstOrDefaultAsync(cancellationToken), await (from x in dbContext.ChatDirectionStates.AsNoTracking()
@@ -309,6 +309,22 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 		if (flag)
 		{
 			await SaveImagesAsync(dbContext, document, cancellationToken);
+		}
+		if (area.HasValue)
+		{
+			RoleplayStoreArea valueOrDefault = area.GetValueOrDefault();
+			if (valueOrDefault != RoleplayStoreArea.StoryCards)
+			{
+				flag = false;
+				goto IL_StoryCardsSaved;
+			}
+		}
+		flag = true;
+		goto IL_StoryCardsSaved;
+		IL_StoryCardsSaved:
+		if (flag)
+		{
+			await StoryCardInstancePersistenceStore.SaveAsync(dbContext, document, now, cancellationToken);
 		}
 		if (area.HasValue)
 		{

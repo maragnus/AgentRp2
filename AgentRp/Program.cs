@@ -66,6 +66,7 @@ builder.Services.AddScoped<SceneTransitionService>();
 builder.Services.AddScoped<ITextGenerationService, TextGenerationService>();
 builder.Services.AddScoped<StoryEntityPatchService>();
 builder.Services.AddScoped<IStoryAssistantService, StoryAssistantService>();
+builder.Services.AddSingleton<IStoryCardCatalogService, StoryCardCatalogService>();
 builder.Services.AddSingleton<IRoleplayPersistence, SqlRoleplayPersistence>();
 builder.Services.AddSingleton<ILiveRoleplayStore, LiveRoleplayStore>();
 builder.Services.AddScoped<RoleplaySession>();

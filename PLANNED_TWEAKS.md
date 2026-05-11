@@ -7,8 +7,26 @@ This is a list of future tweaks that are planned. Be sure to remove these as the
 - none
 
 ## Story Cards
-- Introduce "Story cards" Story Entities
-- Replaces the story hook to guide the story.
+- The story premise should be like the TV series premise that is consistent through all seasons and episodes
+- A story card should be either a season-scope (long running) or an episode-scope (short running)
+
+Story Cards catalog modal is doing double duty and it needs to be split into two separate modals:
+- Catalog: List story cards
+- Editor: Edit a single story card
+
+Catalog should be exactly that: a catalog of cards
+- optional cover image
+- title
+- summary
+- number of phases, roles, items, locations
+- buttons to apply to current story, edit, and remix 
+This story card view should be DRY and reusable to also list in instances in the Story Direction modal Cards tab.
+- buttons to manage, pause/resume the instance
+- manage button opens a dedicate modal to manage the card as part of the story.
+
+Editor should be the home of all of the editor bits.
+- Dedicated Story Card editor modal that entirely focuses on a single story card. 
+- No sidebar to list other story cards.
 
 # Introduce credits
 - Credits are user-based

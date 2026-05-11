@@ -260,6 +260,7 @@ static class SessionCloner
         Items = value.Items.Select(Clone).ToList(),
         Timeline = value.Timeline.Select(Clone).ToList(),
         Images = value.Images.Select(Clone).ToList(),
+        StoryCards = value.StoryCards.Select(Clone).ToList(),
         Transcript = Clone(value.Transcript),
         StoryAssistant = Clone(value.StoryAssistant),
         ChatDirection = Clone(value.ChatDirection),
@@ -271,6 +272,121 @@ static class SessionCloner
     public static ActiveModelSelectionsState Clone(ActiveModelSelectionsState value) => new()
     {
         Values = value.Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value))
+    };
+
+    public static StoryCardInstance Clone(StoryCardInstance value) => new()
+    {
+        Id = value.Id,
+        ChatId = value.ChatId,
+        SourceTemplateId = value.SourceTemplateId,
+        ParentTemplateId = value.ParentTemplateId,
+        RootTemplateId = value.RootTemplateId,
+        SourceOwnerDisplayName = value.SourceOwnerDisplayName,
+        Title = value.Title,
+        Summary = value.Summary,
+        Instructions = value.Instructions,
+        Status = value.Status,
+        StartTurnNumber = value.StartTurnNumber,
+        EndTurnNumber = value.EndTurnNumber,
+        ActivePhaseId = value.ActivePhaseId,
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
+        Phases = value.Phases.Select(Clone).ToList(),
+        PhaseTransitions = value.PhaseTransitions.Select(Clone).ToList(),
+        PhaseRequirements = value.PhaseRequirements.Select(Clone).ToList(),
+        Roles = value.Roles.Select(Clone).ToList(),
+        Items = value.Items.Select(Clone).ToList(),
+        Locations = value.Locations.Select(Clone).ToList(),
+        Assignments = value.Assignments.Select(Clone).ToList(),
+        History = value.History.Select(Clone).ToList()
+    };
+
+    static PhaseCardInstance Clone(PhaseCardInstance value) => new()
+    {
+        Id = value.Id,
+        SourceTemplateChildId = value.SourceTemplateChildId,
+        Title = value.Title,
+        SetupInstructions = value.SetupInstructions,
+        PlanningContext = value.PlanningContext,
+        EndCondition = value.EndCondition,
+        IsOptional = value.IsOptional,
+        IsEnding = value.IsEnding,
+        SortOrder = value.SortOrder
+    };
+
+    static PhaseTransitionInstance Clone(PhaseTransitionInstance value) => new()
+    {
+        Id = value.Id,
+        FromPhaseId = value.FromPhaseId,
+        ToPhaseId = value.ToPhaseId,
+        ConditionInstructions = value.ConditionInstructions,
+        IsDefault = value.IsDefault,
+        SortOrder = value.SortOrder
+    };
+
+    static PhaseCardRequirementInstance Clone(PhaseCardRequirementInstance value) => new()
+    {
+        Id = value.Id,
+        SourceTemplateChildId = value.SourceTemplateChildId,
+        PhaseId = value.PhaseId,
+        ChildCardType = value.ChildCardType,
+        ChildCardId = value.ChildCardId,
+        RequiredCount = value.RequiredCount,
+        SortOrder = value.SortOrder
+    };
+
+    static RoleCardInstance Clone(RoleCardInstance value) => new()
+    {
+        Id = value.Id,
+        SourceTemplateChildId = value.SourceTemplateChildId,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        PrivateContext = value.PrivateContext,
+        SortOrder = value.SortOrder
+    };
+
+    static ItemCardInstance Clone(ItemCardInstance value) => new()
+    {
+        Id = value.Id,
+        SourceTemplateChildId = value.SourceTemplateChildId,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        SortOrder = value.SortOrder
+    };
+
+    static LocationCardInstance Clone(LocationCardInstance value) => new()
+    {
+        Id = value.Id,
+        SourceTemplateChildId = value.SourceTemplateChildId,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        SortOrder = value.SortOrder
+    };
+
+    static StoryCardEntityAssignment Clone(StoryCardEntityAssignment value) => new()
+    {
+        Id = value.Id,
+        ChildCardType = value.ChildCardType,
+        ChildCardId = value.ChildCardId,
+        EntityId = value.EntityId,
+        EntityName = value.EntityName,
+        SortOrder = value.SortOrder
+    };
+
+    static StoryCardHistoryItem Clone(StoryCardHistoryItem value) => new()
+    {
+        Id = value.Id,
+        Kind = value.Kind,
+        Title = value.Title,
+        Details = value.Details,
+        TurnNumber = value.TurnNumber,
+        CreatedUtc = value.CreatedUtc
     };
 
     static ActiveModelSelectionState Clone(ActiveModelSelectionState value) => new()

@@ -1,0 +1,416 @@
+@namespace AgentRp.Components.StoryCards
+
+<ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="@Height" RailWidth="170px" Class="story-card-editor-tabs">
+    <ChildContent>
+        <ModalTab Id="overview" Title="Overview" Summary="@OverviewSummary" Dirty="false">
+            <LeadingContent><FaIcon Name="book-open" /></LeadingContent>
+        </ModalTab>
+        <ModalTab Id="phases" Title="Phases" Summary="@CountSummary(PhaseCount)" Dirty="false">
+            <LeadingContent><FaIcon Name="branch" /></LeadingContent>
+            <TrailingContent><Badge Tone="blue">@PhaseCount</Badge></TrailingContent>
+        </ModalTab>
+        <ModalTab Id="roles" Title="Roles" Summary="@CountSummary(RoleCount)" Dirty="false">
+            <LeadingContent><FaIcon Name="users" /></LeadingContent>
+            <TrailingContent><Badge Tone="violet">@RoleCount</Badge></TrailingContent>
+        </ModalTab>
+        <ModalTab Id="items" Title="Items" Summary="@CountSummary(ItemCount)" Dirty="false">
+            <LeadingContent><FaIcon Name="box" /></LeadingContent>
+            <TrailingContent><Badge Tone="amber">@ItemCount</Badge></TrailingContent>
+        </ModalTab>
+        <ModalTab Id="locations" Title="Locations" Summary="@CountSummary(LocationCount)" Dirty="false">
+            <LeadingContent><FaIcon Name="map-pin" /></LeadingContent>
+            <TrailingContent><Badge Tone="emerald">@LocationCount</Badge></TrailingContent>
+        </ModalTab>
+    </ChildContent>
+    <MainContent>
+        <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack story-card-editor-body">
+            <Header>
+                <ModalPaneToolbar Class="tuning-toolbar">
+                    <strong>@ActiveTitle</strong>
+                    <span class="toolbar-spacer"></span>
+                    @if (Editable && ActiveTab != "overview")
+                    {
+                        <AppButton Icon="plus" TooltipText="@AddTooltip" OnClick="@(_ => AddChild())" />
+                    }
+                </ModalPaneToolbar>
+            </Header>
+            <ChildContent>
+                @if (ActiveTab == "overview")
+                {
+                    <FormSection Title="Card">
+                        <FieldRow Label="Title">
+                            <AppInput Value="@Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+                        </FieldRow>
+                        <FieldRow Label="Summary">
+                            <AppTextarea Rows="3" Value="@Summary" ValueChanged="SetSummary" Disabled="@(!Editable)" />
+                        </FieldRow>
+                        <FieldRow Label="Instructions">
+                            <AppTextarea Rows="7" Value="@Instructions" ValueChanged="SetInstructions" Disabled="@(!Editable)" />
+                        </FieldRow>
+                    </FormSection>
+                    @if (!string.IsNullOrWhiteSpace(SourceText))
+                    {
+                        <Section Title="Source">
+                            <div class="story-card-lineage">
+                                <FaIcon Name="git-branch" />
+                                <span>@SourceText</span>
+                            </div>
+                        </Section>
+                    }
+                }
+                else if (ActiveTab == "phases")
+                {
+                    @foreach (var phase in PhaseRows)
+                    {
+                        <StoryCardPhaseEditor @key="phase.Id"
+                                              Phase="phase"
+                                              Requirements="RequirementRows(phase.Id)"
+                                              Roles="RoleRows"
+                                              Items="ItemRows"
+                                              Locations="LocationRows"
+                                              Editable="@Editable"
+                                              OnAddExistingRequirement="AddExistingRequirement"
+                                              OnAddNewRequirement="AddNewRequirement"
+                                              OnRemoveRequirement="RemoveRequirement"
+                                              OnOpenChild="OpenChild"
+                                              OnRemove="RemovePhase" />
+                    }
+                }
+                else if (ActiveTab == "roles")
+                {
+                    @foreach (var role in RoleRows)
+                    {
+                        <StoryCardChildEditor @key="role.Id"
+                                              Child="role"
+                                              Editable="@Editable" />
+                    }
+                }
+                else if (ActiveTab == "items")
+                {
+                    @foreach (var item in ItemRows)
+                    {
+                        <StoryCardChildEditor @key="item.Id"
+                                              Child="item"
+                                              Editable="@Editable" />
+                    }
+                }
+                else
+                {
+                    @foreach (var location in LocationRows)
+                    {
+                        <StoryCardChildEditor @key="location.Id"
+                                              Child="location"
+                                              Editable="@Editable" />
+                    }
+                }
+            </ChildContent>
+            <Footer>
+                @if (Footer is not null)
+                {
+                    @Footer
+                }
+            </Footer>
+        </ModalStackLayout>
+    </MainContent>
+</ModalTabGroup>
+
+@code {
+    [Parameter] public StoryCardTemplate? Template { get; set; }
+    [Parameter] public StoryCardInstance? Instance { get; set; }
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public string Height { get; set; } = "600px";
+    [Parameter] public string SourceText { get; set; } = "";
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    string ActiveTab = "overview";
+    string Title
+    {
+        get => Template?.Title ?? Instance?.Title ?? "";
+        set
+        {
+            if (Template is not null)
+                Template.Title = value;
+            if (Instance is not null)
+                Instance.Title = value;
+        }
+    }
+    string Summary
+    {
+        get => Template?.Summary ?? Instance?.Summary ?? "";
+        set
+        {
+            if (Template is not null)
+                Template.Summary = value;
+            if (Instance is not null)
+                Instance.Summary = value;
+        }
+    }
+    string Instructions
+    {
+        get => Template?.Instructions ?? Instance?.Instructions ?? "";
+        set
+        {
+            if (Template is not null)
+                Template.Instructions = value;
+            if (Instance is not null)
+                Instance.Instructions = value;
+        }
+    }
+
+    int PhaseCount => Template?.Phases.Count ?? Instance?.Phases.Count ?? 0;
+    int RoleCount => Template?.Roles.Count ?? Instance?.Roles.Count ?? 0;
+    int ItemCount => Template?.Items.Count ?? Instance?.Items.Count ?? 0;
+    int LocationCount => Template?.Locations.Count ?? Instance?.Locations.Count ?? 0;
+    IReadOnlyList<StoryCardPhaseEditorRow> PhaseRows => Template is not null
+        ? Template.Phases.Select(StoryCardPhaseEditorRow.Create).ToList()
+        : Instance?.Phases.Select(StoryCardPhaseEditorRow.Create).ToList() ?? [];
+    IReadOnlyList<StoryCardChildEditorRow> RoleRows => Template is not null
+        ? Template.Roles.Select(StoryCardChildEditorRow.Create).ToList()
+        : Instance?.Roles.Select(role => StoryCardChildEditorRow.Create(role, Instance.Assignments)).ToList() ?? [];
+    IReadOnlyList<StoryCardChildEditorRow> ItemRows => Template is not null
+        ? Template.Items.Select(StoryCardChildEditorRow.Create).ToList()
+        : Instance?.Items.Select(item => StoryCardChildEditorRow.Create(item, Instance.Assignments)).ToList() ?? [];
+    IReadOnlyList<StoryCardChildEditorRow> LocationRows => Template is not null
+        ? Template.Locations.Select(StoryCardChildEditorRow.Create).ToList()
+        : Instance?.Locations.Select(location => StoryCardChildEditorRow.Create(location, Instance.Assignments)).ToList() ?? [];
+    string OverviewSummary => string.IsNullOrWhiteSpace(Summary) ? "No summary" : "Ready";
+    string ActiveTitle => ActiveTab switch
+    {
+        "phases" => "Phase Cards",
+        "roles" => "Role Cards",
+        "items" => "Item Cards",
+        "locations" => "Location Cards",
+        _ => "Overview"
+    };
+    string AddTooltip => ActiveTab switch
+    {
+        "phases" => "Add phase",
+        "roles" => "Add role",
+        "items" => "Add item",
+        "locations" => "Add location",
+        _ => "Add"
+    };
+
+    Task SetActiveTab(string? id)
+    {
+        ActiveTab = string.IsNullOrWhiteSpace(id) ? ActiveTab : id;
+        return Task.CompletedTask;
+    }
+
+    Task SetTitle(string value)
+    {
+        Title = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetSummary(string value)
+    {
+        Summary = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetInstructions(string value)
+    {
+        Instructions = value;
+        return Task.CompletedTask;
+    }
+
+    void AddChild()
+    {
+        if (Template is not null)
+        {
+            AddTemplateChild(Template);
+            return;
+        }
+
+        if (Instance is not null)
+            AddInstanceChild(Instance);
+    }
+
+    void AddTemplateChild(StoryCardTemplate template)
+    {
+        if (ActiveTab == "phases")
+            template.Phases.Add(new() { Id = $"phase-{Guid.NewGuid():N}", Title = "New Phase", SortOrder = template.Phases.Count });
+        else if (ActiveTab == "roles")
+            AddTemplateChild(template, StoryCardChildCardType.Role, "New Role");
+        else if (ActiveTab == "items")
+            AddTemplateChild(template, StoryCardChildCardType.Item, "New Item");
+        else if (ActiveTab == "locations")
+            AddTemplateChild(template, StoryCardChildCardType.Location, "New Location");
+    }
+
+    void AddInstanceChild(StoryCardInstance instance)
+    {
+        if (ActiveTab == "phases")
+            instance.Phases.Add(new() { Id = $"phase-{Guid.NewGuid():N}", Title = "New Phase", SortOrder = instance.Phases.Count });
+        else if (ActiveTab == "roles")
+            AddInstanceChild(instance, StoryCardChildCardType.Role, "New Role");
+        else if (ActiveTab == "items")
+            AddInstanceChild(instance, StoryCardChildCardType.Item, "New Item");
+        else if (ActiveTab == "locations")
+            AddInstanceChild(instance, StoryCardChildCardType.Location, "New Location");
+    }
+
+    string AddTemplateChild(StoryCardTemplate template, StoryCardChildCardType type, string title)
+    {
+        if (type == StoryCardChildCardType.Role)
+        {
+            var role = new RoleCardTemplate { Id = $"role-{Guid.NewGuid():N}", Title = title, SortOrder = template.Roles.Count };
+            template.Roles.Add(role);
+            return role.Id;
+        }
+
+        if (type == StoryCardChildCardType.Item)
+        {
+            var item = new ItemCardTemplate { Id = $"item-card-{Guid.NewGuid():N}", Title = title, SortOrder = template.Items.Count };
+            template.Items.Add(item);
+            return item.Id;
+        }
+
+        var location = new LocationCardTemplate { Id = $"location-card-{Guid.NewGuid():N}", Title = title, SortOrder = template.Locations.Count };
+        template.Locations.Add(location);
+        return location.Id;
+    }
+
+    string AddInstanceChild(StoryCardInstance instance, StoryCardChildCardType type, string title)
+    {
+        if (type == StoryCardChildCardType.Role)
+        {
+            var role = new RoleCardInstance { Id = $"role-{Guid.NewGuid():N}", Title = title, SortOrder = instance.Roles.Count };
+            instance.Roles.Add(role);
+            return role.Id;
+        }
+
+        if (type == StoryCardChildCardType.Item)
+        {
+            var item = new ItemCardInstance { Id = $"item-card-{Guid.NewGuid():N}", Title = title, SortOrder = instance.Items.Count };
+            instance.Items.Add(item);
+            return item.Id;
+        }
+
+        var location = new LocationCardInstance { Id = $"location-card-{Guid.NewGuid():N}", Title = title, SortOrder = instance.Locations.Count };
+        instance.Locations.Add(location);
+        return location.Id;
+    }
+
+    IReadOnlyList<StoryCardRequirementEditorRow> RequirementRows(string phaseId)
+    {
+        if (Template is not null)
+            return Template.PhaseRequirements
+                .Where(requirement => requirement.PhaseId == phaseId)
+                .OrderBy(RequirementTypeSort)
+                .ThenBy(requirement => requirement.SortOrder)
+                .Select(requirement => StoryCardRequirementEditorRow.Create(requirement, Template))
+                .ToList();
+
+        if (Instance is not null)
+            return Instance.PhaseRequirements
+                .Where(requirement => requirement.PhaseId == phaseId)
+                .OrderBy(RequirementTypeSort)
+                .ThenBy(requirement => requirement.SortOrder)
+                .Select(requirement => StoryCardRequirementEditorRow.Create(requirement, Instance))
+                .ToList();
+
+        return [];
+    }
+
+    Task AddExistingRequirement(StoryCardExistingRequirementRequest request)
+    {
+        AddRequirement(request.PhaseId, request.ChildCardType, request.ChildCardId);
+        return Task.CompletedTask;
+    }
+
+    Task AddNewRequirement(StoryCardNewRequirementRequest request)
+    {
+        var title = string.IsNullOrWhiteSpace(request.Title) ? $"New {request.ChildCardType}" : request.Title.Trim();
+        var childCardId = Template is not null
+            ? AddTemplateChild(Template, request.ChildCardType, title)
+            : Instance is not null
+                ? AddInstanceChild(Instance, request.ChildCardType, title)
+                : "";
+        if (!string.IsNullOrWhiteSpace(childCardId))
+            AddRequirement(request.PhaseId, request.ChildCardType, childCardId);
+        return Task.CompletedTask;
+    }
+
+    void AddRequirement(string phaseId, StoryCardChildCardType type, string childCardId)
+    {
+        if (Template is not null)
+        {
+            if (Template.PhaseRequirements.Any(requirement => requirement.PhaseId == phaseId && requirement.ChildCardType == type && requirement.ChildCardId == childCardId))
+                return;
+
+            Template.PhaseRequirements.Add(new()
+            {
+                Id = $"requirement-{Guid.NewGuid():N}",
+                PhaseId = phaseId,
+                ChildCardType = type,
+                ChildCardId = childCardId,
+                RequiredCount = 1,
+                SortOrder = Template.PhaseRequirements.Count
+            });
+            return;
+        }
+
+        if (Instance is null || Instance.PhaseRequirements.Any(requirement => requirement.PhaseId == phaseId && requirement.ChildCardType == type && requirement.ChildCardId == childCardId))
+            return;
+
+        Instance.PhaseRequirements.Add(new()
+        {
+            Id = $"requirement-{Guid.NewGuid():N}",
+            PhaseId = phaseId,
+            ChildCardType = type,
+            ChildCardId = childCardId,
+            RequiredCount = 1,
+            SortOrder = Instance.PhaseRequirements.Count
+        });
+    }
+
+    Task RemoveRequirement(string requirementId)
+    {
+        Template?.PhaseRequirements.RemoveAll(requirement => requirement.Id == requirementId);
+        Instance?.PhaseRequirements.RemoveAll(requirement => requirement.Id == requirementId);
+        return Task.CompletedTask;
+    }
+
+    Task OpenChild(StoryCardChildReference reference)
+    {
+        ActiveTab = reference.ChildCardType switch
+        {
+            StoryCardChildCardType.Role => "roles",
+            StoryCardChildCardType.Item => "items",
+            StoryCardChildCardType.Location => "locations",
+            _ => ActiveTab
+        };
+        return Task.CompletedTask;
+    }
+
+    Task RemovePhase(string phaseId)
+    {
+        if (Template is not null)
+        {
+            Template.Phases.RemoveAll(phase => phase.Id == phaseId);
+            Template.PhaseRequirements.RemoveAll(requirement => requirement.PhaseId == phaseId);
+        }
+        else if (Instance is not null && Instance.Phases.RemoveAll(phase => phase.Id == phaseId) > 0)
+        {
+            if (Instance.ActivePhaseId == phaseId)
+                Instance.ActivePhaseId = Instance.Phases.OrderBy(phase => phase.SortOrder).FirstOrDefault()?.Id ?? "";
+            Instance.PhaseRequirements.RemoveAll(requirement => requirement.PhaseId == phaseId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    static string CountSummary(int count) => count == 1 ? "1 card" : $"{count} cards";
+
+    static int RequirementTypeSort(PhaseCardRequirementTemplate requirement) => RequirementTypeSort(requirement.ChildCardType);
+    static int RequirementTypeSort(PhaseCardRequirementInstance requirement) => RequirementTypeSort(requirement.ChildCardType);
+    static int RequirementTypeSort(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => 0,
+        StoryCardChildCardType.Location => 1,
+        StoryCardChildCardType.Item => 2,
+        _ => 3
+    };
+}

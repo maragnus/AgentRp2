@@ -1,6 +1,8 @@
 @inject NavigationManager Navigation
 @inject ILogger<NewStoryModal> Logger
 @inject IAppSettingsService AppSettings
+@inject IServiceProvider Services
+@using Microsoft.Extensions.DependencyInjection
 
 <ModalShell Title="New Story"
             Subtitle="Choose how this story should start"
@@ -72,6 +74,34 @@
                         </Section>
                     }
 
+                    <Section Title="Story Cards" Count="@SelectedStoryCardIds.Count" MaxCount="2" Class="new-story-section">
+                        @if (StoryCardTemplates.Count == 0)
+                        {
+                            <EmptyState Icon="cards" Title="No story cards" Message="Create templates from the Story Cards catalog." Class="is-compact" />
+                        }
+                        else
+                        {
+                            <SelectableList Class="new-story-card-picker">
+                                @foreach (var template in StoryCardTemplates)
+                                {
+                                    var selected = SelectedStoryCardIds.Contains(template.Id);
+                                    var limited = !selected && SelectedStoryCardIds.Count >= 2;
+                                    <SelectableRow @key="template.Id"
+                                                   Selected="@selected"
+                                                   Limited="@limited"
+                                                   Disabled="@limited"
+                                                   SelectionTooltipText="@CardSelectionTooltip(selected, limited)"
+                                                   OnToggle="@(_ => ToggleStoryCard(template.Id))">
+                                        <div class="story-card-picker-row">
+                                            <strong>@template.Title</strong>
+                                            <small>@StoryCardSummary(template)</small>
+                                        </div>
+                                    </SelectableRow>
+                                }
+                            </SelectableList>
+                        }
+                    </Section>
+
                 </ChildContent>
                 <Footer>
                     <span class="modal-action-spacer"></span>
@@ -130,6 +160,9 @@
     string ErrorMessage = "";
     Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections = [];
     ActiveModelSelectionsState DraftModelSelections = ActiveModelSelectionsState.CreateDefault();
+    List<StoryCardTemplate> StoryCardTemplates = [];
+    HashSet<string> SelectedStoryCardIds = new(StringComparer.Ordinal);
+    IStoryCardCatalogService StoryCardCatalog = NullStoryCardCatalogService.Instance;
     HashSet<string> SelectedCopyIds = new(StringComparer.Ordinal)
     {
         Characters,
@@ -185,8 +218,23 @@
 
     protected override async Task OnInitializedAsync()
     {
+        StoryCardCatalog = Services.GetService<IStoryCardCatalogService>() ?? NullStoryCardCatalogService.Instance;
         var preferences = await AppSettings.GetAsync(NewStoryPreferencesState.SettingsKey, NewStoryPreferencesState.Default);
         EnableTts = preferences.EnableTts;
+        try
+        {
+            StoryCardTemplates = (await StoryCardCatalog.LoadCatalogAsync(Session.CurrentUser))
+                .Where(template => template.RetiredUtc is null && (template.IsShared || template.OwnerUserId == Session.CurrentUser.Id || Session.CurrentUser.IsAdmin))
+                .ToList();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading story cards failed.",
+                "Loading story cards for the new story modal failed.");
+        }
         SyncModelSelectionDraft();
         SyncNarratorVoiceDraft();
     }
@@ -299,6 +347,7 @@
             options.NarratorVoiceSelections = CloneVoiceSelections(NarratorVoiceSelections);
         }
         options.ModelSelections = SessionCloner.Clone(DraftModelSelections);
+        options.StoryCardTemplateIds = SelectedStoryCardIds.Take(2).ToList();
 
         return options;
     }
@@ -331,6 +380,8 @@
     {
         if (EnableTts)
             lines.Add(new("volume", "Read aloud enabled", AutoSpeak ? "Auto Speak is on." : "Manual playback is ready."));
+        if (SelectedStoryCardIds.Count > 0)
+            lines.Add(new("cards", CountText(SelectedStoryCardIds.Count, "story card"), "Attached before setup."));
 
         return lines;
     }
@@ -371,6 +422,24 @@
             ? $"{singular[..^1]}ies"
             : $"{singular}s";
         return count == 1 ? $"1 {singular}" : $"{count} {plural}";
+    }
+
+    void ToggleStoryCard(string id)
+    {
+        if (!SelectedStoryCardIds.Remove(id) && SelectedStoryCardIds.Count < 2)
+            SelectedStoryCardIds.Add(id);
+    }
+
+    static string CardSelectionTooltip(bool selected, bool limited) =>
+        selected ? "Remove story card" : limited ? "Two story cards are already selected" : "Add story card";
+
+    static string StoryCardSummary(StoryCardTemplate template)
+    {
+        if (!string.IsNullOrWhiteSpace(template.Summary))
+            return template.Summary;
+
+        var count = template.Phases.Count + template.Roles.Count + template.Items.Count + template.Locations.Count;
+        return count == 1 ? "1 child card" : $"{count} child cards";
     }
 
     enum NewStoryStartMode

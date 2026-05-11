@@ -9,7 +9,7 @@ using AgentRp.UserSystem;
 
 namespace AgentRp.Session;
 
-public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabilityCatalog? capabilityCatalog = null, ITextGenerationService? textGenerationService = null, IMessageSpeechService? messageSpeechService = null, SceneTransitionService? sceneTransitionService = null, IStoryAssistantService? storyAssistantService = null, IAiProviderCapabilityPipeline? capabilityPipeline = null, IAiProviderWidgetService? providerWidgetService = null, IEntityNotifier? entityNotifier = null, IGlobalModelSelectionStore? globalModelSelectionStore = null, IGlobalPromptLibraryStore? globalPromptLibraryStore = null, IGlobalModelTuningStore? globalModelTuningStore = null, IModelSelectionNotifier? modelSelectionNotifier = null, ICurrentAppUserAccessor? currentUserAccessor = null, ILoggerFactory? loggerFactory = null) : IAsyncDisposable
+public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabilityCatalog? capabilityCatalog = null, ITextGenerationService? textGenerationService = null, IMessageSpeechService? messageSpeechService = null, SceneTransitionService? sceneTransitionService = null, IStoryAssistantService? storyAssistantService = null, IStoryCardCatalogService? storyCardCatalog = null, IAiProviderCapabilityPipeline? capabilityPipeline = null, IAiProviderWidgetService? providerWidgetService = null, IEntityNotifier? entityNotifier = null, IGlobalModelSelectionStore? globalModelSelectionStore = null, IGlobalPromptLibraryStore? globalPromptLibraryStore = null, IGlobalModelTuningStore? globalModelTuningStore = null, IModelSelectionNotifier? modelSelectionNotifier = null, ICurrentAppUserAccessor? currentUserAccessor = null, ILoggerFactory? loggerFactory = null) : IAsyncDisposable
 {
 	private readonly Guid _sessionId = Guid.NewGuid();
 
@@ -18,6 +18,8 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 	private readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
 
 	private readonly IEntityNotifier _entityNotifier = entityNotifier ?? NullEntityNotifier.Instance;
+
+	private readonly IStoryCardCatalogService _storyCardCatalog = storyCardCatalog ?? NullStoryCardCatalogService.Instance;
 
 	private readonly IGlobalModelSelectionStore _globalModelSelectionStore = globalModelSelectionStore ?? new GlobalModelSelectionStore(new InMemoryAppSettingsService());
 
@@ -71,7 +73,7 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 			Providers.ModelSelection = ModelSelection;
 			PromptLibrary = new GlobalPromptLibrarySessionStore(_globalPromptLibraryStore);
 			ModelTuning = new GlobalModelTuningSessionStore(_globalModelTuningStore);
-			Chat = new ChatWorkspace(ActiveChat, Registry, Providers, ModelSelection, PromptLibrary, ModelTuning, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new SceneTransitionService(), messageSpeechService, storyAssistantService, _entityNotifier, loggerFactory);
+			Chat = new ChatWorkspace(ActiveChat, Registry, Providers, ModelSelection, PromptLibrary, ModelTuning, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new SceneTransitionService(), messageSpeechService, storyAssistantService, _entityNotifier, _storyCardCatalog, CurrentUser, loggerFactory);
 			liveStore.Changed += OnLiveStoreChanged;
 			await ModelSelection.LoadAsync();
 			await PromptLibrary.LoadAsync();

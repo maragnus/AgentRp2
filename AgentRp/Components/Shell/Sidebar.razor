@@ -27,6 +27,7 @@
                 @if (HasActiveStory)
                 {
                     <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
+                    <AppButton Icon="cards" TooltipText="Story cards" OnClick="@(_ => OnOpenModal.InvokeAsync("storyCards"))" />
                     <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
                     @if (Session.CurrentUser.IsAdmin)
                     {

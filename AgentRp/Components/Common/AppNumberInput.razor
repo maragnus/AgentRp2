@@ -1,0 +1,60 @@
+@inherits AppTextInputBase<AppNumberInput>
+
+<div class="@CssClass">
+    <input @attributes="AdditionalAttributes"
+           class="@InputCssClass"
+           type="number"
+           @ref="InputElement"
+           value="@Value"
+           min="@Min"
+           max="@Max"
+           step="@Step"
+           placeholder="@Placeholder"
+           disabled="@Disabled"
+           aria-label="@AriaLabel"
+           @onchange="HandleNativeChange" />
+    <div class="app-number-input-actions">
+        <AppButton Icon="minus"
+                   Class="app-number-input-button"
+                   Size="@ButtonSize"
+                   Disabled="@Disabled"
+                   TooltipText="@DecrementTooltipText"
+                   AriaLabel="@DecrementAriaLabel"
+                   OnClick="@(_ => StepValue(-1))" />
+        <AppButton Icon="plus"
+                   Class="app-number-input-button"
+                   Size="@ButtonSize"
+                   Disabled="@Disabled"
+                   TooltipText="@IncrementTooltipText"
+                   AriaLabel="@IncrementAriaLabel"
+                   OnClick="@(_ => StepValue(1))" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Min { get; set; }
+    [Parameter] public string? Max { get; set; }
+    [Parameter] public string? Step { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? InputClass { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string ButtonSize { get; set; } = "sm";
+    [Parameter] public string DecrementTooltipText { get; set; } = "Decrease";
+    [Parameter] public string IncrementTooltipText { get; set; } = "Increase";
+    [Parameter] public string? DecrementAriaLabel { get; set; }
+    [Parameter] public string? IncrementAriaLabel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    string CssClass => string.Join(" ", new[] { "app-number-input", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string InputCssClass => string.Join(" ", new[] { "field", "app-number-input-field", InputClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    async Task StepValue(int direction)
+    {
+        if (Disabled)
+            return;
+
+        await JS.InvokeVoidAsync("agentRp.numberInputs.step", InputElement, direction);
+    }
+}

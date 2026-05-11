@@ -1,0 +1,110 @@
+@namespace AgentRp.Components.StoryCards
+
+<Section Title="Assignments" Class="story-card-assignments" Count="@AssignmentCount">
+    @foreach (var role in Instance.Roles)
+    {
+        @AssignmentBlock(role.Id, StoryCardChildCardType.Role, role.Title, "character", Characters.Select(entity => new EntityOption(entity.Id, entity.Name)).ToList())
+    }
+    @foreach (var item in Instance.Items)
+    {
+        @AssignmentBlock(item.Id, StoryCardChildCardType.Item, item.Title, "item", Items.Select(entity => new EntityOption(entity.Id, entity.Name)).ToList())
+    }
+    @foreach (var location in Instance.Locations)
+    {
+        @AssignmentBlock(location.Id, StoryCardChildCardType.Location, location.Title, "location", Locations.Select(entity => new EntityOption(entity.Id, entity.Name)).ToList())
+    }
+</Section>
+
+@code {
+    [Parameter] public StoryCardInstance Instance { get; set; } = new();
+    [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public IReadOnlyList<RpItem> Items { get; set; } = [];
+    [Parameter] public IReadOnlyList<RpLocation> Locations { get; set; } = [];
+
+    int AssignmentCount => Instance.Assignments.Count(assignment => !string.IsNullOrWhiteSpace(assignment.EntityId));
+
+    RenderFragment AssignmentBlock(
+        string childCardId,
+        StoryCardChildCardType type,
+        string title,
+        string entityName,
+        IReadOnlyList<EntityOption> options) => @<div @key="@($"{type}-{childCardId}")" class="story-card-assignment-block">
+            <div class="story-card-assignment-head">
+                <span class="story-card-row-icon"><FaIcon Name="@TypeIcon(type)" /></span>
+                <span class="story-card-row-main">
+                    <strong>@ChildTitle(title, type)</strong>
+                    <small>@AssignmentProgress(childCardId, type)</small>
+                </span>
+                <AppButton Icon="plus" TooltipText="@($"Assign {entityName}")" OnClick="@(_ => AddAssignment(childCardId, type))" />
+            </div>
+            <div class="story-card-assignment-list">
+                @foreach (var assignment in AssignmentsFor(childCardId, type))
+                {
+                    <div @key="assignment.Id" class="story-card-assignment-row">
+                        <AppSelect Value="@assignment.EntityId" ValueChanged="value => SetAssignment(assignment, value, options)">
+                            <option value="">No @entityName assigned</option>
+                            @foreach (var option in options)
+                            {
+                                <option @key="option.Id" value="@option.Id">@option.Name</option>
+                            }
+                        </AppSelect>
+                        <AppButton Icon="x" TooltipText="Remove assignment" OnClick="@(_ => RemoveAssignment(assignment.Id))" />
+                    </div>
+                }
+            </div>
+        </div>;
+
+    IReadOnlyList<StoryCardEntityAssignment> AssignmentsFor(string childCardId, StoryCardChildCardType type) =>
+        Instance.Assignments
+            .Where(assignment => assignment.ChildCardType == type && assignment.ChildCardId == childCardId)
+            .OrderBy(assignment => assignment.SortOrder)
+            .ToList();
+
+    void AddAssignment(string childCardId, StoryCardChildCardType type)
+    {
+        Instance.Assignments.Add(new()
+        {
+            Id = $"assignment-{Guid.NewGuid():N}",
+            ChildCardType = type,
+            ChildCardId = childCardId,
+            SortOrder = Instance.Assignments.Count
+        });
+    }
+
+    void SetAssignment(StoryCardEntityAssignment assignment, string entityId, IReadOnlyList<EntityOption> options)
+    {
+        assignment.EntityId = entityId;
+        assignment.EntityName = options.FirstOrDefault(option => option.Id == entityId)?.Name ?? "";
+    }
+
+    void RemoveAssignment(string assignmentId) =>
+        Instance.Assignments.RemoveAll(assignment => assignment.Id == assignmentId);
+
+    string AssignmentProgress(string childCardId, StoryCardChildCardType type)
+    {
+        var assigned = Instance.Assignments.Count(assignment =>
+            assignment.ChildCardType == type
+            && assignment.ChildCardId == childCardId
+            && !string.IsNullOrWhiteSpace(assignment.EntityId));
+        var needed = Instance.PhaseRequirements
+            .Where(requirement => requirement.ChildCardType == type && requirement.ChildCardId == childCardId)
+            .Select(requirement => requirement.RequiredCount)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return needed > 0 ? $"{assigned} / {needed} assigned" : $"{assigned} assigned";
+    }
+
+    static string ChildTitle(string title, StoryCardChildCardType type) =>
+        string.IsNullOrWhiteSpace(title) ? type.ToString() : title;
+
+    static string TypeIcon(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "users",
+        StoryCardChildCardType.Item => "box",
+        StoryCardChildCardType.Location => "map-pin",
+        _ => "circle"
+    };
+
+    sealed record EntityOption(string Id, string Name);
+}

@@ -1,0 +1,282 @@
+@namespace AgentRp.Components.StoryCards
+@inject IStoryCardCatalogService Catalog
+@inject ILogger<StoryCardCatalogModal> Logger
+
+<ModalShell Title="@Title" Icon="cards" MaxWidth="1040px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalSplitLayout Height="680px" RailWidth="280px" Class="story-card-catalog">
+        <RailHeader>
+            <span>Catalog</span>
+            @if (!PickerMode)
+            {
+                <AppButton Icon="plus" TooltipText="New story card" OnClick="@(_ => NewTemplate())" />
+            }
+        </RailHeader>
+        <RailContent>
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="modal-error">@ErrorMessage</div>
+            }
+            @if (Templates.Count == 0)
+            {
+                <EmptyState Icon="cards" Title="No story cards" Message="Create a card template to reuse it across stories." />
+            }
+            else
+            {
+                <SelectableList Class="story-card-template-list">
+                    @foreach (var template in Templates)
+                    {
+                        <div @key="template.Id" class="@TemplateRowClass(template)" @onclick="@(() => Select(template.Id))">
+                            <span class="story-card-row-icon"><FaIcon Name="cards" /></span>
+                            <span class="story-card-row-main">
+                                <strong>@template.Title</strong>
+                                <small>@TemplateSummary(template)</small>
+                            </span>
+                            @if (template.IsShared)
+                            {
+                                <Badge Tone="emerald">Shared</Badge>
+                            }
+                        </div>
+                    }
+                </SelectableList>
+            }
+        </RailContent>
+        <RailFooter>
+            @if (!PickerMode)
+            {
+                <div class="prompt-rail-note">
+                    <p>Shared cards appear in the wider catalog. Remixes keep lineage back to their source.</p>
+                </div>
+            }
+        </RailFooter>
+        <MainContent>
+            @if (Selected is null)
+            {
+                <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
+                    <ChildContent>
+                        <EmptyState Icon="cards" Title="Select a card" Message="Pick a story card from the catalog." />
+                    </ChildContent>
+                </ModalStackLayout>
+            }
+            else
+            {
+                <StoryCardEditor Template="Selected"
+                                 Editable="@CanEditSelected"
+                                 SourceText="@SourceText"
+                                 Height="680px">
+                    <Footer>
+                        <span class="modal-action-spacer"></span>
+                        <span class="modal-action-group">
+                            @if (PickerMode)
+                            {
+                                <BusyButton Disabled="@(!CanApplySelected)" OnClick="@UseSelected"><FaIcon Name="plus" />Add Card</BusyButton>
+                            }
+                            else
+                            {
+                                @if (!string.IsNullOrWhiteSpace(Selected.ParentTemplateId))
+                                {
+                                    <AppButton Variant="secondary" OnClick="@(_ => Select(Selected.ParentTemplateId))"><FaIcon Name="git-branch" />Parent</AppButton>
+                                }
+                                <BusyButton Variant="secondary" OnClick="@RefreshStats"><FaIcon Name="rotate" />Refresh Stats</BusyButton>
+                                <BusyButton Variant="secondary" OnClick="@Remix"><FaIcon Name="copy" />Remix</BusyButton>
+                                @if (CanEditSelected)
+                                {
+                                    <BusyButton Variant="secondary" OnClick="@Archive"><FaIcon Name="archive" />Archive</BusyButton>
+                                    <BusyButton OnClick="@Save"><FaIcon Name="check" />Save</BusyButton>
+                                }
+                            }
+                        </span>
+                    </Footer>
+                </StoryCardEditor>
+            }
+        </MainContent>
+    </ModalSplitLayout>
+</ModalShell>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public bool PickerMode { get; set; }
+    [Parameter] public EventCallback<string> OnUseTemplate { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<StoryCardTemplate> Templates = [];
+    StoryCardTemplate? Selected;
+    string ErrorMessage = "";
+    string Title => PickerMode ? "Add Story Card" : "Story Cards";
+    bool CanEditSelected => Selected is not null && (Session.CurrentUser.IsAdmin || Selected.OwnerUserId == Session.CurrentUser.Id);
+    bool CanApplySelected => Selected is not null && Selected.RetiredUtc is null && (Selected.IsShared || Selected.OwnerUserId == Session.CurrentUser.Id || Session.CurrentUser.IsAdmin);
+    string SourceText => Selected is null
+        ? ""
+        : !string.IsNullOrWhiteSpace(Selected.ParentTemplateId)
+            ? "Remix of another story card"
+            : Selected.IsShared
+                ? $"Created by {Selected.OwnerDisplayName}"
+                : "Private template";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    async Task LoadAsync(string selectedId = "")
+    {
+        ErrorMessage = "";
+        try
+        {
+            Templates = (await Catalog.LoadCatalogAsync(Session.CurrentUser)).ToList();
+            if (!string.IsNullOrWhiteSpace(selectedId))
+                Selected = await Catalog.LoadTemplateAsync(Session.CurrentUser, selectedId, lineageView: true);
+            else if (Selected is not null)
+                Selected = Templates.FirstOrDefault(template => template.Id == Selected.Id) ?? Selected;
+            else
+                Selected = Templates.FirstOrDefault();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading story cards failed.",
+                "Loading story card catalog failed.");
+        }
+    }
+
+    async Task Select(string id)
+    {
+        ErrorMessage = "";
+        try
+        {
+            Selected = await Catalog.LoadTemplateAsync(Session.CurrentUser, id, lineageView: true);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading the story card failed.",
+                "Loading story card template {TemplateId} failed.",
+                id);
+        }
+    }
+
+    void NewTemplate()
+    {
+        Selected = new()
+        {
+            Title = "New Story Card",
+            OwnerUserId = Session.CurrentUser.Id,
+            OwnerDisplayName = Session.CurrentUser.DisplayName,
+            Phases =
+            [
+                new() { Id = $"phase-{Guid.NewGuid():N}", Title = "Opening Phase", SortOrder = 0, IsEnding = true }
+            ]
+        };
+    }
+
+    async Task Save()
+    {
+        if (Selected is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            Selected = await Catalog.SaveTemplateAsync(Session.CurrentUser, Selected);
+            await LoadAsync(Selected.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Saving story card '{Selected.Title}' failed.",
+                "Saving story card template {TemplateId} failed.",
+                Selected.Id);
+        }
+    }
+
+    async Task Remix()
+    {
+        if (Selected is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            Selected = await Catalog.RemixAsync(Session.CurrentUser, Selected.Id);
+            await LoadAsync(Selected.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Remixing story card '{Selected.Title}' failed.",
+                "Remixing story card template {TemplateId} failed.",
+                Selected.Id);
+        }
+    }
+
+    async Task Archive()
+    {
+        if (Selected is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await Catalog.ArchiveAsync(Session.CurrentUser, Selected.Id);
+            Selected = null;
+            await LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Archiving the story card failed.",
+                "Archiving story card template {TemplateId} failed.",
+                Selected?.Id);
+        }
+    }
+
+    async Task RefreshStats()
+    {
+        if (Selected is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            Selected = await Catalog.RefreshStatsAsync(Session.CurrentUser, Selected.Id);
+            await LoadAsync(Selected.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Refreshing story card stats failed.",
+                "Refreshing story card template {TemplateId} stats failed.",
+                Selected.Id);
+        }
+    }
+
+    async Task UseSelected()
+    {
+        if (Selected is null || !CanApplySelected)
+            return;
+
+        await OnUseTemplate.InvokeAsync(Selected.Id);
+    }
+
+    string TemplateRowClass(StoryCardTemplate template) =>
+        $"story-card-template-row {(Selected?.Id == template.Id ? "is-selected" : "")}";
+
+    static string TemplateSummary(StoryCardTemplate template)
+    {
+        if (!string.IsNullOrWhiteSpace(template.Summary))
+            return template.Summary;
+        var childCount = template.Phases.Count + template.Roles.Count + template.Items.Count + template.Locations.Count;
+        return childCount == 1 ? "1 child card" : $"{childCount} child cards";
+    }
+}

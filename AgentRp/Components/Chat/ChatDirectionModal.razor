@@ -22,6 +22,10 @@
             <ModalTab Id="world" Title="World" Summary="@WorldSummary" Dirty="@IsWorldDirty()">
                 <LeadingContent><FaIcon Name="map-pin" /></LeadingContent>
             </ModalTab>
+            <ModalTab Id="cards" Title="Cards" Summary="@CardsSummary">
+                <LeadingContent><FaIcon Name="cards" /></LeadingContent>
+                <TrailingContent><Badge Tone="blue">@Session.Chat.StoryCards.Items.Count</Badge></TrailingContent>
+            </ModalTab>
         </ChildContent>
         <RailFooter>
             <div class="prompt-rail-note">
@@ -60,7 +64,7 @@
                         <ContentIntensityControl Label="Violent Content" Value="@Draft.ViolentContent" ValueChanged="@(value => Draft.ViolentContent = value)" />
                         <OptionGrid Title="Boundaries" Hint="@($"Pick up to {ChatDirectionService.MaxBoundaries}")" Columns="2" Items="@Library.Boundaries" MultiValues="@Draft.Boundaries" Max="@ChatDirectionService.MaxBoundaries" OnToggle="@(id => ToggleLimited(Draft.Boundaries, id, ChatDirectionService.MaxBoundaries))" />
                     }
-                    else
+                    else if (ActiveTab == "world")
                     {
                         <div class="field-stack">
                             <FieldRow Label="Setting">
@@ -73,6 +77,10 @@
                                 <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" Placeholder="Any extra direction this story should consistently honor." />
                             </FieldRow>
                         </div>
+                    }
+                    else
+                    {
+                        <StoryCardsStoryTab />
                     }
                 </ChildContent>
                 <Footer>
@@ -105,6 +113,7 @@
         "shape" => "Story Shape",
         "limits" => "Limits",
         "world" => "World",
+        "cards" => "Story Cards",
         _ => "Mood"
     };
     string ActiveTabSummary => ActiveTab switch
@@ -112,6 +121,7 @@
         "shape" => ShapeSummary,
         "limits" => LimitsSummary,
         "world" => WorldSummary,
+        "cards" => CardsSummary,
         _ => MoodSummary
     };
     string ActiveBadgeTone => ActiveTab switch
@@ -119,8 +129,10 @@
         "shape" => "blue",
         "limits" => "rose",
         "world" => "emerald",
+        "cards" => "blue",
         _ => "violet"
     };
+    string CardsSummary => Session.Chat.StoryCards.Items.Count == 1 ? "1 card" : $"{Session.Chat.StoryCards.Items.Count} cards";
 
     protected override void OnInitialized()
     {

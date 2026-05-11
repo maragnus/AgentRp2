@@ -1,0 +1,79 @@
+@namespace AgentRp.Components.StoryCards
+
+<AnchoredPopover Placement="OverlayPlacement.BottomStart"
+                 Class="story-card-requirement-popover"
+                 CloseOnContentClick="false">
+    <Trigger Context="picker">
+        <AppButton Icon="@Icon"
+                   Class="btn-plus-action"
+                   TooltipText="@($"Add {ChildCardType.ToString().ToLowerInvariant()} setup need")"
+                   OnClick="@(_ => picker.Toggle())" />
+    </Trigger>
+    <Content Context="picker">
+        <div class="story-card-requirement-menu">
+            <div class="story-card-requirement-create">
+                <AppInput @bind-Value="Draft"
+                          @bind-IsEmpty="DraftIsEmpty"
+                          UpdateMode="TextUpdateMode.Empty"
+                          Placeholder="@($"New {ChildCardType} name")" />
+                <AppButton Icon="plus"
+                           TooltipText="@($"Create {ChildCardType.ToString().ToLowerInvariant()} card")"
+                           Disabled="@DraftIsEmpty"
+                           OnClick="@(_ => AddNew(picker))" />
+            </div>
+            <div class="story-card-requirement-options">
+                @foreach (var child in Options)
+                {
+                    <button @key="child.Id"
+                            type="button"
+                            class="@RequirementOptionClass(child.Id)"
+                            @onclick="@(() => AddExisting(picker, child.Id))">
+                        <span class="popover-option-leading"><FaIcon Name="@Icon" /></span>
+                        <span class="popover-option-copy">
+                            <strong>@ChildTitle(child.Title, child.FallbackTitle)</strong>
+                            <small>@(IsRequired(child.Id) ? "Already required" : "Add to setup")</small>
+                        </span>
+                    </button>
+                }
+            </div>
+        </div>
+    </Content>
+</AnchoredPopover>
+
+@code {
+    [Parameter] public string PhaseId { get; set; } = "";
+    [Parameter] public StoryCardChildCardType ChildCardType { get; set; }
+    [Parameter] public string Icon { get; set; } = "circle";
+    [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Options { get; set; } = [];
+    [Parameter] public IReadOnlyList<StoryCardRequirementEditorRow> Requirements { get; set; } = [];
+    [Parameter] public EventCallback<StoryCardExistingRequirementRequest> OnAddExistingRequirement { get; set; }
+    [Parameter] public EventCallback<StoryCardNewRequirementRequest> OnAddNewRequirement { get; set; }
+
+    string Draft = "";
+    bool DraftIsEmpty = true;
+
+    async Task AddExisting(AnchoredPopoverContext picker, string childCardId)
+    {
+        await OnAddExistingRequirement.InvokeAsync(new(PhaseId, ChildCardType, childCardId));
+        await picker.Close();
+    }
+
+    async Task AddNew(AnchoredPopoverContext picker)
+    {
+        if (DraftIsEmpty)
+            return;
+
+        await OnAddNewRequirement.InvokeAsync(new(PhaseId, ChildCardType, Draft.Trim()));
+        Draft = "";
+        DraftIsEmpty = true;
+        await picker.Close();
+    }
+
+    bool IsRequired(string childCardId) =>
+        Requirements.Any(requirement => requirement.ChildCardType == ChildCardType && requirement.ChildCardId == childCardId);
+
+    string RequirementOptionClass(string childCardId) =>
+        $"popover-option {(IsRequired(childCardId) ? "is-selected" : "")}";
+
+    static string ChildTitle(string title, string fallback) => string.IsNullOrWhiteSpace(title) ? fallback : title;
+}

@@ -9,6 +9,7 @@ public enum RoleplayStoreArea
 	Items,
 	Timeline,
 	Images,
+	StoryCards,
 	Transcript,
 	StoryAssistant,
 	ChatDirection,

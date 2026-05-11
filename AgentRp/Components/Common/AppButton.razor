@@ -49,7 +49,14 @@
     string? EffectiveAriaLabel => AriaLabel
         ?? (string.IsNullOrWhiteSpace(Text) ? TooltipText : null);
 
+    bool IsIconOnly => ChildContent is null
+        && !string.IsNullOrWhiteSpace(Icon)
+        && string.IsNullOrWhiteSpace(Text)
+        && string.IsNullOrWhiteSpace(TrailingIcon);
+
+    bool IsPlusIcon => string.Equals(Icon, "plus", StringComparison.OrdinalIgnoreCase);
+
     string CssClass => Bare
         ? string.Join(" ", new[] { Class, Active ? "is-active" : null }.Where(value => !string.IsNullOrWhiteSpace(value)))
-        : string.Join(" ", new[] { "btn", $"btn-{Variant}", $"btn-{Size}", Active ? "is-active" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        : string.Join(" ", new[] { "btn", $"btn-{Variant}", $"btn-{Size}", IsIconOnly ? "btn-icon-only" : null, IsPlusIcon ? "btn-plus-action" : null, Active ? "is-active" : null, Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
 }

@@ -1,10 +1,11 @@
-<AppButton Bare Class="@CssClass" TooltipText="@TooltipText" AriaLabel="@TooltipText" OnClick="@Toggle">
+<AppButton Bare Class="@CssClass" TooltipText="@TooltipText" AriaLabel="@TooltipText" Disabled="@Disabled" OnClick="@Toggle">
     <span></span>
 </AppButton>
 
 @code {
     [Parameter] public bool Value { get; set; }
     [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
     [Parameter] public string TooltipText { get; set; } = "Toggle";
 
     Task Toggle(MouseEventArgs args) => ValueChanged.InvokeAsync(!Value);

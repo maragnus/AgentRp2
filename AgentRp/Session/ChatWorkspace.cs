@@ -15,6 +15,8 @@ public sealed class ChatWorkspace
 
 	public ImageStore Images { get; }
 
+	public StoryCardStore StoryCards { get; }
+
 	public TranscriptStore Transcript { get; }
 
 	public StoryAssistantStore StoryAssistant { get; }
@@ -25,13 +27,14 @@ public sealed class ChatWorkspace
 
 	public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
 
-	public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers, ModelSelectionStore modelSelection, GlobalPromptLibrarySessionStore promptLibrary, GlobalModelTuningSessionStore modelTuning, ITextGenerationService textGenerationService, SceneTransitionService sceneTransitionService, IMessageSpeechService? messageSpeechService, IStoryAssistantService? storyAssistantService, IEntityNotifier entityNotifier, ILoggerFactory? loggerFactory = null)
+	public ChatWorkspace(ActiveChatContext activeChat, ChatRegistry registry, ProviderStore providers, ModelSelectionStore modelSelection, GlobalPromptLibrarySessionStore promptLibrary, GlobalModelTuningSessionStore modelTuning, ITextGenerationService textGenerationService, SceneTransitionService sceneTransitionService, IMessageSpeechService? messageSpeechService, IStoryAssistantService? storyAssistantService, IEntityNotifier entityNotifier, IStoryCardCatalogService storyCardCatalog, AgentRp.UserSystem.CurrentAppUser user, ILoggerFactory? loggerFactory = null)
 	{
 		Characters = new CharacterStore(activeChat, registry, entityNotifier);
 		Locations = new LocationStore(activeChat, registry, entityNotifier);
 		Items = new ItemStore(activeChat, registry, entityNotifier);
 		Timeline = new TimelineStore(activeChat, registry);
 		Images = new ImageStore(activeChat, registry, entityNotifier);
+		StoryCards = new StoryCardStore(activeChat, registry, storyCardCatalog, user);
 		Transcript = new TranscriptStore(activeChat, registry, providers, modelSelection, promptLibrary, modelTuning, textGenerationService, sceneTransitionService, messageSpeechService, loggerFactory?.CreateLogger<TranscriptStore>());
 		StoryAssistant = new StoryAssistantStore(activeChat, registry, providers, modelSelection, promptLibrary, modelTuning, Transcript, storyAssistantService, loggerFactory?.CreateLogger<StoryAssistantStore>());
 		ChatDirection = new ChatDirectionStore(activeChat, registry);
@@ -42,6 +45,7 @@ public sealed class ChatWorkspace
 		Items.Start();
 		Timeline.Start();
 		Images.Start();
+		StoryCards.Start();
 		Transcript.Start();
 		StoryAssistant.Start();
 		ChatDirection.Start();
