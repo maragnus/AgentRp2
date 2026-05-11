@@ -4,32 +4,11 @@ This is a list of future tweaks that are planned. Be sure to remove these as the
 
 ## Low hanging fruit
 
-- Creating a snapshot should automatically exclude the last message in the transcript. There needs to always be at least one message after the transcript to continue the story consistently.
+- none
 
 ## Story Cards
 - Introduce "Story cards" Story Entities
 - Replaces the story hook to guide the story.
-
-# Narrator event-based insertion 
-
-After scene change
-After time skip
-When location changes
-When pacing stalls
-At chapter/act boundaries
-Manually only
-
-# Users
-
-We need a concept of a user.
-- User table with GUID id
-- User-based: Stories, Images, Preferences
-- System globals: AI Providers, selected Models, Model Tuning, Prompt Library
-- User roles
-    - Admins manage system globals
-    - Super Users can access Process block details (see prompts)
-
-Accessing system and user prompts is restricted to Admins and Super Users. Accessing model outputs is accessible to all users.
 
 # Introduce credits
 - Credits are user-based
@@ -50,3 +29,13 @@ Chat Messages 25 - 35 in transcript = 1 credit (medium usage)
 Chat Messages >= 35 in transcript = 4 credit (high usage)
 Image is quality based = 5, 8, 15 credits for low, medium, high
 TTS: short = 1 credit, long = 2 credit 
+
+
+# Narrator event-based insertion 
+
+After scene change
+After time skip
+When location changes
+When pacing stalls
+At chapter/act boundaries
+Manually only
