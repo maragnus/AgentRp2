@@ -4,6 +4,7 @@ public sealed class ImageAssetRow
 {
     public string Id { get; set; } = "";
     public string ChatId { get; set; } = "";
+    public Guid UserId { get; set; }
     public string BlobName { get; set; } = "";
     public string StoredContentType { get; set; } = "";
     public string StoredFileName { get; set; } = "";
@@ -38,6 +39,7 @@ public sealed class SpeechAssetRow
 {
     public string Id { get; set; } = "";
     public string ChatId { get; set; } = "";
+    public Guid UserId { get; set; }
     public string TurnId { get; set; } = "";
     public string BlobName { get; set; } = "";
     public long StoredByteLength { get; set; }

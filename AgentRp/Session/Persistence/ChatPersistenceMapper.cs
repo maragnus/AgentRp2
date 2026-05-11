@@ -9,6 +9,7 @@ internal static class ChatPersistenceMapper
     public static RpChat ToModel(RpChatRow row) => new()
     {
         Id = row.Id,
+        UserId = row.UserId,
         Title = row.Title,
         Updated = row.Updated,
         LastMessageUtc = row.LastMessageUtc,
@@ -37,6 +38,7 @@ internal static class ChatPersistenceMapper
     public static void Apply(RpChat chat, RpChatRow row, int sortOrder, DateTime now)
     {
         row.Title = chat.Title;
+        row.UserId = chat.UserId;
         row.Updated = chat.Updated;
         row.LastMessageUtc = chat.LastMessageUtc;
         row.LastGeneratedTurnNumber = chat.LastGeneratedTurnNumber;

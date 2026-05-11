@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace AgentRp.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialCleanUserGlobalConfig : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -184,6 +184,7 @@ namespace AgentRp.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Title = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     Updated = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     LastMessageUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -296,6 +297,7 @@ namespace AgentRp.Migrations
                 {
                     Id = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
                     ChatId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     BlobName = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     StoredContentType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     StoredFileName = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
@@ -331,20 +333,6 @@ namespace AgentRp.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "ModelTuningStates",
-                columns: table => new
-                {
-                    ChatId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
-                    StateJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ModelTuningStates", x => x.ChatId);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "NarratorProfileStates",
                 columns: table => new
                 {
@@ -359,27 +347,15 @@ namespace AgentRp.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PromptLibraryStates",
-                columns: table => new
-                {
-                    ChatId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
-                    StateJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PromptLibraryStates", x => x.ChatId);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "SpeechAssets",
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
                     ChatId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TurnId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
-                    Bytes = table.Column<byte[]>(type: "varbinary(max)", nullable: false),
+                    BlobName = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    StoredByteLength = table.Column<long>(type: "bigint", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false, defaultValue: "Pending"),
                     ContentType = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     FileName = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
@@ -398,6 +374,22 @@ namespace AgentRp.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SpeechAssets", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "StoryModelSelections",
+                columns: table => new
+                {
+                    ChatId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    Role = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    ProviderId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    ModelId = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StoryModelSelections", x => new { x.ChatId, x.Role });
                 });
 
             migrationBuilder.CreateTable(
@@ -421,6 +413,7 @@ namespace AgentRp.Migrations
                     SpeechJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     PrivateIntentJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     CharacterAppearancesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    RelationshipUpdatesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     TraceJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ConsumedBySnapshotId = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
                     ConsumedBySnapshotOrdinal = table.Column<int>(type: "int", nullable: true),
@@ -462,6 +455,25 @@ namespace AgentRp.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_TranscriptTurns", x => new { x.ChatId, x.Id });
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
+                    NormalizedEmail = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
+                    EmailVerified = table.Column<bool>(type: "bit", nullable: false),
+                    DisplayName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastSeenUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DisabledUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -511,6 +523,53 @@ namespace AgentRp.Migrations
                         name: "FK_AiProviderModels_AiProviders_ProviderId",
                         column: x => x.ProviderId,
                         principalTable: "AiProviders",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "UserExternalIdentities",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ProviderKey = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Issuer = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    Subject = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    TenantId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
+                    NormalizedEmail = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: false),
+                    EmailVerified = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastSeenUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserExternalIdentities", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UserExternalIdentities_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "UserRoles",
+                columns: table => new
+                {
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Role = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserRoles", x => new { x.UserId, x.Role });
+                    table.ForeignKey(
+                        name: "FK_UserRoles_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -601,6 +660,11 @@ namespace AgentRp.Migrations
                 column: "UpdatedUtc");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Chats_UserId",
+                table: "Chats",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ChatTimelineEntries_ChatId_SnapshotId",
                 table: "ChatTimelineEntries",
                 columns: new[] { "ChatId", "SnapshotId" });
@@ -636,6 +700,11 @@ namespace AgentRp.Migrations
                 columns: new[] { "ChatId", "EntityType", "Entity" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_ImageAssets_UserId",
+                table: "ImageAssets",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_SpeechAssets_ChatId_CreatedUtc",
                 table: "SpeechAssets",
                 columns: new[] { "ChatId", "CreatedUtc" });
@@ -644,6 +713,16 @@ namespace AgentRp.Migrations
                 name: "IX_SpeechAssets_ChatId_TurnId",
                 table: "SpeechAssets",
                 columns: new[] { "ChatId", "TurnId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SpeechAssets_UserId",
+                table: "SpeechAssets",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StoryModelSelections_ProviderId",
+                table: "StoryModelSelections",
+                column: "ProviderId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_TranscriptSnapshots_ChatId_ConsumedBySnapshotId_ConsumedBySnapshotOrdinal",
@@ -664,6 +743,38 @@ namespace AgentRp.Migrations
                 name: "IX_TranscriptTurns_ChatId_ParentTurnId",
                 table: "TranscriptTurns",
                 columns: new[] { "ChatId", "ParentTurnId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserExternalIdentities_Issuer_Subject",
+                table: "UserExternalIdentities",
+                columns: new[] { "Issuer", "Subject" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserExternalIdentities_NormalizedEmail",
+                table: "UserExternalIdentities",
+                column: "NormalizedEmail");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserExternalIdentities_ProviderKey_Subject",
+                table: "UserExternalIdentities",
+                columns: new[] { "ProviderKey", "Subject" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserExternalIdentities_UserId",
+                table: "UserExternalIdentities",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserRoles_Role",
+                table: "UserRoles",
+                column: "Role");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_NormalizedEmail",
+                table: "Users",
+                column: "NormalizedEmail");
         }
 
         /// <inheritdoc />
@@ -721,16 +832,13 @@ namespace AgentRp.Migrations
                 name: "ImageAssets");
 
             migrationBuilder.DropTable(
-                name: "ModelTuningStates");
-
-            migrationBuilder.DropTable(
                 name: "NarratorProfileStates");
 
             migrationBuilder.DropTable(
-                name: "PromptLibraryStates");
+                name: "SpeechAssets");
 
             migrationBuilder.DropTable(
-                name: "SpeechAssets");
+                name: "StoryModelSelections");
 
             migrationBuilder.DropTable(
                 name: "TranscriptSnapshots");
@@ -739,7 +847,16 @@ namespace AgentRp.Migrations
                 name: "TranscriptTurns");
 
             migrationBuilder.DropTable(
+                name: "UserExternalIdentities");
+
+            migrationBuilder.DropTable(
+                name: "UserRoles");
+
+            migrationBuilder.DropTable(
                 name: "AiProviders");
+
+            migrationBuilder.DropTable(
+                name: "Users");
         }
     }
 }

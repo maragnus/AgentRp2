@@ -1,398 +1,135 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using AgentRp.Models;
 using AgentRp.Services;
+using Microsoft.Extensions.Logging;
+using AgentRp.UserSystem;
 
 namespace AgentRp.Session;
 
-public sealed class RoleplaySession(
-    ILiveRoleplayStore liveStore,
-    IModelCapabilityCatalog? capabilityCatalog = null,
-    ITextGenerationService? textGenerationService = null,
-    IMessageSpeechService? messageSpeechService = null,
-    SceneTransitionService? sceneTransitionService = null,
-    IStoryAssistantService? storyAssistantService = null,
-    IAiProviderCapabilityPipeline? capabilityPipeline = null,
-    IAiProviderWidgetService? providerWidgetService = null,
-    IEntityNotifier? entityNotifier = null,
-    IGlobalModelSelectionStore? globalModelSelectionStore = null,
-    IModelSelectionNotifier? modelSelectionNotifier = null,
-    ILoggerFactory? loggerFactory = null) : IAsyncDisposable
+public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabilityCatalog? capabilityCatalog = null, ITextGenerationService? textGenerationService = null, IMessageSpeechService? messageSpeechService = null, SceneTransitionService? sceneTransitionService = null, IStoryAssistantService? storyAssistantService = null, IAiProviderCapabilityPipeline? capabilityPipeline = null, IAiProviderWidgetService? providerWidgetService = null, IEntityNotifier? entityNotifier = null, IGlobalModelSelectionStore? globalModelSelectionStore = null, IGlobalPromptLibraryStore? globalPromptLibraryStore = null, IGlobalModelTuningStore? globalModelTuningStore = null, IModelSelectionNotifier? modelSelectionNotifier = null, ICurrentAppUserAccessor? currentUserAccessor = null, ILoggerFactory? loggerFactory = null) : IAsyncDisposable
 {
-    readonly Guid _sessionId = Guid.NewGuid();
-    readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
-    readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
-    readonly IEntityNotifier _entityNotifier = entityNotifier ?? NullEntityNotifier.Instance;
-    readonly IGlobalModelSelectionStore _globalModelSelectionStore = globalModelSelectionStore ?? new GlobalModelSelectionStore(new InMemoryAppSettingsService());
-    readonly IModelSelectionNotifier _modelSelectionNotifier = modelSelectionNotifier ?? NullModelSelectionNotifier.Instance;
-    bool _initialized;
-    string? _activeChatId;
+	private readonly Guid _sessionId = Guid.NewGuid();
 
-    public ActiveChatContext ActiveChat { get; } = new();
-    public ChatRegistry Registry { get; private set; } = null!;
-    public ChatListStore Chats { get; private set; } = null!;
-    public ProviderStore Providers { get; private set; } = null!;
-    public ModelSelectionStore ModelSelection { get; private set; } = null!;
-    public ChatWorkspace Chat { get; private set; } = null!;
+	private readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(capabilityCatalog ?? NullModelCapabilityCatalog.Instance);
 
-    public bool IsInitialized => _initialized;
-    public RpCharacter? SpeakingAs { get; private set; }
-    public event Func<Task>? Changed;
+	private readonly IAiProviderWidgetService _providerWidgetService = providerWidgetService ?? NullAiProviderWidgetService.Instance;
 
-    public async Task InitializeAsync(bool selectFirstStory = true)
-    {
-        if (_initialized)
-            return;
+	private readonly IEntityNotifier _entityNotifier = entityNotifier ?? NullEntityNotifier.Instance;
 
-        Registry = new(_sessionId, liveStore, ActiveChat);
-        Chats = new(_sessionId, liveStore, Registry, ActiveChat);
-        Chats.ActiveSession = this;
-        Providers = new(_sessionId, liveStore, _capabilityPipeline, _providerWidgetService, loggerFactory?.CreateLogger<ProviderStore>());
-        ModelSelection = new(Providers, _globalModelSelectionStore, _modelSelectionNotifier);
-        Providers.ModelSelection = ModelSelection;
-        Chat = new(ActiveChat, Registry, Providers, ModelSelection, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new(), messageSpeechService, storyAssistantService, _entityNotifier, loggerFactory);
-        liveStore.Changed += OnLiveStoreChanged;
+	private readonly IGlobalModelSelectionStore _globalModelSelectionStore = globalModelSelectionStore ?? new GlobalModelSelectionStore(new InMemoryAppSettingsService());
 
-        await ModelSelection.LoadAsync();
-        await Chats.LoadAsync();
-        await Providers.LoadAsync();
-        var first = Chats.Items.FirstOrDefault();
-        if (selectFirstStory && first is not null)
-            await Chats.SelectAsync(first.ChatId);
+	private readonly IGlobalPromptLibraryStore _globalPromptLibraryStore = globalPromptLibraryStore ?? new GlobalPromptLibraryStore(new InMemoryAppSettingsService());
 
-        _initialized = true;
-    }
+	private readonly IGlobalModelTuningStore _globalModelTuningStore = globalModelTuningStore ?? new GlobalModelTuningStore(new InMemoryAppSettingsService());
 
-    async Task OnLiveStoreChanged(RoleplayStoreNotification notification)
-    {
-        if (notification.OriginSessionId == _sessionId)
-            return;
+	private readonly IModelSelectionNotifier _modelSelectionNotifier = modelSelectionNotifier ?? NullModelSelectionNotifier.Instance;
 
-        if (notification.Area == RoleplayStoreArea.Chats)
-        {
-            await Chats.RefreshAsync();
-            return;
-        }
+	private readonly ICurrentAppUserAccessor? _currentUserAccessor = currentUserAccessor;
 
-        if (notification.Area == RoleplayStoreArea.Providers)
-        {
-            await Providers.RefreshAsync();
-            return;
-        }
+	private bool _initialized;
 
-        if (notification.ChatId is null || notification.ChatId != _activeChatId)
-            return;
+	private string? _activeChatId;
 
-        await Registry.RefreshActiveAsync(notification.Area);
-    }
+	public ActiveChatContext ActiveChat { get; } = new ActiveChatContext();
 
-    internal void SetActiveChatId(string? chatId)
-    {
-        if (_activeChatId == chatId)
-            return;
+	public ChatRegistry Registry { get; private set; } = null;
 
-        liveStore.ReleaseChat(_sessionId, _activeChatId);
-        _activeChatId = chatId;
-    }
+	public ChatListStore Chats { get; private set; } = null;
 
-    public async Task SetSpeakingAsAsync(RpCharacter? character)
-    {
-        SpeakingAs = character;
-        var changed = Changed;
-        if (changed is not null)
-            await changed.Invoke();
-    }
+	public ProviderStore Providers { get; private set; } = null;
 
-    public async ValueTask DisposeAsync()
-    {
-        liveStore.Changed -= OnLiveStoreChanged;
-        liveStore.ReleaseChat(_sessionId, _activeChatId);
-        ModelSelection?.Dispose();
-        await Task.CompletedTask;
-    }
-}
+	public ModelSelectionStore ModelSelection { get; private set; } = null;
 
-public sealed record ActiveChatChange(RpChatDocument? Document, RoleplayStoreArea? Area);
+	public GlobalPromptLibrarySessionStore PromptLibrary { get; private set; } = null;
 
-public sealed class ActiveChatContext
-{
-    public RpChatDocument? Current { get; private set; }
-    public event Func<ActiveChatChange, Task>? Changed;
+	public GlobalModelTuningSessionStore ModelTuning { get; private set; } = null;
 
-    public async Task ClearAsync()
-    {
-        Current = null;
-        await NotifyAsync(null);
-    }
+	public ChatWorkspace Chat { get; private set; } = null;
 
-    public async Task SetAsync(RpChatDocument document)
-    {
-        Current = document;
-        await NotifyAsync(null);
-    }
+	public bool IsInitialized => _initialized;
 
-    public async Task UpdateAsync(RpChatDocument document, RoleplayStoreArea area)
-    {
-        Current = document;
-        await NotifyAsync(area);
-    }
+	public CurrentAppUser CurrentUser { get; private set; } = null;
 
-    async Task NotifyAsync(RoleplayStoreArea? area)
-    {
-        var changed = Changed;
-        if (changed is not null)
-            await changed.Invoke(new(Current, area));
-    }
-}
+	public RpCharacter? SpeakingAs { get; private set; }
 
-public sealed class ChatRegistry(Guid sessionId, ILiveRoleplayStore liveStore, ActiveChatContext activeChat)
-{
-    public async Task CloseAsync()
-    {
-        await activeChat.ClearAsync();
-    }
+	public event Func<Task>? Changed;
 
-    public async Task<RpChatDocument> OpenAsync(string chatId)
-    {
-        var document = await liveStore.OpenChatAsync(sessionId, chatId);
-        await activeChat.SetAsync(document);
-        return document;
-    }
+	public async Task InitializeAsync(bool selectFirstStory = true)
+	{
+		if (!_initialized)
+		{
+			CurrentAppUser currentUser = ((_currentUserAccessor != null) ? (await _currentUserAccessor.GetCurrentUserAsync()) : new CurrentAppUser(Guid.Empty, "dev.user@local", "DEV.USER@LOCAL", "Development User", new HashSet<string>(StringComparer.Ordinal) { "Admin", "User" }));
+			CurrentUser = currentUser;
+			Registry = new ChatRegistry(_sessionId, liveStore, ActiveChat, CurrentUser);
+			Chats = new ChatListStore(_sessionId, liveStore, Registry, ActiveChat, CurrentUser);
+			Chats.ActiveSession = this;
+			Providers = new ProviderStore(_sessionId, liveStore, CurrentUser, _capabilityPipeline, _providerWidgetService, loggerFactory?.CreateLogger<ProviderStore>());
+			ModelSelection = new ModelSelectionStore(Providers, ActiveChat, Registry, _globalModelSelectionStore, _modelSelectionNotifier);
+			Providers.ModelSelection = ModelSelection;
+			PromptLibrary = new GlobalPromptLibrarySessionStore(_globalPromptLibraryStore);
+			ModelTuning = new GlobalModelTuningSessionStore(_globalModelTuningStore);
+			Chat = new ChatWorkspace(ActiveChat, Registry, Providers, ModelSelection, PromptLibrary, ModelTuning, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new SceneTransitionService(), messageSpeechService, storyAssistantService, _entityNotifier, loggerFactory);
+			liveStore.Changed += OnLiveStoreChanged;
+			await ModelSelection.LoadAsync();
+			await PromptLibrary.LoadAsync();
+			await ModelTuning.LoadAsync();
+			await Chats.LoadAsync();
+			await Providers.LoadAsync();
+			StoryPreview first = Chats.Items.FirstOrDefault();
+			if (selectFirstStory && first != null)
+			{
+				await Chats.SelectAsync(first.ChatId);
+			}
+			_initialized = true;
+		}
+	}
 
-    public async Task ReplaceAreaAsync(RpChatDocument document, RoleplayStoreArea area)
-    {
-        await liveStore.ReplaceChatAreaAsync(sessionId, document.Chat.Id, document, area);
-    }
+	private async Task OnLiveStoreChanged(RoleplayStoreNotification notification)
+	{
+		if (!(notification.OriginSessionId == _sessionId))
+		{
+			if (notification.Area == RoleplayStoreArea.Chats)
+			{
+				await Chats.RefreshAsync();
+			}
+			else if (notification.Area == RoleplayStoreArea.Providers)
+			{
+				await Providers.RefreshAsync();
+			}
+			else if (notification.ChatId != null && !(notification.ChatId != _activeChatId))
+			{
+				await Registry.RefreshActiveAsync(notification.Area);
+			}
+		}
+	}
 
-    public async Task RefreshActiveAsync(RoleplayStoreArea area)
-    {
-        if (activeChat.Current is null)
-            return;
+	internal void SetActiveChatId(string? chatId)
+	{
+		if (!(_activeChatId == chatId))
+		{
+			liveStore.ReleaseChat(_sessionId, _activeChatId);
+			_activeChatId = chatId;
+		}
+	}
 
-        var snapshot = await liveStore.GetChatSnapshotAsync(activeChat.Current.Chat.Id);
-        await activeChat.UpdateAsync(snapshot, area);
-    }
-}
+	public async Task SetSpeakingAsAsync(RpCharacter? character)
+	{
+		SpeakingAs = character;
+		Func<Task> changed = this.Changed;
+		if (changed != null)
+		{
+			await changed();
+		}
+	}
 
-public sealed class ChatWorkspace
-{
-    public ChatWorkspace(
-        ActiveChatContext activeChat,
-        ChatRegistry registry,
-        ProviderStore providers,
-        ModelSelectionStore modelSelection,
-        ITextGenerationService textGenerationService,
-        SceneTransitionService sceneTransitionService,
-        IMessageSpeechService? messageSpeechService,
-        IStoryAssistantService? storyAssistantService,
-        IEntityNotifier entityNotifier,
-        ILoggerFactory? loggerFactory = null)
-    {
-        Characters = new(activeChat, registry, entityNotifier);
-        Locations = new(activeChat, registry, entityNotifier);
-        Items = new(activeChat, registry, entityNotifier);
-        Timeline = new(activeChat, registry);
-        Images = new(activeChat, registry, entityNotifier);
-        Transcript = new(activeChat, registry, providers, modelSelection, textGenerationService, sceneTransitionService, messageSpeechService, loggerFactory?.CreateLogger<TranscriptStore>());
-        StoryAssistant = new(activeChat, registry, providers, modelSelection, Transcript, storyAssistantService, loggerFactory?.CreateLogger<StoryAssistantStore>());
-        ChatDirection = new(activeChat, registry);
-        NarratorProfile = new(activeChat, registry, entityNotifier);
-        PromptLibrary = new(activeChat, registry);
-        CharacterTraitLibrary = new(activeChat, registry);
-        ModelTuning = new(activeChat, registry);
-
-        Characters.Start();
-        Locations.Start();
-        Items.Start();
-        Timeline.Start();
-        Images.Start();
-        Transcript.Start();
-        StoryAssistant.Start();
-        ChatDirection.Start();
-        NarratorProfile.Start();
-        PromptLibrary.Start();
-        CharacterTraitLibrary.Start();
-        ModelTuning.Start();
-    }
-
-    public CharacterStore Characters { get; }
-    public LocationStore Locations { get; }
-    public ItemStore Items { get; }
-    public TimelineStore Timeline { get; }
-    public ImageStore Images { get; }
-    public TranscriptStore Transcript { get; }
-    public StoryAssistantStore StoryAssistant { get; }
-    public ChatDirectionStore ChatDirection { get; }
-    public NarratorProfileStore NarratorProfile { get; }
-    public PromptLibraryStore PromptLibrary { get; }
-    public CharacterTraitLibraryStore CharacterTraitLibrary { get; }
-    public ModelTuningStore ModelTuning { get; }
-}
-
-public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, ChatRegistry registry, ActiveChatContext activeChat) : StoreBase
-{
-    readonly List<StoryPreview> _items = [];
-
-    public IReadOnlyList<StoryPreview> Items => _items;
-    public StoryPreview? Active => activeChat.Current is null ? null : StoryPreviewProjector.FromDocument(activeChat.Current);
-
-    public async Task LoadAsync() => await RefreshAsync();
-
-    public async Task RefreshAsync()
-    {
-        _items.Clear();
-        _items.AddRange((await liveStore.LoadStoryPreviewsAsync()).Select(SessionCloner.Clone));
-        await NotifyChangedAsync();
-    }
-
-    public async Task SelectAsync(string chatId)
-    {
-        if (!_items.Any(chat => string.Equals(chat.ChatId, chatId, StringComparison.Ordinal)))
-            throw new InvalidOperationException($"Story '{chatId}' was not found.");
-
-        var document = await registry.OpenAsync(chatId);
-        await RefreshAsync();
-        ActiveSession?.SetActiveChatId(document.Chat.Id);
-    }
-
-    public async Task ClearAsync()
-    {
-        await registry.CloseAsync();
-        ActiveSession?.SetActiveChatId(null);
-        await NotifyChangedAsync();
-    }
-
-    public RoleplaySession? ActiveSession { get; set; }
-
-    public async Task<StoryPreview> AddAsync(StoryCreationOptions options)
-    {
-        var chats = await liveStore.AddChatAsync(sessionId, options, activeChat.Current);
-        _items.Clear();
-        _items.AddRange(chats.Select(SessionCloner.Clone));
-        var chat = _items.First();
-        await SelectAsync(chat.ChatId);
-        await NotifyChangedAsync();
-        return chat;
-    }
-}
-
-public sealed class ProviderStore(
-    Guid sessionId,
-    ILiveRoleplayStore liveStore,
-    IAiProviderCapabilityPipeline? capabilityPipeline = null,
-    IAiProviderWidgetService? widgetService = null,
-    ILogger<ProviderStore>? logger = null) : StoreBase
-{
-    readonly List<AiProvider> _items = [];
-    readonly HashSet<string> _widgetLoadAttempts = new(StringComparer.Ordinal);
-    readonly IAiProviderCapabilityPipeline _capabilityPipeline = capabilityPipeline ?? new AiProviderCapabilityPipeline(NullModelCapabilityCatalog.Instance);
-    readonly IAiProviderWidgetService _widgetService = widgetService ?? NullAiProviderWidgetService.Instance;
-
-    public IReadOnlyList<AiProvider> Items => _items;
-    public ModelSelectionStore? ModelSelection { get; set; }
-
-    public async Task LoadAsync() => await RefreshAsync();
-
-    public async Task RefreshAsync()
-    {
-        _items.Clear();
-        _items.AddRange((await liveStore.LoadProvidersAsync()).Select(SessionCloner.Clone));
-        NormalizeProviders();
-        if (ModelSelection is not null)
-            await ModelSelection.EnsureValidAsync();
-        await NotifyChangedAsync();
-    }
-
-    public async Task AddAsync(AiProvider provider)
-    {
-        _capabilityPipeline.Normalize(provider);
-        _items.Add(provider);
-        await MarkChangedAsync();
-    }
-
-    public async Task DeleteAsync(string id)
-    {
-        _items.RemoveAll(provider => provider.Id == id);
-        await MarkChangedAsync();
-    }
-
-    public async Task SetModelsAsync(AiProvider provider, bool enabled)
-    {
-        foreach (var model in provider.Models)
-        {
-            if (enabled)
-                AiProviderModelSelectionRules.SelectAvailableRoles(model);
-            else
-                AiProviderModelSelectionRules.ClearSelectedRoles(model);
-        }
-
-        await MarkChangedAsync();
-    }
-
-    public async Task EnsureWidgetLoadedAsync(string providerId)
-    {
-        if (!_widgetLoadAttempts.Add(providerId))
-            return;
-
-        await RefreshWidgetAsync(providerId);
-    }
-
-    public async Task RefreshWidgetAsync(string providerId)
-    {
-        var provider = _items.FirstOrDefault(provider => provider.Id == providerId);
-        if (provider is null)
-            return;
-
-        try
-        {
-            provider.Metrics = (await _widgetService.RefreshMetricsAsync(provider)).ToList();
-            provider.LastMetricsRefreshUtc = DateTime.UtcNow;
-            provider.LastMetricsError = "";
-        }
-        catch (Exception exception)
-        {
-            provider.LastMetricsError = UserFacingErrorReporter.Capture(
-                logger,
-                exception,
-                $"Refreshing widget details for {provider.Name} failed.",
-                "Refreshing widget details for provider {ProviderId} failed.",
-                provider.Id);
-        }
-
-        await MarkChangedAsync();
-    }
-
-    public async Task MarkChangedAsync()
-    {
-        NormalizeProviders();
-        await liveStore.ReplaceProvidersAsync(sessionId, _items);
-        if (ModelSelection is not null)
-            await ModelSelection.EnsureValidAsync();
-        await NotifyChangedAsync();
-    }
-
-    void NormalizeProviders() => _capabilityPipeline.Normalize(_items);
-}
-
-sealed class NullModelCapabilityCatalog : IModelCapabilityCatalog
-{
-    public static NullModelCapabilityCatalog Instance { get; } = new();
-    public string UserCatalogPath => "";
-    public ModelGenerationCapabilities Resolve(AiProvider provider, AiProviderModel model) => model.Capabilities;
-    public ModelGenerationCapabilities Resolve(string providerType, string modelId) => ModelGenerationCapabilities.Fallback;
-    public void ApplyResolvedCapabilities(AiProvider provider) { }
-    public void SaveUserCapabilities(string providerType, string modelId, ModelGenerationCapabilities capabilities) { }
-    public void UpdateLiveGrokCapabilities(System.Text.Json.Nodes.JsonNode languageModelsJson) { }
-}
-
-sealed class NullAiProviderWidgetService : IAiProviderWidgetService
-{
-    public static NullAiProviderWidgetService Instance { get; } = new();
-
-    public Task<IReadOnlyList<AiProviderMetric>> RefreshMetricsAsync(AiProvider provider, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<AiProviderMetric>>([]);
-
-    public Task<IReadOnlyList<ManagedEndpointStatusView>> GetHuggingFaceStatusesAsync(IReadOnlyList<AiProvider> providers, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ManagedEndpointStatusView>>([]);
-
-    public Task<ManagedEndpointStatusView> ExecuteHuggingFaceActionAsync(AiProvider provider, AiProviderModel model, ManagedEndpointAction action, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+	public async ValueTask DisposeAsync()
+	{
+		liveStore.Changed -= OnLiveStoreChanged;
+		liveStore.ReleaseChat(_sessionId, _activeChatId);
+		ModelSelection?.Dispose();
+		await Task.CompletedTask;
+	}
 }

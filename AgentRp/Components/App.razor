@@ -18,7 +18,9 @@
 </head>
 
 <body>
-    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <CascadingAuthenticationState>
+        <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    </CascadingAuthenticationState>
     <ReconnectModal />
     <script src="@Assets["agentrp.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>

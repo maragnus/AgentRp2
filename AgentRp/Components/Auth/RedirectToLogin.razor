@@ -1,0 +1,18 @@
+@inject NavigationManager NavigationManager
+
+<main class="chat claude-chat">
+    <section class="claude-chat-scroll no-story-onboarding">
+        <StatusRow Icon="spinner" Tone="neutral">Redirecting to sign in...</StatusRow>
+    </section>
+</main>
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var returnUrl = Uri.EscapeDataString(new Uri(NavigationManager.Uri).PathAndQuery);
+        NavigationManager.NavigateTo($"/login?returnUrl={returnUrl}", forceLoad: true);
+    }
+}

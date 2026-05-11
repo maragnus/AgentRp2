@@ -16,6 +16,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.ActiveLeafTurnId).HasMaxLength(80);
             builder.Property(x => x.ActiveLocationId).HasMaxLength(80);
             builder.Property(x => x.ActiveLocationName).HasMaxLength(500);
+            builder.HasIndex(x => x.UserId);
             builder.HasIndex(x => x.SortOrder);
             builder.HasIndex(x => x.UpdatedUtc);
             builder.HasIndex(x => x.LastMessageUtc);
@@ -96,9 +97,17 @@ public sealed partial class RpDbContext
 
         ConfigureJsonState<ChatDirectionStateRow>(modelBuilder, "ChatDirectionStates");
         ConfigureJsonState<NarratorProfileStateRow>(modelBuilder, "NarratorProfileStates");
-        ConfigureJsonState<PromptLibraryStateRow>(modelBuilder, "PromptLibraryStates");
         ConfigureJsonState<CharacterTraitLibraryStateRow>(modelBuilder, "CharacterTraitLibraryStates");
-        ConfigureJsonState<ModelTuningStateRow>(modelBuilder, "ModelTuningStates");
+
+        modelBuilder.Entity<StoryModelSelectionRow>(builder =>
+        {
+            builder.HasKey(x => new { x.ChatId, x.Role });
+            builder.Property(x => x.ChatId).HasMaxLength(80);
+            builder.Property(x => x.Role).HasMaxLength(64);
+            builder.Property(x => x.ProviderId).HasMaxLength(80);
+            builder.Property(x => x.ModelId).HasMaxLength(500);
+            builder.HasIndex(x => x.ProviderId);
+        });
 
         modelBuilder.Entity<ChatCurrentSceneCharacterRow>(builder =>
         {

@@ -16,9 +16,8 @@ public sealed class RpChatDocument
     public StoryAssistantState StoryAssistant { get; set; } = new();
     public ChatDirectionState ChatDirection { get; set; } = ChatDirectionState.CreateDefault();
     public NarratorProfileState NarratorProfile { get; set; } = NarratorProfileState.CreateDefault();
-    public PromptLibraryState PromptLibrary { get; set; } = PromptLibraryState.CreateDefault();
     public CharacterTraitLibraryState CharacterTraitLibrary { get; set; } = CharacterTraitLibraryState.CreateDefault();
-    public ModelTuningState ModelTuning { get; set; } = ModelTuningState.CreateDefault();
+    public ActiveModelSelectionsState ModelSelections { get; set; } = ActiveModelSelectionsState.CreateDefault();
 }
 
 public sealed class StoryCreationOptions
@@ -30,7 +29,6 @@ public sealed class StoryCreationOptions
     public bool CopyImages { get; set; }
     public bool CopyStoryDirection { get; set; }
     public bool CopyNarratorProfile { get; set; }
-    public bool CopyPromptLibrary { get; set; }
     public bool EnableTts { get; set; }
     public bool AutoSpeakNewMessages { get; set; }
     public Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections { get; set; } = [];

@@ -9,6 +9,8 @@ public sealed partial class TranscriptStore(
     ChatRegistry registry,
     ProviderStore providers,
     ModelSelectionStore modelSelection,
+    GlobalPromptLibrarySessionStore promptLibrary,
+    GlobalModelTuningSessionStore modelTuning,
     ITextGenerationService textGenerationService,
     SceneTransitionService sceneTransitionService,
     IMessageSpeechService? messageSpeechService = null,
@@ -27,6 +29,7 @@ public sealed partial class TranscriptStore(
     public RpTranscriptTurn? ActiveDraftTurn { get; private set; }
 
     readonly object _operationLock = new();
+    GenerationRuntimeConfig RuntimeConfig => new(modelSelection.State, promptLibrary.State, modelTuning.State);
 
     public RpTranscriptSnapshot? SnapshotFor(string turnId) =>
         Document is null ? null : TranscriptGraph.FindSnapshotByTurn(Document.Transcript, turnId);
@@ -68,7 +71,7 @@ public sealed partial class TranscriptStore(
             playback = await messageSpeechService.GetOrGenerateAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig.ModelSelections,
                 turn,
                 regenerate,
                 cancellationToken);
@@ -456,7 +459,7 @@ public sealed partial class TranscriptStore(
             var result = await textGenerationService.GenerateTurnAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 new(
                     parentTurnId,
                     mode,
@@ -506,7 +509,7 @@ public sealed partial class TranscriptStore(
             var result = await textGenerationService.GenerateProseFromPlanAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 request,
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
             return await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);
@@ -564,7 +567,7 @@ public sealed partial class TranscriptStore(
             var result = await textGenerationService.GeneratePlanAndProseAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 request,
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
             return await CommitGeneratedTurnAsync(request.ParentTurnId, request.Guidance, request.Mode, result);

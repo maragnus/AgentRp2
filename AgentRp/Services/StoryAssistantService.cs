@@ -72,7 +72,7 @@ public interface IStoryAssistantService
         RpChatDocument document,
         StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         StoryAssistantTurnRequest request,
         IStoryAssistantCallbacks callbacks,
         CancellationToken cancellationToken = default);
@@ -80,7 +80,7 @@ public interface IStoryAssistantService
     Task ClearRemoteStateAsync(
         StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         CancellationToken cancellationToken = default);
 
     Task ResolveWorkItemAsync(
@@ -100,13 +100,13 @@ public sealed partial class StoryAssistantService(
         RpChatDocument document,
         StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         StoryAssistantTurnRequest request,
         IStoryAssistantCallbacks callbacks,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, modelSelections)
+        var selection = TextModelTuningCatalog.TryResolveActiveReasoningModel(providers, runtimeConfig.ModelSelections)
             ?? throw new InvalidOperationException("Starting the Story Assistant failed because no reasoning model is enabled.");
         if (!selection.Capabilities.CanGenerateText || !selection.Capabilities.Tools)
             throw new InvalidOperationException($"Starting the Story Assistant failed because reasoning model '{selection.Model.Id}' must support text and tools.");
@@ -119,7 +119,7 @@ public sealed partial class StoryAssistantService(
 
         if (request.Kind == StoryAssistantTurnRequestKind.UserMessage && !ResponseChainMatches(assistantChat, selection))
         {
-            await ClearRemoteStateAsync(assistantChat, providers, modelSelections, cancellationToken);
+            await ClearRemoteStateAsync(assistantChat, providers, runtimeConfig, cancellationToken);
             ClearResponseChain(assistantChat);
             await callbacks.SaveAssistantStateAsync(cancellationToken);
         }
@@ -132,7 +132,7 @@ public sealed partial class StoryAssistantService(
         var inputs = request.Kind == StoryAssistantTurnRequestKind.WorkItemResume
             ? new List<ModelAssistantInput> { new(ModelAssistantInputKind.FunctionCallOutput, request.ModelInput, request.ToolCallId) }
             : new List<ModelAssistantInput> { new(ModelAssistantInputKind.UserMessage, request.ModelInput.Trim()) };
-        var instructions = Instructions(document.PromptLibrary);
+        var instructions = Instructions(runtimeConfig.PromptLibrary);
         var toolContext = new StoryAssistantToolRunContext();
         for (var pass = 0; pass < 16; pass++)
         {
@@ -195,7 +195,7 @@ public sealed partial class StoryAssistantService(
     public async Task ClearRemoteStateAsync(
         StoryAssistantChat assistantChat,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);

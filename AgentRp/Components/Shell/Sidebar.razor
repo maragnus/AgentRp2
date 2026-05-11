@@ -11,8 +11,11 @@
     <div class="sidebar-scroll">
         <Section Title="AI Model" Compact="true">
             <RightContent>
-                <AppButton Icon="wrench" TooltipText="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
-                <AppButton Icon="settings" TooltipText="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
+                @if (Session.CurrentUser.IsAdmin)
+                {
+                    <AppButton Icon="wrench" TooltipText="Model tuning" OnClick="@(_ => OnOpenModal.InvokeAsync("modelTuning"))" />
+                    <AppButton Icon="settings" TooltipText="AI Providers" OnClick="@(_ => OnOpenModal.InvokeAsync("aiProviders"))" />
+                }
             </RightContent>
         </Section>
         <SidebarModelPanel @key="@($"models:{ActiveStoryKey}")" OnOpenProviders="@(() => OnOpenModal.InvokeAsync("aiProviders"))" />
@@ -25,7 +28,10 @@
                 {
                     <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
                     <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-                    <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+                    @if (Session.CurrentUser.IsAdmin)
+                    {
+                        <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
+                    }
                     <AppButton Icon="download" TooltipText="Export story" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
                 }
             </RightContent>

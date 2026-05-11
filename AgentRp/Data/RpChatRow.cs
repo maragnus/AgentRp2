@@ -3,6 +3,7 @@ namespace AgentRp.Data;
 public sealed class RpChatRow
 {
     public string Id { get; set; } = "";
+    public Guid UserId { get; set; }
     public string Title { get; set; } = "";
     public string Updated { get; set; } = "";
     public DateTime? LastMessageUtc { get; set; }
@@ -113,14 +114,6 @@ public sealed class NarratorProfileStateRow
     public DateTime UpdatedUtc { get; set; }
 }
 
-public sealed class PromptLibraryStateRow
-{
-    public string ChatId { get; set; } = "";
-    public string StateJson { get; set; } = "{}";
-    public DateTime CreatedUtc { get; set; }
-    public DateTime UpdatedUtc { get; set; }
-}
-
 public sealed class CharacterTraitLibraryStateRow
 {
     public string ChatId { get; set; } = "";
@@ -129,10 +122,12 @@ public sealed class CharacterTraitLibraryStateRow
     public DateTime UpdatedUtc { get; set; }
 }
 
-public sealed class ModelTuningStateRow
+public sealed class StoryModelSelectionRow
 {
     public string ChatId { get; set; } = "";
-    public string StateJson { get; set; } = "{}";
+    public string Role { get; set; } = "";
+    public string ProviderId { get; set; } = "";
+    public string ModelId { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
 }

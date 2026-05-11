@@ -16,8 +16,10 @@ public sealed partial class TranscriptPromptContextBuilder(SceneTransitionServic
         RpCharacter? requestedActor,
         bool requestedNarrator = false,
         RpSceneFrame? sceneOverride = null,
-        IReadOnlyDictionary<string, string>? appearanceOverrides = null)
+        IReadOnlyDictionary<string, string>? appearanceOverrides = null,
+        PromptLibraryState? promptLibrary = null)
     {
+        var resolvedPromptLibrary = PromptLibraryService.NormalizeState(promptLibrary ?? PromptLibraryState.CreateDefault());
         TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
         if (!string.IsNullOrWhiteSpace(parentTurnId))
@@ -137,8 +139,8 @@ public sealed partial class TranscriptPromptContextBuilder(SceneTransitionServic
             Guidance: guidance.Trim(),
             GuidanceSection: string.IsNullOrWhiteSpace(guidance) ? "" : $"Use this guidance to compose the next message: {guidance.Trim()}",
             RequestedTurnShape: requestedShape,
-            RequestedTurnShapeSection: BuildRequestedTurnShapeSection(document, requestedShape),
-            PlanningTurnShapeDefinitions: FormatTurnShapeDefinitions(document, PromptLibraryStageIds.Planning),
+            RequestedTurnShapeSection: BuildRequestedTurnShapeSection(resolvedPromptLibrary, requestedShape),
+            PlanningTurnShapeDefinitions: FormatTurnShapeDefinitions(resolvedPromptLibrary, PromptLibraryStageIds.Planning),
             ProseInSceneNames: FormatProseInSceneNames(presentCharacters, actor),
             NarratorGuidance: requestedNarrator ? NarratorProfileService.BuildPromptGuidance(document.NarratorProfile) : "",
             TurnScopeRules: requestedNarrator ? BuildNarratorTurnScopeRules() : BuildTurnScopeRules(actor?.Name ?? "Narrator"));
@@ -735,14 +737,14 @@ public sealed partial class TranscriptPromptContextBuilder(SceneTransitionServic
         return names.Count == 0 ? "the scene" : string.Join(", ", names);
     }
 
-    static string BuildRequestedTurnShapeSection(RpChatDocument document, string requestedTurnShape)
+    static string BuildRequestedTurnShapeSection(PromptLibraryState promptLibrary, string requestedTurnShape)
     {
-        return PromptLibraryService.FormatRequestedTurnShape(document.PromptLibrary, PromptLibraryStageIds.Planning, requestedTurnShape);
+        return PromptLibraryService.FormatRequestedTurnShape(promptLibrary, PromptLibraryStageIds.Planning, requestedTurnShape);
     }
 
-    static string FormatTurnShapeDefinitions(RpChatDocument document, string stepId)
+    static string FormatTurnShapeDefinitions(PromptLibraryState promptLibrary, string stepId)
     {
-        var normalized = PromptLibraryService.NormalizeState(document.PromptLibrary);
+        var normalized = PromptLibraryService.NormalizeState(promptLibrary);
         return normalized.TurnShapes.TryGetValue(stepId, out var shapes)
             ? PromptLibraryService.FormatTurnShapeDefinitions(shapes)
             : "";

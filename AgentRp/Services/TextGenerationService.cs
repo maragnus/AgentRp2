@@ -104,14 +104,14 @@ public sealed record TranscriptProseUpdate(
 
 public interface ITextGenerationService
 {
-    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<CyoaActorSelection> SelectCyoaActorAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, SelectCyoaActorRequest request, CancellationToken cancellationToken = default);
-    Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateCyoaDecisionRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSelectedCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateAutonomousCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
-    Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, ActiveModelSelectionsState modelSelections, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GeneratePlanAndProseAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GeneratePlanAndProseRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateProseFromPlanAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateProseFromPlanRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<CyoaActorSelection> SelectCyoaActorAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, SelectCyoaActorRequest request, CancellationToken cancellationToken = default);
+    Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateCyoaDecisionRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateSelectedCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateAutonomousCyoaTurnRequest request, TranscriptGenerationProgress? progress = null, CancellationToken cancellationToken = default);
+    Task<GeneratedSnapshotResult> GenerateSnapshotAsync(RpChatDocument document, IReadOnlyList<AiProvider> providers, GenerationRuntimeConfig runtimeConfig, GenerateSnapshotRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed record TranscriptGenerationProgress(Func<RpGenerationTrace, Task> OnChanged, Func<TranscriptProseUpdate, Task>? OnProseChanged = null)
@@ -138,13 +138,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateTurnRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -163,16 +163,17 @@ public sealed class TextGenerationService(
                 request.RequestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == request.RequestedActorCharacterId),
                 request.RequestedNarrator,
-                request.SceneOverride);
+                request.SceneOverride,
+                promptLibrary: runtimeConfig.PromptLibrary);
             var useSelectionStep = NeedsSelectionStep(request);
             SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText, useSelectionStep);
             await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
-                return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, request, context, trace, progress, cancellationToken);
+                return await GenerateDumbProseTurnAsync(document, providers, runtimeConfig, selection, request, context, trace, progress, cancellationToken);
 
-            var continuity = await RunSceneContinuityStepAsync(document, selection, context, request, trace, progress, cancellationToken);
+            var continuity = await RunSceneContinuityStepAsync(document, runtimeConfig, selection, context, request, trace, progress, cancellationToken);
             var selectedActor = useSelectionStep
-                ? await RunSelectionStepAsync(document, selection, BuildContextWithScene(document, request, continuity.Scene, continuity.CharacterSceneStates, null), trace, progress, cancellationToken)
+                ? await RunSelectionStepAsync(document, runtimeConfig, selection, BuildContextWithScene(document, runtimeConfig, request, continuity.Scene, continuity.CharacterSceneStates, null), trace, progress, cancellationToken)
                 : ResolveRequestedActor(request);
             var selectedContext = promptContextBuilder.BuildTurnContext(
                 document,
@@ -182,9 +183,10 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == selectedActor.Id),
                 request.RequestedNarrator,
                 continuity.Scene,
-                continuity.CharacterSceneStates);
-            var plan = await RunPlanningStepAsync(document, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
+                continuity.CharacterSceneStates,
+                runtimeConfig.PromptLibrary);
+            var plan = await RunPlanningStepAsync(document, runtimeConfig, selection, selectedContext, selectedActor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, request, selectedContext, selectedActor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
             trace.Data["actorName"] = selectedActor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -216,13 +218,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GeneratePlanAndProseRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -257,11 +259,12 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == actor.Id),
                 request.RequestedNarrator,
                 request.Scene,
-                request.AppearanceByCharacterId);
+                request.AppearanceByCharacterId,
+                runtimeConfig.PromptLibrary);
             SeedPlanningAndProseSteps(trace, selection);
             await ReportProgressAsync(progress, trace);
-            var plan = await RunPlanningStepAsync(document, selection, context, actor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.Scene);
+            var plan = await RunPlanningStepAsync(document, runtimeConfig, selection, context, actor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.Scene);
             trace.Data["actorName"] = actor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -293,13 +296,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateProseFromPlanRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -332,11 +335,12 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == actor.Id),
                 request.RequestedNarrator,
                 request.Scene,
-                request.AppearanceByCharacterId);
+                request.AppearanceByCharacterId,
+                runtimeConfig.PromptLibrary);
             var planner = CreatePlanningResponse(plan, ResolvePrivateIntent(request.PrivateIntentByCharacterId, actor.Id));
             SeedTurnSteps(trace, selection, false);
             await ReportProgressAsync(progress, trace);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, planner, trace, progress, cancellationToken, plan, request.Scene);
+            var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, turnRequest, context, actor, planner, trace, progress, cancellationToken, plan, request.Scene);
             trace.Data["actorName"] = actor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -364,12 +368,12 @@ public sealed class TextGenerationService(
     public async Task<CyoaActorSelection> SelectCyoaActorAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         SelectCyoaActorRequest request,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         if (!selection.Capabilities.CanGenerateStructuredText)
             return FallbackCyoaActor(document, request);
 
@@ -384,7 +388,7 @@ public sealed class TextGenerationService(
             return FallbackCyoaActor(document, request);
 
         var active = TranscriptGraph.FindTurn(document.Transcript, request.ParentTurnId);
-        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Selection);
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, PromptLibraryStageIds.Selection);
         var systemPrompt = """
             Choose who should act next in this fictional scene.
             Return only structured data.
@@ -420,13 +424,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateCyoaDecisionRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -454,9 +458,10 @@ public sealed class TextGenerationService(
                 TurnShapeRules.AutoLabel,
                 actor,
                 request.RequestedNarrator,
-                scene);
+                scene,
+                promptLibrary: runtimeConfig.PromptLibrary);
             var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Planning);
-            var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Planning);
+            var tuning = ResolveTuning(runtimeConfig.ModelTuning, PromptLibraryStageIds.Planning);
             var prompt = BuildCyoaDecisionPrompt(document, request, tokens["{context}"], scene);
             var startedUtc = DateTime.UtcNow;
             await StartStepAsync(trace, "cyoa-options", selection, startedUtc, progress);
@@ -498,13 +503,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateSelectedCyoaTurnRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = CreateSelectedCyoaTrace(request.Decision, selection);
         try
         {
@@ -538,12 +543,13 @@ public sealed class TextGenerationService(
                 planningGuidance,
                 requestedTurnShape,
                 document.Characters.FirstOrDefault(character => character.Id == actor.Id),
-                requestedNarrator);
+                requestedNarrator,
+                promptLibrary: runtimeConfig.PromptLibrary);
 
             SeedSelectedCyoaTurnSteps(trace, selection);
             await ReportProgressAsync(progress, trace);
 
-            var continuity = await RunSceneContinuityStepAsync(document, selection, context, turnRequest, trace, progress, cancellationToken);
+            var continuity = await RunSceneContinuityStepAsync(document, runtimeConfig, selection, context, turnRequest, trace, progress, cancellationToken);
             var selectedContext = promptContextBuilder.BuildTurnContext(
                 document,
                 request.Decision.ParentTurnId,
@@ -552,9 +558,10 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == actor.Id),
                 requestedNarrator,
                 continuity.Scene,
-                continuity.CharacterSceneStates);
-            var plan = await RunPlanningStepAsync(document, selection, selectedContext, actor, trace, progress, cancellationToken);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, selectedContext, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
+                continuity.CharacterSceneStates,
+                runtimeConfig.PromptLibrary);
+            var plan = await RunPlanningStepAsync(document, runtimeConfig, selection, selectedContext, actor, trace, progress, cancellationToken);
+            var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, turnRequest, selectedContext, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
             trace.Data["actorName"] = actor.Name;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -586,13 +593,13 @@ public sealed class TextGenerationService(
     public async Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateAutonomousCyoaTurnRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveTextModel(providers, modelSelections);
+        var selection = ResolveTextModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -610,7 +617,8 @@ public sealed class TextGenerationService(
                 "",
                 TurnShapeRules.AutoLabel,
                 document.Characters.FirstOrDefault(character => character.Id == request.ActorCharacterId),
-                request.RequestedNarrator);
+                request.RequestedNarrator,
+                promptLibrary: runtimeConfig.PromptLibrary);
             SeedTurnSteps(trace, selection, selection.Capabilities.CanGenerateStructuredText, false);
             await ReportProgressAsync(progress, trace);
             if (!selection.Capabilities.CanGenerateStructuredText)
@@ -623,7 +631,7 @@ public sealed class TextGenerationService(
                     request.ActorCharacterId,
                     request.ActorName,
                     request.RequestedNarrator);
-                return await GenerateDumbProseTurnAsync(document, providers, modelSelections, selection, dumbTurnRequest, baseContext, trace, progress, cancellationToken);
+                return await GenerateDumbProseTurnAsync(document, providers, runtimeConfig, selection, dumbTurnRequest, baseContext, trace, progress, cancellationToken);
             }
 
             var turnRequestForContinuity = new GenerateTurnRequest(
@@ -634,9 +642,9 @@ public sealed class TextGenerationService(
                 request.ActorCharacterId,
                 request.ActorName,
                 request.RequestedNarrator);
-            var continuity = await RunSceneContinuityStepAsync(document, selection, baseContext, turnRequestForContinuity, trace, progress, cancellationToken);
+            var continuity = await RunSceneContinuityStepAsync(document, runtimeConfig, selection, baseContext, turnRequestForContinuity, trace, progress, cancellationToken);
             var actor = request.RequestedNarrator ? ("", "Narrator") : (request.ActorCharacterId, request.ActorName);
-            var direction = await RunAutonomousDirectionChoiceAsync(document, selection, baseContext, actor, cancellationToken);
+            var direction = await RunAutonomousDirectionChoiceAsync(document, runtimeConfig, selection, baseContext, actor, cancellationToken);
             if (direction == RpCyoaDirections.FastForward)
                 direction = RpCyoaDirections.Pivot;
 
@@ -649,8 +657,9 @@ public sealed class TextGenerationService(
                 document.Characters.FirstOrDefault(character => character.Id == request.ActorCharacterId),
                 request.RequestedNarrator,
                 continuity.Scene,
-                continuity.CharacterSceneStates);
-            var plan = await RunPlanningStepAsync(document, selection, context, actor, trace, progress, cancellationToken);
+                continuity.CharacterSceneStates,
+                runtimeConfig.PromptLibrary);
+            var plan = await RunPlanningStepAsync(document, runtimeConfig, selection, context, actor, trace, progress, cancellationToken);
             var turnRequest = new GenerateTurnRequest(
                 request.ParentTurnId,
                 request.Mode,
@@ -660,7 +669,7 @@ public sealed class TextGenerationService(
                 actor.Item2,
                 request.RequestedNarrator,
                 continuity.Scene);
-            var prose = await RunProseStepAsync(document, providers, modelSelections, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
+            var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, turnRequest, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: continuity.Scene);
             trace.Data["actorName"] = actor.Item2;
             FinalizeTrace(trace, "completed");
             await ReportProgressAsync(progress, trace);
@@ -692,12 +701,12 @@ public sealed class TextGenerationService(
     public async Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateSnapshotRequest request,
         CancellationToken cancellationToken = default)
     {
         ApplyCapabilities(providers);
-        var selection = ResolveSnapshotModel(providers, modelSelections);
+        var selection = ResolveSnapshotModel(providers, runtimeConfig.ModelSelections);
         var trace = new RpGenerationTrace
         {
             Status = "running",
@@ -718,7 +727,8 @@ public sealed class TextGenerationService(
                 "",
                 "Brief",
                 null,
-                requestedNarrator: true);
+                requestedNarrator: true,
+                promptLibrary: runtimeConfig.PromptLibrary);
             var continuityRequest = new GenerateTurnRequest(
                 request.TurnId,
                 "snapshot",
@@ -727,11 +737,11 @@ public sealed class TextGenerationService(
                 "",
                 "Narrator",
                 RequestedNarrator: true);
-            var continuity = await RunSceneContinuityStepAsync(document, selection, continuityContext, continuityRequest, trace, null, cancellationToken);
+            var continuity = await RunSceneContinuityStepAsync(document, runtimeConfig, selection, continuityContext, continuityRequest, trace, null, cancellationToken);
             var context = promptContextBuilder.BuildSnapshotContext(document, request.TurnId);
-            var tuning = ResolveTuning(document.ModelTuning, "snapshot");
+            var tuning = ResolveTuning(runtimeConfig.ModelTuning, "snapshot");
             var tokens = promptContextBuilder.BuildTokens(context);
-            var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Snapshot, tokens);
+            var prompt = _promptLibraryService.Render(runtimeConfig.PromptLibrary, PromptLibraryStageIds.Snapshot, tokens);
             var startedUtc = DateTime.UtcNow;
             var completion = await SendStructuredAsync<SnapshotResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Generating snapshot", cancellationToken);
             var result = completion.Value;
@@ -771,7 +781,7 @@ public sealed class TextGenerationService(
     async Task<GeneratedTurnResult> GenerateDumbProseTurnAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
@@ -786,7 +796,7 @@ public sealed class TextGenerationService(
             ? ("", "Narrator")
             : (request.RequestedActorCharacterId, request.RequestedActorName);
         var plan = CreateDumbProsePlan(context, request);
-        var prose = await RunProseStepAsync(document, providers, modelSelections, selection, request, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.SceneOverride);
+        var prose = await RunProseStepAsync(document, providers, runtimeConfig, selection, request, context, actor, plan, trace, progress, cancellationToken, progressSceneOverride: request.SceneOverride);
         trace.Data["actorName"] = actor.Name;
         FinalizeTrace(trace, "completed");
         await ReportProgressAsync(progress, trace);
@@ -805,6 +815,7 @@ public sealed class TextGenerationService(
 
     async Task<SceneContinuityResult> RunSceneContinuityStepAsync(
         RpChatDocument document,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         TurnPromptContext context,
         GenerateTurnRequest request,
@@ -812,9 +823,9 @@ public sealed class TextGenerationService(
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
-        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.SceneContinuity);
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, PromptLibraryStageIds.SceneContinuity);
         var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.SceneContinuity);
-        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.SceneContinuity, tokens);
+        var prompt = _promptLibraryService.Render(runtimeConfig.PromptLibrary, PromptLibraryStageIds.SceneContinuity, tokens);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "scene-continuity", selection, startedUtc, progress);
         var completion = await SendStructuredAsync<AppearanceResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Reconciling scene continuity", cancellationToken);
@@ -849,6 +860,7 @@ public sealed class TextGenerationService(
 
     async Task<(string Id, string Name)> RunSelectionStepAsync(
         RpChatDocument document,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         TurnPromptContext context,
         RpGenerationTrace trace,
@@ -857,9 +869,9 @@ public sealed class TextGenerationService(
     {
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "selection", selection, startedUtc, progress);
-        var tuning = ResolveTuning(document.ModelTuning, "selection");
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, "selection");
         var tokens = promptContextBuilder.BuildTokens(context, "", PromptLibraryStageIds.Selection);
-        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Selection, tokens);
+        var prompt = _promptLibraryService.Render(runtimeConfig.PromptLibrary, PromptLibraryStageIds.Selection, tokens);
         var completion = await SendStructuredAsync<SelectionResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Selecting transcript actor", cancellationToken);
         var result = completion.Value;
         await CompleteStepAsync(trace, CreateStepTrace(
@@ -880,6 +892,7 @@ public sealed class TextGenerationService(
 
     TurnPromptContext BuildContextWithScene(
         RpChatDocument document,
+        GenerationRuntimeConfig runtimeConfig,
         GenerateTurnRequest request,
         RpSceneFrame scene,
         IReadOnlyDictionary<string, string> characterSceneStates,
@@ -892,10 +905,12 @@ public sealed class TextGenerationService(
             actor,
             request.RequestedNarrator,
             scene,
-            characterSceneStates);
+            characterSceneStates,
+            runtimeConfig.PromptLibrary);
 
     async Task<PlanningResponse> RunPlanningStepAsync(
         RpChatDocument document,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         TurnPromptContext context,
         (string Id, string Name) actor,
@@ -903,9 +918,9 @@ public sealed class TextGenerationService(
         TranscriptGenerationProgress? progress,
         CancellationToken cancellationToken)
     {
-        var tuning = ResolveTuning(document.ModelTuning, "planning");
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, "planning");
         var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "", PromptLibraryStageIds.Planning);
-        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Planning, tokens);
+        var prompt = _promptLibraryService.Render(runtimeConfig.PromptLibrary, PromptLibraryStageIds.Planning, tokens);
         var startedUtc = DateTime.UtcNow;
         await StartStepAsync(trace, "planning", selection, startedUtc, progress);
         var completion = await SendStructuredAsync<PlanningResponse>(selection, tuning, prompt.SystemPrompt, prompt.UserPrompt, "Planning transcript turn", cancellationToken);
@@ -927,7 +942,7 @@ public sealed class TextGenerationService(
     async Task<string> RunProseStepAsync(
         RpChatDocument document,
         IReadOnlyList<AiProvider> providers,
-        ActiveModelSelectionsState modelSelections,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         GenerateTurnRequest request,
         TurnPromptContext context,
@@ -939,7 +954,7 @@ public sealed class TextGenerationService(
         RpTurnPlan? progressPlanOverride = null,
         RpSceneFrame? progressSceneOverride = null)
     {
-        var tuning = ResolveTuning(document.ModelTuning, "prose");
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, "prose");
         var turnShape = ResolveTurnShape(plan.TurnShape, context.RequestedTurnShape);
         var planningOutput = BuildPlanningOutput(plan, turnShape);
         var tokens = promptContextBuilder.BuildProseTokens(
@@ -953,9 +968,9 @@ public sealed class TextGenerationService(
             plan.ChangeIntroduced,
             plan.PrivateIntent,
             plan.Guardrails,
-            document.PromptLibrary);
-        var prompt = _promptLibraryService.Render(document.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
-        var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers, modelSelections);
+            runtimeConfig.PromptLibrary);
+        var prompt = _promptLibraryService.Render(runtimeConfig.PromptLibrary, PromptLibraryStageIds.Prose, tokens);
+        var audioTagGuide = _audioTagGuideService.BuildGuide(document, providers, runtimeConfig.ModelSelections);
         var systemPrompt = AppendPromptBlock(prompt.SystemPrompt, audioTagGuide.SystemGuide);
         var userPromptBody = AppendPromptBlock(prompt.UserPrompt, audioTagGuide.UserReminder);
         var userPrompt = context.Actor is null
@@ -1012,6 +1027,7 @@ public sealed class TextGenerationService(
 
     async Task<string> RunAutonomousDirectionChoiceAsync(
         RpChatDocument document,
+        GenerationRuntimeConfig runtimeConfig,
         ActiveModelSelection selection,
         TurnPromptContext context,
         (string Id, string Name) actor,
@@ -1020,7 +1036,7 @@ public sealed class TextGenerationService(
         if (!selection.Capabilities.CanGenerateStructuredText)
             return RpCyoaDirections.Continue;
 
-        var tuning = ResolveTuning(document.ModelTuning, PromptLibraryStageIds.Planning);
+        var tuning = ResolveTuning(runtimeConfig.ModelTuning, PromptLibraryStageIds.Planning);
         var tokens = promptContextBuilder.BuildTokens(context with { Actor = document.Characters.FirstOrDefault(character => character.Id == actor.Id) }, "", PromptLibraryStageIds.Planning);
         var systemPrompt = """
             Choose the best direction category for the next autonomous character turn.

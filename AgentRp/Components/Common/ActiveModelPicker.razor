@@ -27,7 +27,7 @@
         {
             <div class="sidebar-picker-empty">
                 <span>No @AiProviderModelSelectionRules.Label(Role).ToLowerInvariant() models are enabled.</span>
-                @if (OnOpenProviders.HasDelegate)
+                @if (Session.CurrentUser.IsAdmin && OnOpenProviders.HasDelegate)
                 {
                     <AppButton Variant="primary" Size="xs" OnClick="@(_ => OpenProviders(picker))"><FaIcon Name="settings" />AI Providers</AppButton>
                 }

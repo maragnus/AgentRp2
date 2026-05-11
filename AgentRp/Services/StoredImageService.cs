@@ -46,10 +46,17 @@ public sealed class StoredImageService(
         try
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var userId = await dbContext.Chats
+                .AsNoTracking()
+                .Where(chat => chat.Id == request.ChatId)
+                .OrderBy(chat => chat.Id)
+                .Select(chat => chat.UserId)
+                .FirstOrDefaultAsync(cancellationToken);
             dbContext.ImageAssets.Add(new ImageAssetRow
             {
                 Id = request.ImageId,
                 ChatId = request.ChatId,
+                UserId = userId,
                 BlobName = blobName,
                 StoredContentType = optimization.ContentType,
                 StoredFileName = storedFileName,

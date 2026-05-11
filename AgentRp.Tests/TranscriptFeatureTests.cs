@@ -917,7 +917,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateTurnRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -973,7 +973,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GeneratePlanAndProseRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -1038,7 +1038,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateProseFromPlanRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -1082,7 +1082,7 @@ public sealed class TranscriptFeatureTests
         public Task<CyoaActorSelection> SelectCyoaActorAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             SelectCyoaActorRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -1095,7 +1095,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateCyoaDecisionRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -1154,7 +1154,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateSelectedCyoaTurnRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default) =>
@@ -1163,7 +1163,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedTurnResult> GenerateAutonomousCyoaTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateAutonomousCyoaTurnRequest request,
             TranscriptGenerationProgress? progress = null,
             CancellationToken cancellationToken = default)
@@ -1172,7 +1172,7 @@ public sealed class TranscriptFeatureTests
             return GenerateTurnAsync(
                 document,
                 providers,
-                modelSelections,
+                runtimeConfig,
                 new(
                     request.ParentTurnId,
                     request.Mode,
@@ -1188,7 +1188,7 @@ public sealed class TranscriptFeatureTests
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             GenerateSnapshotRequest request,
             CancellationToken cancellationToken = default)
         {

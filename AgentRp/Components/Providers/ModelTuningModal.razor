@@ -156,12 +156,13 @@
     ];
 
     Dictionary<string, ModelTuningStepState> Defaults = new();
+    ModelTuningState Draft = ModelTuningState.CreateDefault();
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
 
     StepDef CurrentStep => Steps.First(step => step.Id == Active);
-    Dictionary<string, ModelTuningStepState> Values => Session.Chat.ModelTuning.State.Values;
+    Dictionary<string, ModelTuningStepState> Values => Draft.Values;
     ModelTuningStepState Current => Values[Active];
     ActiveModelSelection? ActiveTextModel => ResolveActiveTextModel();
     ModelGenerationCapabilities ActiveCapabilities => ActiveTextModel?.Capabilities ?? ModelGenerationCapabilities.Fallback;
@@ -179,7 +180,8 @@
 
     protected override void OnInitialized()
     {
-        Session.Chat.ModelTuning.Changed += OnStoreChanged;
+        Draft = Session.ModelTuning.State;
+        Session.ModelTuning.Changed += OnStoreChanged;
         Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
         Defaults = ModelTuningState.CreateDefault().Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value), StringComparer.Ordinal);
@@ -187,7 +189,11 @@
 
     ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Chat);
 
-    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+    Task OnStoreChanged()
+    {
+        Draft = Session.ModelTuning.State;
+        return InvokeAsync(StateHasChanged);
+    }
 
     static ModelTuningStepState Clone(ModelTuningStepState value) => new()
     {
@@ -231,14 +237,14 @@
     async Task Reset()
     {
         Values[Active] = Clone(Defaults[Active]);
-        await Session.Chat.ModelTuning.MarkChangedAsync();
+        await Session.ModelTuning.SaveAsync(Draft);
     }
 
     void CopyTo(string targetId)
     {
         Values[targetId] = Clone(Current);
         CopiedToast = $"Copied to {Steps.First(step => step.Id == targetId).Label}";
-        _ = Session.Chat.ModelTuning.MarkChangedAsync();
+        _ = Session.ModelTuning.SaveAsync(Draft);
     }
 
     void CopyToAll()
@@ -247,7 +253,7 @@
             Values[step.Id] = Clone(Current);
 
         CopiedToast = "Copied to all phases";
-        _ = Session.Chat.ModelTuning.MarkChangedAsync();
+        _ = Session.ModelTuning.SaveAsync(Draft);
     }
 
     async Task ExportSettings()
@@ -268,7 +274,7 @@
             if (parsed is not null)
             {
                 Values[Active] = parsed;
-                await Session.Chat.ModelTuning.MarkChangedAsync();
+                await Session.ModelTuning.SaveAsync(Draft);
             }
         }
         catch
@@ -277,11 +283,11 @@
         }
     }
 
-    Task Save(MouseEventArgs args) => Session.Chat.ModelTuning.MarkChangedAsync();
+    Task Save(MouseEventArgs args) => Session.ModelTuning.SaveAsync(Draft);
 
     public void Dispose()
     {
-        Session.Chat.ModelTuning.Changed -= OnStoreChanged;
+        Session.ModelTuning.Changed -= OnStoreChanged;
         Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }

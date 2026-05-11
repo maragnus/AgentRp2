@@ -204,6 +204,7 @@ public sealed class MessageSpeechService(
         {
             Id = voiceMessageId,
             ChatId = document.Chat.Id,
+            UserId = document.Chat.UserId,
             TurnId = ownerId,
             Status = SpeechAssetStatus.Pending,
             ContentType = "audio/mpeg",

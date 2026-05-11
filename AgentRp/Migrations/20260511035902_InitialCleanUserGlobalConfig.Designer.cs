@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgentRp.Migrations
 {
     [DbContext(typeof(RpDbContext))]
-    [Migration("20260509235402_MoveSpeechAudioToBlobStorage")]
-    partial class MoveSpeechAudioToBlobStorage
+    [Migration("20260511035902_InitialCleanUserGlobalConfig")]
+    partial class InitialCleanUserGlobalConfig
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -809,6 +809,9 @@ namespace AgentRp.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("UserPrompt")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -818,32 +821,13 @@ namespace AgentRp.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("ChatId", "CreatedUtc");
 
                     b.HasIndex("ChatId", "EntityType", "Entity");
 
                     b.ToTable("ImageAssets");
-                });
-
-            modelBuilder.Entity("AgentRp.Data.ModelTuningStateRow", b =>
-                {
-                    b.Property<string>("ChatId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("StateJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("ChatId");
-
-                    b.ToTable("ModelTuningStates", (string)null);
                 });
 
             modelBuilder.Entity("AgentRp.Data.NarratorProfileStateRow", b =>
@@ -865,27 +849,6 @@ namespace AgentRp.Migrations
                     b.HasKey("ChatId");
 
                     b.ToTable("NarratorProfileStates", (string)null);
-                });
-
-            modelBuilder.Entity("AgentRp.Data.PromptLibraryStateRow", b =>
-                {
-                    b.Property<string>("ChatId")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("StateJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("ChatId");
-
-                    b.ToTable("PromptLibraryStates", (string)null);
                 });
 
             modelBuilder.Entity("AgentRp.Data.RpChatRow", b =>
@@ -951,6 +914,9 @@ namespace AgentRp.Migrations
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("LastMessageUtc");
@@ -958,6 +924,8 @@ namespace AgentRp.Migrations
                     b.HasIndex("SortOrder");
 
                     b.HasIndex("UpdatedUtc");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Chats");
                 });
@@ -1050,6 +1018,9 @@ namespace AgentRp.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("VoiceIdsJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1058,11 +1029,46 @@ namespace AgentRp.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.HasIndex("ChatId", "CreatedUtc");
 
                     b.HasIndex("ChatId", "TurnId");
 
                     b.ToTable("SpeechAssets");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.StoryModelSelectionRow", b =>
+                {
+                    b.Property<string>("ChatId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModelId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ProviderId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ChatId", "Role");
+
+                    b.HasIndex("ProviderId");
+
+                    b.ToTable("StoryModelSelections");
                 });
 
             modelBuilder.Entity("AgentRp.Data.TranscriptSnapshotRow", b =>
@@ -1104,6 +1110,10 @@ namespace AgentRp.Migrations
                         .HasColumnType("nvarchar(80)");
 
                     b.Property<string>("PrivateIntentJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RelationshipUpdatesJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -1269,6 +1279,134 @@ namespace AgentRp.Migrations
                     b.ToTable("TranscriptTurns");
                 });
 
+            modelBuilder.Entity("AgentRp.Data.UserExternalIdentityRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Issuer")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("ProviderKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Issuer", "Subject")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderKey", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("UserExternalIdentities", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.UserRoleRow", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserId", "Role");
+
+                    b.HasIndex("Role");
+
+                    b.ToTable("UserRoles", (string)null);
+                });
+
+            modelBuilder.Entity("AgentRp.Data.UserRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DisabledUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSeenUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail");
+
+                    b.ToTable("Users", (string)null);
+                });
+
             modelBuilder.Entity("AgentRp.Data.AiProviderMetricRow", b =>
                 {
                     b.HasOne("AgentRp.Data.AiProviderRow", "Provider")
@@ -1291,11 +1429,40 @@ namespace AgentRp.Migrations
                     b.Navigation("Provider");
                 });
 
+            modelBuilder.Entity("AgentRp.Data.UserExternalIdentityRow", b =>
+                {
+                    b.HasOne("AgentRp.Data.UserRow", "User")
+                        .WithMany("ExternalIdentities")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.UserRoleRow", b =>
+                {
+                    b.HasOne("AgentRp.Data.UserRow", "User")
+                        .WithMany("Roles")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AgentRp.Data.AiProviderRow", b =>
                 {
                     b.Navigation("Metrics");
 
                     b.Navigation("Models");
+                });
+
+            modelBuilder.Entity("AgentRp.Data.UserRow", b =>
+                {
+                    b.Navigation("ExternalIdentities");
+
+                    b.Navigation("Roles");
                 });
 #pragma warning restore 612, 618
         }

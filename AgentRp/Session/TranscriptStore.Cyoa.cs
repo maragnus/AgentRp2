@@ -269,7 +269,7 @@ public sealed partial class TranscriptStore
             return await textGenerationService.SelectCyoaActorAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 new(
                     Document.Transcript.ActiveLeafTurnId,
                     Document.Transcript.Cyoa.ControlledCharacterIds,
@@ -335,7 +335,7 @@ public sealed partial class TranscriptStore
             var result = await textGenerationService.GenerateCyoaDecisionAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 request,
                 new(UpdateActiveTraceAsync));
             Document.Transcript.Cyoa.PendingDecision = result.Decision;
@@ -365,7 +365,7 @@ public sealed partial class TranscriptStore
             var result = await textGenerationService.GenerateAutonomousCyoaTurnAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 new(
                     Document.Transcript.ActiveLeafTurnId,
                     "automatic",
@@ -418,7 +418,7 @@ public sealed partial class TranscriptStore
             var result = await textGenerationService.GenerateSelectedCyoaTurnAsync(
                 Document,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 request,
                 new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
             return await CommitGeneratedTurnAsync(request.Decision.ParentTurnId, guidance, "guided", result);

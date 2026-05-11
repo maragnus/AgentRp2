@@ -26,6 +26,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.ProviderId).HasMaxLength(80);
             builder.Property(x => x.ProviderName).HasMaxLength(200);
             builder.Property(x => x.ProviderModelId).HasMaxLength(500);
+            builder.HasIndex(x => x.UserId);
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
             builder.HasIndex(x => new { x.ChatId, x.EntityType, x.Entity });
         });
@@ -48,6 +49,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.InputsJson).HasColumnType("nvarchar(max)").HasDefaultValue("[]");
             builder.Property(x => x.VoiceIdsJson).HasColumnType("nvarchar(max)").HasDefaultValue("{}");
             builder.Property(x => x.ErrorMessage).HasMaxLength(1000).HasDefaultValue("");
+            builder.HasIndex(x => x.UserId);
             builder.HasIndex(x => new { x.ChatId, x.TurnId });
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
         });

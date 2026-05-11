@@ -70,13 +70,13 @@
                         <div class="process-detail">
                             <div class="prompt-block"><label>System Prompt</label><pre>@step.SystemPrompt</pre></div>
                             <div class="prompt-block"><label>User Prompt</label><pre>@step.UserPrompt</pre></div>
+                            @if (!string.IsNullOrWhiteSpace(step.RawOutput))
+                            {
+                                <div class="prompt-block"><label>Raw Output</label><pre>@step.RawOutput</pre></div>
+                            }
                             @if (!string.IsNullOrWhiteSpace(step.StructuredOutputJson))
                             {
                                 <div class="prompt-block"><label>Structured Output</label><pre>@step.StructuredOutputJson</pre></div>
-                            } 
-                            else if (!string.IsNullOrWhiteSpace(step.RawOutput))
-                            {
-                                <div class="prompt-block"><label>Raw Output</label><pre>@step.RawOutput</pre></div>
                             }
                             @if (!string.IsNullOrWhiteSpace(step.Error))
                             {

@@ -117,7 +117,6 @@
     const string Timeline = "timeline";
     const string Direction = "direction";
     const string Narrator = "narrator";
-    const string PromptLibrary = "promptLibrary";
     const string Images = "images";
 
     NewStoryStartMode Mode;
@@ -134,7 +133,6 @@
         Items,
         Direction,
         Narrator,
-        PromptLibrary,
         Images
     };
 
@@ -177,7 +175,6 @@
         new(Timeline, "History / Timeline", "clock", "Chronological story events", CountText(Session.Chat.Timeline.Items.Count, "event")),
         new(Direction, "Story Direction", "flag", "Mood, shape, limits, and world guidance"),
         new(Narrator, "Narrator Profile", "book-open", "Narration style and narrator voice selections"),
-        new(PromptLibrary, "Prompt Library", "feather", "Story prompt templates and turn shapes"),
         new(Images, "Gallery Images", "image", "Saved gallery images and entity portraits", CountText(Session.Chat.Images.Items.Count, "image"))
     ];
     IReadOnlyList<SummaryLine> SummaryLines => BuildSummaryLines();
@@ -275,8 +272,7 @@
             CopyTimeline = SelectedCopyIds.Contains(Timeline),
             CopyImages = SelectedCopyIds.Contains(Images),
             CopyStoryDirection = SelectedCopyIds.Contains(Direction),
-            CopyNarratorProfile = SelectedCopyIds.Contains(Narrator),
-            CopyPromptLibrary = SelectedCopyIds.Contains(PromptLibrary)
+            CopyNarratorProfile = SelectedCopyIds.Contains(Narrator)
         }
             : StoryCreationOptions.Blank();
 

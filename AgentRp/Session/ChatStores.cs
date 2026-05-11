@@ -455,6 +455,8 @@ public sealed partial class StoryAssistantStore(
     ChatRegistry registry,
     ProviderStore providers,
     ModelSelectionStore modelSelection,
+    GlobalPromptLibrarySessionStore promptLibrary,
+    GlobalModelTuningSessionStore modelTuning,
     TranscriptStore transcript,
     IStoryAssistantService? storyAssistantService,
     ILogger<StoryAssistantStore>? logger = null) : ActiveChatStoreBase(activeChat, registry)
@@ -462,6 +464,7 @@ public sealed partial class StoryAssistantStore(
     static readonly IReadOnlyDictionary<string, string> EmptyPromptValues = new Dictionary<string, string>(StringComparer.Ordinal);
     readonly object _operationLock = new();
     CancellationTokenSource? _activeRunCancellation;
+    GenerationRuntimeConfig RuntimeConfig => new(modelSelection.State, promptLibrary.State, modelTuning.State);
 
     protected override RoleplayStoreArea Area => RoleplayStoreArea.StoryAssistant;
 
@@ -636,7 +639,7 @@ public sealed partial class StoryAssistantStore(
         try
         {
             if (storyAssistantService is not null)
-                await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
+                await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), RuntimeConfig, CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -665,7 +668,7 @@ public sealed partial class StoryAssistantStore(
 
         var workflow = StoryAssistantWorkflowCatalog.Find(workflowId)
             ?? throw new InvalidOperationException($"Starting Story Assistant workflow failed because '{workflowId}' is not a supported workflow.");
-        var prompt = PromptLibraryService.RenderStage(Document.PromptLibrary, workflow.PromptStageId, EmptyPromptValues);
+        var prompt = PromptLibraryService.RenderStage(promptLibrary.State, workflow.PromptStageId, EmptyPromptValues);
         var modelInput = string.IsNullOrWhiteSpace(prompt.UserPrompt) ? workflow.DisplayMessage : prompt.UserPrompt;
         return SendAsync(workflow.DisplayMessage, modelInput, cancellationToken);
     }
@@ -758,7 +761,7 @@ public sealed partial class StoryAssistantStore(
                 document,
                 assistantChat,
                 providers.Items.ToList(),
-                modelSelection.State,
+                RuntimeConfig,
                 request,
                 new StoryAssistantRunCallbacks(this, document, assistantChat),
                 runToken);
@@ -844,7 +847,7 @@ public sealed partial class StoryAssistantStore(
 
         try
         {
-            await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), modelSelection.State, CancellationToken.None);
+            await storyAssistantService.ClearRemoteStateAsync(chat, providers.Items.ToList(), RuntimeConfig, CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -1386,63 +1389,6 @@ public sealed partial class StoryAssistantStore(
     }
 }
 
-public sealed class PromptLibraryStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
-{
-    protected override RoleplayStoreArea Area => RoleplayStoreArea.PromptLibrary;
-    public PromptLibraryState State
-    {
-        get
-        {
-            if (Document is null)
-                return PromptLibraryService.CreateDefaultState();
-
-            Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
-            return Document.PromptLibrary;
-        }
-    }
-
-    public IReadOnlyDictionary<string, PromptPairState> Prompts => State.Prompts;
-    public IReadOnlyDictionary<string, List<ShapePromptState>> TurnShapes => State.TurnShapes;
-
-    public async Task MarkChangedAsync()
-    {
-        if (Document is not null)
-        {
-            Document.PromptLibrary = PromptLibraryService.NormalizeState(Document.PromptLibrary);
-            PromptLibraryService.ValidateState(Document.PromptLibrary);
-            Document.PromptLibrary = PromptLibraryService.CreateOverridesFromResolved(Document.PromptLibrary);
-        }
-
-        await SaveActiveDocumentAsync();
-    }
-
-    public void ResetPrompt(string stepId, string field)
-    {
-        var defaults = PromptLibraryService.CreateDefaultState();
-        if (field == "system")
-            State.Prompts[stepId].System = defaults.Prompts[stepId].System;
-        else
-            State.Prompts[stepId].User = defaults.Prompts[stepId].User;
-    }
-
-    public void ResetTurnShape(string stepId, string shapeId)
-    {
-        var defaults = PromptLibraryService.CreateDefaultState();
-        State.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value = defaults.TurnShapes[stepId].First(shape => shape.Id == shapeId).Value;
-    }
-
-    public async Task ResetAllAsync()
-    {
-        if (Document is not null)
-        {
-            Document.PromptLibrary = PromptLibraryService.CreateOverrideState();
-            PromptLibraryService.ValidateState(Document.PromptLibrary);
-        }
-
-        await SaveActiveDocumentAsync();
-    }
-}
-
 public sealed class ChatDirectionStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
 {
     protected override RoleplayStoreArea Area => RoleplayStoreArea.ChatDirection;
@@ -1557,37 +1503,5 @@ public sealed class CharacterTraitLibraryStore(ActiveChatContext activeChat, Cha
 
         Document.CharacterTraitLibrary = CharacterTraitLibraryService.CreateDefaultState();
         await MarkChangedAsync();
-    }
-}
-
-public sealed class ModelTuningStore(ActiveChatContext activeChat, ChatRegistry registry) : ActiveChatStoreBase(activeChat, registry)
-{
-    protected override RoleplayStoreArea Area => RoleplayStoreArea.ModelTuning;
-    public ModelTuningState State => EnsureDefaults(Document?.ModelTuning ?? ModelTuningState.CreateDefault());
-    public IReadOnlyDictionary<string, ModelTuningStepState> Values => State.Values;
-
-    public Task MarkChangedAsync() => SaveActiveDocumentAsync();
-
-    public void Reset(string stepId)
-    {
-        State.Values[stepId] = SessionCloner.Clone(ModelTuningState.CreateDefault()).Values[stepId];
-    }
-
-    static ModelTuningState EnsureDefaults(ModelTuningState state)
-    {
-        var defaults = ModelTuningState.CreateDefault();
-        foreach (var pair in defaults.Values)
-            state.Values.TryAdd(pair.Key, new ModelTuningStepState
-            {
-                Temperature = pair.Value.Temperature,
-                TopP = pair.Value.TopP,
-                MaxTokens = pair.Value.MaxTokens,
-                Seed = pair.Value.Seed,
-                FrequencyPenalty = pair.Value.FrequencyPenalty,
-                PresencePenalty = pair.Value.PresencePenalty,
-                StopSequences = pair.Value.StopSequences
-            });
-
-        return state;
     }
 }

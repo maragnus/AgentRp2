@@ -427,7 +427,7 @@ public sealed class UiCompositionPolicyTests
             RpChatDocument document,
             StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             StoryAssistantTurnRequest request,
             IStoryAssistantCallbacks callbacks,
             CancellationToken cancellationToken = default) =>
@@ -436,7 +436,7 @@ public sealed class UiCompositionPolicyTests
         public Task ClearRemoteStateAsync(
             StoryAssistantChat assistantChat,
             IReadOnlyList<AiProvider> providers,
-            ActiveModelSelectionsState modelSelections,
+            GenerationRuntimeConfig runtimeConfig,
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 

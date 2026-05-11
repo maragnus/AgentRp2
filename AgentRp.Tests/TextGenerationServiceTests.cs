@@ -41,7 +41,7 @@ public sealed class TextGenerationServiceTests
         await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "", ""),
             new(trace =>
             {
@@ -119,7 +119,7 @@ public sealed class TextGenerationServiceTests
         var result = await service.GenerateSelectedCyoaTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new(decision, option, ""));
 
         Assert.Equal(["AppearanceResponse", "PlanningResponse"], client.StructuredCalls);
@@ -142,7 +142,7 @@ public sealed class TextGenerationServiceTests
         var result = await service.GenerateCyoaDecisionAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new("turn-3", RpCyoaModes.Adventure, "c2", "Gemma", false));
 
         var fastForward = result.Decision.Options.Single(option => option.Direction == RpCyoaDirections.FastForward);
@@ -161,7 +161,7 @@ public sealed class TextGenerationServiceTests
         var result = await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = true, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new("turn-3", "automatic", "Keep moving.", "Brief", "", ""),
             new(_ => Task.CompletedTask, update =>
             {
@@ -192,7 +192,7 @@ public sealed class TextGenerationServiceTests
         await service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
             new(trace =>
             {
@@ -218,7 +218,7 @@ public sealed class TextGenerationServiceTests
         var exception = await Assert.ThrowsAsync<TranscriptGenerationException>(() => service.GenerateTurnAsync(
             document,
             [BuildProvider(new() { TextInput = true, TextOutput = true, StructuredOutput = false, Streaming = true })],
-            ActiveModelSelectionsState.CreateDefault(),
+            GenerationRuntimeConfig.CreateDefault(),
             new("turn-3", "automatic", "", "Brief", "c1", "Bella"),
             new(trace =>
             {

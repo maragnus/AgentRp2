@@ -62,7 +62,7 @@
                     <LeadingContent><FaIcon Name="message-sq" /></LeadingContent>
                     <TrailingContent><Badge Tone="blue">@Draft.IncludedTurns.Count</Badge></TrailingContent>
                 </ModalTab>
-                @if (Draft.Trace is not null)
+                @if (Draft.Trace is not null && CanInspectProcess)
                 {
                     <ModalTab Id="process" Title="Process" Summary="@ProcessSummary">
                         <LeadingContent><FaIcon Name="zap" /></LeadingContent>
@@ -97,7 +97,7 @@
                             {
                                 <Badge Tone="blue">@RelationshipSummary</Badge>
                             }
-                            else if (ActiveTab == "process" && Draft.Trace is not null)
+                            else if (ActiveTab == "process" && Draft.Trace is not null && CanInspectProcess)
                             {
                                 <Badge Tone="blue">@ProcessSummary</Badge>
                             }
@@ -131,7 +131,7 @@
                                                          Library="Session.Chat.CharacterTraitLibrary.State"
                                                          OnChanged="Refresh" />
                         }
-                        else if (ActiveTab == "process" && Draft.Trace is not null)
+                        else if (ActiveTab == "process" && Draft.Trace is not null && CanInspectProcess)
                         {
                             <ProcessTrace Trace="Draft.Trace" AutoExpand="true" />
                         }
@@ -180,6 +180,7 @@
         : $"{RelationshipUpdates.Count(update => update.ApplyChange)} of {RelationshipUpdates.Count} applied";
     string CoveredTurnsSummary => Draft is null ? "0 turns" : $"{Draft.IncludedTurns.Count} turn{(Draft.IncludedTurns.Count == 1 ? "" : "s")}";
     string ProcessSummary => Draft?.Trace is null ? "No trace" : $"{Draft.Trace.Steps.Count} step{(Draft.Trace.Steps.Count == 1 ? "" : "s")}";
+    bool CanInspectProcess => Session.CurrentUser.CanInspectGenerationProcess;
     string CoveredTurnPreview => Preview is null || Preview.CoveredTurnCount == 0
         ? "Transcript range"
         : $"{Preview.CoveredTurnCount} turn{(Preview.CoveredTurnCount == 1 ? "" : "s")} compacted";

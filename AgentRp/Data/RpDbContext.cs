@@ -4,6 +4,9 @@ namespace AgentRp.Data;
 
 public sealed partial class RpDbContext(DbContextOptions<RpDbContext> options) : DbContext(options)
 {
+    public DbSet<UserRow> Users => Set<UserRow>();
+    public DbSet<UserExternalIdentityRow> UserExternalIdentities => Set<UserExternalIdentityRow>();
+    public DbSet<UserRoleRow> UserRoles => Set<UserRoleRow>();
     public DbSet<RpChatRow> Chats => Set<RpChatRow>();
     public DbSet<ChatCharacterRow> ChatCharacters => Set<ChatCharacterRow>();
     public DbSet<ChatCharacterRelationshipRow> ChatCharacterRelationships => Set<ChatCharacterRelationshipRow>();
@@ -13,9 +16,8 @@ public sealed partial class RpDbContext(DbContextOptions<RpDbContext> options) :
     public DbSet<ChatTranscriptStateRow> ChatTranscriptStates => Set<ChatTranscriptStateRow>();
     public DbSet<ChatDirectionStateRow> ChatDirectionStates => Set<ChatDirectionStateRow>();
     public DbSet<NarratorProfileStateRow> NarratorProfileStates => Set<NarratorProfileStateRow>();
-    public DbSet<PromptLibraryStateRow> PromptLibraryStates => Set<PromptLibraryStateRow>();
     public DbSet<CharacterTraitLibraryStateRow> CharacterTraitLibraryStates => Set<CharacterTraitLibraryStateRow>();
-    public DbSet<ModelTuningStateRow> ModelTuningStates => Set<ModelTuningStateRow>();
+    public DbSet<StoryModelSelectionRow> StoryModelSelections => Set<StoryModelSelectionRow>();
     public DbSet<TranscriptTurnRow> TranscriptTurns => Set<TranscriptTurnRow>();
     public DbSet<TranscriptSnapshotRow> TranscriptSnapshots => Set<TranscriptSnapshotRow>();
     public DbSet<ChatCurrentSceneCharacterRow> ChatCurrentSceneCharacters => Set<ChatCurrentSceneCharacterRow>();
@@ -31,6 +33,7 @@ public sealed partial class RpDbContext(DbContextOptions<RpDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        ConfigureUsers(modelBuilder);
         ConfigureStory(modelBuilder);
         ConfigureTranscript(modelBuilder);
         ConfigureProviders(modelBuilder);

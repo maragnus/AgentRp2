@@ -100,11 +100,14 @@
                         <span>Scene Continuity</span>
                         <span class="toggle-pill @(Options.ShowAppearanceBlocks ? "is-on" : "")"><span></span></span>
                     </SelectableButton>
-                    <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowProcessTraces())">
-                        <FaIcon Name="zap" />
-                        <span>Process Traces</span>
-                        <span class="toggle-pill @(Options.ShowProcessTraces ? "is-on" : "")"><span></span></span>
-                    </SelectableButton>
+                    @if (CanInspectProcess)
+                    {
+                        <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleShowProcessTraces())">
+                            <FaIcon Name="zap" />
+                            <span>Process Traces</span>
+                            <span class="toggle-pill @(Options.ShowProcessTraces ? "is-on" : "")"><span></span></span>
+                        </SelectableButton>
+                    }
                     <div class="divider"></div>
                     <div class="popover-label">Theme</div>
                     <div class="popover-pad"><ThemeToggle /></div>
@@ -127,7 +130,7 @@
                 {
                     <SnapshotTranscriptRow @key="item.Snapshot.Id"
                                            Snapshot="item.Snapshot"
-                                           ShowProcess="Options.ShowProcessTraces"
+                                           ShowProcess="ShowProcess"
                                            TranscriptBusy="TranscriptBusy"
                                            OnOpenEntities="OnOpenEntities" />
                 }
@@ -143,7 +146,7 @@
                                  Message="item.Message"
                                  Characters="Characters"
                                  ShowAppearance="Options.ShowAppearanceBlocks"
-                                 ShowProcess="Options.ShowProcessTraces"
+                                 ShowProcess="ShowProcess"
                                  TranscriptBusy="TranscriptBusy"
                                  SubsequentCount="item.SubsequentCount"
                                  CanCreateSnapshot="@CanCreateSnapshot(item.Message.Id)"
@@ -161,9 +164,9 @@
                              TranscriptBusy="true"
                              SubsequentCount="0" />
             }
-            @if (ActiveTrace is not null)
+            @if (ActiveTrace is not null && CanInspectProcess)
             {
-                <ProcessTrace @key="ActiveTrace.StartedUtc" Trace="ActiveTrace" IsLive="true" AutoExpand="Options.ShowProcessTraces" />
+                <ProcessTrace @key="ActiveTrace.StartedUtc" Trace="ActiveTrace" IsLive="true" AutoExpand="ShowProcess" />
             }
             @if (CurrentCyoaDecision is not null)
             {
@@ -303,6 +306,8 @@
     List<RpTranscriptTurn> Messages => Session.Chat.Transcript.Items;
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     RpGenerationTrace? ActiveTrace => Session.Chat.Transcript.ActiveTrace;
+    bool CanInspectProcess => Session.CurrentUser.CanInspectGenerationProcess;
+    bool ShowProcess => CanInspectProcess && Options.ShowProcessTraces;
     RpTranscriptTurn? ActiveDraftTurn => Session.Chat.Transcript.ActiveDraftTurn;
     RpCyoaPendingDecision? CurrentCyoaDecision => Session.Chat.Transcript.CurrentCyoaDecision;
     IReadOnlyList<TranscriptDisplayItem> DisplayItems => BuildDisplayItems();

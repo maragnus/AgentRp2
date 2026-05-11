@@ -45,6 +45,7 @@ static class SessionCloner
     public static RpChat Clone(RpChat value) => new()
     {
         Id = value.Id,
+        UserId = value.UserId,
         Title = value.Title,
         Updated = value.Updated,
         LastMessageUtc = value.LastMessageUtc,
@@ -263,9 +264,8 @@ static class SessionCloner
         StoryAssistant = Clone(value.StoryAssistant),
         ChatDirection = Clone(value.ChatDirection),
         NarratorProfile = Clone(value.NarratorProfile),
-        PromptLibrary = Clone(value.PromptLibrary),
         CharacterTraitLibrary = Clone(value.CharacterTraitLibrary),
-        ModelTuning = Clone(value.ModelTuning)
+        ModelSelections = Clone(value.ModelSelections)
     };
 
     public static ActiveModelSelectionsState Clone(ActiveModelSelectionsState value) => new()

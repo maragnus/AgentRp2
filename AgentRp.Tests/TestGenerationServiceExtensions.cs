@@ -13,7 +13,7 @@ internal static class TestGenerationServiceExtensions
         GenerateTurnRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default) =>
-        service.GenerateTurnAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, progress, cancellationToken);
+        service.GenerateTurnAsync(document, providers, GenerationRuntimeConfig.CreateDefault(), request, progress, cancellationToken);
 
     public static Task<GeneratedTurnResult> GenerateProseFromPlanAsync(
         this TextGenerationService service,
@@ -22,7 +22,7 @@ internal static class TestGenerationServiceExtensions
         GenerateProseFromPlanRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default) =>
-        service.GenerateProseFromPlanAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, progress, cancellationToken);
+        service.GenerateProseFromPlanAsync(document, providers, GenerationRuntimeConfig.CreateDefault(), request, progress, cancellationToken);
 
     public static Task<GeneratedTurnResult> GeneratePlanAndProseAsync(
         this TextGenerationService service,
@@ -31,7 +31,7 @@ internal static class TestGenerationServiceExtensions
         GeneratePlanAndProseRequest request,
         TranscriptGenerationProgress? progress = null,
         CancellationToken cancellationToken = default) =>
-        service.GeneratePlanAndProseAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, progress, cancellationToken);
+        service.GeneratePlanAndProseAsync(document, providers, GenerationRuntimeConfig.CreateDefault(), request, progress, cancellationToken);
 
     public static Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
         this TextGenerationService service,
@@ -39,5 +39,5 @@ internal static class TestGenerationServiceExtensions
         IReadOnlyList<AiProvider> providers,
         GenerateSnapshotRequest request,
         CancellationToken cancellationToken = default) =>
-        service.GenerateSnapshotAsync(document, providers, ActiveModelSelectionsState.CreateDefault(), request, cancellationToken);
+        service.GenerateSnapshotAsync(document, providers, GenerationRuntimeConfig.CreateDefault(), request, cancellationToken);
 }

@@ -2,6 +2,7 @@ using AgentRp.Components;
 using AgentRp.Data;
 using AgentRp.Services;
 using AgentRp.Session;
+using AgentRp.UserSystem;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +24,7 @@ builder.AddAzureBlobContainerClient("blobs", settings => settings.BlobContainerN
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.AddUserSystem();
 builder.Services.AddTransient<ExternalApiLoggingHandler>();
 builder.Services.AddHttpClient();
 builder.Services.ConfigureHttpClientDefaults(http => http.AddHttpMessageHandler<ExternalApiLoggingHandler>());
@@ -48,6 +50,8 @@ builder.Services.AddScoped<IEntityNotifier, EntityNotifier>();
 builder.Services.AddSingleton<IModelSelectionNotifier, ModelSelectionNotifier>();
 builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
 builder.Services.AddSingleton<IGlobalModelSelectionStore, GlobalModelSelectionStore>();
+builder.Services.AddSingleton<IGlobalPromptLibraryStore, GlobalPromptLibraryStore>();
+builder.Services.AddSingleton<IGlobalModelTuningStore, GlobalModelTuningStore>();
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
 builder.Services.AddSingleton<IAssetBlobStorage, AzureAssetBlobStorage>();
 builder.Services.AddScoped<IStoredImageService, StoredImageService>();
@@ -87,6 +91,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
+app.MapUserSystem();
 app.UseAntiforgery();
 
 app.MapStoryImageEndpoints();

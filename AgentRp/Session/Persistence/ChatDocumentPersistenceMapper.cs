@@ -16,9 +16,8 @@ internal sealed record ChatDocumentRows(
     ChatTranscriptStateRow? TranscriptState,
     ChatDirectionStateRow? ChatDirection,
     NarratorProfileStateRow? NarratorProfile,
-    PromptLibraryStateRow? PromptLibrary,
     CharacterTraitLibraryStateRow? CharacterTraitLibrary,
-    ModelTuningStateRow? ModelTuning);
+    List<StoryModelSelectionRow> ModelSelections);
 
 internal static class ChatDocumentPersistenceMapper
 {
@@ -63,9 +62,8 @@ internal static class ChatDocumentPersistenceMapper
             StoryAssistant = new(),
             ChatDirection = DeserializeState(rows.ChatDirection, ChatDirectionState.CreateDefault()),
             NarratorProfile = DeserializeState(rows.NarratorProfile, NarratorProfileState.CreateDefault()),
-            PromptLibrary = DeserializeState(rows.PromptLibrary, PromptLibraryState.CreateDefault()),
             CharacterTraitLibrary = DeserializeState(rows.CharacterTraitLibrary, CharacterTraitLibraryState.CreateDefault()),
-            ModelTuning = DeserializeState(rows.ModelTuning, ModelTuningState.CreateDefault())
+            ModelSelections = ToModelSelections(rows.ModelSelections)
         };
 
         if (rows.ChatDirection is not null && document.ChatDirection.UpdatedUtc == default)
@@ -136,19 +134,7 @@ internal static class ChatDocumentPersistenceMapper
         row.UpdatedUtc = now;
     }
 
-    public static void Apply(PromptLibraryState state, PromptLibraryStateRow row, DateTime now)
-    {
-        row.StateJson = PersistenceJson.Serialize(PromptLibraryService.CreateOverridesFromResolved(state));
-        row.UpdatedUtc = now;
-    }
-
     public static void Apply(CharacterTraitLibraryState state, CharacterTraitLibraryStateRow row, DateTime now)
-    {
-        row.StateJson = PersistenceJson.Serialize(state);
-        row.UpdatedUtc = now;
-    }
-
-    public static void Apply(ModelTuningState state, ModelTuningStateRow row, DateTime now)
     {
         row.StateJson = PersistenceJson.Serialize(state);
         row.UpdatedUtc = now;
@@ -161,11 +147,27 @@ internal static class ChatDocumentPersistenceMapper
         {
             ChatDirectionStateRow value => value.StateJson,
             NarratorProfileStateRow value => value.StateJson,
-            PromptLibraryStateRow value => value.StateJson,
             CharacterTraitLibraryStateRow value => value.StateJson,
-            ModelTuningStateRow value => value.StateJson,
             _ => ""
         };
         return PersistenceJson.Deserialize(json, fallback);
+    }
+
+    static ActiveModelSelectionsState ToModelSelections(IEnumerable<StoryModelSelectionRow> rows)
+    {
+        var state = ActiveModelSelectionsState.CreateDefault();
+        foreach (var row in rows)
+        {
+            if (!Enum.TryParse<AiModelRole>(row.Role, out var role))
+                continue;
+
+            state.Values[role] = new()
+            {
+                ProviderId = row.ProviderId,
+                ModelId = row.ModelId
+            };
+        }
+
+        return state;
     }
 }

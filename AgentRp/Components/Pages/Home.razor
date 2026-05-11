@@ -1,5 +1,6 @@
 @page "/"
 @page "/{ChatId}"
+@attribute [Authorize]
 @inject OverlayService Overlays
 @inject ILogger<Home> Logger
 
@@ -185,6 +186,9 @@ else
 
     async Task OpenModal(string name)
     {
+        if ((name is "aiProviders" or "promptLibrary" or "modelTuning") && !Session.CurrentUser.IsAdmin)
+            return;
+
         if (name == "storyAssistant")
         {
             await OpenStoryAssistant();

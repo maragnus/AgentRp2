@@ -120,22 +120,28 @@
 
     readonly IReadOnlyList<PromptLibraryStageDefinition> Steps = PromptLibraryService.GetStageDefinitions();
     readonly PromptLibraryState Defaults = PromptLibraryService.CreateDefaultState();
+    PromptLibraryState Draft = PromptLibraryState.CreateDefault();
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
 
     PromptLibraryStageDefinition CurrentStep => Steps.First(step => step.Id == Active);
-    Dictionary<string, PromptPairState> PromptValues => Session.Chat.PromptLibrary.State.Prompts;
-    Dictionary<string, List<ShapePromptState>> TurnShapes => Session.Chat.PromptLibrary.State.TurnShapes;
+    Dictionary<string, PromptPairState> PromptValues => Draft.Prompts;
+    Dictionary<string, List<ShapePromptState>> TurnShapes => Draft.TurnShapes;
     Dictionary<string, PromptPairState> DefaultPrompts => Defaults.Prompts;
     Dictionary<string, List<ShapePromptState>> DefaultTurnShapes => Defaults.TurnShapes;
 
     protected override void OnInitialized()
     {
-        Session.Chat.PromptLibrary.Changed += OnStoreChanged;
+        Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
+        Session.PromptLibrary.Changed += OnStoreChanged;
     }
 
-    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+    Task OnStoreChanged()
+    {
+        Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
+        return InvokeAsync(StateHasChanged);
+    }
 
     void SwitchStep(string? id)
     {
@@ -196,7 +202,8 @@
         ErrorMessage = null;
         try
         {
-            await Session.Chat.PromptLibrary.ResetAllAsync();
+            Draft = PromptLibraryState.CreateDefault();
+            await Session.PromptLibrary.SaveAsync(Draft);
         }
         catch (Exception exception)
         {
@@ -222,7 +229,7 @@
         ErrorMessage = null;
         try
         {
-            await Session.Chat.PromptLibrary.MarkChangedAsync();
+            await Session.PromptLibrary.SaveAsync(Draft);
         }
         catch (Exception exception)
         {
@@ -237,6 +244,6 @@
 
     public void Dispose()
     {
-        Session.Chat.PromptLibrary.Changed -= OnStoreChanged;
+        Session.PromptLibrary.Changed -= OnStoreChanged;
     }
 }
