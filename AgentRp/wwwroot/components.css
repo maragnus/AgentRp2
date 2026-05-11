@@ -1650,6 +1650,19 @@
     gap: var(--space-row-gap);
 }
 
+.cyoa-recovery {
+    align-items: center;
+    color: var(--c-text2);
+    display: flex;
+    gap: var(--space-row-gap);
+    justify-content: space-between;
+}
+
+.cyoa-recovery-icon {
+    color: var(--c-accent);
+    display: inline-flex;
+}
+
 .narrative-head {
     display: flex;
     align-items: center;

@@ -1,0 +1,32 @@
+@using AgentRp.Models
+
+<article class="narrative-message cyoa-decision">
+    <div class="narrative-card cyoa-card cyoa-recovery-card">
+        <div class="narrative-head">
+            <span class="cyoa-recovery-icon"><FaIcon Name="@ModeIcon" /></span>
+            <span class="message-author transcript-speaker">@ModeLabel</span>
+            <span class="mode-badge is-guided">Choices</span>
+        </div>
+        <div class="cyoa-recovery">
+            <span>No choices are available for the current message.</span>
+            <BusyButton Variant="primary"
+                        Disabled="@Disabled"
+                        OnClick="OnRecover">
+                <FaIcon Name="refresh" />Retry
+            </BusyButton>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter] public string Mode { get; set; } = RpCyoaModes.Off;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnRecover { get; set; }
+
+    string ModeLabel => string.Equals(Mode, RpCyoaModes.Director, StringComparison.Ordinal)
+        ? "Director"
+        : "Adventure";
+    string ModeIcon => string.Equals(Mode, RpCyoaModes.Director, StringComparison.Ordinal)
+        ? "clapperboard"
+        : "route";
+}

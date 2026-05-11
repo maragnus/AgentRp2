@@ -90,7 +90,7 @@
                     <AppButton Icon="sliders" TooltipText="Edit saved plan" Disabled="@TranscriptBusy" OnClick="@(_ => OpenPlanEditor())" />
                 </div>
                 <span class="v-divider"></span>
-                @if (CanUseStructuredFeatures)
+                @if (CanUseStructuredFeatures && CanCreateSnapshot)
                 {
                     <AppButton Icon="scissors" TooltipText="Create snapshot here" Disabled="@TranscriptBusy" OnClick="@(_ => CreateSnapshot())" />
                 }
@@ -323,6 +323,7 @@
     [Parameter] public bool ShowProcess { get; set; }
     [Parameter] public bool TranscriptBusy { get; set; }
     [Parameter] public int SubsequentCount { get; set; }
+    [Parameter] public bool CanCreateSnapshot { get; set; } = true;
     [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
     [Parameter] public EventCallback<string> OnCreateSnapshot { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;

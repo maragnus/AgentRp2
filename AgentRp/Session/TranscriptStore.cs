@@ -52,159 +52,6 @@ public sealed partial class TranscriptStore(
 
     public async Task SetTurnShapeLockedAsync(bool value) => await SetOptionAsync(options => options.TurnShapeLocked = value);
 
-    public async Task SetCyoaModeAsync(string mode) => await RunExclusiveAsync("Updating mode...", async () =>
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        var normalized = NormalizeCyoaMode(mode);
-        Document.Transcript.Cyoa.Mode = normalized;
-        Document.Transcript.Cyoa.PendingDecision = null;
-        Document.Transcript.Cyoa.AutoplayRemaining = RpCyoaState.MaxAutoplayTurns;
-        if (normalized == RpCyoaModes.Adventure)
-            Document.Transcript.Cyoa.ControlledCharacterIds = Document.Transcript.Cyoa.ControlledCharacterIds
-                .Where(id => Document.Characters.Any(character => character.Id == id))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        if (normalized == RpCyoaModes.Adventure && Document.Transcript.Cyoa.ControlledCharacterIds.Count == 0)
-        {
-            var scene = TranscriptGraph.GetSceneForNextTurn(Document.Transcript, Document.Transcript.ActiveLeafTurnId);
-            var defaultCharacter = Document.Characters.FirstOrDefault(character => scene.InSceneCharacterIds.Contains(character.Id, StringComparer.Ordinal))
-                ?? Document.Characters.FirstOrDefault();
-            if (defaultCharacter is not null)
-                Document.Transcript.Cyoa.ControlledCharacterIds.Add(defaultCharacter.Id);
-        }
-
-        await SaveTranscriptAsync();
-        await ContinueCyoaPipelineAsync();
-    });
-
-    public async Task ToggleCyoaControlledCharacterAsync(string characterId) => await RunExclusiveAsync("Updating cast...", async () =>
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        var controlled = Document.Transcript.Cyoa.ControlledCharacterIds;
-        if (controlled.Contains(characterId, StringComparer.Ordinal))
-            controlled.RemoveAll(id => string.Equals(id, characterId, StringComparison.Ordinal));
-        else if (Document.Characters.Any(character => string.Equals(character.Id, characterId, StringComparison.Ordinal)))
-            controlled.Add(characterId);
-
-        controlled = controlled.Distinct(StringComparer.Ordinal).ToList();
-        Document.Transcript.Cyoa.ControlledCharacterIds = controlled;
-        Document.Transcript.Cyoa.PendingDecision = null;
-        Document.Transcript.Cyoa.AutoplayRemaining = RpCyoaState.MaxAutoplayTurns;
-        if (Document.Transcript.Cyoa.Mode == RpCyoaModes.Adventure && controlled.Count == 0)
-            Document.Transcript.Cyoa.Mode = RpCyoaModes.Off;
-
-        await SaveTranscriptAsync();
-        await ContinueCyoaPipelineAsync();
-    });
-
-    public async Task SelectCyoaOptionAsync(string optionId) => await RunExclusiveAsync("Writing choice...", async () =>
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        var decision = Document.Transcript.Cyoa.PendingDecision;
-        var option = decision?.Options.FirstOrDefault(item => string.Equals(item.Id, optionId, StringComparison.Ordinal));
-        if (decision is null || option is null)
-            return;
-
-        if (option.Direction == RpCyoaDirections.FastForward && option.SceneProposal is not null)
-        {
-            decision.FastForwardReview = new() { OptionId = option.Id, Proposal = SessionCloner.Clone(option.SceneProposal) };
-            await SaveTranscriptAsync();
-            return;
-        }
-
-        Document.Transcript.Cyoa.PendingDecision = null;
-        var turn = await GenerateSelectedCyoaTurnCoreAsync(new(decision, option, ""));
-        if (turn is not null)
-            await ContinueCyoaPipelineAsync();
-    });
-
-    public async Task SubmitCyoaCustomGuidanceAsync(string guidance) => await RunExclusiveAsync("Writing choice...", async () =>
-    {
-        if (Document is null || string.IsNullOrWhiteSpace(guidance))
-            return;
-
-        ClearBackgroundError();
-        var decision = Document.Transcript.Cyoa.PendingDecision;
-        if (decision is null)
-            return;
-
-        Document.Transcript.Cyoa.PendingDecision = null;
-        var turn = await GenerateSelectedCyoaTurnCoreAsync(new(decision, null, guidance.Trim()));
-        if (turn is not null)
-            await ContinueCyoaPipelineAsync();
-    });
-
-    public async Task SkipCyoaDecisionAsync() => await RunExclusiveAsync("Skipping...", async () =>
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        Document.Transcript.Cyoa.PendingDecision = null;
-        Document.Transcript.Cyoa.AutoplayRemaining = RpCyoaState.MaxAutoplayTurns;
-        await SaveTranscriptAsync();
-        await ContinueCyoaPipelineAsync();
-    });
-
-    public async Task UpdateCyoaFastForwardGuidanceAsync(string guidance) => await RunExclusiveAsync("Updating scene proposal...", async () =>
-    {
-        var document = Document;
-        if (document?.Transcript.Cyoa.PendingDecision?.FastForwardReview is null)
-            return;
-
-        var proposal = document.Transcript.Cyoa.PendingDecision.FastForwardReview.Proposal;
-        proposal.Guidance = string.IsNullOrWhiteSpace(guidance)
-            ? NormalizeCyoaSceneGuidance(proposal.Guidance)
-            : guidance.Trim();
-        await SaveTranscriptAsync();
-    });
-
-    public async Task ApplyCyoaFastForwardAsync() => await RunExclusiveAsync("Setting scene...", async () =>
-    {
-        var document = Document;
-        if (document?.Transcript.Cyoa.PendingDecision?.FastForwardReview is null)
-            return;
-
-        ClearBackgroundError();
-        var decision = document.Transcript.Cyoa.PendingDecision;
-        var proposal = decision.FastForwardReview.Proposal;
-        try
-        {
-            var result = await SetSceneCoreAsync(BuildSetSceneRequest(proposal));
-            if (result.Turn?.Trace is not null)
-                result.Turn.Trace = PrependCyoaChoicesTrace(decision.Trace, result.Turn.Trace);
-
-            document.Transcript.Cyoa.PendingDecision = null;
-            await SaveTranscriptAsync();
-            if (result.Turn is not null)
-                await ContinueCyoaPipelineAsync();
-        }
-        catch (Exception exception)
-        {
-            CaptureBackgroundError(exception, logger, "Applying CYOA fast forward failed unexpectedly.");
-            await SaveTranscriptAsync();
-        }
-    });
-
-    public async Task CancelCyoaFastForwardAsync() => await RunExclusiveAsync("Canceling scene proposal...", async () =>
-    {
-        var document = Document;
-        if (document?.Transcript.Cyoa.PendingDecision?.FastForwardReview is null)
-            return;
-
-        document.Transcript.Cyoa.PendingDecision.FastForwardReview = null;
-        await SaveTranscriptAsync();
-    });
-
     public async Task<MessageSpeechPlayback?> GetOrGenerateSpeechAsync(string turnId, bool regenerate, CancellationToken cancellationToken = default)
     {
         MessageSpeechPlayback? playback = null;
@@ -467,7 +314,7 @@ public sealed partial class TranscriptStore(
             return;
 
         TranscriptGraph.ClearWorkingScene(Document.Transcript);
-        Document.Transcript.Cyoa.PendingDecision = null;
+        InvalidateCyoaDecision(CyoaDecisionInvalidationReason.BranchChanged);
         TranscriptGraph.SelectLeaf(Document.Transcript, ResolveLeafFrom(turnId));
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -494,7 +341,7 @@ public sealed partial class TranscriptStore(
             Document.Transcript.ActiveLeafTurnId = children.LastOrDefault()?.Id ?? turn.ParentTurnId;
 
         TranscriptGraph.ClearWorkingScene(Document.Transcript);
-        Document.Transcript.Cyoa.PendingDecision = null;
+        InvalidateCyoaDecision(CyoaDecisionInvalidationReason.TurnDeleted);
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -519,7 +366,7 @@ public sealed partial class TranscriptStore(
             Document.Transcript.ActiveLeafTurnId = TranscriptGraph.GetChildren(Document.Transcript, parentId).LastOrDefault()?.Id ?? parentId;
 
         TranscriptGraph.ClearWorkingScene(Document.Transcript);
-        Document.Transcript.Cyoa.PendingDecision = null;
+        InvalidateCyoaDecision(CyoaDecisionInvalidationReason.TurnDeleted);
         TranscriptGraph.RepairSelections(Document.Transcript);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
@@ -536,7 +383,7 @@ public sealed partial class TranscriptStore(
         target.LocationName = scene.LocationName;
         target.InSceneCharacterIds = [.. scene.InSceneCharacterIds];
         target.InSceneItemIds = [.. scene.InSceneItemIds];
-        Document.Transcript.Cyoa.PendingDecision = null;
+        InvalidateCyoaDecision(CyoaDecisionInvalidationReason.SceneChanged);
         TranscriptProjector.Apply(Document);
         await SaveTranscriptAsync();
     });
@@ -578,261 +425,6 @@ public sealed partial class TranscriptStore(
         }
     }
 
-    async Task ContinueCyoaPipelineAsync()
-    {
-        if (Document is null)
-            return;
-
-        if (Document.Transcript.Cyoa.PendingDecision is not null)
-            return;
-
-        if (Document.Transcript.Cyoa.Mode == RpCyoaModes.Director)
-        {
-            await GenerateDirectorDecisionAsync();
-            return;
-        }
-
-        if (Document.Transcript.Cyoa.Mode == RpCyoaModes.Adventure)
-            await ContinueAdventurePipelineAsync();
-    }
-
-    async Task ContinueAdventurePipelineAsync()
-    {
-        if (Document is null)
-            return;
-
-        var controlledIds = Document.Transcript.Cyoa.ControlledCharacterIds
-            .Where(id => Document.Characters.Any(character => string.Equals(character.Id, id, StringComparison.Ordinal)))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        Document.Transcript.Cyoa.ControlledCharacterIds = controlledIds;
-        if (controlledIds.Count == 0)
-        {
-            Document.Transcript.Cyoa.Mode = RpCyoaModes.Off;
-            await SaveTranscriptAsync();
-            return;
-        }
-
-        while (Document.Transcript.Cyoa.Mode == RpCyoaModes.Adventure
-            && Document.Transcript.Cyoa.PendingDecision is null)
-        {
-            var forceControlled = Document.Transcript.Cyoa.AutoplayRemaining <= 0;
-            var actor = await SelectCyoaActorAsync(forceControlled);
-            if (forceControlled || controlledIds.Contains(actor.ActorCharacterId, StringComparer.Ordinal))
-            {
-                Document.Transcript.Cyoa.AutoplayRemaining = RpCyoaState.MaxAutoplayTurns;
-                await GenerateAdventureDecisionAsync(actor);
-                return;
-            }
-
-            var turn = await GenerateAutonomousCyoaTurnCoreAsync(actor);
-            if (turn is null)
-                return;
-
-            Document.Transcript.Cyoa.AutoplayRemaining--;
-        }
-    }
-
-    async Task<CyoaActorSelection> SelectCyoaActorAsync(bool forceControlled)
-    {
-        if (Document is null)
-            return new("", "Narrator", true);
-
-        try
-        {
-            return await textGenerationService.SelectCyoaActorAsync(
-                Document,
-                providers.Items.ToList(),
-                modelSelection.State,
-                new(
-                    Document.Transcript.ActiveLeafTurnId,
-                    Document.Transcript.Cyoa.ControlledCharacterIds,
-                    forceControlled));
-        }
-        catch (Exception exception)
-        {
-            CaptureBackgroundError(exception, logger, "Selecting CYOA actor failed unexpectedly.");
-            return FallbackCyoaActor(forceControlled);
-        }
-    }
-
-    CyoaActorSelection FallbackCyoaActor(bool forceControlled)
-    {
-        if (Document is null)
-            return new("", "Narrator", true);
-
-        var scene = TranscriptGraph.GetSceneForNextTurn(Document.Transcript, Document.Transcript.ActiveLeafTurnId);
-        var candidates = Document.Characters
-            .Where(character => scene.InSceneCharacterIds.Contains(character.Id, StringComparer.Ordinal))
-            .Where(character => !forceControlled || Document.Transcript.Cyoa.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal))
-            .ToList();
-        var actor = candidates.FirstOrDefault()
-            ?? Document.Characters.FirstOrDefault(character => Document.Transcript.Cyoa.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal))
-            ?? Document.Characters.FirstOrDefault();
-        return actor is null ? new("", "Narrator", true) : new(actor.Id, actor.Name, false);
-    }
-
-    async Task GenerateAdventureDecisionAsync(CyoaActorSelection actor)
-    {
-        if (Document is null)
-            return;
-
-        await GenerateCyoaDecisionCoreAsync(new(
-            Document.Transcript.ActiveLeafTurnId,
-            RpCyoaModes.Adventure,
-            actor.ActorCharacterId,
-            actor.ActorName,
-            actor.RequestedNarrator));
-    }
-
-    async Task GenerateDirectorDecisionAsync()
-    {
-        if (Document is null)
-            return;
-
-        await GenerateCyoaDecisionCoreAsync(new(
-            Document.Transcript.ActiveLeafTurnId,
-            RpCyoaModes.Director,
-            "",
-            "Narrator",
-            true));
-    }
-
-    async Task GenerateCyoaDecisionCoreAsync(GenerateCyoaDecisionRequest request)
-    {
-        if (Document is null)
-            return;
-
-        ClearBackgroundError();
-        try
-        {
-            var result = await textGenerationService.GenerateCyoaDecisionAsync(
-                Document,
-                providers.Items.ToList(),
-                modelSelection.State,
-                request,
-                new(UpdateActiveTraceAsync));
-            Document.Transcript.Cyoa.PendingDecision = result.Decision;
-            await SaveTranscriptAsync();
-            await ClearActiveTraceAsync();
-        }
-        catch (TranscriptGenerationException exception)
-        {
-            CaptureBackgroundError(exception, logger, "Generating CYOA choices failed with a model trace.");
-            await ClearActiveTraceAsync();
-        }
-        catch (Exception exception)
-        {
-            CaptureBackgroundError(exception, logger, "Generating CYOA choices failed unexpectedly.");
-            await ClearActiveTraceAsync();
-        }
-    }
-
-    async Task<RpTranscriptTurn?> GenerateAutonomousCyoaTurnCoreAsync(CyoaActorSelection actor)
-    {
-        if (Document is null)
-            return null;
-
-        ClearBackgroundError();
-        try
-        {
-            var result = await textGenerationService.GenerateAutonomousCyoaTurnAsync(
-                Document,
-                providers.Items.ToList(),
-                modelSelection.State,
-                new(
-                    Document.Transcript.ActiveLeafTurnId,
-                    "automatic",
-                    actor.ActorCharacterId,
-                    actor.ActorName,
-                    actor.RequestedNarrator),
-                new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
-            return await CommitGeneratedTurnAsync(Document.Transcript.ActiveLeafTurnId, "", "automatic", result);
-        }
-        catch (TranscriptGenerationException exception)
-        {
-            ClearActiveDraft();
-            PersistFailedTurn(
-                Document.Transcript.ActiveLeafTurnId,
-                "",
-                actor.RequestedNarrator ? null : new() { Id = actor.ActorCharacterId, Name = actor.ActorName },
-                actor.RequestedNarrator,
-                "automatic",
-                TurnShapeRules.AutoLabel,
-                exception.Trace);
-            CaptureBackgroundError(exception, logger, "Generating autonomous CYOA turn failed with a model trace.");
-            await SaveTranscriptAsync();
-            await ClearActiveTraceAsync();
-            return null;
-        }
-        catch (Exception exception)
-        {
-            ClearActiveDraft();
-            CaptureBackgroundError(exception, logger, "Generating autonomous CYOA turn failed unexpectedly.");
-            await ClearActiveTraceAsync();
-            return null;
-        }
-    }
-
-    async Task<RpTranscriptTurn?> GenerateSelectedCyoaTurnCoreAsync(GenerateSelectedCyoaTurnRequest request)
-    {
-        if (Document is null)
-            return null;
-
-        ClearBackgroundError();
-        var option = request.Option;
-        var requestedNarrator = option?.RequestedNarrator ?? request.Decision.RequestedNarrator;
-        var actorId = requestedNarrator ? "" : option?.ActorCharacterId ?? request.Decision.ActorCharacterId;
-        var actorName = requestedNarrator ? "Narrator" : option?.ActorName ?? request.Decision.ActorName;
-        var guidance = !string.IsNullOrWhiteSpace(request.CustomGuidance) ? request.CustomGuidance.Trim() : option?.Guidance.Trim() ?? "";
-        var turnShape = string.IsNullOrWhiteSpace(option?.Plan.TurnShape) ? TurnShapeRules.AutoLabel : option.Plan.TurnShape;
-        var actor = requestedNarrator ? null : new RpCharacter { Id = actorId, Name = actorName };
-        try
-        {
-            var result = await textGenerationService.GenerateSelectedCyoaTurnAsync(
-                Document,
-                providers.Items.ToList(),
-                modelSelection.State,
-                request,
-                new(UpdateActiveTraceAsync, UpdateActiveDraftAsync));
-            return await CommitGeneratedTurnAsync(request.Decision.ParentTurnId, guidance, "guided", result);
-        }
-        catch (TranscriptGenerationException exception)
-        {
-            ClearActiveDraft();
-            PersistFailedTurn(
-                request.Decision.ParentTurnId,
-                guidance,
-                actor,
-                requestedNarrator,
-                "guided",
-                turnShape,
-                exception.Trace,
-                scene: option?.Scene);
-            CaptureBackgroundError(exception, logger, "Generating selected CYOA turn failed with a model trace.");
-            await SaveTranscriptAsync();
-            await ClearActiveTraceAsync();
-            return null;
-        }
-        catch (Exception exception)
-        {
-            ClearActiveDraft();
-            CaptureBackgroundError(exception, logger, "Generating selected CYOA turn failed unexpectedly.");
-            PersistFailedTurn(
-                request.Decision.ParentTurnId,
-                guidance,
-                actor,
-                requestedNarrator,
-                "guided",
-                turnShape,
-                BuildUnhandledFailureTrace(exception),
-                scene: option?.Scene);
-            await SaveTranscriptAsync();
-            await ClearActiveTraceAsync();
-            return null;
-        }
-    }
-
     async Task<(SceneTransitionPlan? Transition, RpTranscriptTurn? Turn)> SetSceneCoreAsync(SetSceneRequest request)
     {
         if (Document is null)
@@ -852,53 +444,6 @@ public sealed partial class TranscriptStore(
 
         return (transition, narratorTurn);
     }
-
-    static SetSceneRequest BuildSetSceneRequest(RpCyoaSceneProposal proposal) => new(
-        proposal.LocationId,
-        proposal.CharacterIds,
-        proposal.ItemIds,
-        new(ScenePurpose(proposal.Purpose), NormalizeCyoaSceneGuidance(proposal.Guidance)));
-
-    static string NormalizeCyoaSceneGuidance(string guidance) =>
-        string.IsNullOrWhiteSpace(guidance)
-            ? "Move the scene forward in time while preserving established continuity."
-            : guidance.Trim();
-
-    static SceneNarratorGuidancePurpose ScenePurpose(string purpose) => purpose switch
-    {
-        "location-transition" => SceneNarratorGuidancePurpose.LocationTransition,
-        "scene-reset" => SceneNarratorGuidancePurpose.SceneReset,
-        _ => SceneNarratorGuidancePurpose.TimeSkip
-    };
-
-    static RpGenerationTrace PrependCyoaChoicesTrace(RpGenerationTrace? choicesTrace, RpGenerationTrace generatedTrace)
-    {
-        var merged = SessionCloner.Clone(generatedTrace);
-        if (choicesTrace is null || choicesTrace.Steps.Count == 0)
-            return merged;
-
-        var choices = SessionCloner.Clone(choicesTrace);
-        merged.Steps = [.. choices.Steps, .. merged.Steps];
-        if (choices.StartedUtc != default)
-            merged.StartedUtc = choices.StartedUtc;
-        merged.InputTokens = merged.Steps.Sum(step => step.InputTokens);
-        merged.OutputTokens = merged.Steps.Sum(step => step.OutputTokens);
-        merged.TotalTokens = merged.Steps.Sum(step => step.TotalTokens);
-        if (merged.StartedUtc != default && merged.CompletedUtc != default)
-            merged.DurationSeconds = (merged.CompletedUtc - merged.StartedUtc).TotalSeconds;
-
-        var actor = merged.Data["actorName"]?.GetValue<string>() ?? "Narrator";
-        var status = string.IsNullOrWhiteSpace(merged.Status) ? "completed" : merged.Status;
-        merged.Summary = $"{status[..1].ToUpperInvariant()}{status[1..]} - {actor} - {string.Join(" -> ", merged.Steps.Select(step => step.Label))}";
-        return merged;
-    }
-
-    static string NormalizeCyoaMode(string mode) => mode switch
-    {
-        RpCyoaModes.Adventure => RpCyoaModes.Adventure,
-        RpCyoaModes.Director => RpCyoaModes.Director,
-        _ => RpCyoaModes.Off
-    };
 
     async Task<RpTranscriptTurn?> GenerateTurnCoreAsync(string parentTurnId, string guidance, RpCharacter? requestedActor, bool requestedNarrator, string turnShape, string mode, RpSceneFrame? sceneOverride = null)
     {

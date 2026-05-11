@@ -26,8 +26,49 @@ public sealed record SnapshotDeleteImpact(
     public string DeleteCoveredMessagesDisabledReason => "This snapshot has no linked messages.";
 }
 
+public sealed record SnapshotDraftTarget(
+    string RequestedTurnId,
+    string TargetTurnId,
+    int CoveredTurnCount,
+    int UnsnapshottedTurnCount,
+    string DisabledReason)
+{
+    public bool CanCreate => string.IsNullOrWhiteSpace(DisabledReason);
+}
+
 public sealed partial class TranscriptStore
 {
+    public SnapshotDraftTarget? GetSnapshotDraftTarget(string turnId) =>
+        Document is null ? null : SnapshotPath.ResolveDraftTarget(Document, turnId);
+
+    public bool CanCreateSnapshotAt(string turnId) => GetSnapshotDraftTarget(turnId)?.CanCreate == true;
+
+    public SnapshotDraftTarget? GetSnapshotSuggestionTarget(int retainedTurnCount, int suggestionThreshold)
+    {
+        if (Document is null)
+            return null;
+
+        var activePath = TranscriptGraph.GetActivePath(Document.Transcript);
+        if (activePath.Count == 0)
+            return null;
+
+        var snapshots = SnapshotPath.GetSnapshotsOnPath(Document.Transcript, activePath);
+        var latestSnapshot = snapshots.LastOrDefault();
+        var latestSnapshotIndex = latestSnapshot is null
+            ? -1
+            : activePath.ToList().FindIndex(turn => string.Equals(turn.Id, latestSnapshot.TurnId, StringComparison.Ordinal));
+        var unsnapshottedTurnCount = activePath.Count - latestSnapshotIndex - 1;
+        if (unsnapshottedTurnCount < Math.Max(suggestionThreshold, SnapshotPath.MinimumEligibleCompletedTurns))
+            return null;
+
+        var targetIndex = activePath.Count - Math.Max(1, retainedTurnCount) - 1;
+        if (targetIndex < 0 || targetIndex >= activePath.Count)
+            return null;
+
+        var target = SnapshotPath.ResolveDraftTarget(Document, activePath[targetIndex].Id);
+        return target?.CanCreate == true ? target : null;
+    }
+
     public IReadOnlyList<RpTranscriptSnapshot> SnapshotsForActivePath()
     {
         if (Document is null)
@@ -59,9 +100,16 @@ public sealed partial class TranscriptStore
         if (Document is null)
             return null;
 
-        var context = SnapshotPath.Build(Document, turnId);
+        var target = GetSnapshotDraftTarget(turnId);
+        if (target is null)
+            return null;
+
+        if (!target.CanCreate)
+            return new() { TurnId = target.TargetTurnId, CoveredTurnCount = target.CoveredTurnCount };
+
+        var context = SnapshotPath.Build(Document, target.TargetTurnId);
         if (context.CoveredTurns.Count == 0)
-            return new() { TurnId = turnId };
+            return new() { TurnId = context.TargetTurn.Id };
 
         var firstTurn = context.CoveredTurns.First();
         var lastTurn = context.CoveredTurns.Last();
@@ -122,11 +170,11 @@ public sealed partial class TranscriptStore
                 Document,
                 providers.Items.ToList(),
                 modelSelection.State,
-                new(turnId),
+                new(context.TargetTurn.Id),
                 cancellationToken);
             draft = new()
             {
-                TurnId = turnId,
+                TurnId = context.TargetTurn.Id,
                 CreatedUtc = DateTime.UtcNow,
                 Summary = result.Summary,
                 CoveredTurnIds = context.CoveredTurns.Select(turn => turn.Id).ToList(),
@@ -156,7 +204,7 @@ public sealed partial class TranscriptStore
             if (draft.CoveredTurnIds.Count == 0)
                 throw new InvalidOperationException("Saving the snapshot failed because no transcript turns were included.");
 
-            var context = SnapshotPath.Build(Document, draft.TurnId);
+            var context = SnapshotPath.Build(Document, draft.TurnId, "Saving the snapshot failed");
             var includedIds = draft.CoveredTurnIds.ToHashSet(StringComparer.Ordinal);
             if (!includedIds.SetEquals(context.CoveredTurns.Select(turn => turn.Id)))
                 throw new InvalidOperationException("Saving the snapshot failed because the transcript branch changed while the draft was open.");
@@ -230,7 +278,10 @@ public sealed partial class TranscriptStore
             if (method == SnapshotDeleteMethod.Unwrap)
                 ClearSnapshotTurnLinks(snapshot);
             else
+            {
                 RemoveSnapshotTurns(snapshot);
+                InvalidateCyoaDecision(CyoaDecisionInvalidationReason.TurnDeleted);
+            }
 
             Document.Transcript.Snapshots.Remove(snapshot);
             Document.Transcript.DeletedSnapshotIds.Add(snapshot.Id);
@@ -531,11 +582,20 @@ sealed record SnapshotPath(
     RpTranscriptSnapshot? LatestSnapshot,
     IReadOnlyList<RpTranscriptTurn> CoveredTurns)
 {
-    public static SnapshotPath Build(RpChatDocument document, string turnId)
+    public const int MinimumCoveredTurns = 5;
+    public const int MinimumEligibleCompletedTurns = MinimumCoveredTurns + 1;
+
+    public static SnapshotPath Build(RpChatDocument document, string turnId, string failurePrefix = "Creating a snapshot draft failed")
     {
         TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
         var activePath = TranscriptGraph.GetActivePath(document.Transcript);
-        var targetIndex = activePath.FindIndex(turn => turn.Id == turnId);
+        var target = ResolveDraftTarget(document, turnId);
+        if (target is null)
+            throw new InvalidOperationException($"{failurePrefix} because the selected turn is not on the active branch.");
+        if (!target.CanCreate)
+            throw new InvalidOperationException($"{failurePrefix} because {target.DisabledReason}");
+
+        var targetIndex = activePath.FindIndex(turn => turn.Id == target.TargetTurnId);
         if (targetIndex < 0)
             throw new InvalidOperationException("Creating a snapshot draft failed because the selected turn is not on the active branch.");
 
@@ -548,6 +608,31 @@ sealed record SnapshotPath(
         return new(activePath, pathThroughTarget[targetIndex], latestSnapshot, coveredTurns);
     }
 
+    public static SnapshotDraftTarget? ResolveDraftTarget(RpChatDocument document, string turnId)
+    {
+        TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
+        var activePath = TranscriptGraph.GetActivePath(document.Transcript);
+        var requestedIndex = activePath.FindIndex(turn => turn.Id == turnId);
+        if (requestedIndex < 0)
+            return null;
+
+        var snapshots = GetSnapshotsOnPath(document.Transcript, activePath);
+        var latestSnapshot = snapshots.LastOrDefault();
+        var latestSnapshotIndex = latestSnapshot is null
+            ? -1
+            : activePath.FindIndex(turn => string.Equals(turn.Id, latestSnapshot.TurnId, StringComparison.Ordinal));
+        var unsnapshottedTurnCount = activePath.Count - latestSnapshotIndex - 1;
+        var targetIndex = requestedIndex == activePath.Count - 1
+            ? requestedIndex - 1
+            : requestedIndex;
+        var targetTurnId = targetIndex >= 0 && targetIndex < activePath.Count
+            ? activePath[targetIndex].Id
+            : turnId;
+        var coveredTurnCount = Math.Max(0, targetIndex - latestSnapshotIndex);
+        var disabledReason = DisabledReasonFor(targetIndex, latestSnapshotIndex, coveredTurnCount, unsnapshottedTurnCount);
+        return new(turnId, targetTurnId, coveredTurnCount, unsnapshottedTurnCount, disabledReason);
+    }
+
     public static IReadOnlyList<RpTranscriptSnapshot> GetSnapshotsOnPath(RpTranscriptState transcript, IReadOnlyList<RpTranscriptTurn> path)
     {
         var pathIndexes = path
@@ -558,5 +643,17 @@ sealed record SnapshotPath(
             .OrderBy(snapshot => pathIndexes[snapshot.TurnId])
             .ThenBy(snapshot => snapshot.CreatedUtc)
             .ToList();
+    }
+
+    static string DisabledReasonFor(int targetIndex, int latestSnapshotIndex, int coveredTurnCount, int unsnapshottedTurnCount)
+    {
+        if (unsnapshottedTurnCount < MinimumEligibleCompletedTurns)
+            return $"at least {MinimumEligibleCompletedTurns} completed messages are needed so the latest message remains live.";
+        if (targetIndex <= latestSnapshotIndex)
+            return "the selected message is already covered by the latest snapshot.";
+        if (coveredTurnCount < MinimumCoveredTurns)
+            return $"a snapshot must cover at least {MinimumCoveredTurns} completed messages.";
+
+        return "";
     }
 }

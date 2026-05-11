@@ -56,7 +56,7 @@ public sealed class TranscriptFeatureTests
         await sessionA.InitializeAsync();
         await sessionB.InitializeAsync();
 
-        var activeTurnId = sessionA.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(sessionA);
         var draft = await sessionA.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         Assert.NotNull(draft);
         Assert.Null(sessionB.Chat.Transcript.SnapshotFor(activeTurnId));
@@ -65,7 +65,7 @@ public sealed class TranscriptFeatureTests
 
         var snapshot = sessionB.Chat.Transcript.SnapshotFor(activeTurnId);
         Assert.NotNull(snapshot);
-        Assert.Equal("Snapshot for turn-3", snapshot!.Summary);
+        Assert.Equal($"Snapshot for {activeTurnId}", snapshot!.Summary);
         Assert.All(sessionB.Chat.Transcript.Items.Where(turn => draft!.CoveredTurnIds.Contains(turn.Id)), turn => Assert.Equal(snapshot.Id, turn.SnapshotId));
         Assert.Equal("Take Bella's affection while reminding Jake she noticed his silence.", snapshot.PrivateIntentByCharacterId["c2"]);
         var snapshotTimelineEntry = Assert.Single(sessionB.Chat.Timeline.Items, entry => entry.SnapshotId == snapshot.Id);
@@ -81,6 +81,69 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
+    public async Task SnapshotTargetForLastMessageLeavesLatestCompletedMessageLive()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        var target = await MakeSnapshotEligibleTargetAsync(session);
+        var latestTurnId = session.Chat.Transcript.Items.Last().Id;
+        Assert.NotNull(target);
+        Assert.NotEqual(latestTurnId, target.TargetTurnId);
+
+        var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(latestTurnId);
+
+        Assert.NotNull(draft);
+        Assert.Equal(target.TargetTurnId, draft!.TurnId);
+        Assert.Equal(5, draft.CoveredTurnIds.Count);
+        Assert.DoesNotContain(latestTurnId, draft.CoveredTurnIds);
+    }
+
+    [Fact]
+    public async Task SnapshotUnavailableWithFiveOrFewerUnsnapshottedMessages()
+    {
+        await using var liveStore = NewLiveStore();
+        var session = NewSession(liveStore, new FakeTextGenerationService());
+        await session.InitializeAsync();
+        SnapshotDraftTarget? target;
+        do
+        {
+            await session.Chat.Transcript.PostManualAsync($"Snapshot setup message {session.Chat.Transcript.Items.Count + 1}.", null);
+            target = session.Chat.Transcript.GetSnapshotDraftTarget(session.Chat.Transcript.Items.Last().Id);
+        }
+        while ((target?.UnsnapshottedTurnCount ?? 0) < 5);
+
+        var latestTurnId = session.Chat.Transcript.Items.Last().Id;
+        target = session.Chat.Transcript.GetSnapshotDraftTarget(latestTurnId);
+
+        Assert.NotNull(target);
+        Assert.False(target!.CanCreate);
+        Assert.False(session.Chat.Transcript.CanCreateSnapshotAt(latestTurnId));
+    }
+
+    [Fact]
+    public async Task CyoaRecoveryGeneratesDecisionWithoutAutoplay()
+    {
+        await using var liveStore = NewLiveStore();
+        var generator = new FakeTextGenerationService();
+        var session = NewSession(liveStore, generator);
+        await session.InitializeAsync();
+        var document = session.ActiveChat.Current!;
+        document.Transcript.Cyoa.Mode = RpCyoaModes.Adventure;
+        document.Transcript.Cyoa.ControlledCharacterIds = [document.Characters.First().Id];
+        document.Transcript.Cyoa.PendingDecision = null;
+
+        Assert.True(session.Chat.Transcript.NeedsCyoaDecisionRecovery);
+
+        await session.Chat.Transcript.RecoverCyoaDecisionAsync();
+
+        Assert.NotNull(session.Chat.Transcript.CurrentCyoaDecision);
+        Assert.Equal(document.Transcript.ActiveLeafTurnId, session.Chat.Transcript.CurrentCyoaDecision!.ParentTurnId);
+        Assert.Equal(1, generator.CyoaDecisionCalls);
+        Assert.Equal(0, generator.AutonomousCyoaTurnCalls);
+    }
+
+    [Fact]
     public async Task SnapshotTranscriptRowShowsProcessTraceWhenEnabled()
     {
         using var context = new BunitContext();
@@ -90,7 +153,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
         var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
@@ -122,7 +185,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
         var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
@@ -137,7 +200,7 @@ public sealed class TranscriptFeatureTests
         component.Find("button[title='View snapshot']").Click();
 
         Assert.Contains("Snapshot Range", component.Markup, StringComparison.Ordinal);
-        Assert.Contains("Snapshot for turn-3", component.Markup, StringComparison.Ordinal);
+        Assert.Contains($"Snapshot for {activeTurnId}", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Take Bella's affection while reminding Jake she noticed his silence.", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Snapshot event", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Relationship Changes", component.Markup, StringComparison.Ordinal);
@@ -200,7 +263,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
 
         var component = context.Render<SnapshotDraftModal>(parameters => parameters
@@ -228,7 +291,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
 
         var component = context.Render<SnapshotDraftModal>(parameters => parameters
@@ -257,7 +320,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         RpTranscriptSnapshotDraft? saved = null;
         var component = context.Render<SnapshotDraftModal>(parameters => parameters
@@ -313,7 +376,7 @@ public sealed class TranscriptFeatureTests
         var originalPublicDynamic = original.NoteExternal;
         var originalBonds = original.Bonds.ToList();
         var originalDynamics = original.Dynamics.ToList();
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         RpTranscriptSnapshotDraft? saved = null;
         var component = context.Render<SnapshotDraftModal>(parameters => parameters
@@ -355,7 +418,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
 
@@ -373,7 +436,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
         var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
@@ -393,7 +456,7 @@ public sealed class TranscriptFeatureTests
         var session = NewSession(liveStore, new FakeTextGenerationService());
         await session.InitializeAsync();
 
-        var activeTurnId = session.Chat.Transcript.Items.Last().Id;
+        var activeTurnId = await MakeSnapshotEligibleAsync(session);
         var draft = await session.Chat.Transcript.CreateSnapshotDraftAsync(activeTurnId);
         await session.Chat.Transcript.CommitSnapshotDraftAsync(draft!);
         var snapshot = session.Chat.Transcript.SnapshotFor(activeTurnId)!;
@@ -672,6 +735,27 @@ public sealed class TranscriptFeatureTests
         context.Services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
     }
 
+    static async Task<string> MakeSnapshotEligibleAsync(RoleplaySession session)
+    {
+        var target = await MakeSnapshotEligibleTargetAsync(session);
+        return target.TargetTurnId;
+    }
+
+    static async Task<SnapshotDraftTarget> MakeSnapshotEligibleTargetAsync(RoleplaySession session)
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            var lastTurnId = session.Chat.Transcript.Items.Last().Id;
+            var target = session.Chat.Transcript.GetSnapshotDraftTarget(lastTurnId);
+            if (target?.CanCreate == true)
+                return target;
+
+            await session.Chat.Transcript.PostManualAsync($"Snapshot setup message {session.Chat.Transcript.Items.Count + 1}.", null);
+        }
+
+        throw new InvalidOperationException("Snapshot setup failed to create an eligible transcript range.");
+    }
+
     static LiveRoleplayStore NewLiveStore(TimeSpan? ttl = null) =>
         new(new SeedRoleplayPersistence(), ttl ?? TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
 
@@ -787,6 +871,9 @@ public sealed class TranscriptFeatureTests
 
     sealed class FakeTextGenerationService : ITextGenerationService
     {
+        public int CyoaDecisionCalls { get; private set; }
+        public int AutonomousCyoaTurnCalls { get; private set; }
+
         public Task<GeneratedTurnResult> GenerateTurnAsync(
             RpChatDocument document,
             IReadOnlyList<AiProvider> providers,
@@ -957,8 +1044,13 @@ public sealed class TranscriptFeatureTests
             IReadOnlyList<AiProvider> providers,
             ActiveModelSelectionsState modelSelections,
             SelectCyoaActorRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            var character = document.Characters.First(character =>
+                request.ControlledCharacterIds.Contains(character.Id, StringComparer.Ordinal)
+                || !request.ForceControlled);
+            return Task.FromResult(new CyoaActorSelection(character.Id, character.Name, false));
+        }
 
         public Task<GeneratedCyoaDecision> GenerateCyoaDecisionAsync(
             RpChatDocument document,
@@ -966,8 +1058,58 @@ public sealed class TranscriptFeatureTests
             ActiveModelSelectionsState modelSelections,
             GenerateCyoaDecisionRequest request,
             TranscriptGenerationProgress? progress = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            CyoaDecisionCalls++;
+            var now = DateTime.UtcNow;
+            var trace = new RpGenerationTrace
+            {
+                Summary = "Completed - Choices",
+                Status = "completed",
+                StartedUtc = now,
+                CompletedUtc = now.AddSeconds(1),
+                DurationSeconds = 1,
+                Steps =
+                [
+                    new()
+                    {
+                        Id = "cyoa-options",
+                        Label = "Choices",
+                        Status = "completed",
+                        StartedUtc = now,
+                        CompletedUtc = now.AddSeconds(1),
+                        DurationSeconds = 1
+                    }
+                ]
+            };
+            var decision = new RpCyoaPendingDecision
+            {
+                Id = $"cyoa-{CyoaDecisionCalls}",
+                ParentTurnId = request.ParentTurnId,
+                Mode = request.Mode,
+                ActorCharacterId = request.ActorCharacterId,
+                ActorName = request.ActorName,
+                RequestedNarrator = request.RequestedNarrator,
+                CreatedUtc = now,
+                Trace = trace,
+                Options =
+                [
+                    new()
+                    {
+                        Id = "option-continue",
+                        Direction = RpCyoaDirections.Continue,
+                        Title = "Continue",
+                        Summary = "Continue the current beat.",
+                        Guidance = "Continue the current beat.",
+                        ActorCharacterId = request.ActorCharacterId,
+                        ActorName = request.ActorName,
+                        RequestedNarrator = request.RequestedNarrator,
+                        Plan = new() { TurnShape = "Brief", Beat = "Continue beat" }
+                    }
+                ]
+            };
+            return Task.FromResult(new GeneratedCyoaDecision(decision, trace));
+        }
 
         public Task<GeneratedTurnResult> GenerateSelectedCyoaTurnAsync(
             RpChatDocument document,
@@ -984,8 +1126,24 @@ public sealed class TranscriptFeatureTests
             ActiveModelSelectionsState modelSelections,
             GenerateAutonomousCyoaTurnRequest request,
             TranscriptGenerationProgress? progress = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            AutonomousCyoaTurnCalls++;
+            return GenerateTurnAsync(
+                document,
+                providers,
+                modelSelections,
+                new(
+                    request.ParentTurnId,
+                    request.Mode,
+                    "",
+                    TurnShapeRules.BriefLabel,
+                    request.ActorCharacterId,
+                    request.ActorName,
+                    request.RequestedNarrator),
+                progress,
+                cancellationToken);
+        }
 
         public Task<GeneratedSnapshotResult> GenerateSnapshotAsync(
             RpChatDocument document,
