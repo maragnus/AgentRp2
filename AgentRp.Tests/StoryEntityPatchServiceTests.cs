@@ -1157,8 +1157,10 @@ public sealed class StoryEntityPatchServiceTests
         document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
         document.Locations.Add(new() { Id = "l1", Name = "Library" });
         document.Items.Add(new() { Id = "i1", Name = "Lantern" });
-        var callbacks = new TestCallbacks();
-        callbacks.SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.");
+        var callbacks = new TestCallbacks
+        {
+            SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.")
+        };
         var service = new StoryEntityPatchService();
 
         var result = await service.ExecuteAsync(
@@ -1195,8 +1197,11 @@ public sealed class StoryEntityPatchServiceTests
     {
         var document = CreateDocument();
         document.Locations.Add(new() { Id = "l1", Name = "Library" });
-        var callbacks = new TestCallbacks { Decision = new(StoryAssistantDecisionKind.Reject, "Not yet.") };
-        callbacks.SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.");
+        var callbacks = new TestCallbacks
+        {
+            Decision = new(StoryAssistantDecisionKind.Reject, "Not yet."),
+            SceneTransition = request => new(new SceneTransitionService().Build(document, request), "turn-1", "The library waits in lamplight.")
+        };
         var service = new StoryEntityPatchService();
 
         var result = await service.ExecuteAsync(

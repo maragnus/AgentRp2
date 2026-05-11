@@ -133,7 +133,7 @@ public sealed class StoryAssistantStoreTests
 	public void DefaultStateCreatesAndSelectsOneAssistantChat()
 	{
 		RpChatDocument document = CreateDocument();
-		StoryAssistantStore storyAssistantStore = CreateStore(document, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore storyAssistantStore = CreateStore(document, (_, _) => Task.CompletedTask);
 		StoryAssistantState state = storyAssistantStore.State;
 		Assert.Single(state.Chats);
 		Assert.Equal(state.Chats[0].Id, state.ActiveChatId);
@@ -145,7 +145,7 @@ public sealed class StoryAssistantStoreTests
 	public async Task ChatCommandsCreateSelectRenameAndDeleteWithFreshFinalChat()
 	{
 		RpChatDocument document = CreateDocument();
-		StoryAssistantStore store = CreateStore(document, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore store = CreateStore(document, (_, _) => Task.CompletedTask);
 		string firstChatId = store.ActiveAssistantChat.Id;
 		await store.CreateChatAsync();
 		string secondChatId = store.ActiveAssistantChat.Id;
@@ -166,7 +166,7 @@ public sealed class StoryAssistantStoreTests
 	public async Task OpeningAssistantSelectsMostRecentChatWhenActiveChatHasMessages()
 	{
 		RpChatDocument document = CreateDocument();
-		StoryAssistantStore store = CreateStore(document, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore store = CreateStore(document, (_, _) => Task.CompletedTask);
 		StoryAssistantChat olderChat = store.ActiveAssistantChat;
 		olderChat.Items.Add(AddUserMessage("Earlier planning."));
 		olderChat.UpdatedUtc = DateTime.UtcNow.AddMinutes(-5.0);
@@ -202,7 +202,7 @@ public sealed class StoryAssistantStoreTests
 		};
 		document.StoryAssistant.Chats.AddRange(new StoryAssistantChat[2] { recentChat, emptyChat });
 		document.StoryAssistant.ActiveChatId = emptyChat.Id;
-		StoryAssistantStore store = CreateStore(document, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore store = CreateStore(document, (_, _) => Task.CompletedTask);
 		Assert.Equal(emptyChat.Id, store.OpenAssistantChatPreview.Id);
 		Assert.True(store.OpenAssistantChatPreviewIsEmpty);
 		await store.OpenLatestOrNewChatAsync();
@@ -233,10 +233,10 @@ public sealed class StoryAssistantStoreTests
 		await store.SendAsync("Second chat prompt.");
 		Assert.Equal("resp-1", firstChat.LastResponseId);
 		Assert.Equal("resp-2", secondChat.LastResponseId);
-		Assert.Contains((IEnumerable<StoryAssistantTranscriptItem>)firstChat.Items, (Predicate<StoryAssistantTranscriptItem>)((StoryAssistantTranscriptItem item) => item.Text == "First chat prompt."));
-		Assert.DoesNotContain((IEnumerable<StoryAssistantTranscriptItem>)firstChat.Items, (Predicate<StoryAssistantTranscriptItem>)((StoryAssistantTranscriptItem item) => item.Text.Contains("Second chat", StringComparison.Ordinal)));
-		Assert.Contains((IEnumerable<StoryAssistantTranscriptItem>)secondChat.Items, (Predicate<StoryAssistantTranscriptItem>)((StoryAssistantTranscriptItem item) => item.Text == "Second chat prompt."));
-		Assert.DoesNotContain((IEnumerable<StoryAssistantTranscriptItem>)secondChat.Items, (Predicate<StoryAssistantTranscriptItem>)((StoryAssistantTranscriptItem item) => item.Text.Contains("First chat", StringComparison.Ordinal)));
+		Assert.Contains((IEnumerable<StoryAssistantTranscriptItem>)firstChat.Items, (Predicate<StoryAssistantTranscriptItem>)(item => item.Text == "First chat prompt."));
+		Assert.DoesNotContain((IEnumerable<StoryAssistantTranscriptItem>)firstChat.Items, (Predicate<StoryAssistantTranscriptItem>)(item => item.Text.Contains("Second chat", StringComparison.Ordinal)));
+		Assert.Contains((IEnumerable<StoryAssistantTranscriptItem>)secondChat.Items, (Predicate<StoryAssistantTranscriptItem>)(item => item.Text == "Second chat prompt."));
+		Assert.DoesNotContain((IEnumerable<StoryAssistantTranscriptItem>)secondChat.Items, (Predicate<StoryAssistantTranscriptItem>)(item => item.Text.Contains("First chat", StringComparison.Ordinal)));
 		Assert.Empty(firstChat.WorkItems);
 		Assert.Single(secondChat.WorkItems);
 	}
@@ -342,7 +342,7 @@ public sealed class StoryAssistantStoreTests
 			StoryAssistantItemKind.AssistantMessage,
 			StoryAssistantItemKind.ToolCall,
 			StoryAssistantItemKind.AssistantMessage
-		}, document.StoryAssistant.Items.Select((StoryAssistantTranscriptItem item) => item.Kind).ToArray());
+		}, document.StoryAssistant.Items.Select(item => item.Kind).ToArray());
 		Assert.Equal("First thought.", document.StoryAssistant.Items[1].Text);
 		Assert.Equal(StoryAssistantItemStatus.Applied, document.StoryAssistant.Items[1].Status);
 		Assert.Equal("Second thought.", document.StoryAssistant.Items[3].Text);
@@ -397,7 +397,7 @@ public sealed class StoryAssistantStoreTests
 		document.StoryAssistant.RemoteThreadError = "Needs restart.";
 		document.StoryAssistant.Items.Add(ReadTool());
 		bool cleanupCalled = false;
-		StoryAssistantStore store = CreateStore(document, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask, delegate(RpChatDocument cleanupDocument, IReadOnlyList<AiProvider> _, CancellationToken _)
+		StoryAssistantStore store = CreateStore(document, (_, _) => Task.CompletedTask, delegate(RpChatDocument cleanupDocument, IReadOnlyList<AiProvider> _, CancellationToken _)
 		{
 			cleanupCalled = document == cleanupDocument;
 			return Task.CompletedTask;
@@ -480,7 +480,7 @@ public sealed class StoryAssistantStoreTests
 		RpChatDocument rpChatDocument = CreateDocument();
 		rpChatDocument.StoryAssistant.Items.Add(AddUserMessage("Prepare a new story"));
 		rpChatDocument.StoryAssistant.Items.Add(AddAssistantMessage(StoryAssistantItemStatus.Streaming, ""));
-		StoryAssistantStore storyAssistantStore = CreateStore(rpChatDocument, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore storyAssistantStore = CreateStore(rpChatDocument, (_, _) => Task.CompletedTask);
 		IReadOnlyList<StoryAssistantTranscriptItem> items = storyAssistantStore.Items;
 		Assert.Single(items);
 		Assert.Equal(StoryAssistantItemKind.UserMessage, items[0].Kind);
@@ -492,7 +492,7 @@ public sealed class StoryAssistantStoreTests
 		RpChatDocument rpChatDocument = CreateDocument();
 		rpChatDocument.StoryAssistant.Items.Add(AddUserMessage("Prepare a new story"));
 		rpChatDocument.StoryAssistant.Items.Add(AddAssistantMessage(StoryAssistantItemStatus.Streaming, "Partial answer."));
-		StoryAssistantStore storyAssistantStore = CreateStore(rpChatDocument, (IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask);
+		StoryAssistantStore storyAssistantStore = CreateStore(rpChatDocument, (_, _) => Task.CompletedTask);
 		StoryAssistantTranscriptItem storyAssistantTranscriptItem = storyAssistantStore.Items.Last();
 		Assert.Equal(StoryAssistantItemKind.AssistantMessage, storyAssistantTranscriptItem.Kind);
 		Assert.Equal(StoryAssistantItemStatus.Stopped, storyAssistantTranscriptItem.Status);
@@ -586,7 +586,7 @@ public sealed class StoryAssistantStoreTests
 		workItem.AwaitingResponseId = "";
 		document.StoryAssistant.WorkItems.Add(workItem);
 		document.StoryAssistant.Items.Add(TranscriptItem(workItem));
-		StoryAssistantStore store = CreateStore(document, (StoryAssistantTurnRequest _, IStoryAssistantCallbacks _, CancellationToken _) => Task.CompletedTask, null, new List<AiProvider> { ReasoningProvider() });
+		StoryAssistantStore store = CreateStore(document, (_, _, _) => Task.CompletedTask, null, new List<AiProvider> { ReasoningProvider() });
 		await store.ResolveReviewAsync(workItem.TranscriptItemId, StoryAssistantDecisionKind.Accept, "");
 		Assert.Equal("Old summary", document.Characters[0].Summary);
 		Assert.Equal(StoryAssistantWorkItemStatus.Failed, workItem.Status);
@@ -595,12 +595,12 @@ public sealed class StoryAssistantStoreTests
 
 	private static StoryAssistantStore CreateStore(RpChatDocument document, Func<IStoryAssistantCallbacks, Task> script)
 	{
-		return CreateStore(document, (IStoryAssistantCallbacks callbacks, CancellationToken _) => script(callbacks));
+		return CreateStore(document, (callbacks, _) => script(callbacks));
 	}
 
 	private static StoryAssistantStore CreateStore(RpChatDocument document, Func<IStoryAssistantCallbacks, CancellationToken, Task> script, Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript = null, IReadOnlyList<AiProvider>? providers = null, PromptLibraryState? promptLibrary = null)
 	{
-		return CreateStore(document, (StoryAssistantTurnRequest _, IStoryAssistantCallbacks callbacks, CancellationToken cancellationToken) => script(callbacks, cancellationToken), clearScript, providers, promptLibrary);
+		return CreateStore(document, (_, callbacks, cancellationToken) => script(callbacks, cancellationToken), clearScript, providers, promptLibrary);
 	}
 
 	private static StoryAssistantStore CreateStore(RpChatDocument document, Func<StoryAssistantTurnRequest, IStoryAssistantCallbacks, CancellationToken, Task> script, Func<RpChatDocument, IReadOnlyList<AiProvider>, CancellationToken, Task>? clearScript = null, IReadOnlyList<AiProvider>? configuredProviders = null, PromptLibraryState? promptLibrary = null)

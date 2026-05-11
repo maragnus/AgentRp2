@@ -1,0 +1,34 @@
+@namespace AgentRp.Components.StoryCards
+
+<div class="story-card-requirement-create">
+    <AppInput @bind-Value="Draft"
+              @bind-IsEmpty="DraftIsEmpty"
+              UpdateMode="TextUpdateMode.Empty"
+              Placeholder="@($"New {ChildCardType} name")" />
+    <AppButton Icon="plus"
+               TooltipText="@($"Create {ChildCardType.ToString().ToLowerInvariant()} card")"
+               Disabled="@DraftIsEmpty"
+               OnClick="@(_ => AddNew())" />
+</div>
+
+@code {
+    string Draft = "";
+    bool DraftIsEmpty = true;
+
+    [Parameter] public StoryCardChildCardType ChildCardType { get; set; }
+    [Parameter] public EventCallback<string> OnAddNew { get; set; }
+
+    async Task AddNew()
+    {
+        if (DraftIsEmpty)
+            return;
+
+        var title = Draft.Trim();
+        if (title.Length == 0)
+            return;
+
+        await OnAddNew.InvokeAsync(title);
+        Draft = "";
+        DraftIsEmpty = true;
+    }
+}

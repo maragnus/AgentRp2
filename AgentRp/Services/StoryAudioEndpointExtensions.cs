@@ -24,11 +24,11 @@ public static class StoryAudioEndpointExtensions
 			IResult result;
 			await using (RpDbContext dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken))
 			{
-				StoryAudioEndpointRow audio = await (from x in dbContext.SpeechAssets.AsNoTracking()
+				var audio = await (from x in dbContext.SpeechAssets.AsNoTracking()
 					where x.Id == voiceMessageId
 					orderby x.Id
 					select new StoryAudioEndpointRow(x.UserId, x.Status, x.BlobName, x.StoredByteLength, x.ContentType, x.FileName, x.ErrorMessage, x.CreatedUtc, x.CompletedUtc)).FirstOrDefaultAsync(cancellationToken);
-				if ((object)audio == null)
+				if (audio == null)
 				{
 					result = Results.NotFound();
 				}
@@ -54,7 +54,7 @@ public static class StoryAudioEndpointExtensions
 					else
 					{
 						context.Response.Headers.CacheControl = "no-store";
-						result = Results.Stream((Stream stream) => streamCoordinator.CopyLiveAsync(voiceMessageId, stream, context.RequestAborted), ResolveContentType(audio.ContentType), audio.FileName);
+						result = Results.Stream(stream => streamCoordinator.CopyLiveAsync(voiceMessageId, stream, context.RequestAborted), ResolveContentType(audio.ContentType), audio.FileName);
 					}
 				}
 			}
@@ -69,8 +69,8 @@ public static class StoryAudioEndpointExtensions
 		{
 			return Results.Problem("Reading aloud failed because the stored audio is missing.", null, 500, "Reading aloud failed");
 		}
-		StoredAssetBlob blob = await blobStorage.OpenReadAsync(audio.BlobName, cancellationToken);
-		if ((object)blob == null)
+		var blob = await blobStorage.OpenReadAsync(audio.BlobName, cancellationToken);
+		if (blob == null)
 		{
 			return Results.NotFound();
 		}

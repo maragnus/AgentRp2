@@ -11,16 +11,8 @@
     </Trigger>
     <Content Context="picker">
         <div class="story-card-requirement-menu">
-            <div class="story-card-requirement-create">
-                <AppInput @bind-Value="Draft"
-                          @bind-IsEmpty="DraftIsEmpty"
-                          UpdateMode="TextUpdateMode.Empty"
-                          Placeholder="@($"New {ChildCardType} name")" />
-                <AppButton Icon="plus"
-                           TooltipText="@($"Create {ChildCardType.ToString().ToLowerInvariant()} card")"
-                           Disabled="@DraftIsEmpty"
-                           OnClick="@(_ => AddNew(picker))" />
-            </div>
+            <StoryCardRequirementCreateRow ChildCardType="@ChildCardType"
+                                           OnAddNew="title => AddNew(picker, title)" />
             <div class="story-card-requirement-options">
                 @foreach (var child in Options)
                 {
@@ -49,23 +41,15 @@
     [Parameter] public EventCallback<StoryCardExistingRequirementRequest> OnAddExistingRequirement { get; set; }
     [Parameter] public EventCallback<StoryCardNewRequirementRequest> OnAddNewRequirement { get; set; }
 
-    string Draft = "";
-    bool DraftIsEmpty = true;
-
     async Task AddExisting(AnchoredPopoverContext picker, string childCardId)
     {
         await OnAddExistingRequirement.InvokeAsync(new(PhaseId, ChildCardType, childCardId));
         await picker.Close();
     }
 
-    async Task AddNew(AnchoredPopoverContext picker)
+    async Task AddNew(AnchoredPopoverContext picker, string title)
     {
-        if (DraftIsEmpty)
-            return;
-
-        await OnAddNewRequirement.InvokeAsync(new(PhaseId, ChildCardType, Draft.Trim()));
-        Draft = "";
-        DraftIsEmpty = true;
+        await OnAddNewRequirement.InvokeAsync(new(PhaseId, ChildCardType, title));
         await picker.Close();
     }
 

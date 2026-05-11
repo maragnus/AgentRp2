@@ -127,10 +127,10 @@
                     {
                         <div class="story-review-note">
                             <AppTextarea Rows="2"
-                                         Value="@NoteFor(item.Id)"
-                                         ValueChanged="value => SetNote(item.Id, value)"
-                                         IsEmpty="@NoteIsEmpty(item.Id)"
-                                         IsEmptyChanged="value => SetNoteEmpty(item.Id, value)"
+                                         @bind-Value:get="NoteFor(item.Id)"
+                                         @bind-Value:set="value => SetNote(item.Id, value)"
+                                         @bind-IsEmpty:get="NoteIsEmpty(item.Id)"
+                                         @bind-IsEmpty:set="value => SetNoteEmpty(item.Id, value)"
                                          UpdateMode="TextUpdateMode.Empty"
                                          Placeholder="Your answer" />
                             <BusyButton Variant="primary" Disabled="@NoteIsEmpty(item.Id)" OnClick="@(() => AnswerQuestion(item.Id, NoteFor(item.Id)))">Send</BusyButton>
@@ -189,10 +189,10 @@
                 {
                     <div class="story-review-note">
                         <AppTextarea Rows="2"
-                                     Value="@NoteFor(item.Id)"
-                                     ValueChanged="value => SetNote(item.Id, value)"
-                                     IsEmpty="@NoteIsEmpty(item.Id)"
-                                     IsEmptyChanged="value => SetNoteEmpty(item.Id, value)"
+                                     @bind-Value:get="NoteFor(item.Id)"
+                                     @bind-Value:set="value => SetNote(item.Id, value)"
+                                     @bind-IsEmpty:get="NoteIsEmpty(item.Id)"
+                                     @bind-IsEmpty:set="value => SetNoteEmpty(item.Id, value)"
                                      UpdateMode="TextUpdateMode.Empty"
                                      Placeholder="Optional guidance" />
                         <div class="story-review-actions">

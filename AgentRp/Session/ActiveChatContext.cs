@@ -29,7 +29,7 @@ public sealed class ActiveChatContext
 
 	private async Task NotifyAsync(RoleplayStoreArea? area)
 	{
-		Func<ActiveChatChange, Task> changed = this.Changed;
+		var changed = this.Changed;
 		if (changed != null)
 		{
 			await changed(new ActiveChatChange(Current, area));

@@ -54,7 +54,7 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
 
     protected Task HandleNativeChange(ChangeEventArgs args)
     {
-        if (UpdateMode is TextUpdateMode.Change or TextUpdateMode.Live)
+        if (UpdateMode != TextUpdateMode.None)
             return Task.CompletedTask;
 
         return NotifyTextValueChanged(args.Value?.ToString() ?? "");
@@ -63,12 +63,14 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
     [JSInvokable]
     public async Task NotifyTextValueChanged(string value)
     {
-        if (string.Equals(LastReportedValue, value, StringComparison.Ordinal))
-            return;
+        if (!string.Equals(LastReportedValue, value, StringComparison.Ordinal))
+        {
+            LastReportedValue = value;
+            LastParameterValue = value;
+            await ValueChanged.InvokeAsync(value);
+        }
 
-        LastReportedValue = value;
-        LastParameterValue = value;
-        await ValueChanged.InvokeAsync(value);
+        await NotifyTextEmptyChanged(IsEmptyValue(value));
     }
 
     [JSInvokable]
@@ -87,7 +89,7 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
             return;
 
         PendingInitialEmptySync = false;
-        await NotifyTextEmptyChanged(string.IsNullOrWhiteSpace(Value));
+        await NotifyTextEmptyChanged(IsEmptyValue(Value));
     }
 
     async Task EnsureTextUpdateAsync()
@@ -160,7 +162,7 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
         mode = UpdateMode.ToString(),
         value = Value,
         isEmpty = IsEmpty,
-        emptyDebounceMilliseconds = 500,
+        emptyDebounceMilliseconds = 100,
         changeDebounceMilliseconds = 2000,
         liveDebounceMilliseconds = 500
     };
@@ -205,4 +207,6 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
 
     static bool IsDetachedElementReference(InvalidOperationException exception) =>
         exception.Message.Contains("No element is currently associated", StringComparison.OrdinalIgnoreCase);
+
+    static bool IsEmptyValue(string value) => string.IsNullOrWhiteSpace(value);
 }

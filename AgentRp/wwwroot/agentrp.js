@@ -206,7 +206,7 @@ window.agentRp = {
                 mode: options?.mode || modes.none,
                 value: options?.value || "",
                 isEmpty: !!options?.isEmpty,
-                emptyDebounceMilliseconds: Number(options?.emptyDebounceMilliseconds) || 500,
+                emptyDebounceMilliseconds: Number(options?.emptyDebounceMilliseconds) || 100,
                 changeDebounceMilliseconds: Number(options?.changeDebounceMilliseconds) || 2000,
                 liveDebounceMilliseconds: Number(options?.liveDebounceMilliseconds) || 500
             };
@@ -232,17 +232,32 @@ window.agentRp = {
 
             let current = normalizeOptions(options);
             let disposed = false;
-            let timer = 0;
+            let valueTimer = 0;
+            let emptyTimer = 0;
             let lastReportedValue = textValue(element);
             let lastReportedEmpty = isEmptyValue(lastReportedValue);
 
-            const clearTimer = () => {
-                if (!timer) {
+            const clearValueTimer = () => {
+                if (!valueTimer) {
                     return;
                 }
 
-                window.clearTimeout(timer);
-                timer = 0;
+                window.clearTimeout(valueTimer);
+                valueTimer = 0;
+            };
+
+            const clearEmptyTimer = () => {
+                if (!emptyTimer) {
+                    return;
+                }
+
+                window.clearTimeout(emptyTimer);
+                emptyTimer = 0;
+            };
+
+            const clearTimers = () => {
+                clearValueTimer();
+                clearEmptyTimer();
             };
 
             const invokeDotNet = (method, ...args) => {
@@ -258,6 +273,7 @@ window.agentRp = {
                 }
 
                 lastReportedValue = next;
+                lastReportedEmpty = isEmptyValue(next);
                 invokeDotNet("NotifyTextValueChanged", next);
             };
 
@@ -271,10 +287,21 @@ window.agentRp = {
                 invokeDotNet("NotifyTextEmptyChanged", next);
             };
 
-            const debounce = (delay, callback) => {
-                clearTimer();
-                timer = window.setTimeout(() => {
-                    timer = 0;
+            const debounceValue = (delay, callback) => {
+                clearValueTimer();
+                valueTimer = window.setTimeout(() => {
+                    valueTimer = 0;
+
+                    if (!disposed) {
+                        callback();
+                    }
+                }, delay);
+            };
+
+            const debounceEmpty = (delay, callback) => {
+                clearEmptyTimer();
+                emptyTimer = window.setTimeout(() => {
+                    emptyTimer = 0;
 
                     if (!disposed) {
                         callback();
@@ -284,21 +311,21 @@ window.agentRp = {
 
             const handleInput = () => {
                 if (current.mode === modes.empty) {
-                    debounce(current.emptyDebounceMilliseconds, notifyEmptyChanged);
+                    debounceEmpty(current.emptyDebounceMilliseconds, notifyEmptyChanged);
+                    debounceValue(current.changeDebounceMilliseconds, notifyValueChanged);
                 } else if (current.mode === modes.change) {
-                    debounce(current.changeDebounceMilliseconds, notifyValueChanged);
+                    debounceValue(current.changeDebounceMilliseconds, notifyValueChanged);
                 } else if (current.mode === modes.live) {
-                    debounce(current.liveDebounceMilliseconds, notifyValueChanged);
+                    debounceValue(current.liveDebounceMilliseconds, notifyValueChanged);
                 }
             };
 
             const handleChange = () => {
-                clearTimer();
+                clearTimers();
 
-                if (current.mode === modes.empty) {
-                    notifyEmptyChanged();
-                } else if (current.mode === modes.change || current.mode === modes.live) {
+                if (current.mode === modes.empty || current.mode === modes.change || current.mode === modes.live) {
                     notifyValueChanged();
+                    notifyEmptyChanged();
                 }
             };
 
@@ -317,7 +344,7 @@ window.agentRp = {
                 },
                 dispose() {
                     disposed = true;
-                    clearTimer();
+                    clearTimers();
                     element.removeEventListener("input", handleInput);
                     element.removeEventListener("change", handleChange);
                 }

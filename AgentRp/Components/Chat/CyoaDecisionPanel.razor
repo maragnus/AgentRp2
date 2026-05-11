@@ -21,10 +21,8 @@
                 </div>
                 <AppTextarea Class="cyoa-guidance-field"
                              Rows="4"
-                             Value="@FastForwardGuidance"
-                             ValueChanged="SetFastForwardGuidance"
-                             IsEmpty="@FastForwardGuidanceIsEmpty"
-                             IsEmptyChanged="SetFastForwardGuidanceIsEmpty"
+                             @bind-Value="FastForwardGuidance"
+                             @bind-IsEmpty="FastForwardGuidanceIsEmpty"
                              UpdateMode="TextUpdateMode.Empty" />
                 <div class="cyoa-actions">
                     <AppButton Variant="secondary" Disabled="@Disabled" OnClick="@(_ => OnCancelFastForward.InvokeAsync())">Back</AppButton>
@@ -54,10 +52,8 @@
                 <AppTextarea Class="cyoa-guidance-field"
                              Rows="3"
                              Placeholder="@CustomPlaceholder"
-                             Value="@CustomGuidance"
-                             ValueChanged="SetCustomGuidance"
-                             IsEmpty="@CustomGuidanceIsEmpty"
-                             IsEmptyChanged="SetCustomGuidanceIsEmpty"
+                             @bind-Value="CustomGuidance"
+                             @bind-IsEmpty="CustomGuidanceIsEmpty"
                              UpdateMode="TextUpdateMode.Empty" />
                 <div class="cyoa-actions">
                     @if (IsAdventure)
@@ -120,14 +116,6 @@
             : Decision.FastForwardReview.Proposal.Guidance;
         FastForwardGuidanceIsEmpty = string.IsNullOrWhiteSpace(FastForwardGuidance);
     }
-
-    void SetCustomGuidance(string value) => CustomGuidance = value;
-
-    void SetFastForwardGuidance(string value) => FastForwardGuidance = value;
-
-    void SetCustomGuidanceIsEmpty(bool value) => CustomGuidanceIsEmpty = value;
-
-    void SetFastForwardGuidanceIsEmpty(bool value) => FastForwardGuidanceIsEmpty = value;
 
     async Task SubmitCustom()
     {

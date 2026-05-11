@@ -50,7 +50,7 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
 	public async Task DeleteAsync(string id)
 	{
-		_items.RemoveAll((AiProvider provider) => provider.Id == id);
+		_items.RemoveAll(provider => provider.Id == id);
 		await MarkChangedAsync();
 	}
 
@@ -80,20 +80,19 @@ public sealed class ProviderStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
 	public async Task RefreshWidgetAsync(string providerId)
 	{
-		AiProvider provider = _items.FirstOrDefault((AiProvider aiProvider2) => aiProvider2.Id == providerId);
+		var provider = _items.FirstOrDefault(aiProvider2 => aiProvider2.Id == providerId);
 		if (provider != null)
 		{
 			try
 			{
-				AiProvider aiProvider = provider;
+				var aiProvider = provider;
 				aiProvider.Metrics = (await _widgetService.RefreshMetricsAsync(provider)).ToList();
 				provider.LastMetricsRefreshUtc = DateTime.UtcNow;
 				provider.LastMetricsError = "";
 			}
 			catch (Exception ex)
 			{
-				Exception exception = ex;
-				provider.LastMetricsError = UserFacingErrorReporter.Capture(logger, exception, "Refreshing widget details for " + provider.Name + " failed.", "Refreshing widget details for provider {ProviderId} failed.", provider.Id);
+				provider.LastMetricsError = UserFacingErrorReporter.Capture(logger, ex, "Refreshing widget details for " + provider.Name + " failed.", "Refreshing widget details for provider {ProviderId} failed.", provider.Id);
 			}
 			await MarkChangedAsync();
 		}

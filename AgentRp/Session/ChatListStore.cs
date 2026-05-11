@@ -33,7 +33,7 @@ public sealed class ChatListStore(Guid sessionId, ILiveRoleplayStore liveStore, 
 
 	public async Task SelectAsync(string chatId)
 	{
-		if (!_items.Any((StoryPreview chat) => string.Equals(chat.ChatId, chatId, StringComparison.Ordinal)))
+		if (!_items.Any(chat => string.Equals(chat.ChatId, chatId, StringComparison.Ordinal)))
 		{
 			throw new InvalidOperationException("Story '" + chatId + "' was not found.");
 		}

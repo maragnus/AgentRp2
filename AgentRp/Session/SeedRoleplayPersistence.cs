@@ -25,7 +25,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
 	{
 		lock (_gate)
 		{
-			return Task.FromResult(_chats.Select((RpChat chat) => StoryPreviewProjector.FromDocument(GetOrCreateDocument(chat.Id))).ToList());
+			return Task.FromResult(_chats.Select(chat => StoryPreviewProjector.FromDocument(GetOrCreateDocument(chat.Id))).ToList());
 		}
 	}
 
@@ -89,7 +89,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
 		lock (_gate)
 		{
 			_documents[document.Chat.Id] = SessionCloner.Clone(document);
-			RpChat rpChat = _chats.FirstOrDefault((RpChat chat) => chat.Id == document.Chat.Id);
+			var rpChat = _chats.FirstOrDefault(chat => chat.Id == document.Chat.Id);
 			if (rpChat != null)
 			{
 				TranscriptProjector.Apply(document);
@@ -116,24 +116,26 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
 
 	private RpChatDocument GetOrCreateDocument(string chatId)
 	{
-		if (_documents.TryGetValue(chatId, out RpChatDocument value))
+		if (_documents.TryGetValue(chatId, out var value))
 		{
 			return value;
 		}
-		RpChat value2 = _chats.FirstOrDefault((RpChat chat) => chat.Id == chatId) ?? _chats.First();
-		RpChatDocument rpChatDocument = new RpChatDocument();
-		rpChatDocument.Chat = SessionCloner.Clone(value2);
-		rpChatDocument.Characters = SeedData.Characters().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.CharacterRelationships = SeedData.CharacterRelationships().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.Locations = SeedData.Locations().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.Items = SeedData.Items().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.Timeline = SeedData.Timeline().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.Images = SeedData.GalleryImages().Select(SessionCloner.Clone).ToList();
-		rpChatDocument.Transcript = SessionCloner.Clone(SeedData.Transcript());
-		rpChatDocument.StoryAssistant = new StoryAssistantState();
-		rpChatDocument.ChatDirection = ChatDirectionState.CreateDefault();
-		rpChatDocument.NarratorProfile = NarratorProfileState.CreateDefault();
-		value = rpChatDocument;
+		RpChat value2 = _chats.FirstOrDefault(chat => chat.Id == chatId) ?? _chats.First();
+        RpChatDocument rpChatDocument = new RpChatDocument
+        {
+            Chat = SessionCloner.Clone(value2),
+            Characters = SeedData.Characters().Select(SessionCloner.Clone).ToList(),
+            CharacterRelationships = SeedData.CharacterRelationships().Select(SessionCloner.Clone).ToList(),
+            Locations = SeedData.Locations().Select(SessionCloner.Clone).ToList(),
+            Items = SeedData.Items().Select(SessionCloner.Clone).ToList(),
+            Timeline = SeedData.Timeline().Select(SessionCloner.Clone).ToList(),
+            Images = SeedData.GalleryImages().Select(SessionCloner.Clone).ToList(),
+            Transcript = SessionCloner.Clone(SeedData.Transcript()),
+            StoryAssistant = new StoryAssistantState(),
+            ChatDirection = ChatDirectionState.CreateDefault(),
+            NarratorProfile = NarratorProfileState.CreateDefault()
+        };
+        value = rpChatDocument;
 		TranscriptProjector.Apply(value);
 		_documents[chatId] = value;
 		return value;
@@ -156,7 +158,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
 				Name = (chat.ActiveLocation?.Name ?? chat.Location),
 				Avatar = ToAvatar(chat.ActiveLocation?.Image)
 			}),
-			SceneCharacters = chat.SceneCharacters.Select((RpChatSceneCharacter character) => new StoryPreviewCharacter
+			SceneCharacters = chat.SceneCharacters.Select(character => new StoryPreviewCharacter
 			{
 				CharacterId = character.Id,
 				Name = character.Name,
@@ -184,7 +186,7 @@ public sealed class SeedRoleplayPersistence : IRoleplayPersistence
 				ImageId = (preview.ActiveLocation.Avatar?.ImageId ?? ""),
 				Image = ToGalleryImage(preview.ActiveLocation.Avatar)
 			}),
-			SceneCharacters = preview.SceneCharacters.Select((StoryPreviewCharacter character) => new RpChatSceneCharacter
+			SceneCharacters = preview.SceneCharacters.Select(character => new RpChatSceneCharacter
 			{
 				Id = character.CharacterId,
 				Name = character.Name,

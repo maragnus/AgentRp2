@@ -21,12 +21,12 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 			IQueryable<RpChatRow> query = dbContext.Chats.AsNoTracking();
 			if (!user.IsAdmin)
 			{
-				query = query.Where((RpChatRow chat) => chat.UserId == user.Id);
+				query = query.Where(chat => chat.UserId == user.Id);
 			}
 			List<RpChatRow> chats = await (from x in query.AsNoTracking()
 				orderby x.SortOrder, x.LastMessageUtc ?? x.UpdatedUtc descending
 				select x).ToListAsync(cancellationToken);
-			HashSet<string> chatIds = chats.Select((RpChatRow chat) => chat.Id).ToHashSet<string>(StringComparer.Ordinal);
+			HashSet<string> chatIds = chats.Select(chat => chat.Id).ToHashSet<string>(StringComparer.Ordinal);
 			List<ChatLocationRow> locations = await (from row in dbContext.ChatLocations.AsNoTracking()
 				where chatIds.Contains(row.ChatId)
 				select row).ToListAsync(cancellationToken);
@@ -40,10 +40,10 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 			List<ImageAssetRow> images = await (from row in dbContext.ImageAssets.AsNoTracking()
 				where chatIds.Contains(row.ChatId)
 				select row).ToListAsync(cancellationToken);
-			Dictionary<string, ChatLocationRow> locationsByKey = locations.ToDictionary<ChatLocationRow, string>((ChatLocationRow row) => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
-			Dictionary<string, ChatCharacterRow> charactersByKey = characters.ToDictionary<ChatCharacterRow, string>((ChatCharacterRow row) => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
-			Dictionary<string, ImageAssetRow> imagesByKey = images.ToDictionary<ImageAssetRow, string>((ImageAssetRow row) => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
-			result = chats.Select((RpChatRow chat) => BuildPreview(chat, sceneCharacters.Where((ChatCurrentSceneCharacterRow row) => row.ChatId == chat.Id), locationsByKey, charactersByKey, imagesByKey)).ToList();
+			Dictionary<string, ChatLocationRow> locationsByKey = locations.ToDictionary<ChatLocationRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
+			Dictionary<string, ChatCharacterRow> charactersByKey = characters.ToDictionary<ChatCharacterRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
+			Dictionary<string, ImageAssetRow> imagesByKey = images.ToDictionary<ImageAssetRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
+			result = chats.Select(chat => BuildPreview(chat, sceneCharacters.Where(row => row.ChatId == chat.Id), locationsByKey, charactersByKey, imagesByKey)).ToList();
 		}
 		return result;
 	}
@@ -63,9 +63,9 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 				select x;
 			if (!user.IsAdmin)
 			{
-				query = query.Where((RpChatRow x) => x.UserId == user.Id);
+				query = query.Where(x => x.UserId == user.Id);
 			}
-			RpChatRow chat = await (from x in query.AsNoTracking()
+			var chat = await (from x in query.AsNoTracking()
 				orderby x.Id
 				select x).FirstOrDefaultAsync(cancellationToken);
 			if (chat == null)
@@ -126,9 +126,9 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 		IQueryable<RpChatRow> query = dbContext.Chats.AsQueryable();
 		if (!user.IsAdmin)
 		{
-			query = query.Where((RpChatRow chat) => chat.UserId == user.Id);
+			query = query.Where(chat => chat.UserId == user.Id);
 		}
-		Dictionary<string, RpChatRow> existing = await query.ToDictionaryAsync((RpChatRow x) => x.Id, cancellationToken);
+		Dictionary<string, RpChatRow> existing = await query.ToDictionaryAsync(x => x.Id, cancellationToken);
 		DateTime now = DateTime.UtcNow;
 		for (int index = 0; index < previews.Count; index++)
 		{
@@ -172,27 +172,26 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static StoryPreview BuildPreview(RpChatRow chat, IEnumerable<ChatCurrentSceneCharacterRow> sceneCharacters, IReadOnlyDictionary<string, ChatLocationRow> locationsByKey, IReadOnlyDictionary<string, ChatCharacterRow> charactersByKey, IReadOnlyDictionary<string, ImageAssetRow> imagesByKey)
 	{
-		locationsByKey.TryGetValue(chat.Id + ":" + chat.ActiveLocationId, out ChatLocationRow value);
-		ImageAssetRow image = ((value == null) ? null : ImageById(imagesByKey, chat.Id, value.ImageId));
-		List<StoryPreviewCharacter> characters = sceneCharacters.Select((ChatCurrentSceneCharacterRow row) => charactersByKey.TryGetValue(row.ChatId + ":" + row.CharacterId, out ChatCharacterRow value2) ? new StoryPreviewCharacter
+		locationsByKey.TryGetValue(chat.Id + ":" + chat.ActiveLocationId, out var value);
+		var image = (value == null) ? null : ImageById(imagesByKey, chat.Id, value.ImageId);
+		List<StoryPreviewCharacter> characters = sceneCharacters.Select(row => charactersByKey.TryGetValue(row.ChatId + ":" + row.CharacterId, out var value2) ? new StoryPreviewCharacter
 		{
 			CharacterId = value2.Id,
 			Name = value2.Name,
 			Avatar = ChatPersistenceMapper.ToPreviewAvatar(ImageById(imagesByKey, row.ChatId, value2.ImageId))
 		} : null).OfType<StoryPreviewCharacter>().ToList();
-		StoryPreviewLocation location = ((value == null && string.IsNullOrWhiteSpace(chat.ActiveLocationName)) ? null : new StoryPreviewLocation
+		var location = value == null && string.IsNullOrWhiteSpace(chat.ActiveLocationName) ? null : new StoryPreviewLocation
 		{
-			LocationId = (value?.Id ?? chat.ActiveLocationId),
-			Name = (value?.Name ?? chat.ActiveLocationName),
+			LocationId = value?.Id ?? chat.ActiveLocationId,
+			Name = value?.Name ?? chat.ActiveLocationName,
 			Avatar = ChatPersistenceMapper.ToPreviewAvatar(image)
-		});
+		};
 		return ChatPersistenceMapper.ToPreview(chat, location, characters);
 	}
 
 	private static ImageAssetRow? ImageById(IReadOnlyDictionary<string, ImageAssetRow> imagesByKey, string chatId, string imageId)
 	{
-		ImageAssetRow value;
-		return (string.IsNullOrWhiteSpace(imageId) || !imagesByKey.TryGetValue(chatId + ":" + imageId, out value)) ? null : value;
+		return (string.IsNullOrWhiteSpace(imageId) || !imagesByKey.TryGetValue(chatId + ":" + imageId, out var value)) ? null : value;
 	}
 
 	private static async Task SaveDocumentAsync(RpDbContext dbContext, CurrentAppUser user, RpChatDocument document, RoleplayStoreArea? area, CancellationToken cancellationToken)
@@ -398,7 +397,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task<RpChatRow> EnsureChatAsync(RpDbContext dbContext, CurrentAppUser user, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		RpChatRow chat = await (from x in dbContext.Chats
+		var chat = await (from x in dbContext.Chats
 			where x.Id == document.Chat.Id
 			orderby x.Id
 			select x).FirstOrDefaultAsync(cancellationToken);
@@ -417,7 +416,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 			CreatedUtc = now
 		};
 		RpChatRow rpChatRow2 = rpChatRow;
-		rpChatRow2.SortOrder = await dbContext.Chats.Where((RpChatRow row) => row.UserId == user.Id).CountAsync(cancellationToken);
+		rpChatRow2.SortOrder = await dbContext.Chats.Where(row => row.UserId == user.Id).CountAsync(cancellationToken);
 		chat = rpChatRow;
 		dbContext.Chats.Add(chat);
 		return chat;
@@ -432,34 +431,34 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task SaveCharactersAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		SaveRows(existing: await dbContext.ChatCharacters.Where((ChatCharacterRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ChatCharacterRow x) => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Characters, rows: dbContext.ChatCharacters, now: now, apply: StoryEntityPersistenceMapper.Apply);
+		SaveRows(existing: await dbContext.ChatCharacters.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Characters, rows: dbContext.ChatCharacters, now: now, apply: StoryEntityPersistenceMapper.Apply);
 	}
 
 	private static async Task SaveRelationshipsAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		SaveRows(existing: await dbContext.ChatCharacterRelationships.Where((ChatCharacterRelationshipRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ChatCharacterRelationshipRow x) => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.CharacterRelationships, rows: dbContext.ChatCharacterRelationships, now: now, apply: StoryEntityPersistenceMapper.Apply);
+		SaveRows(existing: await dbContext.ChatCharacterRelationships.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.CharacterRelationships, rows: dbContext.ChatCharacterRelationships, now: now, apply: StoryEntityPersistenceMapper.Apply);
 	}
 
 	private static async Task SaveLocationsAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		SaveRows(existing: await dbContext.ChatLocations.Where((ChatLocationRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ChatLocationRow x) => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Locations, rows: dbContext.ChatLocations, now: now, apply: StoryEntityPersistenceMapper.Apply);
+		SaveRows(existing: await dbContext.ChatLocations.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Locations, rows: dbContext.ChatLocations, now: now, apply: StoryEntityPersistenceMapper.Apply);
 	}
 
 	private static async Task SaveItemsAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		SaveRows(existing: await dbContext.ChatItems.Where((ChatItemRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ChatItemRow x) => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Items, rows: dbContext.ChatItems, now: now, apply: StoryEntityPersistenceMapper.Apply);
+		SaveRows(existing: await dbContext.ChatItems.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Items, rows: dbContext.ChatItems, now: now, apply: StoryEntityPersistenceMapper.Apply);
 	}
 
 	private static async Task SaveTimelineAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		SaveRows(existing: await dbContext.ChatTimelineEntries.Where((ChatTimelineEntryRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ChatTimelineEntryRow x) => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Timeline, rows: dbContext.ChatTimelineEntries, now: now, apply: StoryEntityPersistenceMapper.Apply);
+		SaveRows(existing: await dbContext.ChatTimelineEntries.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken), chatId: document.Chat.Id, models: document.Timeline, rows: dbContext.ChatTimelineEntries, now: now, apply: StoryEntityPersistenceMapper.Apply);
 	}
 
 	private static async Task SaveImagesAsync(RpDbContext dbContext, RpChatDocument document, CancellationToken cancellationToken)
 	{
-		Dictionary<string, ImageAssetRow> existing = await dbContext.ImageAssets.Where((ImageAssetRow x) => x.ChatId == document.Chat.Id).ToDictionaryAsync((ImageAssetRow x) => x.Id, cancellationToken);
-		HashSet<string> desiredIds = document.Images.Select((GalleryImage galleryImage) => galleryImage.Id).ToHashSet<string>(StringComparer.Ordinal);
-		dbContext.ImageAssets.RemoveRange(existing.Values.Where((ImageAssetRow imageAssetRow) => !desiredIds.Contains(imageAssetRow.Id)));
+		Dictionary<string, ImageAssetRow> existing = await dbContext.ImageAssets.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken);
+		HashSet<string> desiredIds = document.Images.Select(galleryImage => galleryImage.Id).ToHashSet<string>(StringComparer.Ordinal);
+		dbContext.ImageAssets.RemoveRange(existing.Values.Where(imageAssetRow => !desiredIds.Contains(imageAssetRow.Id)));
 		for (int index = 0; index < document.Images.Count; index++)
 		{
 			GalleryImage image = document.Images[index];
@@ -474,7 +473,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task SaveTranscriptStateAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		ChatTranscriptStateRow row = await (from x in dbContext.ChatTranscriptStates
+		var row = await (from x in dbContext.ChatTranscriptStates
 			where x.ChatId == document.Chat.Id
 			orderby x.ChatId
 			select x).FirstOrDefaultAsync(cancellationToken);
@@ -492,9 +491,9 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task SaveModelSelectionsAsync(RpDbContext dbContext, RpChatDocument document, DateTime now, CancellationToken cancellationToken)
 	{
-		Dictionary<string, StoryModelSelectionRow> existing = await dbContext.StoryModelSelections.Where((StoryModelSelectionRow storyModelSelectionRow) => storyModelSelectionRow.ChatId == document.Chat.Id).ToDictionaryAsync((StoryModelSelectionRow storyModelSelectionRow) => storyModelSelectionRow.Role, cancellationToken);
-		HashSet<string> desiredRoles = document.ModelSelections.Values.Keys.Select((AiModelRole aiModelRole) => aiModelRole.ToString()).ToHashSet<string>(StringComparer.Ordinal);
-		dbContext.StoryModelSelections.RemoveRange(existing.Values.Where((StoryModelSelectionRow storyModelSelectionRow) => !desiredRoles.Contains(storyModelSelectionRow.Role)));
+		Dictionary<string, StoryModelSelectionRow> existing = await dbContext.StoryModelSelections.Where(storyModelSelectionRow => storyModelSelectionRow.ChatId == document.Chat.Id).ToDictionaryAsync(storyModelSelectionRow => storyModelSelectionRow.Role, cancellationToken);
+		HashSet<string> desiredRoles = document.ModelSelections.Values.Keys.Select(aiModelRole => aiModelRole.ToString()).ToHashSet<string>(StringComparer.Ordinal);
+		dbContext.StoryModelSelections.RemoveRange(existing.Values.Where(storyModelSelectionRow => !desiredRoles.Contains(storyModelSelectionRow.Role)));
 		foreach (KeyValuePair<AiModelRole, ActiveModelSelectionState> pair in document.ModelSelections.Values)
 		{
 			string role = pair.Key.ToString();
@@ -530,7 +529,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task SaveStateAsync<TRow>(DbSet<TRow> rows, string chatId, DateTime now, Action<TRow, DateTime> apply, CancellationToken cancellationToken) where TRow : class, new()
 	{
-		TRow row = await (from x in rows
+		var row = await (from x in rows
 			where EF.Property<string>(x, "ChatId") == chatId
 			orderby EF.Property<string>(x, "ChatId")
 			select x).FirstOrDefaultAsync(cancellationToken);
@@ -554,7 +553,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 		{
 			TModel val = models[num];
 			string id = GetId(val);
-			if (!existing.TryGetValue(id, out TRow value))
+			if (!existing.TryGetValue(id, out var value))
 			{
 				value = new TRow();
 				typeof(TRow).GetProperty("ChatId")?.SetValue(value, chatId);
@@ -568,6 +567,6 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static string GetId<TModel>(TModel model)
 	{
-		return ((string)typeof(TModel).GetProperty("Id")?.GetValue(model)) ?? "";
+		return (string?)typeof(TModel).GetProperty("Id")?.GetValue(model) ?? "";
 	}
 }

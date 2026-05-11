@@ -4,7 +4,7 @@ This is a list of future tweaks that are planned. Be sure to remove these as the
 
 ## Low hanging fruit
 
-- none
+- LiveRoleplayStore is utter shit and needs to use SemaphoreSlim, ConcurrentDictionary, DistributedCache
 
 ## Story Cards
 - The story premise should be like the TV series premise that is consistent through all seasons and episodes

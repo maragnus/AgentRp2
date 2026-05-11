@@ -37,23 +37,23 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 
 	public ActiveChatContext ActiveChat { get; } = new ActiveChatContext();
 
-	public ChatRegistry Registry { get; private set; } = null;
+	public ChatRegistry Registry { get; private set; } = null!;
 
-	public ChatListStore Chats { get; private set; } = null;
+	public ChatListStore Chats { get; private set; } = null!;
 
-	public ProviderStore Providers { get; private set; } = null;
+	public ProviderStore Providers { get; private set; } = null!;
 
-	public ModelSelectionStore ModelSelection { get; private set; } = null;
+	public ModelSelectionStore ModelSelection { get; private set; } = null!;
 
-	public GlobalPromptLibrarySessionStore PromptLibrary { get; private set; } = null;
+	public GlobalPromptLibrarySessionStore PromptLibrary { get; private set; } = null!;
 
-	public GlobalModelTuningSessionStore ModelTuning { get; private set; } = null;
+	public GlobalModelTuningSessionStore ModelTuning { get; private set; } = null!;
 
-	public ChatWorkspace Chat { get; private set; } = null;
+	public ChatWorkspace Chat { get; private set; } = null!;
 
 	public bool IsInitialized => _initialized;
 
-	public CurrentAppUser CurrentUser { get; private set; } = null;
+	public CurrentAppUser CurrentUser { get; private set; } = null!;
 
 	public RpCharacter? SpeakingAs { get; private set; }
 
@@ -66,9 +66,11 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 			CurrentAppUser currentUser = ((_currentUserAccessor != null) ? (await _currentUserAccessor.GetCurrentUserAsync()) : new CurrentAppUser(Guid.Empty, "dev.user@local", "DEV.USER@LOCAL", "Development User", new HashSet<string>(StringComparer.Ordinal) { "Admin", "User" }));
 			CurrentUser = currentUser;
 			Registry = new ChatRegistry(_sessionId, liveStore, ActiveChat, CurrentUser);
-			Chats = new ChatListStore(_sessionId, liveStore, Registry, ActiveChat, CurrentUser);
-			Chats.ActiveSession = this;
-			Providers = new ProviderStore(_sessionId, liveStore, CurrentUser, _capabilityPipeline, _providerWidgetService, loggerFactory?.CreateLogger<ProviderStore>());
+            Chats = new ChatListStore(_sessionId, liveStore, Registry, ActiveChat, CurrentUser)
+            {
+                ActiveSession = this
+            };
+            Providers = new ProviderStore(_sessionId, liveStore, CurrentUser, _capabilityPipeline, _providerWidgetService, loggerFactory?.CreateLogger<ProviderStore>());
 			ModelSelection = new ModelSelectionStore(Providers, ActiveChat, Registry, _globalModelSelectionStore, _modelSelectionNotifier);
 			Providers.ModelSelection = ModelSelection;
 			PromptLibrary = new GlobalPromptLibrarySessionStore(_globalPromptLibraryStore);
@@ -80,7 +82,7 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 			await ModelTuning.LoadAsync();
 			await Chats.LoadAsync();
 			await Providers.LoadAsync();
-			StoryPreview first = Chats.Items.FirstOrDefault();
+			var first = Chats.Items.FirstOrDefault();
 			if (selectFirstStory && first != null)
 			{
 				await Chats.SelectAsync(first.ChatId);
@@ -120,11 +122,9 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 	public async Task SetSpeakingAsAsync(RpCharacter? character)
 	{
 		SpeakingAs = character;
-		Func<Task> changed = this.Changed;
+		var changed = this.Changed;
 		if (changed != null)
-		{
 			await changed();
-		}
 	}
 
 	public async ValueTask DisposeAsync()

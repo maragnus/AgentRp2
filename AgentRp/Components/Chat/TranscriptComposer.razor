@@ -4,8 +4,7 @@
     <AppTextarea Rows="3"
                  Value="@Draft"
                  ValueChanged="UpdateDraft"
-                 IsEmpty="@DraftIsEmpty"
-                 IsEmptyChanged="SetDraftIsEmpty"
+                 @bind-IsEmpty="DraftIsEmpty"
                  UpdateMode="TextUpdateMode.Empty"
                  Disabled="@TranscriptBusy"
                  Placeholder="Guide the next turn, or leave blank to let AI continue the scene..."
@@ -101,6 +100,4 @@
         DraftIsEmpty = string.IsNullOrWhiteSpace(value);
         await DraftChanged.InvokeAsync(Draft);
     }
-
-    void SetDraftIsEmpty(bool value) => DraftIsEmpty = value;
 }

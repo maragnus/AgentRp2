@@ -78,10 +78,10 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 	public async Task<IReadOnlyList<StoryPreview>> LoadStoryPreviewsAsync(CurrentAppUser user, CancellationToken cancellationToken = default(CancellationToken))
 	{
 		string cacheKey = StoryPreviewCacheKey(user);
-		List<StoryPreview> snapshot;
+		List<StoryPreview>? snapshot;
 		lock (_gate)
 		{
-			snapshot = (_storyPreviews.TryGetValue(cacheKey, out List<StoryPreview> cached) ? cached.Select(SessionCloner.Clone).ToList() : null);
+			snapshot = _storyPreviews.TryGetValue(cacheKey, out List<StoryPreview>? cached) ? [.. cached.Select(SessionCloner.Clone)] : null;
 		}
 		if (snapshot != null)
 		{
@@ -90,17 +90,18 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		List<StoryPreview> loaded = await _persistence.LoadStoryPreviewsAsync(user, cancellationToken);
 		lock (_gate)
 		{
-			if (!_storyPreviews.ContainsKey(cacheKey))
+			if (!_storyPreviews.TryGetValue(cacheKey, out List<StoryPreview>? value))
 			{
-				_storyPreviews[cacheKey] = loaded.Select(SessionCloner.Clone).ToList();
+                value = loaded.Select(SessionCloner.Clone).ToList();
+                _storyPreviews[cacheKey] = value;
 			}
-			return _storyPreviews[cacheKey].Select(SessionCloner.Clone).ToList();
+			return value.Select(SessionCloner.Clone).ToList();
 		}
 	}
 
 	public async Task<IReadOnlyList<AiProvider>> LoadProvidersAsync(CancellationToken cancellationToken = default(CancellationToken))
 	{
-		List<AiProvider> snapshot;
+		List<AiProvider>? snapshot;
 		lock (_gate)
 		{
 			snapshot = _providers?.Select(SessionCloner.Clone).ToList();
@@ -109,13 +110,10 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		{
 			return snapshot;
 		}
-		List<AiProvider> loaded = await _persistence.LoadProvidersAsync(cancellationToken);
+		List<AiProvider>? loaded = await _persistence.LoadProvidersAsync(cancellationToken);
 		lock (_gate)
 		{
-			if (_providers == null)
-			{
-				_providers = loaded.Select(SessionCloner.Clone).ToList();
-			}
+			_providers ??= loaded.Select(SessionCloner.Clone).ToList();
 			return _providers.Select(SessionCloner.Clone).ToList();
 		}
 	}
@@ -125,7 +123,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		await LoadStoryPreviewsAsync(user, cancellationToken);
 		lock (_gate)
 		{
-			if (_loadedChats.TryGetValue(chatId, out LoadedChat loaded))
+			if (_loadedChats.TryGetValue(chatId, out var loaded))
 			{
 				EnsureStoryAccess(user, loaded.Document);
 				loaded.Sessions.Add(sessionId);
@@ -137,7 +135,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		EnsureStoryAccess(user, document);
 		lock (_gate)
 		{
-			if (!_loadedChats.TryGetValue(chatId, out LoadedChat loaded2))
+			if (!_loadedChats.TryGetValue(chatId, out var loaded2))
 			{
 				loaded2 = new LoadedChat
 				{
@@ -161,7 +159,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		}
 		lock (_gate)
 		{
-			if (_loadedChats.TryGetValue(chatId, out LoadedChat value))
+			if (_loadedChats.TryGetValue(chatId, out var value))
 			{
 				value.Sessions.Remove(sessionId);
 				value.LastAccess = DateTimeOffset.UtcNow;
@@ -173,7 +171,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 	{
 		lock (_gate)
 		{
-			if (_loadedChats.TryGetValue(chatId, out LoadedChat loaded))
+			if (_loadedChats.TryGetValue(chatId, out var loaded))
 			{
 				EnsureStoryAccess(user, loaded.Document);
 				loaded.LastAccess = DateTimeOffset.UtcNow;
@@ -222,7 +220,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 				ClearImageReferences(document);
 			}
 			document.Transcript.RootScene.LocationName = location;
-			document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault((RpLocation item) => item.Name == location)?.Id ?? document.Locations.FirstOrDefault((RpLocation locationItem) => locationItem.IsActive)?.Id ?? document.Locations.FirstOrDefault()?.Id ?? "";
+			document.Transcript.RootScene.LocationId = document.Locations.FirstOrDefault(item => item.Name == location)?.Id ?? document.Locations.FirstOrDefault(locationItem => locationItem.IsActive)?.Id ?? document.Locations.FirstOrDefault()?.Id ?? "";
 			document.Transcript.RootScene.InSceneCharacterIds = (from character in document.Characters
 				where character.InScene
 				select character.Id).ToList();
@@ -232,12 +230,11 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 			TranscriptProjector.Apply(document);
 			StoryPreview preview = StoryPreviewProjector.FromDocument(document);
 			_storyPreviews[cacheKey].Insert(0, preview);
-			List<StoryPreview> adminPreviews;
 			if (user.IsAdmin)
 			{
 				AddPreviewToOwnerCaches(user.Id, preview);
 			}
-			else if (_storyPreviews.TryGetValue("admin", out adminPreviews))
+			else if (_storyPreviews.TryGetValue("admin", out var adminPreviews))
 			{
 				adminPreviews.Insert(0, SessionCloner.Clone(preview));
 			}
@@ -340,7 +337,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		RpChatDocument snapshot;
 		lock (_gate)
 		{
-			if (!_loadedChats.TryGetValue(chatId, out LoadedChat loaded))
+			if (!_loadedChats.TryGetValue(chatId, out var loaded))
 			{
 				loaded = new LoadedChat
 				{
@@ -385,7 +382,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		DateTimeOffset cutoff = (now ?? DateTimeOffset.UtcNow) - _inactiveChatTtl;
 		lock (_gate)
 		{
-			foreach (KeyValuePair<string, LoadedChat> item in _loadedChats.Where<KeyValuePair<string, LoadedChat>>((KeyValuePair<string, LoadedChat> pair) => pair.Value.Sessions.Count == 0 && pair.Value.LastAccess <= cutoff).ToList())
+			foreach (KeyValuePair<string, LoadedChat> item in _loadedChats.Where<KeyValuePair<string, LoadedChat>>(pair => pair.Value.Sessions.Count == 0 && pair.Value.LastAccess <= cutoff).ToList())
 			{
 				_loadedChats.Remove(item.Key);
 			}
@@ -402,7 +399,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
 	private async Task NotifyAsync(RoleplayStoreNotification notification)
 	{
-		Func<RoleplayStoreNotification, Task> changed = this.Changed;
+		var changed = this.Changed;
 		if (changed != null)
 		{
 			await changed(notification);
@@ -458,7 +455,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		bool flag = false;
 		foreach (List<StoryPreview> value2 in _storyPreviews.Values)
 		{
-			int num = value2.FindIndex((StoryPreview preview) => preview.ChatId == document.Chat.Id);
+			int num = value2.FindIndex(preview => preview.ChatId == document.Chat.Id);
 			if (num >= 0)
 			{
 				value2[num] = SessionCloner.Clone(value);
@@ -476,41 +473,41 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 		Dictionary<string, List<StoryPreview>> dictionary;
 		lock (_gate)
 		{
-			dictionary = _storyPreviews.ToDictionary<KeyValuePair<string, List<StoryPreview>>, string, List<StoryPreview>>((KeyValuePair<string, List<StoryPreview>> keyValuePair) => keyValuePair.Key, (KeyValuePair<string, List<StoryPreview>> keyValuePair) => keyValuePair.Value.Select(SessionCloner.Clone).ToList(), StringComparer.Ordinal);
+			dictionary = _storyPreviews.ToDictionary<KeyValuePair<string, List<StoryPreview>>, string, List<StoryPreview>>(keyValuePair => keyValuePair.Key, keyValuePair => keyValuePair.Value.Select(SessionCloner.Clone).ToList(), StringComparer.Ordinal);
 		}
 		foreach (KeyValuePair<string, List<StoryPreview>> pair in dictionary)
 		{
-			CurrentAppUser user = UserFromCacheKey(pair.Key);
-			if ((object)user != null)
+			var user = UserFromCacheKey(pair.Key);
+			if (user != null)
 			{
-				_worker.Enqueue((CancellationToken token) => _persistence.SaveStoryPreviewsAsync(user, pair.Value, token));
+				_worker.Enqueue(token => _persistence.SaveStoryPreviewsAsync(user, pair.Value, token));
 			}
 		}
 	}
 
 	private void QueueSaveProviders()
 	{
-		List<AiProvider> snapshot;
+		List<AiProvider>? snapshot;
 		lock (_gate)
 		{
 			snapshot = _providers?.Select(SessionCloner.Clone).ToList();
 		}
 		if (snapshot != null)
 		{
-			_worker.Enqueue((CancellationToken token) => _persistence.SaveProvidersAsync(snapshot, token));
+			_worker.Enqueue(token => _persistence.SaveProvidersAsync(snapshot, token));
 		}
 	}
 
 	private void QueueCreateDocument(CurrentAppUser user, RpChatDocument document)
 	{
 		RpChatDocument snapshot = SessionCloner.Clone(document);
-		_worker.Enqueue((CancellationToken token) => _persistence.CreateChatDocumentAsync(user, snapshot, token));
+		_worker.Enqueue(token => _persistence.CreateChatDocumentAsync(user, snapshot, token));
 	}
 
 	private void QueueSaveArea(CurrentAppUser user, RpChatDocument document, RoleplayStoreArea area)
 	{
 		RpChatDocument snapshot = SessionCloner.Clone(document);
-		_worker.Enqueue((CancellationToken token) => _persistence.SaveChatAreaAsync(user, snapshot, area, token));
+		_worker.Enqueue(token => _persistence.SaveChatAreaAsync(user, snapshot, area, token));
 	}
 
 	private static string NextChatId()
@@ -525,7 +522,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
 	private static CurrentAppUser? UserFromCacheKey(string cacheKey)
 	{
-		object result2;
+		object? result2;
 		if (cacheKey.StartsWith("user:", StringComparison.Ordinal))
 		{
 			int length = "user:".Length;
@@ -543,7 +540,7 @@ public sealed class LiveRoleplayStore : ILiveRoleplayStore, IAsyncDisposable
 
 	private void AddPreviewToOwnerCaches(Guid ownerId, StoryPreview preview)
 	{
-		if (_storyPreviews.TryGetValue($"user:{ownerId:N}", out List<StoryPreview> value))
+		if (_storyPreviews.TryGetValue($"user:{ownerId:N}", out var value))
 		{
 			value.Insert(0, SessionCloner.Clone(preview));
 		}
