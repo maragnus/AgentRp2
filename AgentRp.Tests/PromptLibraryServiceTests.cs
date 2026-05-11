@@ -22,6 +22,18 @@ public sealed class PromptLibraryServiceTests
     }
 
     [Fact]
+    public void DefaultSnapshotPromptIncludesEnrichedContextAndTimelineRelevanceRules()
+    {
+        var defaults = PromptLibraryService.CreateDefaultState();
+        var prompt = defaults.Prompts[PromptLibraryStageIds.Snapshot].User;
+
+        Assert.Contains("{snapshot.characterDetails}", prompt, StringComparison.Ordinal);
+        Assert.Contains("{snapshot.locationDetails}", prompt, StringComparison.Ordinal);
+        Assert.Contains("include only the people, items, and locations relevant to that specific entry", prompt, StringComparison.Ordinal);
+        Assert.Contains("include only key locations where memory of this event is relevant", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RequestedTurnShapePromptIncludesOnlySelectedShapeDefinition()
     {
         var defaults = PromptLibraryService.CreateDefaultState();

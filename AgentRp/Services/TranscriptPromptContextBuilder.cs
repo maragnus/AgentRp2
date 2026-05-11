@@ -4,7 +4,7 @@ using AgentRp.Session;
 
 namespace AgentRp.Services;
 
-public sealed class TranscriptPromptContextBuilder(SceneTransitionService? sceneTransitionService = null)
+public sealed partial class TranscriptPromptContextBuilder(SceneTransitionService? sceneTransitionService = null)
 {
     readonly SceneTransitionService _sceneTransitionService = sceneTransitionService ?? new();
 
@@ -144,49 +144,6 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             TurnScopeRules: requestedNarrator ? BuildNarratorTurnScopeRules() : BuildTurnScopeRules(actor?.Name ?? "Narrator"));
     }
 
-    public SnapshotPromptContext BuildSnapshotContext(RpChatDocument document, string turnId)
-    {
-        TranscriptTurnNumbering.EnsureTurnNumbers(document.Transcript);
-        var activePath = TranscriptGraph.GetActivePath(document.Transcript);
-        var turnIndex = activePath.FindIndex(turn => turn.Id == turnId);
-        if (turnIndex >= 0)
-            activePath = activePath.Take(turnIndex + 1).ToList();
-
-        var latestSnapshot = activePath.Count == 0
-            ? null
-            : document.Transcript.Snapshots
-                .Where(candidate => activePath.Any(turn => turn.Id == candidate.TurnId))
-                .OrderBy(candidate => candidate.CreatedUtc)
-                .LastOrDefault();
-        var snapshotTurnIndex = latestSnapshot is null
-            ? -1
-            : activePath.FindIndex(turn => turn.Id == latestSnapshot.TurnId);
-        var snapshotTurns = snapshotTurnIndex >= 0
-            ? activePath.Skip(snapshotTurnIndex + 1).ToList()
-            : activePath;
-        var currentTurn = activePath.LastOrDefault();
-        var scene = currentTurn?.Scene ?? document.Transcript.RootScene;
-        var presentCharacters = document.Characters.Where(character => scene.InSceneCharacterIds.Contains(character.Id)).ToList();
-        var characterAppearances = BuildAppearanceMap(latestSnapshot, activePath, snapshotTurnIndex);
-        var traitLibrary = CharacterTraitLibraryService.NormalizeState(document.CharacterTraitLibrary);
-        var currentLocation = document.Locations.FirstOrDefault(location => location.Id == scene.LocationId)?.Name;
-        var physicalSceneStateText = FormatPhysicalSceneState(scene, presentCharacters);
-        var relationshipRefreshText = FormatSnapshotRelationshipRefresh(document, traitLibrary);
-
-        return new(
-            ThreadTitle: document.Chat.Title,
-            CurrentLocation: string.IsNullOrWhiteSpace(currentLocation) ? "None" : currentLocation,
-            Characters: FormatCharacterReferences(document.Characters),
-            Locations: FormatReferenceNames(document.Locations.Select(location => location.Name)),
-            Items: FormatReferenceNames(document.Items.Select(item => item.Name)),
-            History: FormatSnapshotHistory(document),
-            Messages: FormatSnapshotMessages(snapshotTurns),
-            TranscriptText: FormatTranscriptWithEarlierSummary(FormatTranscript(document, snapshotTurns, latestSnapshot?.Scene, includeTurnLabels: true), latestSnapshot?.Summary ?? ""),
-            CharacterAppearancesText: FormatCharacterAppearances(presentCharacters, characterAppearances, traitLibrary),
-            PhysicalSceneStateText: physicalSceneStateText,
-            RelationshipRefreshText: relationshipRefreshText);
-    }
-
     public Dictionary<string, string> BuildTokens(TurnPromptContext context, string planningOutput, string stageId = "")
     {
         var actorName = context.Actor?.Name ?? "Narrator";
@@ -283,7 +240,9 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         ["{snapshot.threadTitle}"] = context.ThreadTitle,
         ["{snapshot.currentLocation}"] = context.CurrentLocation,
         ["{snapshot.characters}"] = context.Characters,
+        ["{snapshot.characterDetails}"] = context.CharacterDetails,
         ["{snapshot.locations}"] = context.Locations,
+        ["{snapshot.locationDetails}"] = context.LocationDetails,
         ["{snapshot.items}"] = context.Items,
         ["{snapshot.history}"] = context.History,
         ["{snapshot.messages}"] = context.Messages,
@@ -538,15 +497,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         {
             var role = actor?.Id == character.Id ? "current actor" : "in scene";
             builder.AppendLine().AppendLine($"**{character.Name}:** {string.Join(", ", [..character.Pronouns, role, $"(id: {character.Id})"])}");
-            AppendList(builder, "Pronouns", character.Pronouns);
-            AppendField(builder, "Summary", character.Summary);
-            AppendField(builder, "Voice", character.Voice);
-            AppendField(builder, "Personality", character.Personality);
-            AppendField(builder, "Core drive", character.CoreDrive);
-            AppendField(builder, "Core fear", character.CoreFear);
-            AppendField(builder, "Hidden truth", character.HiddenTruth);
-            AppendList(builder, "Traits", character.Traits);
-            AppendList(builder, "Limits", character.Limits);
+            AppendCharacterCorePromptDetails(builder, character);
         }
 
         return builder.ToString().TrimEnd();
@@ -707,95 +658,6 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             .Select(x => $"{x.Title}: {PromptInlineText(x.Description, "No description")}")
             .ToList();
         return entries.Count == 0 ? "" : $"**History summary:** {string.Join(" | ", entries)}";
-    }
-
-    static string FormatSnapshotHistory(RpChatDocument document)
-    {
-        var entries = document.Timeline
-            .Take(3)
-            .Select(x => $"{x.Title}: {PromptInlineText(x.Description, "No summary")}")
-            .ToList();
-        return entries.Count == 0 ? "None" : string.Join(" | ", entries);
-    }
-
-    static string FormatSnapshotMessages(IEnumerable<RpTranscriptTurn> turns)
-    {
-        var lines = turns.Select(turn =>
-        {
-            var speaker = ResolveActiveSpeakerName(turn);
-            return $"- {TranscriptTurnNumbering.Format(turn)} - {speaker}: {CollapseWhitespace(turn.Body)}";
-        });
-        var content = string.Join(Environment.NewLine, lines);
-        return string.IsNullOrWhiteSpace(content) ? "- None" : content;
-    }
-
-    static string FormatReferenceNames(IEnumerable<string> names)
-    {
-        var values = names.Where(name => !string.IsNullOrWhiteSpace(name)).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
-        return values.Count == 0 ? "None" : string.Join(", ", values);
-    }
-
-    static string FormatCharacterReferences(IEnumerable<RpCharacter> characters)
-    {
-        var values = characters
-            .Where(character => !string.IsNullOrWhiteSpace(character.Name))
-            .OrderBy(character => character.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(FormatCharacterReference)
-            .ToList();
-        return values.Count == 0 ? "None" : string.Join(", ", values);
-    }
-
-    static string FormatSnapshotRelationshipRefresh(RpChatDocument document, CharacterTraitLibraryState traitLibrary)
-    {
-        var characterNames = document.Characters.ToDictionary(character => character.Id, character => character.Name, StringComparer.Ordinal);
-        var relationshipBlocks = document.CharacterRelationships
-            .OrderBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterAId, ""), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(relationship => characterNames.GetValueOrDefault(relationship.CharacterBId, ""), StringComparer.OrdinalIgnoreCase)
-            .Select(relationship => FormatSnapshotRelationshipBlock(relationship, characterNames))
-            .Where(block => !string.IsNullOrWhiteSpace(block))
-            .ToList();
-
-        var builder = new StringBuilder();
-        builder.AppendLine("**Relationship canon to refresh:**");
-        builder.AppendLine("- Review each relationship below for new evidence about awareness, meeting status, recognition, emotional stance, public dynamic, bond type (`relationshipTypes`), or shared dynamic (`privateTensions`).");
-        builder.AppendLine("- When the transcript gives a clearer current version of a relationship, return a complete relationship update for that pair using the existing controlled values and updated prose.");
-        builder.AppendLine("- Use the relationshipId, sourceCharacterId, and targetCharacterId exactly as shown in the row.");
-        builder.AppendLine("- Use only the provided relationshipTypes and privateTensions values.");
-        builder.AppendLine("- Prefer useful canon updates that improve future scene consistency.");
-        builder.AppendLine("- Carry forward existing relationship details that are still true, and incorporate the new transcript evidence into the complete updated row.");
-        builder.AppendLine("- Each relationship update should include relationshipId, sourceCharacterId, targetCharacterId, relationshipTypes, privateTensions, howSourceSeesTarget, howTargetSeesSource, publicDynamic, reason, and evidenceTurnNumbers.");
-        builder.AppendLine();
-        builder.AppendLine($"**relationshipTypes:** {FormatSnapshotControlledValues(traitLibrary.BondTypes)}");
-        builder.AppendLine($"**privateTensions:** {FormatSnapshotControlledValues(traitLibrary.Dynamics)}");
-        builder.AppendLine();
-        builder.AppendLine("**Relationships:**");
-        builder.AppendLine(relationshipBlocks.Count == 0 ? "None" : string.Join($"{Environment.NewLine}{Environment.NewLine}", relationshipBlocks));
-        return builder.ToString().TrimEnd();
-    }
-
-    static string FormatSnapshotRelationshipBlock(RpCharacterRelationship relationship, IReadOnlyDictionary<string, string> characterNames)
-    {
-        var sourceName = characterNames.GetValueOrDefault(relationship.CharacterAId, "");
-        var targetName = characterNames.GetValueOrDefault(relationship.CharacterBId, "");
-        if (string.IsNullOrWhiteSpace(sourceName) || string.IsNullOrWhiteSpace(targetName))
-            return "";
-
-        var builder = new StringBuilder();
-        builder.AppendLine($"Relationship: {sourceName} / {targetName} (relationshipId: {relationship.Id})");
-        builder.AppendLine($"Source: {sourceName} (sourceCharacterId: {relationship.CharacterAId})");
-        builder.AppendLine($"Target: {targetName} (targetCharacterId: {relationship.CharacterBId})");
-        builder.AppendLine($"relationshipTypes: {FormatSnapshotControlledValues(relationship.Bonds)}");
-        builder.AppendLine($"privateTensions: {FormatSnapshotControlledValues(relationship.Dynamics)}");
-        builder.AppendLine($"howSourceSeesTarget (how {sourceName} sees {targetName}): {PromptInlineText(relationship.NoteAtoB, "Unknown")}");
-        builder.AppendLine($"howTargetSeesSource (how {targetName} sees {sourceName}): {PromptInlineText(relationship.NoteBtoA, "Unknown")}");
-        builder.Append($"publicDynamic (outsider view): {PromptInlineText(relationship.NoteExternal, "Unknown")}");
-        return builder.ToString();
-    }
-
-    static string FormatSnapshotControlledValues(IReadOnlyList<string> values)
-    {
-        var normalized = values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => PromptInlineText(value)).ToList();
-        return normalized.Count == 0 ? "None" : string.Join(", ", normalized);
     }
 
     static string FormatCharacterReference(RpCharacter character)
@@ -1059,7 +921,9 @@ public sealed record SnapshotPromptContext(
     string ThreadTitle,
     string CurrentLocation,
     string Characters,
+    string CharacterDetails,
     string Locations,
+    string LocationDetails,
     string Items,
     string History,
     string Messages,

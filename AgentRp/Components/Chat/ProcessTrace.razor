@@ -73,8 +73,11 @@
                             @if (!string.IsNullOrWhiteSpace(step.StructuredOutputJson))
                             {
                                 <div class="prompt-block"><label>Structured Output</label><pre>@step.StructuredOutputJson</pre></div>
+                            } 
+                            else if (!string.IsNullOrWhiteSpace(step.RawOutput))
+                            {
+                                <div class="prompt-block"><label>Raw Output</label><pre>@step.RawOutput</pre></div>
                             }
-                            <div class="prompt-block"><label>Output</label><pre>@step.RawOutput</pre></div>
                             @if (!string.IsNullOrWhiteSpace(step.Error))
                             {
                                 <div class="prompt-block"><label>Error</label><pre>@step.Error</pre></div>
@@ -141,8 +144,8 @@
         !string.Equals(step.Status, "pending", StringComparison.Ordinal) &&
         (!string.IsNullOrWhiteSpace(step.SystemPrompt) ||
          !string.IsNullOrWhiteSpace(step.UserPrompt) ||
-         !string.IsNullOrWhiteSpace(step.StructuredOutputJson) ||
          !string.IsNullOrWhiteSpace(step.RawOutput) ||
+         !string.IsNullOrWhiteSpace(step.StructuredOutputJson) ||
          !string.IsNullOrWhiteSpace(step.Error));
 
     static string StepClass(RpGenerationTraceStep step) =>

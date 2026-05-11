@@ -674,6 +674,31 @@ public sealed class TranscriptFeatureTests
     }
 
     [Fact]
+    public void SnapshotContextIncludesReferencedDetailsAndPrivateIntent()
+    {
+        var document = CreateTransitionDocument();
+        var builder = new TranscriptPromptContextBuilder();
+
+        var snapshot = builder.BuildSnapshotContext(document, "turn-2");
+
+        Assert.Equal("Library (id: l2)", snapshot.CurrentLocation);
+        Assert.Contains("Apartment (id: l1)", snapshot.Locations, StringComparison.Ordinal);
+        Assert.Contains("Library (id: l2)", snapshot.Locations, StringComparison.Ordinal);
+        Assert.Contains("Lantern (id: i1)", snapshot.Items, StringComparison.Ordinal);
+        Assert.Contains("Map (id: i2)", snapshot.Items, StringComparison.Ordinal);
+        Assert.Contains("- Personality: Sharp and careful.", snapshot.CharacterDetails, StringComparison.Ordinal);
+        Assert.Contains("- Traits: guarded, observant", snapshot.CharacterDetails, StringComparison.Ordinal);
+        Assert.Contains("- Core drive: protect-the-map", snapshot.CharacterDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("Nadia", snapshot.CharacterDetails, StringComparison.Ordinal);
+        Assert.Contains("**Apartment** (id: l1)", snapshot.LocationDetails, StringComparison.Ordinal);
+        Assert.Contains("- Atmosphere: Tense and quiet.", snapshot.LocationDetails, StringComparison.Ordinal);
+        Assert.Contains("**Library** (id: l2)", snapshot.LocationDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("Rooftop", snapshot.LocationDetails, StringComparison.Ordinal);
+        Assert.Contains("[Gemma's private intent: Hide the map before Mara asks questions.]", snapshot.Messages, StringComparison.Ordinal);
+        Assert.Contains("[Gemma's private intent: Hide the map before Mara asks questions.]", snapshot.TranscriptText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task TranscriptOptionsDefaultToAudioTagsHiddenAndBlocksHidden()
     {
         var persistence = new SeedRoleplayPersistence();
@@ -781,14 +806,28 @@ public sealed class TranscriptFeatureTests
             Chat = new() { Id = "ch-test", Title = "Transition Test" },
             Locations =
             [
-                new() { Id = "l1", Name = "Apartment" },
-                new() { Id = "l2", Name = "Library" }
+                new() { Id = "l1", Name = "Apartment", Summary = "A private apartment.", Description = "Dining table and narrow hallway.", Atmosphere = "Tense and quiet.", Features = "Kitchen island, balcony door" },
+                new() { Id = "l2", Name = "Library", Summary = "A quiet map archive.", Description = "Tall shelves and study lamps.", Atmosphere = "Dusty and focused.", Features = "Map cases, rolling ladders" },
+                new() { Id = "l3", Name = "Rooftop", Summary = "Unrelated roof garden." }
             ],
             Characters =
             [
                 new() { Id = "c1", Name = "Lucia" },
-                new() { Id = "c2", Name = "Gemma" },
-                new() { Id = "c3", Name = "Mara" }
+                new()
+                {
+                    Id = "c2",
+                    Name = "Gemma",
+                    Summary = "Keeps careful watch over the archive.",
+                    Voice = "Dry and precise.",
+                    Personality = "Sharp and careful.",
+                    CoreDrive = "protect-the-map",
+                    CoreFear = "losing-control",
+                    HiddenTruth = "already knows the route",
+                    Traits = ["guarded", "observant"],
+                    Limits = ["No sudden confession"]
+                },
+                new() { Id = "c3", Name = "Mara" },
+                new() { Id = "c4", Name = "Nadia", Personality = "Unrelated witness." }
             ],
             Items =
             [
@@ -822,6 +861,7 @@ public sealed class TranscriptFeatureTests
                         ActorCharacterId = "c2",
                         ActorName = "Gemma",
                         Body = "Second message.",
+                        PrivateIntentByCharacterId = new() { ["c2"] = "Hide the map before Mara asks questions." },
                         Scene = CloneScene(secondScene)
                     }
                 ]

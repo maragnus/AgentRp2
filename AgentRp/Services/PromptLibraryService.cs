@@ -126,7 +126,9 @@ public sealed partial class PromptLibraryService
         Placeholder("{snapshot.threadTitle}", "Snapshot thread title.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.currentLocation}", "Snapshot current location.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.characters}", "Snapshot character catalog.", PromptLibraryStageIds.Snapshot),
+        Placeholder("{snapshot.characterDetails}", "Snapshot details for characters referenced by the included transcript range.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.locations}", "Snapshot location catalog.", PromptLibraryStageIds.Snapshot),
+        Placeholder("{snapshot.locationDetails}", "Snapshot details for locations active in the included transcript range.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.items}", "Snapshot item catalog.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.history}", "Snapshot canonical history summary.", PromptLibraryStageIds.Snapshot),
         Placeholder("{snapshot.relationships}", "Snapshot relationship canon refresh instructions and current relationship rows.", PromptLibraryStageIds.Snapshot),
@@ -707,16 +709,26 @@ public sealed partial class PromptLibraryService
 
     const string DefaultSnapshotUserPromptTemplate =
         """
-        Thread title: {snapshot.threadTitle}
-        Current location: {snapshot.currentLocation}
-        Characters in story: {snapshot.characters}
-        Locations in story: {snapshot.locations}
-        Items in story: {snapshot.items}
-        Existing canonical history: {snapshot.history}
+        **Thread title:** {snapshot.threadTitle}
+        **Current location:** {snapshot.currentLocation}
+        
+        **Characters in story:** {snapshot.characters}
+
+        **Referenced character details:**
+        {snapshot.characterDetails}
+
+        **Locations in story:** {snapshot.locations}
+
+        **Referenced location details:**
+        {snapshot.locationDetails}
+
+        **Items in story:** {snapshot.items}
+        
+        **Existing canonical history:** {snapshot.history}
 
         {snapshot.relationships}
 
-        Included branch messages:
+        **Included branch messages:**
         {snapshot.messages}
 
         Return:
@@ -724,6 +736,8 @@ public sealed partial class PromptLibraryService
         2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
         3. Relationship updates that refresh relationship canon from the included transcript.
         For characterIds, locationNames, and itemNames, only use values from the provided catalogs.
+        For each timeline entry, include only the people, items, and locations relevant to that specific entry.
+        For timeline locations, include only key locations where memory of this event is relevant, not every active, passing, or background location.
         """;
 
     const string DefaultSceneContinuitySystemPrompt =
