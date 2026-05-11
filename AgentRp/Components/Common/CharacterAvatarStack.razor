@@ -1,0 +1,31 @@
+<span class="@CssClass" aria-label="@AvatarSummary">
+    @foreach (var character in VisibleCharacters)
+    {
+        <StoryAvatar @key="character.Id"
+                     Name="@character.Name"
+                     ImageUrl="@character.ImageUrl"
+                     Crop="@character.Crop"
+                     Class="@AvatarClass" />
+    }
+    @if (VisibleCharacters.Count == 0 && !string.IsNullOrWhiteSpace(EmptyIcon))
+    {
+        <span class="@EmptyClass"><FaIcon Name="@EmptyIcon" /></span>
+    }
+</span>
+
+@code {
+    [Parameter] public IReadOnlyList<CharacterAvatarItem> Characters { get; set; } = [];
+    [Parameter] public int Max { get; set; } = 3;
+    [Parameter] public string Class { get; set; } = "character-avatar-stack";
+    [Parameter] public string AvatarClass { get; set; } = "character-avatar-stack-avatar";
+    [Parameter] public string EmptyClass { get; set; } = "";
+    [Parameter] public string EmptyIcon { get; set; } = "";
+    [Parameter] public string SummaryPrefix { get; set; } = "Characters";
+    [Parameter] public string EmptySummary { get; set; } = "No characters";
+
+    IReadOnlyList<CharacterAvatarItem> VisibleCharacters => Characters.Take(Max).ToList();
+    string CssClass => $"{Class} {(VisibleCharacters.Count == 0 ? "is-empty" : "")}".Trim();
+    string AvatarSummary => Characters.Count == 0
+        ? EmptySummary
+        : $"{SummaryPrefix}: {string.Join(", ", Characters.Take(Max).Select(character => character.Name))}";
+}

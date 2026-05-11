@@ -1,17 +1,11 @@
-<span class="@CssClass" aria-label="@AvatarSummary">
-    @foreach (var character in VisibleCharacters)
-    {
-        <StoryAvatar @key="character.CharacterId"
-                     Name="@character.Name"
-                     ImageUrl="@character.Avatar?.Url"
-                     Crop="@CropFor(character.Avatar)"
-                     Class="@AvatarClass" />
-    }
-    @if (VisibleCharacters.Count == 0 && !string.IsNullOrWhiteSpace(EmptyIcon))
-    {
-        <span class="@EmptyClass"><FaIcon Name="@EmptyIcon" /></span>
-    }
-</span>
+<CharacterAvatarStack Characters="AvatarItems"
+                      Max="@Max"
+                      Class="@Class"
+                      AvatarClass="@AvatarClass"
+                      EmptyClass="@EmptyClass"
+                      EmptyIcon="@EmptyIcon"
+                      SummaryPrefix="In scene"
+                      EmptySummary="No characters in scene" />
 
 @code {
     [Parameter] public IReadOnlyList<StoryPreviewCharacter> Characters { get; set; } = [];
@@ -21,11 +15,9 @@
     [Parameter] public string EmptyClass { get; set; } = "";
     [Parameter] public string EmptyIcon { get; set; } = "";
 
-    IReadOnlyList<StoryPreviewCharacter> VisibleCharacters => Characters.Take(Max).ToList();
-    string CssClass => Class;
-    string AvatarSummary => Characters.Count == 0
-        ? "No characters in scene"
-        : $"In scene: {string.Join(", ", Characters.Take(Max).Select(character => character.Name))}";
+    IReadOnlyList<CharacterAvatarItem> AvatarItems => Characters
+        .Select(character => new CharacterAvatarItem(character.CharacterId, character.Name, character.Avatar?.Url, CropFor(character.Avatar)))
+        .ToList();
 
     static ImageAvatarCropView CropFor(StoryPreviewAvatar? avatar) =>
         avatar is null

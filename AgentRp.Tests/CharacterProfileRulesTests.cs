@@ -176,6 +176,8 @@ public sealed class CharacterProfileRulesTests
         AssertUpdateSchemaRequiresEntityId(tools["update_timeline_entry"]);
         Assert.DoesNotContain("isActive", tools["create_location"].Parameters.ToJsonString(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("inScene", tools["create_item"].Parameters.ToJsonString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("characterIds", tools["create_timeline_entry"].Parameters.ToJsonString(), StringComparison.Ordinal);
+        Assert.Contains("locationIds", tools["create_timeline_entry"].Parameters.ToJsonString(), StringComparison.Ordinal);
         Assert.Contains("get_story_entities", tools["update_location"].Description, StringComparison.Ordinal);
         Assert.Contains("get_story_entities", tools["update_item"].Description, StringComparison.Ordinal);
         Assert.Contains("get_story_entities", tools["update_timeline_entry"].Description, StringComparison.Ordinal);

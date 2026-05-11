@@ -33,28 +33,36 @@
                             Class="entity-list-row"
                             OnClick="@row.Select">
                 <LeadingContent>
-                    <span class="entity-list-icon">
-                        @if (row.Item.IsNarrator)
-                        {
-                            <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
-                        }
-                        else if (Type == "characters")
-                        {
-                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="character" EntityId="@row.Item.Id" Size="34" />
-                        }
-                        else if (Type == "timeline")
-                        {
-                            <FaIcon Name="clock" />
-                        }
-                        else
-                        {
-                            <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="@EntityTypeForCurrentTab" EntityId="@row.Item.Id" Size="34" />
-                        }
-                        @if (row.Item.Active)
-                        {
-                            <span class="entity-active-dot @(Type == "locations" ? "is-location" : "")"></span>
-                        }
-                    </span>
+                    @if (Type == "timeline")
+                    {
+                        <CharacterAvatarStack Characters="TimelineAvatarItems(row.Item.Id)"
+                                              Class="character-avatar-stack entity-list-avatar-stack"
+                                              EmptyClass="entity-list-icon"
+                                              EmptyIcon="clock"
+                                              SummaryPrefix="Linked characters"
+                                              EmptySummary="No linked characters" />
+                    }
+                    else
+                    {
+                        <span class="entity-list-icon">
+                            @if (row.Item.IsNarrator)
+                            {
+                                <span class="narrator-avatar"><FaIcon Name="book-open" /></span>
+                            }
+                            else if (Type == "characters")
+                            {
+                                <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="character" EntityId="@row.Item.Id" Size="34" />
+                            }
+                            else
+                            {
+                                <EntityImage Name="@row.Item.Title" Image="@ImageFor(row.Item.ImageId)" EntityType="@EntityTypeForCurrentTab" EntityId="@row.Item.Id" Size="34" />
+                            }
+                            @if (row.Item.Active)
+                            {
+                                <span class="entity-active-dot @(Type == "locations" ? "is-location" : "")"></span>
+                            }
+                        </span>
+                    }
                 </LeadingContent>
                 <TrailingContent>
                     @if (HasToggle && !row.Item.IsNarrator)
@@ -125,6 +133,13 @@
             else if (Type == "timeline" && SelectedTimeline is not null)
             {
                 <EntityHeader Name="@SelectedTimeline.Title" Subtitle="Timeline entry" ImageSize="40">
+                    <LeadingContent>
+                        <CharacterAvatarStack Characters="TimelineAvatarItems(SelectedTimeline)"
+                                              EmptyClass="sidebar-row-icon"
+                                              EmptyIcon="clock"
+                                              SummaryPrefix="Linked characters"
+                                              EmptySummary="No linked characters" />
+                    </LeadingContent>
                     <Actions>
                         <AppButton Variant="danger" OnClick="@(_ => ConfirmDeleteOpen = true)"><FaIcon Name="trash" /> Delete</AppButton>
                     </Actions>
@@ -224,6 +239,16 @@
         _ => ""
     };
     string ActiveSingular => ActiveTypeLabel.TrimEnd('s');
+    IReadOnlyList<CharacterAvatarItem> TimelineAvatarItems(RpTimelineEntry entry) => entry.CharacterIds
+        .Select(id => Characters.FirstOrDefault(character => string.Equals(character.Id, id, StringComparison.Ordinal)))
+        .OfType<RpCharacter>()
+        .Select(character => CharacterAvatarItem.From(character, ImageFor(character.ImageId)))
+        .ToList();
+    IReadOnlyList<CharacterAvatarItem> TimelineAvatarItems(string entryId) =>
+        Timeline.FirstOrDefault(entry => string.Equals(entry.Id, entryId, StringComparison.Ordinal)) is { } entry
+            ? TimelineAvatarItems(entry)
+            : [];
+
     string DeleteDialogTitle => Type switch
     {
         "characters" => "Delete character?",

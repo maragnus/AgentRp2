@@ -754,7 +754,7 @@ public sealed class TextGenerationService(
             FinalizeTrace(trace, "completed");
             return new(
                 ResolveSnapshotSummary(result),
-                NormalizeSnapshotTimelineEntries(result.TimelineEntries),
+                NormalizeSnapshotTimelineEntries(result.TimelineEntries, document.Characters, document.Locations),
                 trace,
                 continuity.CharacterSceneStates,
                 continuity.Scene,
@@ -2006,7 +2006,10 @@ public sealed class TextGenerationService(
         return response.Summary.Trim();
     }
 
-    static List<RpTranscriptSnapshotTimelineEntry> NormalizeSnapshotTimelineEntries(IReadOnlyList<SnapshotTimelineEntryResponse>? entries) =>
+    static List<RpTranscriptSnapshotTimelineEntry> NormalizeSnapshotTimelineEntries(
+        IReadOnlyList<SnapshotTimelineEntryResponse>? entries,
+        IReadOnlyList<RpCharacter> characters,
+        IReadOnlyList<RpLocation> locations) =>
         entries?
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Title))
             .Select(entry => new RpTranscriptSnapshotTimelineEntry
@@ -2014,12 +2017,18 @@ public sealed class TextGenerationService(
                 TurnNumber = entry.TurnNumber,
                 Title = entry.Title.Trim(),
                 Description = entry.Description.Trim(),
-                CharacterNames = NormalizeNames(entry.CharacterNames),
-                LocationNames = NormalizeNames(entry.LocationNames),
+                CharacterIds = TimelineEntityLinkResolver.ResolveCharacterIds(characters, CharacterReferences(entry)),
+                LocationIds = TimelineEntityLinkResolver.ResolveLocationIds(locations, LocationReferences(entry)),
                 ItemNames = NormalizeNames(entry.ItemNames)
             })
             .ToList()
         ?? [];
+
+    static IEnumerable<string> CharacterReferences(SnapshotTimelineEntryResponse entry) =>
+        (entry.CharacterIds ?? []).Concat(entry.CharacterNames ?? []);
+
+    static IEnumerable<string> LocationReferences(SnapshotTimelineEntryResponse entry) =>
+        (entry.LocationIds ?? []).Concat(entry.LocationNames ?? []);
 
     static List<string> NormalizeNames(IReadOnlyList<string>? names) =>
         names?.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
@@ -2122,7 +2131,9 @@ public sealed class TextGenerationService(
         public int TurnNumber { get; set; }
         public string Title { get; set; } = "";
         public string Description { get; set; } = "";
+        public IReadOnlyList<string>? CharacterIds { get; set; }
         public IReadOnlyList<string>? CharacterNames { get; set; }
+        public IReadOnlyList<string>? LocationIds { get; set; }
         public IReadOnlyList<string>? LocationNames { get; set; }
         public IReadOnlyList<string>? ItemNames { get; set; }
     }

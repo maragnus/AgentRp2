@@ -1,4 +1,4 @@
-<div class="form-stack entity-form-editor">
+<FormStack>
     <FormSection Title="Identity">
         <FieldRow Label="Name"><AppInput Value="@Item.Name" ValueChanged="SetName" /></FieldRow>
         <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Item.Summary" ValueChanged="SetSummary" /></FieldRow>
@@ -8,7 +8,7 @@
         <FieldRow Label="History"><AppTextarea Rows="4" Value="@Item.History" ValueChanged="SetHistory" /></FieldRow>
         <FieldRow Label="Properties"><AppTextarea Rows="4" Value="@Item.Properties" ValueChanged="SetProperties" /></FieldRow>
     </FormSection>
-</div>
+</FormStack>
 
 @code {
     [Parameter] public RpItem Item { get; set; } = new();

@@ -274,7 +274,7 @@ public sealed partial class StoryEntityPatchService(
 {
     static readonly string[] LocationFields = ["name", "summary", "description", "atmosphere", "features"];
     static readonly string[] ItemFields = ["name", "summary", "description", "history", "properties"];
-    static readonly string[] TimelineFields = ["title", "date", "description", "significance", "characters"];
+    static readonly string[] TimelineFields = ["title", "date", "description", "significance", "characterIds", "locationIds"];
 
     public async Task<string> ExecuteAsync(
         RpChatDocument document,
@@ -561,7 +561,8 @@ public sealed partial class StoryEntityPatchService(
         entry.Title,
         entry.Date,
         entry.Description,
-        entry.Characters,
+        entry.CharacterIds,
+        entry.LocationIds,
         entry.Significance
     };
 
@@ -722,7 +723,7 @@ public sealed partial class StoryEntityPatchService(
         ValidatePatch(updates, TimelineFields, "timeline entry");
         RequirePatchString(updates, "title", "Creating a timeline entry");
         var entry = new RpTimelineEntry { Id = NextId(document.Timeline.Select(item => item.Id), "t"), UpdatedUtc = DateTime.UtcNow };
-        ApplyTimeline(entry, updates);
+        ApplyTimeline(entry, updates, document.Characters, document.Locations);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Create, $"Create {entry.Title}", "timeline", entry.Id, entry.Title, args, new(), TimelineJsonObject(entry), StoryAssistantChangeRisk.Major);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => document.Timeline.Add(entry), new(), token);
     }
@@ -736,7 +737,7 @@ public sealed partial class StoryEntityPatchService(
         var after = Clone(existing);
         var updates = Updates(json.RootElement);
         ValidatePatch(updates, TimelineFields, "timeline entry");
-        ApplyTimeline(after, updates);
+        ApplyTimeline(after, updates, document.Characters, document.Locations);
         StoryEntityTimestamps.Touch(after, DateTime.UtcNow);
         var item = MutationItem(callId, toolName, StoryAssistantOperationKind.Update, $"Update {after.Title}", "timeline", id, after.Title, args, TimelineJsonObject(before), TimelineJsonObject(after), StoryAssistantChangeRisk.Major);
         return await ResolveMutationAsync(document, item, callbacks, RoleplayStoreArea.Timeline, () => Copy(after, existing), TimelineJsonObject(existing), token);
@@ -1085,7 +1086,7 @@ public sealed partial class StoryEntityPatchService(
                 break;
             case "update_timeline_entry":
                 ValidatePatch(updates, TimelineFields, "timeline entry");
-                ApplyTimeline(document.Timeline.First(item => item.Id == workItem.EntityId), updates);
+                ApplyTimeline(document.Timeline.First(item => item.Id == workItem.EntityId), updates, document.Characters, document.Locations);
                 break;
             case "update_character_relationship":
                 CharacterProfileRules.ValidateRelationshipPatch(root, document.CharacterTraitLibrary);
@@ -1344,13 +1345,18 @@ public sealed partial class StoryEntityPatchService(
         Set(updates, "properties", value => target.Properties = value);
     }
 
-    static void ApplyTimeline(RpTimelineEntry target, JsonElement updates)
+    static void ApplyTimeline(
+        RpTimelineEntry target,
+        JsonElement updates,
+        IReadOnlyList<RpCharacter> characters,
+        IReadOnlyList<RpLocation> locations)
     {
         Set(updates, "title", value => target.Title = value);
         Set(updates, "date", value => target.Date = value);
         Set(updates, "description", value => target.Description = value);
         Set(updates, "significance", value => target.Significance = value);
-        SetList(updates, "characters", value => target.Characters = value);
+        SetList(updates, "characterIds", value => target.CharacterIds = TimelineEntityLinkResolver.ResolveCharacterIds(characters, value));
+        SetList(updates, "locationIds", value => target.LocationIds = TimelineEntityLinkResolver.ResolveLocationIds(locations, value));
     }
 
     static void Set(JsonElement root, string name, Action<string> setter)

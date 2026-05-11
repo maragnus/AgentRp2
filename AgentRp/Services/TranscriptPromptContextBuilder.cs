@@ -512,7 +512,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
             return "";
 
         var builder = new StringBuilder();
-        builder.AppendLine($"**Location:** {name}");
+        builder.AppendLine($"**Location:** {name} (id: {location?.Id ?? "none"})");
         if (location is not null)
         {
             AppendField(builder, "Summary", location.Summary);
@@ -537,7 +537,7 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
         foreach (var character in values.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
         {
             var role = actor?.Id == character.Id ? "current actor" : "in scene";
-            builder.AppendLine().AppendLine($"**{character.Name}:** {string.Join(", ", [..character.Pronouns, role])}");
+            builder.AppendLine().AppendLine($"**{character.Name}:** {string.Join(", ", [..character.Pronouns, role, $"(id: {character.Id})"])}");
             AppendList(builder, "Pronouns", character.Pronouns);
             AppendField(builder, "Summary", character.Summary);
             AppendField(builder, "Voice", character.Voice);
@@ -802,8 +802,8 @@ public sealed class TranscriptPromptContextBuilder(SceneTransitionService? scene
     {
         var pronouns = CharacterProfileRules.FormatPronouns(character.Pronouns);
         return string.IsNullOrWhiteSpace(pronouns)
-            ? character.Name
-            : $"{character.Name} ({pronouns})";
+            ? $"{character.Name} (id: {character.Id})"
+            : $"{character.Name} (id: {character.Id}; {pronouns})";
     }
 
     static string FormatAppearanceCharacters(IEnumerable<RpCharacter> characters, IReadOnlyDictionary<string, string> appearanceMap, CharacterTraitLibraryState library)

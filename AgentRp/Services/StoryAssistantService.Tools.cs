@@ -63,10 +63,17 @@ public sealed partial class StoryAssistantService
             ["date"] = StringSchema("In-world date, relative date, era, or sequence marker."),
             ["description"] = StringSchema("What happened."),
             ["significance"] = StringSchema("Why this event matters to canon or future scenes."),
-            ["characters"] = new JsonObject
+            ["characterIds"] = new JsonObject
             {
                 ["type"] = "array",
-                ["description"] = "Character names or ids from get_story_entities that are involved in this event.",
+                ["description"] = "Character ids from get_story_entities that are involved in this event. Exact character names are accepted only when ids are unavailable.",
+                ["items"] = new JsonObject { ["type"] = "string" },
+                ["uniqueItems"] = true
+            },
+            ["locationIds"] = new JsonObject
+            {
+                ["type"] = "array",
+                ["description"] = "Location ids from get_story_entities that are involved in this event. Exact location names are accepted only when ids are unavailable.",
                 ["items"] = new JsonObject { ["type"] = "string" },
                 ["uniqueItems"] = true
             }

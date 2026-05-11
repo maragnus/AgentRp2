@@ -66,7 +66,15 @@
                         {
                             <article @key="entry.Id" class="snapshot-view-timeline-entry">
                                 <div class="snapshot-view-timeline-head">
-                                    <strong>@entry.Title</strong>
+                                    <span class="snapshot-view-timeline-title">
+                                        @if (entry.CharacterIds.Count > 0)
+                                        {
+                                            <CharacterAvatarStack Characters="TimelineAvatarItems(entry)"
+                                                                  SummaryPrefix="Linked characters"
+                                                                  EmptySummary="No linked characters" />
+                                        }
+                                        <strong>@entry.Title</strong>
+                                    </span>
                                     @if (!string.IsNullOrWhiteSpace(entry.Date))
                                     {
                                         <Badge Tone="amber">@entry.Date</Badge>
@@ -76,9 +84,9 @@
                                 {
                                     <p>@entry.Description</p>
                                 }
-                                @if (entry.Characters.Count > 0)
+                                @if (!string.IsNullOrWhiteSpace(TimelineContextText(entry)))
                                 {
-                                    <small>@string.Join(", ", entry.Characters)</small>
+                                    <small>@TimelineContextText(entry)</small>
                                 }
                             </article>
                         }
@@ -105,6 +113,8 @@
 
     RpChatDocument? Document => Session.ActiveChat.Current;
     List<RpCharacter> Characters => Document?.Characters ?? [];
+    List<RpLocation> Locations => Document?.Locations ?? [];
+    List<GalleryImage> Images => Document?.Images ?? [];
     List<RpSnapshotDraftTurn> CoveredTurns => Document is null
         ? []
         : Document.Transcript.Turns
@@ -163,6 +173,26 @@
 
     string CharacterName(string characterId) =>
         Characters.FirstOrDefault(character => character.Id == characterId)?.Name ?? characterId;
+
+    string LocationName(string locationId) =>
+        Locations.FirstOrDefault(location => location.Id == locationId)?.Name ?? locationId;
+
+    string TimelineContextText(RpTimelineEntry entry) =>
+        string.Join(
+            " • ",
+            new[]
+            {
+                string.Join(", ", entry.CharacterIds.Select(CharacterName).Where(name => !string.IsNullOrWhiteSpace(name))),
+                string.Join(", ", entry.LocationIds.Select(LocationName).Where(name => !string.IsNullOrWhiteSpace(name)))
+            }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    IReadOnlyList<CharacterAvatarItem> TimelineAvatarItems(RpTimelineEntry entry) => entry.CharacterIds
+        .Select(id => Characters.FirstOrDefault(character => string.Equals(character.Id, id, StringComparison.Ordinal)))
+        .OfType<RpCharacter>()
+        .Select(character => CharacterAvatarItem.From(character, ImageFor(character.ImageId)))
+        .ToList();
+
+    GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
 
     static string RelationshipMetadata(RpTranscriptSnapshotRelationshipUpdate update)
     {

@@ -174,7 +174,8 @@ static class SessionCloner
         UpdatedUtc = value.UpdatedUtc,
         Date = value.Date,
         Description = value.Description,
-        Characters = [.. value.Characters],
+        CharacterIds = [.. value.CharacterIds],
+        LocationIds = [.. value.LocationIds],
         Significance = value.Significance
     };
 
@@ -615,8 +616,8 @@ static class SessionCloner
         TurnNumber = value.TurnNumber,
         Title = value.Title,
         Description = value.Description,
-        CharacterNames = [.. value.CharacterNames],
-        LocationNames = [.. value.LocationNames],
+        CharacterIds = [.. value.CharacterIds],
+        LocationIds = [.. value.LocationIds],
         ItemNames = [.. value.ItemNames]
     };
 

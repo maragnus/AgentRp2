@@ -226,8 +226,8 @@ public sealed class RpTranscriptSnapshotTimelineEntry
     public int TurnNumber { get; set; }
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
-    public List<string> CharacterNames { get; set; } = [];
-    public List<string> LocationNames { get; set; } = [];
+    public List<string> CharacterIds { get; set; } = [];
+    public List<string> LocationIds { get; set; } = [];
     public List<string> ItemNames { get; set; } = [];
 }
 

@@ -309,7 +309,8 @@ public sealed partial class TranscriptStore
                 Title = entry.Title.Trim(),
                 Date = turnNumber > 0 ? TranscriptTurnNumbering.Format(turnNumber) : fallbackWhen,
                 Description = entry.Description.Trim(),
-                Characters = [.. entry.CharacterNames],
+                CharacterIds = TimelineEntityLinkResolver.ResolveCharacterIds(Document.Characters, entry.CharacterIds),
+                LocationIds = TimelineEntityLinkResolver.ResolveLocationIds(Document.Locations, entry.LocationIds),
                 Significance = "Generated from snapshot."
             };
             Document.Timeline.Add(timelineEntry);
@@ -503,8 +504,8 @@ public sealed partial class TranscriptStore
         TurnNumber = value.TurnNumber,
         Title = value.Title,
         Description = value.Description,
-        CharacterNames = [.. value.CharacterNames],
-        LocationNames = [.. value.LocationNames],
+        CharacterIds = [.. value.CharacterIds],
+        LocationIds = [.. value.LocationIds],
         ItemNames = [.. value.ItemNames]
     };
 

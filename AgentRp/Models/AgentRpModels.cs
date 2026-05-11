@@ -104,7 +104,8 @@ public sealed class RpTimelineEntry
     public DateTime UpdatedUtc { get; set; }
     public string Date { get; set; } = "";
     public string Description { get; set; } = "";
-    public List<string> Characters { get; set; } = [];
+    public List<string> CharacterIds { get; set; } = [];
+    public List<string> LocationIds { get; set; } = [];
     public string Significance { get; set; } = "";
 }
 

@@ -723,7 +723,7 @@ public sealed partial class PromptLibraryService
         1. A narrative summary of what has happened so far in this included range.
         2. Proposed timeline entries that should be added, with numeric turnNumber, title, and description.
         3. Relationship updates that refresh relationship canon from the included transcript.
-        For characterNames, locationNames, and itemNames, only use names from the provided catalogs.
+        For characterIds, locationNames, and itemNames, only use values from the provided catalogs.
         """;
 
     const string DefaultSceneContinuitySystemPrompt =

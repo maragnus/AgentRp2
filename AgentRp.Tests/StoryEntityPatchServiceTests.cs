@@ -325,6 +325,32 @@ public sealed class StoryEntityPatchServiceTests
     }
 
     [Fact]
+    public async Task TimelinePatchStoresResolvedCharacterIds()
+    {
+        var document = CreateDocument();
+        document.Locations.AddRange(
+        [
+            new() { Id = "l1", Name = "Library" },
+            new() { Id = "l2", Name = "Garden" }
+        ]);
+        document.StoryAssistant.ReviewMode = StoryAssistantReviewMode.AutoApprove;
+        var callbacks = new TestCallbacks();
+        var service = new StoryEntityPatchService();
+
+        await service.ExecuteAsync(
+            document,
+            "call-1",
+            "create_timeline_entry",
+            """{"updates":{"title":"Mapped event","characterIds":["Gemma","missing","c1"],"locationIds":["Garden","missing","l1"]}}""",
+            callbacks,
+            CancellationToken.None);
+
+        var entry = Assert.Single(document.Timeline);
+        Assert.Equal(["c2", "c1"], entry.CharacterIds);
+        Assert.Equal(["l2", "l1"], entry.LocationIds);
+    }
+
+    [Fact]
     public async Task RelationshipPatchKeepsDirectionalMeaning()
     {
         var document = CreateDocument();

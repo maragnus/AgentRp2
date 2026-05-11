@@ -1,11 +1,18 @@
-<div class="entity-form-head">
-    <EntityImage Name="@Name"
-                 Image="Image"
-                 EntityType="@EntityType"
-                 EntityId="@EntityId"
-                 Size="@ImageSize"
-                 Editable="@Editable"
-                 OnClick="OnImagePickerRequested" />
+<div class="entity-header">
+    @if (LeadingContent is not null)
+    {
+        @LeadingContent
+    }
+    else
+    {
+        <EntityImage Name="@Name"
+                     Image="Image"
+                     EntityType="@EntityType"
+                     EntityId="@EntityId"
+                     Size="@ImageSize"
+                     Editable="@Editable"
+                     OnClick="OnImagePickerRequested" />
+    }
     <div class="entity-header-copy">
         <strong>@Name</strong>
         @if (!string.IsNullOrWhiteSpace(Subtitle))
@@ -28,5 +35,6 @@
     [Parameter] public int ImageSize { get; set; } = 44;
     [Parameter] public bool Editable { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnImagePickerRequested { get; set; }
+    [Parameter] public RenderFragment? LeadingContent { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
 }

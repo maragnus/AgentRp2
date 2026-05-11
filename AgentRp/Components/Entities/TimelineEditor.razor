@@ -1,29 +1,96 @@
-<div class="form-stack entity-form-editor">
+<FormStack>
     <FormSection Title="Event">
-        <FieldRow Label="Title"><AppInput Value="@Entry.Title" ValueChanged="SetTitle" /></FieldRow>
-        <FieldRow Label="Date"><AppInput Value="@Entry.Date" ValueChanged="SetDate" /></FieldRow>
+        <div class="field-row-grid cols-3">
+            <FieldRow Label="Title" Class="span-2"><AppInput Value="@Entry.Title" ValueChanged="SetTitle" /></FieldRow>
+            <FieldRow Label="When"><AppInput Value="@Entry.Date" ValueChanged="SetDate" /></FieldRow>
+        </div>
         <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Entry.Description" ValueChanged="SetDescription" /></FieldRow>
     </FormSection>
+    <FormSection Title="Linked Characters">
+        <TiledSelectList Items="Characters"
+                         SelectedIds="SelectedCharacterIds"
+                         GetId="character => character.Id"
+                         Title="character => character.Name"
+                         Columns="2"
+                         Class="timeline-character-picker"
+                         OnToggle="ToggleCharacter">
+            <ItemTemplate Context="character">
+                <span class="tiled-select-media">
+                    <EntityImage Name="@character.Name" Image="@ImageFor(character.ImageId)" EntityType="character" EntityId="@character.Id" Size="28" />
+                </span>
+                <span class="tiled-select-label">@character.Name</span>
+            </ItemTemplate>
+            <EmptyContent>No characters yet.</EmptyContent>
+        </TiledSelectList>
+    </FormSection>
+    <FormSection Title="Linked Locations">
+        <TiledSelectList Items="Locations"
+                         SelectedIds="SelectedLocationIds"
+                         GetId="location => location.Id"
+                         Title="location => location.Name"
+                         Columns="2"
+                         Class="timeline-location-picker"
+                         OnToggle="ToggleLocation">
+            <ItemTemplate Context="location">
+                <span class="tiled-select-media">
+                    <EntityImage Name="@location.Name" Image="@ImageFor(location.ImageId)" EntityType="location" EntityId="@location.Id" Size="28" />
+                </span>
+                <span class="tiled-select-label">@location.Name</span>
+            </ItemTemplate>
+            <EmptyContent>No locations yet.</EmptyContent>
+        </TiledSelectList>
+    </FormSection>
     <FormSection Title="Story Context">
-        <FieldRow Label="Characters"><AppInput Value="@string.Join(", ", Entry.Characters)" ValueChanged="UpdateCharacters" /></FieldRow>
         <FieldRow Label="Significance"><AppTextarea Rows="4" Value="@Entry.Significance" ValueChanged="SetSignificance" /></FieldRow>
     </FormSection>
-</div>
+</FormStack>
 
 @code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTimelineEntry Entry { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    List<RpCharacter> Characters => Session.Chat.Characters.Items;
+    List<RpLocation> Locations => Session.Chat.Locations.Items;
+    IReadOnlyList<GalleryImage> Images => Session.Chat.Images.Items;
+    ISet<string> SelectedCharacterIds => Entry.CharacterIds.ToHashSet(StringComparer.Ordinal);
+    ISet<string> SelectedLocationIds => Entry.LocationIds.ToHashSet(StringComparer.Ordinal);
+
     Task Changed() => OnChanged.InvokeAsync();
     async Task SetTitle(string value) => await Update(() => Entry.Title = value);
     async Task SetDate(string value) => await Update(() => Entry.Date = value);
     async Task SetDescription(string value) => await Update(() => Entry.Description = value);
     async Task SetSignificance(string value) => await Update(() => Entry.Significance = value);
 
-    async Task UpdateCharacters(string value)
+    async Task ToggleCharacter(string id)
     {
-        Entry.Characters = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        ToggleSelection(
+            Entry.CharacterIds,
+            id,
+            Characters.Any(character => string.Equals(character.Id, id, StringComparison.Ordinal)));
+
         await Changed();
     }
+
+    async Task ToggleLocation(string id)
+    {
+        ToggleSelection(
+            Entry.LocationIds,
+            id,
+            Locations.Any(location => string.Equals(location.Id, id, StringComparison.Ordinal)));
+
+        await Changed();
+    }
+
+    static void ToggleSelection(List<string> selectedIds, string id, bool known)
+    {
+        if (selectedIds.Contains(id, StringComparer.Ordinal))
+            selectedIds.RemoveAll(value => string.Equals(value, id, StringComparison.Ordinal));
+        else if (known)
+            selectedIds.Add(id);
+    }
+
+    GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
 
     async Task Update(Action update)
     {

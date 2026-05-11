@@ -8,8 +8,8 @@ public sealed class SnapshotDraftTimelineEntryEditor
     public int TurnNumber { get; set; }
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
-    public List<string> CharacterNames { get; set; } = [];
-    public List<string> LocationNames { get; set; } = [];
+    public List<string> CharacterIds { get; set; } = [];
+    public List<string> LocationIds { get; set; } = [];
     public List<string> ItemNames { get; set; } = [];
 
     public static SnapshotDraftTimelineEntryEditor From(RpTranscriptSnapshotTimelineEntry entry) => new()
@@ -17,8 +17,8 @@ public sealed class SnapshotDraftTimelineEntryEditor
         TurnNumber = entry.TurnNumber,
         Title = entry.Title,
         Description = entry.Description,
-        CharacterNames = [.. entry.CharacterNames],
-        LocationNames = [.. entry.LocationNames],
+        CharacterIds = [.. entry.CharacterIds],
+        LocationIds = [.. entry.LocationIds],
         ItemNames = [.. entry.ItemNames]
     };
 
@@ -27,8 +27,8 @@ public sealed class SnapshotDraftTimelineEntryEditor
         TurnNumber = TurnNumber,
         Title = Title,
         Description = Description,
-        CharacterNames = [.. CharacterNames],
-        LocationNames = [.. LocationNames],
+        CharacterIds = [.. CharacterIds],
+        LocationIds = [.. LocationIds],
         ItemNames = [.. ItemNames]
     };
 }

@@ -71,6 +71,8 @@ public sealed class TranscriptFeatureTests
         var snapshotTimelineEntry = Assert.Single(sessionB.Chat.Timeline.Items, entry => entry.SnapshotId == snapshot.Id);
         Assert.Equal("Snapshot event", snapshotTimelineEntry.Title);
         Assert.Equal("Turn 3", snapshotTimelineEntry.Date);
+        Assert.Equal(["c2"], snapshotTimelineEntry.CharacterIds);
+        Assert.Equal(["l1"], snapshotTimelineEntry.LocationIds);
         Assert.Equal("Snapshot system prompt.", snapshot.Trace?.Steps.Single().SystemPrompt);
         Assert.Equal("Snapshot raw output.", snapshot.Trace?.Steps.Single().RawOutput);
         var relationshipUpdate = Assert.Single(snapshot.RelationshipUpdates);
@@ -605,7 +607,7 @@ public sealed class TranscriptFeatureTests
         Assert.Contains("- Pronouns: she/her", context.ActorText, StringComparison.Ordinal);
         Assert.Contains("- Pronouns: she/her", context.CharactersInSceneText, StringComparison.Ordinal);
         Assert.Contains("Pronouns:", context.SelectionEligibleResponders, StringComparison.Ordinal);
-        Assert.Contains("Bella (she/her)", snapshot.Characters, StringComparison.Ordinal);
+        Assert.Contains("Bella (id: c1; she/her)", snapshot.Characters, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1001,8 +1003,8 @@ public sealed class TranscriptFeatureTests
                         TurnNumber = 3,
                         Title = "Snapshot event",
                         Description = "Snapshot event details",
-                        CharacterNames = ["Gemma"],
-                        LocationNames = ["Devonshire Apartment 822"],
+                        CharacterIds = ["c2"],
+                        LocationIds = ["l1"],
                         ItemNames = ["Tesla Model S Plaid"]
                     }
                 ],

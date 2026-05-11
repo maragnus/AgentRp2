@@ -455,6 +455,8 @@ public sealed class TextGenerationServiceTests
         var timelineEntry = Assert.Single(result.TimelineEntries);
         Assert.Equal(3, timelineEntry.TurnNumber);
         Assert.Equal("Test event", timelineEntry.Title);
+        Assert.Equal(["c2"], timelineEntry.CharacterIds);
+        Assert.Equal(["l1"], timelineEntry.LocationIds);
         Assert.Equal("completed", result.Trace.Status);
     }
 

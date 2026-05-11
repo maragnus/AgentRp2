@@ -24,9 +24,21 @@
                                     Class="story-entity-row"
                                     OnClick="@(_ => Select(entry))">
                         <LeadingContent>
-                            <span class="entity-list-icon">
-                                <FaIcon Name="@entry.Icon" />
-                            </span>
+                            @if (entry.Type == "timeline")
+                            {
+                                <CharacterAvatarStack Characters="TimelineAvatarItems(entry.Id)"
+                                                      Class="character-avatar-stack entity-list-avatar-stack"
+                                                      EmptyClass="entity-list-icon"
+                                                      EmptyIcon="clock"
+                                                      SummaryPrefix="Linked characters"
+                                                      EmptySummary="No linked characters" />
+                            }
+                            else
+                            {
+                                <span class="entity-list-icon">
+                                    <FaIcon Name="@entry.Icon" />
+                                </span>
+                            }
                         </LeadingContent>
                         <TrailingContent>
                             <span @onclick:stopPropagation="true">
@@ -102,11 +114,29 @@
     ];
 
     RenderFragment? DetailHeader => SelectedEntry is null ? null : @<ModalPaneHeader>
-        <EntityHeader Name="@SelectedEntry.Title" Subtitle="@SelectedEntry.Summary" ImageSize="40">
-            <Actions>
-                <AppButton Variant="secondary" OnClick="@(_ => Attach(SelectedEntry))"><FaIcon Name="plus" /> Attach</AppButton>
-            </Actions>
-        </EntityHeader>
+        @if (SelectedTimeline is not null)
+        {
+            <EntityHeader Name="@SelectedEntry.Title" Subtitle="@SelectedEntry.Summary" ImageSize="40">
+                <LeadingContent>
+                    <CharacterAvatarStack Characters="TimelineAvatarItems(SelectedTimeline)"
+                                          EmptyClass="sidebar-row-icon"
+                                          EmptyIcon="clock"
+                                          SummaryPrefix="Linked characters"
+                                          EmptySummary="No linked characters" />
+                </LeadingContent>
+                <Actions>
+                    <AppButton Variant="secondary" OnClick="@(_ => Attach(SelectedEntry))"><FaIcon Name="plus" /> Attach</AppButton>
+                </Actions>
+            </EntityHeader>
+        }
+        else
+        {
+            <EntityHeader Name="@SelectedEntry.Title" Subtitle="@SelectedEntry.Summary" ImageSize="40">
+                <Actions>
+                    <AppButton Variant="secondary" OnClick="@(_ => Attach(SelectedEntry))"><FaIcon Name="plus" /> Attach</AppButton>
+                </Actions>
+            </EntityHeader>
+        }
     </ModalPaneHeader>;
 
     protected override void OnInitialized()
@@ -115,6 +145,7 @@
         Session.Chat.Locations.Changed += OnStoreChanged;
         Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Timeline.Changed += OnStoreChanged;
+        Session.Chat.Images.Changed += OnStoreChanged;
         Session.Chat.NarratorProfile.Changed += OnStoreChanged;
         SelectedKey = AllEntries.FirstOrDefault()?.Key ?? "";
     }
@@ -129,6 +160,18 @@
             || entry.Summary.Contains(Search, StringComparison.OrdinalIgnoreCase));
 
     void Select(BrowserEntry entry) => SelectedKey = entry.Key;
+
+    IReadOnlyList<CharacterAvatarItem> TimelineAvatarItems(RpTimelineEntry entry) => entry.CharacterIds
+        .Select(id => Session.Chat.Characters.Items.FirstOrDefault(character => string.Equals(character.Id, id, StringComparison.Ordinal)))
+        .OfType<RpCharacter>()
+        .Select(character => CharacterAvatarItem.From(character, ImageFor(character.ImageId)))
+        .ToList();
+    IReadOnlyList<CharacterAvatarItem> TimelineAvatarItems(string entryId) =>
+        Session.Chat.Timeline.Items.FirstOrDefault(entry => string.Equals(entry.Id, entryId, StringComparison.Ordinal)) is { } entry
+            ? TimelineAvatarItems(entry)
+            : [];
+
+    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
 
     Task Attach(BrowserEntry entry) =>
         OnAttach.InvokeAsync(new(entry.Type, entry.Id, entry.Title));
@@ -163,6 +206,7 @@
         Session.Chat.Locations.Changed -= OnStoreChanged;
         Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Timeline.Changed -= OnStoreChanged;
+        Session.Chat.Images.Changed -= OnStoreChanged;
         Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
     }
 

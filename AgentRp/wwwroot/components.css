@@ -424,6 +424,29 @@
     line-height: var(--line-icon);
 }
 
+.character-avatar-stack {
+    --character-avatar-size: 22px;
+    --character-avatar-offset: 8px;
+    width: calc(var(--character-avatar-size) * 3 - var(--character-avatar-offset) * 2);
+    min-width: calc(var(--character-avatar-size) * 3 - var(--character-avatar-offset) * 2);
+    height: var(--character-avatar-size);
+    display: flex;
+    align-items: center;
+    overflow: visible;
+}
+
+.character-avatar-stack-avatar {
+    width: var(--character-avatar-size);
+    height: var(--character-avatar-size);
+    flex: 0 0 var(--character-avatar-size);
+    font-size: calc(var(--character-avatar-size) * .45);
+    box-shadow: var(--ring-surface);
+}
+
+.character-avatar-stack-avatar + .character-avatar-stack-avatar {
+    margin-left: calc(var(--character-avatar-offset) * -1);
+}
+
 .entity-image.is-editable {
     cursor: pointer;
 }
@@ -2232,6 +2255,13 @@
     min-width: 0;
 }
 
+.snapshot-view-timeline-title {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-row-gap);
+}
+
 .snapshot-view-timeline-head strong {
     overflow: hidden;
     color: var(--c-text);
@@ -2750,11 +2780,13 @@
     gap: var(--space-control-gap);
 }
 
+.panel-stack,
 .form-stack,
 .field-stack {
     display: grid;
 }
 
+.panel-stack,
 .form-stack {
     gap: var(--space-panel-gap);
 }
@@ -2770,6 +2802,10 @@
 
 .field-row-grid.cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.field-row-grid > .span-2 {
+    grid-column: span 2;
 }
 
 .field-label-row {
@@ -5305,6 +5341,14 @@ textarea.field {
     overflow: visible;
 }
 
+.entity-list-avatar-stack {
+    align-self: center;
+}
+
+.entity-list-avatar-stack.is-empty {
+    justify-content: center;
+}
+
 .img-placeholder.tiny {
     width: var(--control-size-lg);
     height: var(--control-size-lg);
@@ -5337,16 +5381,6 @@ textarea.field {
 .entity-editor-pane {
     flex: 1;
     min-width: 0;
-}
-
-.entity-form-editor .field {
-    margin: 0;
-}
-
-.entity-form-actions {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: var(--space-icon-gap);
 }
 
 .prompt-rail-note {
@@ -5754,7 +5788,7 @@ textarea.field {
     line-height: var(--line-body);
 }
 
-.entity-form-head {
+.entity-header {
     display: flex;
     align-items: center;
     gap: var(--space-row-gap);
@@ -5762,7 +5796,7 @@ textarea.field {
     min-width: 0;
 }
 
-.entity-form-head strong {
+.entity-header strong {
     color: var(--c-text);
     font-size: var(--text-body);
 }

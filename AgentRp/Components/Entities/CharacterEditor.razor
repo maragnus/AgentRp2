@@ -1,4 +1,4 @@
-<div class="entity-form-editor">
+<PanelStack>
     <Section Title="Summary" Class="entity-profile-summary">
         <p>@SummaryText</p>
     </Section>
@@ -53,7 +53,7 @@
     <Section Title="Relationships">
         <CharacterRelationshipsSummary Document="Document" Character="Character" />
     </Section>
-</div>
+</PanelStack>
 
 @code {
     [Parameter] public RpChatDocument? Document { get; set; }

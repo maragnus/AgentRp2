@@ -34,8 +34,8 @@ public static class SeedData
 
     public static List<RpTimelineEntry> Timeline() =>
     [
-        new() { Id = "t1", Title = "Bella arrives at the apartment", Date = "Apr 26, 2026", Description = "Bella lets herself in and finds Jake and Gemma in a tense standoff at the dining table.", Characters = ["Bella", "Jake", "Gemma"], Significance = "Opens Act 1 of the Devonshire Games arc." },
-        new() { Id = "t2", Title = "Jake and Gemma move in together", Date = "Two years ago", Description = "Jake and Gemma become roommates at the Devonshire through mutual friends.", Characters = ["Jake", "Gemma"], Significance = "Establishes the baseline tension." }
+        new() { Id = "t1", Title = "Bella arrives at the apartment", Date = "Apr 26, 2026", Description = "Bella lets herself in and finds Jake and Gemma in a tense standoff at the dining table.", CharacterIds = ["c1", "c2", "c3"], LocationIds = ["l1"], Significance = "Opens Act 1 of the Devonshire Games arc." },
+        new() { Id = "t2", Title = "Jake and Gemma move in together", Date = "Two years ago", Description = "Jake and Gemma become roommates at the Devonshire through mutual friends.", CharacterIds = ["c2", "c3"], LocationIds = ["l1"], Significance = "Establishes the baseline tension." }
     ];
 
     public static List<GalleryImage> GalleryImages() =>
