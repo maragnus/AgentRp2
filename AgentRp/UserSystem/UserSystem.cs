@@ -25,11 +25,13 @@ public static class UserSystem
         builder.Services.AddOptions<AuthOptions>()
             .Bind(builder.Configuration.GetSection(AuthOptions.SectionName))
             .ValidateOnStart();
+        builder.ConfigureSigningKeys();
         builder.ConfigureAuthentication();
         builder.Services.AddScoped<IAppUserResolver, AppUserResolver>();
         builder.Services.AddScoped<ICurrentAppUserAccessor, CurrentAppUserAccessor>();
         builder.Services.AddScoped<IAppAuthorizationService, AppAuthorizationService>();
         builder.Services.AddScoped<IClaimsTransformation, AppUserClaimsTransformation>();
+
         return builder;
     }
 
@@ -130,6 +132,27 @@ public static class UserSystem
                     }
                 };
             });
+    }
+
+    static void ConfigureSigningKeys(this WebApplicationBuilder builder)
+    {
+        var hasSigningKey = !string.IsNullOrWhiteSpace(builder.Configuration["Auth:SigningKey:PfxBase64"]);
+        if (builder.Environment.IsDevelopment() && !hasSigningKey)
+        {
+            builder.Services.AddSingleton<ISigningKeyProvider, DevelopmentSigningKeyProvider>();
+            return;
+        }
+
+        builder.Services
+            .AddOptions<AuthSigningKeyOptions>()
+            .Bind(builder.Configuration.GetSection(AuthSigningKeyOptions.SectionName))
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.PfxBase64),
+                $"'{AuthSigningKeyOptions.SectionName}:PfxBase64' (env var: Auth__SigningKey__PfxBase64) is required outside Development.")
+            .ValidateOnStart();
+
+        builder.Services.AddSingleton<ISigningKeyProvider, X509CertificateSigningKeyProvider>();
+        builder.Services.AddHostedService<SigningKeyStartupValidator>();
     }
 
     static string GetLocalReturnUrl(string value)
