@@ -1,0 +1,97 @@
+@namespace AgentRp.Components.Common
+
+<div class="@CssClass">
+    @if (SelectedOptions.Count == 0)
+    {
+        <span class="entity-tag-picker-empty">@EmptyText</span>
+    }
+    else
+    {
+        @foreach (var option in SelectedOptions)
+        {
+            <span @key="option.Key" class="entity-tag-chip">
+                <EntityMention EntityType="@option.EntityType" EntityId="@option.EntityId" Name="@option.Name" Size="22" />
+                @if (!Disabled)
+                {
+                    <AppButton Icon="x"
+                               Class="entity-tag-remove"
+                               TooltipText="@($"Remove {option.Name}")"
+                               OnClick="@(_ => OnToggle.InvokeAsync(option.EntityId))" />
+                }
+            </span>
+        }
+    }
+
+    @if (!Disabled)
+    {
+        <AnchoredPopover Placement="OverlayPlacement.BottomStart"
+                         Class="entity-tag-picker-popover"
+                         CloseOnContentClick="false">
+            <Trigger Context="picker">
+                <AppButton Icon="plus"
+                           TooltipText="@AddTooltipText"
+                           Active="@picker.IsOpen"
+                           OnClick="@(_ => picker.Toggle())" />
+            </Trigger>
+            <Content>
+                <div class="entity-tag-picker-menu">
+                    @if (PickerOptions.Count == 0)
+                    {
+                        <span class="entity-tag-picker-empty">@EmptyPickerText</span>
+                    }
+                    else
+                    {
+                        @foreach (var option in PickerOptions)
+                        {
+                            <PickerOptionButton @key="option.Key"
+                                                Class="entity-tag-picker-option"
+                                                Selected="@SelectedIdSet.Contains(option.EntityId)"
+                                                OnClick="@(() => OnToggle.InvokeAsync(option.EntityId))">
+                                <TitleContent>
+                                    <EntityMention EntityType="@option.EntityType" EntityId="@option.EntityId" Name="@option.Name" Size="20" />
+                                </TitleContent>
+                            </PickerOptionButton>
+                        }
+                    }
+                </div>
+            </Content>
+        </AnchoredPopover>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<EntityTagPickerOption> Options { get; set; } = [];
+    [Parameter] public IReadOnlyCollection<string> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "None";
+    [Parameter] public string EmptyPickerText { get; set; } = "No options available";
+    [Parameter] public string AddTooltipText { get; set; } = "Add";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    HashSet<string> SelectedIdSet => SelectedIds.ToHashSet(StringComparer.Ordinal);
+    IReadOnlyList<EntityTagPickerOption> PickerOptions => DistinctOptions(Options)
+        .OrderBy(option => option.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
+    IReadOnlyList<EntityTagPickerOption> SelectedOptions => SelectedIds
+        .Select(SelectedOption)
+        .Where(option => option is not null)
+        .Cast<EntityTagPickerOption>()
+        .ToList();
+    string CssClass => string.Join(" ", new[] { "entity-tag-picker", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    EntityTagPickerOption? SelectedOption(string entityId) =>
+        Options.FirstOrDefault(option => string.Equals(option.EntityId, entityId, StringComparison.Ordinal));
+
+    static IEnumerable<EntityTagPickerOption> DistinctOptions(IEnumerable<EntityTagPickerOption> options)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var option in options)
+        {
+            if (string.IsNullOrWhiteSpace(option.EntityId) || !seen.Add(option.EntityId))
+                continue;
+
+            yield return option;
+        }
+    }
+}

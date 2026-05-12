@@ -1846,6 +1846,64 @@
     font-weight: var(--weight-bold);
 }
 
+.entity-tag-picker {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-control-gap);
+}
+
+.entity-tag-chip {
+    min-width: 0;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-icon-gap);
+    padding: 4px 6px;
+    border: var(--border-subtle);
+    border-radius: var(--radius-row);
+    background: var(--c-surface2);
+}
+
+.entity-tag-chip .entity-mention {
+    max-width: min(240px, 100%);
+}
+
+.entity-tag-chip .entity-mention-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entity-tag-remove {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+}
+
+.entity-tag-picker-empty {
+    color: var(--text-muted);
+    font-size: var(--text-control);
+    line-height: var(--line-control);
+}
+
+.entity-tag-picker-popover {
+    width: 280px;
+}
+
+.entity-tag-picker-menu {
+    display: grid;
+    gap: var(--space-control-gap);
+    max-height: 320px;
+    overflow: auto;
+    padding: var(--space-control-gap);
+}
+
+.entity-tag-picker-option .entity-mention {
+    max-width: 100%;
+}
+
 .app-markdown {
     min-width: 0;
     color: inherit;
@@ -7768,7 +7826,6 @@ textarea.field {
 }
 
 .story-card-lineage,
-.story-card-assignment,
 .story-card-summary-text {
     color: var(--text-muted);
 }
@@ -7783,8 +7840,7 @@ textarea.field {
     cursor: default;
 }
 
-.story-card-requirements,
-.story-card-assignment-block {
+.story-card-requirements {
     display: grid;
     gap: 8px;
 }
@@ -7793,8 +7849,7 @@ textarea.field {
     padding-top: 4px;
 }
 
-.story-card-requirements-toolbar,
-.story-card-assignment-head {
+.story-card-requirements-toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -7829,8 +7884,7 @@ textarea.field {
     color: #0d0b09;
 }
 
-.story-card-requirement-list,
-.story-card-assignment-list {
+.story-card-requirement-list {
     display: grid;
     gap: 6px;
 }
@@ -7885,20 +7939,4 @@ textarea.field {
     height: 100%;
     min-height: 100%;
     aspect-ratio: 1;
-}
-
-.story-card-assignment-block {
-    padding: 8px 0;
-    border-bottom: var(--space-border) solid var(--c-border);
-}
-
-.story-card-assignment-block:last-child {
-    border-bottom: 0;
-}
-
-.story-card-assignment-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
 }

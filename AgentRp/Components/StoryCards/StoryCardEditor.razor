@@ -85,6 +85,7 @@
                         <StoryCardChildEditor @key="role.Id"
                                               Child="role"
                                               BaselineChild="BaselineRoleRow(role.Id)"
+                                              Assignment="AssignmentFor(role.Id, StoryCardChildCardType.Role)"
                                               Editable="@Editable" />
                     }
                 }
@@ -95,6 +96,7 @@
                         <StoryCardChildEditor @key="item.Id"
                                               Child="item"
                                               BaselineChild="BaselineItemRow(item.Id)"
+                                              Assignment="AssignmentFor(item.Id, StoryCardChildCardType.Item)"
                                               Editable="@Editable" />
                     }
                 }
@@ -105,6 +107,7 @@
                         <StoryCardChildEditor @key="location.Id"
                                               Child="location"
                                               BaselineChild="BaselineLocationRow(location.Id)"
+                                              Assignment="AssignmentFor(location.Id, StoryCardChildCardType.Location)"
                                               Editable="@Editable" />
                     }
                 }
@@ -124,10 +127,12 @@
     [Parameter] public StoryCardTemplate? TemplateBaseline { get; set; }
     [Parameter] public StoryCardInstance? Instance { get; set; }
     [Parameter] public StoryCardInstance? InstanceBaseline { get; set; }
+    [Parameter] public bool IncludeAssignments { get; set; }
     [Parameter] public bool Editable { get; set; }
     [Parameter] public string Height { get; set; } = "600px";
     [Parameter] public string SourceText { get; set; } = "";
     [Parameter] public RenderFragment? Footer { get; set; }
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     string ActiveTab = "overview";
@@ -450,6 +455,219 @@
         return Task.CompletedTask;
     }
 
+    StoryCardChildAssignmentEditorState? AssignmentFor(string childCardId, StoryCardChildCardType type)
+    {
+        if (!IncludeAssignments || Instance is null)
+            return null;
+
+        return new(
+            AssignmentLabel(type),
+            AssignmentOptions(childCardId, type),
+            SelectedAssignmentIds(childCardId, type),
+            AssignmentEmptyText(type),
+            AssignmentPickerEmptyText(type),
+            AssignmentAddTooltip(type),
+            AssignmentSelectionDirty(childCardId, type),
+            entityId => ToggleAssignment(childCardId, type, entityId));
+    }
+
+    IReadOnlyList<EntityTagPickerOption> AssignmentOptions(string childCardId, StoryCardChildCardType type)
+    {
+        var options = AvailableAssignmentOptions(type).ToList();
+        foreach (var assignment in CurrentAssignments(childCardId, type))
+        {
+            if (string.IsNullOrWhiteSpace(assignment.EntityId)
+                || options.Any(option => string.Equals(option.EntityId, assignment.EntityId, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            options.Add(new(AssignmentEntityType(type), assignment.EntityId, AssignmentEntityName(assignment)));
+        }
+
+        return options;
+    }
+
+    IReadOnlyList<EntityTagPickerOption> AvailableAssignmentOptions(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => Session.Chat.Characters.Items
+            .Select(entity => new EntityTagPickerOption(EntityTypes.Character, entity.Id, entity.Name))
+            .ToList(),
+        StoryCardChildCardType.Item => Session.Chat.Items.Items
+            .Select(entity => new EntityTagPickerOption(EntityTypes.Item, entity.Id, entity.Name))
+            .ToList(),
+        StoryCardChildCardType.Location => Session.Chat.Locations.Items
+            .Select(entity => new EntityTagPickerOption(EntityTypes.Location, entity.Id, entity.Name))
+            .ToList(),
+        _ => []
+    };
+
+    IReadOnlyCollection<string> SelectedAssignmentIds(string childCardId, StoryCardChildCardType type) =>
+        CurrentAssignments(childCardId, type)
+            .Select(assignment => assignment.EntityId)
+            .Where(entityId => !string.IsNullOrWhiteSpace(entityId))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    Task ToggleAssignment(string childCardId, StoryCardChildCardType type, string entityId)
+    {
+        if (Instance is null || string.IsNullOrWhiteSpace(entityId))
+            return Task.CompletedTask;
+
+        if (SelectedAssignmentIds(childCardId, type).Contains(entityId, StringComparer.Ordinal))
+        {
+            Instance.Assignments.RemoveAll(assignment =>
+                assignment.ChildCardType == type
+                && string.Equals(assignment.ChildCardId, childCardId, StringComparison.Ordinal)
+                && string.Equals(assignment.EntityId, entityId, StringComparison.Ordinal));
+        }
+        else
+        {
+            Instance.Assignments.Add(CreateAssignment(childCardId, type, entityId));
+        }
+
+        SortAssignments(Instance.Assignments);
+        StatefulForm?.NotifyChanged();
+        return Task.CompletedTask;
+    }
+
+    StoryCardEntityAssignment CreateAssignment(string childCardId, StoryCardChildCardType type, string entityId)
+    {
+        if (BaselineAssignment(childCardId, type, entityId) is { } baseline)
+            return CloneAssignment(baseline);
+
+        return new()
+        {
+            Id = $"assignment-{Guid.NewGuid():N}",
+            ChildCardType = type,
+            ChildCardId = childCardId,
+            EntityId = entityId,
+            EntityName = AvailableAssignmentOptions(type).FirstOrDefault(option => string.Equals(option.EntityId, entityId, StringComparison.Ordinal))?.Name ?? "",
+            SortOrder = NextAssignmentSortOrder()
+        };
+    }
+
+    StoryCardEntityAssignment? BaselineAssignment(string childCardId, StoryCardChildCardType type, string entityId) =>
+        InstanceBaseline?.Assignments.FirstOrDefault(assignment =>
+            assignment.ChildCardType == type
+            && string.Equals(assignment.ChildCardId, childCardId, StringComparison.Ordinal)
+            && string.Equals(assignment.EntityId, entityId, StringComparison.Ordinal));
+
+    IReadOnlyList<StoryCardEntityAssignment> CurrentAssignments(string childCardId, StoryCardChildCardType type) =>
+        Instance?.Assignments
+            .Where(assignment => assignment.ChildCardType == type && string.Equals(assignment.ChildCardId, childCardId, StringComparison.Ordinal))
+            .OrderBy(assignment => assignment.SortOrder)
+            .ToList() ?? [];
+
+    IReadOnlyList<StoryCardEntityAssignment> BaselineAssignments(string childCardId, StoryCardChildCardType type) =>
+        InstanceBaseline?.Assignments
+            .Where(assignment => assignment.ChildCardType == type && string.Equals(assignment.ChildCardId, childCardId, StringComparison.Ordinal))
+            .OrderBy(assignment => assignment.SortOrder)
+            .ToList() ?? [];
+
+    bool AssignmentsDirty(StoryCardChildCardType type)
+    {
+        if (Instance is null || InstanceBaseline is null)
+            return false;
+
+        var childIds = AssignmentChildIds(type);
+        return childIds.Any(childId => AssignmentSelectionDirty(childId, type));
+    }
+
+    bool AssignmentSelectionDirty(string childCardId, StoryCardChildCardType type)
+    {
+        var current = CurrentAssignments(childCardId, type)
+            .Select(assignment => assignment.EntityId)
+            .Where(entityId => !string.IsNullOrWhiteSpace(entityId))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(entityId => entityId, StringComparer.Ordinal)
+            .ToList();
+        var baseline = BaselineAssignments(childCardId, type)
+            .Select(assignment => assignment.EntityId)
+            .Where(entityId => !string.IsNullOrWhiteSpace(entityId))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(entityId => entityId, StringComparer.Ordinal)
+            .ToList();
+
+        return !StatefulFormSnapshot.Equivalent(current, baseline);
+    }
+
+    IReadOnlyList<string> AssignmentChildIds(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => Instance?.Roles.Select(role => role.Id).Concat(InstanceBaseline?.Roles.Select(role => role.Id) ?? []).Distinct(StringComparer.Ordinal).ToList() ?? [],
+        StoryCardChildCardType.Item => Instance?.Items.Select(item => item.Id).Concat(InstanceBaseline?.Items.Select(item => item.Id) ?? []).Distinct(StringComparer.Ordinal).ToList() ?? [],
+        StoryCardChildCardType.Location => Instance?.Locations.Select(location => location.Id).Concat(InstanceBaseline?.Locations.Select(location => location.Id) ?? []).Distinct(StringComparer.Ordinal).ToList() ?? [],
+        _ => []
+    };
+
+    int NextAssignmentSortOrder()
+    {
+        if (Instance is null)
+            return 0;
+
+        return Instance.Assignments.Select(assignment => assignment.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+    }
+
+    static void SortAssignments(List<StoryCardEntityAssignment> assignments) =>
+        assignments.Sort((left, right) =>
+        {
+            var result = left.SortOrder.CompareTo(right.SortOrder);
+            return result != 0 ? result : string.CompareOrdinal(left.Id, right.Id);
+        });
+
+    static StoryCardEntityAssignment CloneAssignment(StoryCardEntityAssignment assignment) => new()
+    {
+        Id = assignment.Id,
+        ChildCardType = assignment.ChildCardType,
+        ChildCardId = assignment.ChildCardId,
+        EntityId = assignment.EntityId,
+        EntityName = assignment.EntityName,
+        SortOrder = assignment.SortOrder
+    };
+
+    static string AssignmentEntityName(StoryCardEntityAssignment assignment) =>
+        string.IsNullOrWhiteSpace(assignment.EntityName) ? assignment.EntityId : assignment.EntityName;
+
+    static string AssignmentEntityType(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => EntityTypes.Character,
+        StoryCardChildCardType.Item => EntityTypes.Item,
+        StoryCardChildCardType.Location => EntityTypes.Location,
+        _ => ""
+    };
+
+    static string AssignmentLabel(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "Characters",
+        StoryCardChildCardType.Item => "Items",
+        StoryCardChildCardType.Location => "Locations",
+        _ => "Assignments"
+    };
+
+    static string AssignmentEmptyText(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "No characters assigned",
+        StoryCardChildCardType.Item => "No items assigned",
+        StoryCardChildCardType.Location => "No locations assigned",
+        _ => "No assignments"
+    };
+
+    static string AssignmentPickerEmptyText(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "No characters available",
+        StoryCardChildCardType.Item => "No items available",
+        StoryCardChildCardType.Location => "No locations available",
+        _ => "No options available"
+    };
+
+    static string AssignmentAddTooltip(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "Assign character",
+        StoryCardChildCardType.Item => "Assign item",
+        StoryCardChildCardType.Location => "Assign location",
+        _ => "Assign"
+    };
+
     Task OpenChild(StoryCardChildReference reference)
     {
         ActiveTab = reference.ChildCardType switch
@@ -504,7 +722,10 @@
         if (Template is not null && TemplateBaseline is not null)
             return !StatefulFormSnapshot.Equivalent(Template.Roles, TemplateBaseline.Roles);
 
-        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Roles, InstanceBaseline.Roles);
+        return Instance is not null
+            && InstanceBaseline is not null
+            && (!StatefulFormSnapshot.Equivalent(Instance.Roles, InstanceBaseline.Roles)
+                || AssignmentsDirty(StoryCardChildCardType.Role));
     }
 
     bool ItemsDirty()
@@ -512,7 +733,10 @@
         if (Template is not null && TemplateBaseline is not null)
             return !StatefulFormSnapshot.Equivalent(Template.Items, TemplateBaseline.Items);
 
-        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Items, InstanceBaseline.Items);
+        return Instance is not null
+            && InstanceBaseline is not null
+            && (!StatefulFormSnapshot.Equivalent(Instance.Items, InstanceBaseline.Items)
+                || AssignmentsDirty(StoryCardChildCardType.Item));
     }
 
     bool LocationsDirty()
@@ -520,7 +744,10 @@
         if (Template is not null && TemplateBaseline is not null)
             return !StatefulFormSnapshot.Equivalent(Template.Locations, TemplateBaseline.Locations);
 
-        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Locations, InstanceBaseline.Locations);
+        return Instance is not null
+            && InstanceBaseline is not null
+            && (!StatefulFormSnapshot.Equivalent(Instance.Locations, InstanceBaseline.Locations)
+                || AssignmentsDirty(StoryCardChildCardType.Location));
     }
 
     string CurrentBaselineTitle() => TemplateBaseline?.Title ?? InstanceBaseline?.Title ?? "";

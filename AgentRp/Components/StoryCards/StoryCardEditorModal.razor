@@ -53,15 +53,9 @@ else if (DraftInstance is not null)
                         }
                     </Header>
                     <ChildContent>
-                        @if (IncludeAssignments)
-                        {
-                            <StoryCardAssignmentsEditor Instance="DraftInstance"
-                                                        Characters="Session.Chat.Characters.Items"
-                                                        Items="Session.Chat.Items.Items"
-                                                        Locations="Session.Chat.Locations.Items" />
-                        }
                         <StoryCardEditor Instance="DraftInstance"
                                          InstanceBaseline="InstanceBaseline"
+                                         IncludeAssignments="@IncludeAssignments"
                                          Editable="true"
                                          Height="100%" />
                     </ChildContent>

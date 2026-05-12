@@ -4,10 +4,16 @@
     <FieldRow Label="Title" Dirty="@TitleDirty">
         <AppInput Value="@Child.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" Dirty="@TitleDirty" />
     </FieldRow>
-    @if (Child.HasAssignment)
+    @if (Assignment is not null)
     {
-        <FieldRow Label="Assigned">
-            <span class="story-card-assignment">@Child.AssignmentText</span>
+        <FieldRow Label="@Assignment.Label" Dirty="@Assignment.Dirty">
+            <EntityTagPicker Options="@Assignment.Options"
+                             SelectedIds="@Assignment.SelectedIds"
+                             EmptyText="@Assignment.EmptyText"
+                             EmptyPickerText="@Assignment.EmptyPickerText"
+                             AddTooltipText="@Assignment.AddTooltipText"
+                             Disabled="@(!Editable)"
+                             OnToggle="ToggleAssignment" />
         </FieldRow>
     }
     <FieldRow Label="Selection" Dirty="@SelectionDirty">
@@ -30,6 +36,7 @@
 @code {
     [Parameter] public StoryCardChildEditorRow Child { get; set; } = default!;
     [Parameter] public StoryCardChildEditorRow? BaselineChild { get; set; }
+    [Parameter] public StoryCardChildAssignmentEditorState? Assignment { get; set; }
     [Parameter] public bool Editable { get; set; }
     [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
@@ -68,12 +75,16 @@
         return Task.CompletedTask;
     }
 
+    Task ToggleAssignment(string entityId) =>
+        Assignment?.ToggleAsync(entityId) ?? Task.CompletedTask;
+
     static string ChildTitle(string title, string fallback) => string.IsNullOrWhiteSpace(title) ? fallback : title;
 
     bool ChildDirty =>
-        BaselineChild is null || TitleDirty || SelectionDirty || CreationDirty || OngoingDirty || PrivateDirty;
+        BaselineChild is null || TitleDirty || AssignmentDirty || SelectionDirty || CreationDirty || OngoingDirty || PrivateDirty;
 
     bool TitleDirty => BaselineChild is null || Child.Title != BaselineChild.Title;
+    bool AssignmentDirty => Assignment?.Dirty == true;
     bool SelectionDirty => BaselineChild is null || Child.SelectionInstructions != BaselineChild.SelectionInstructions;
     bool CreationDirty => BaselineChild is null || Child.CreationInstructions != BaselineChild.CreationInstructions;
     bool OngoingDirty => BaselineChild is null || Child.OngoingContext != BaselineChild.OngoingContext;
