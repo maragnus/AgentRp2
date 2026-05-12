@@ -10,6 +10,7 @@ public interface IStoryCardCatalogService
 {
     Task<IReadOnlyList<StoryCardTemplate>> LoadCatalogAsync(CurrentAppUser user, CancellationToken cancellationToken = default);
     Task<StoryCardTemplate?> LoadTemplateAsync(CurrentAppUser user, string templateId, bool lineageView = false, CancellationToken cancellationToken = default);
+    Task<StoryCardTemplateDetails?> LoadTemplateDetailsAsync(CurrentAppUser user, string templateId, CancellationToken cancellationToken = default);
     Task<StoryCardTemplate> SaveTemplateAsync(CurrentAppUser user, StoryCardTemplate template, CancellationToken cancellationToken = default);
     Task<StoryCardTemplate> RemixAsync(CurrentAppUser user, string templateId, CancellationToken cancellationToken = default);
     Task ArchiveAsync(CurrentAppUser user, string templateId, CancellationToken cancellationToken = default);
@@ -45,6 +46,58 @@ public sealed class StoryCardCatalogService(IDbContextFactory<RpDbContext> dbCon
             return null;
 
         return (await LoadTemplatesAsync(dbContext, [row], cancellationToken)).FirstOrDefault();
+    }
+
+    public async Task<StoryCardTemplateDetails?> LoadTemplateDetailsAsync(CurrentAppUser user, string templateId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(templateId))
+            return null;
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var row = await dbContext.StoryCardTemplates.AsNoTracking()
+            .Where(row => row.Id == templateId)
+            .OrderBy(row => row.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (row is null || !CanView(user, row, lineageView: false))
+            return null;
+
+        var parentId = row.ParentTemplateId;
+        var rootId = string.IsNullOrWhiteSpace(row.RootTemplateId) ? row.Id : row.RootTemplateId;
+        var relatedRows = await dbContext.StoryCardTemplates.AsNoTracking()
+            .Where(candidate =>
+                candidate.Id == row.Id ||
+                (!string.IsNullOrEmpty(parentId) && candidate.Id == parentId) ||
+                candidate.Id == rootId ||
+                candidate.ParentTemplateId == row.Id ||
+                candidate.RootTemplateId == rootId)
+            .OrderByDescending(candidate => candidate.UpdatedUtc)
+            .ToListAsync(cancellationToken);
+        var visibleRows = relatedRows
+            .Where(candidate => candidate.Id == row.Id || CanView(user, candidate, lineageView: candidate.Id == parentId || candidate.Id == rootId))
+            .ToList();
+        var templates = (await LoadTemplatesAsync(dbContext, visibleRows, cancellationToken))
+            .ToDictionary(template => template.Id, StringComparer.Ordinal);
+
+        if (!templates.TryGetValue(row.Id, out var template))
+            return null;
+
+        templates.TryGetValue(parentId, out var parent);
+        templates.TryGetValue(rootId, out var root);
+        var remixes = relatedRows
+            .Where(candidate => candidate.Id != row.Id && candidate.ParentTemplateId == row.Id && CanView(user, candidate, lineageView: false))
+            .Select(candidate => templates.GetValueOrDefault(candidate.Id))
+            .Where(template => template is not null)
+            .Select(template => template!)
+            .OrderByDescending(template => template.UpdatedUtc)
+            .ToList();
+
+        return new()
+        {
+            Template = template,
+            Parent = parent,
+            Root = root?.Id == template.Id ? null : root,
+            Remixes = remixes
+        };
     }
 
     public async Task<StoryCardTemplate> SaveTemplateAsync(CurrentAppUser user, StoryCardTemplate template, CancellationToken cancellationToken = default)

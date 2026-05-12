@@ -71,7 +71,7 @@ else
                 <ChatDirectionModal OnClose="CloseModal" />
                 break;
             case "storyCards":
-                <StoryCardCatalogModal OnClose="CloseModal" />
+                <StoryCardCatalogModal OnAddToCurrentStory="AddStoryCardToCurrentStory" OnClose="CloseModal" />
                 break;
             case "modelTuning":
                 <ModelTuningModal OnClose="CloseModal" />
@@ -231,6 +231,9 @@ else
         Modal = null;
         ClearPendingEntityImage();
     }
+
+    Task AddStoryCardToCurrentStory(string templateId) =>
+        Session.Chat.StoryCards.InjectAsync(templateId);
 
     string? SelectedEntityImageId => PendingEntityType switch
     {

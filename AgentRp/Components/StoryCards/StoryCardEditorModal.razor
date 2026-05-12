@@ -1,0 +1,208 @@
+@namespace AgentRp.Components.StoryCards
+@inject IStoryCardCatalogService Catalog
+@inject ILogger<StoryCardEditorModal> Logger
+
+@if (DraftTemplate is not null)
+{
+    <StatefulForm Model="@DraftTemplate" Baseline="@TemplateBaseline" OnSave="SaveTemplate" OnClose="OnClose" ContextChanged="SetTemplateForm">
+        <ChildContent Context="form">
+            <ModalShell Title="Story Card Editor" Icon="cards" MaxWidth="940px" Height="720px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
+                <ModalStackLayout BodyClass="modal-form-stack">
+                    <Header>
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <div class="modal-error">@ErrorMessage</div>
+                        }
+                    </Header>
+                    <ChildContent>
+                        <StoryCardEditor Template="DraftTemplate"
+                                         TemplateBaseline="TemplateBaseline"
+                                         Editable="@CanEditTemplate"
+                                         SourceText="@SourceText"
+                                         Height="100%" />
+                    </ChildContent>
+                    <Footer>
+                        <span class="modal-action-spacer"></span>
+                        <span class="modal-action-group">
+                            <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                            @if (CanEditTemplate && !string.IsNullOrWhiteSpace(DraftTemplate.Id))
+                            {
+                                <BusyButton Variant="secondary" OnClick="ArchiveTemplate"><FaIcon Name="archive" />Archive</BusyButton>
+                            }
+                            @if (CanEditTemplate)
+                            {
+                                <BusyButton Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save</BusyButton>
+                            }
+                        </span>
+                    </Footer>
+                </ModalStackLayout>
+            </ModalShell>
+        </ChildContent>
+    </StatefulForm>
+}
+else if (DraftInstance is not null)
+{
+    <StatefulForm Model="@DraftInstance" Baseline="@InstanceBaseline" OnSave="SaveInstance" OnClose="OnClose" ContextChanged="SetInstanceForm">
+        <ChildContent Context="form">
+            <ModalShell Title="Story Card Editor" Icon="cards" MaxWidth="940px" Height="720px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
+                <ModalStackLayout BodyClass="modal-form-stack">
+                    <Header>
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <div class="modal-error">@ErrorMessage</div>
+                        }
+                    </Header>
+                    <ChildContent>
+                        @if (IncludeAssignments)
+                        {
+                            <StoryCardAssignmentsEditor Instance="DraftInstance"
+                                                        Characters="Session.Chat.Characters.Items"
+                                                        Items="Session.Chat.Items.Items"
+                                                        Locations="Session.Chat.Locations.Items" />
+                        }
+                        <StoryCardEditor Instance="DraftInstance"
+                                         InstanceBaseline="InstanceBaseline"
+                                         Editable="true"
+                                         Height="100%" />
+                    </ChildContent>
+                    <Footer>
+                        <span class="modal-action-spacer"></span>
+                        <span class="modal-action-group">
+                            <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                            <BusyButton Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save Card</BusyButton>
+                        </span>
+                    </Footer>
+                </ModalStackLayout>
+            </ModalShell>
+        </ChildContent>
+    </StatefulForm>
+}
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public StoryCardTemplate? Template { get; set; }
+    [Parameter] public StoryCardInstance? Instance { get; set; }
+    [Parameter] public bool IncludeAssignments { get; set; }
+    [Parameter] public EventCallback<StoryCardTemplate> OnTemplateSaved { get; set; }
+    [Parameter] public EventCallback<string> OnTemplateArchived { get; set; }
+    [Parameter] public EventCallback<StoryCardInstance> OnInstanceSaved { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    StoryCardTemplate? DraftTemplate;
+    StoryCardTemplate TemplateBaseline = new();
+    StoryCardInstance? DraftInstance;
+    StoryCardInstance InstanceBaseline = new();
+    StatefulFormContext<StoryCardTemplate>? TemplateForm;
+    StatefulFormContext<StoryCardInstance>? InstanceForm;
+    string TemplateDraftId = "";
+    string InstanceDraftId = "";
+    string ErrorMessage = "";
+    bool CanEditTemplate => DraftTemplate is not null
+        && (string.IsNullOrWhiteSpace(DraftTemplate.Id) || Session.CurrentUser.IsAdmin || DraftTemplate.OwnerUserId == Session.CurrentUser.Id);
+    string SourceText => DraftTemplate is null
+        ? ""
+        : !string.IsNullOrWhiteSpace(DraftTemplate.ParentTemplateId)
+            ? "Remix of another story card"
+            : DraftTemplate.IsShared
+                ? $"Created by {DraftTemplate.OwnerDisplayName}"
+                : "Private template";
+
+    protected override void OnParametersSet()
+    {
+        if (Template is not null && (DraftTemplate is null || Template.Id != TemplateDraftId))
+        {
+            DraftTemplate = SessionCloner.Clone(Template);
+            TemplateBaseline = SessionCloner.Clone(Template);
+            TemplateDraftId = Template.Id;
+            DraftInstance = null;
+            InstanceDraftId = "";
+        }
+        else if (Instance is not null && (DraftInstance is null || Instance.Id != InstanceDraftId))
+        {
+            DraftInstance = SessionCloner.Clone(Instance);
+            InstanceBaseline = SessionCloner.Clone(Instance);
+            InstanceDraftId = Instance.Id;
+            DraftTemplate = null;
+            TemplateDraftId = "";
+        }
+    }
+
+    async Task SaveTemplate()
+    {
+        if (DraftTemplate is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            var saved = await Catalog.SaveTemplateAsync(Session.CurrentUser, DraftTemplate);
+            await OnTemplateSaved.InvokeAsync(saved);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Saving story card '{DraftTemplate.Title}' failed.",
+                "Saving story card template {TemplateId} failed.",
+                DraftTemplate.Id);
+        }
+    }
+
+    async Task ArchiveTemplate()
+    {
+        if (DraftTemplate is null || string.IsNullOrWhiteSpace(DraftTemplate.Id))
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await Catalog.ArchiveAsync(Session.CurrentUser, DraftTemplate.Id);
+            await OnTemplateArchived.InvokeAsync(DraftTemplate.Id);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Archiving the story card failed.",
+                "Archiving story card template {TemplateId} failed.",
+                DraftTemplate.Id);
+        }
+    }
+
+    async Task SaveInstance()
+    {
+        if (DraftInstance is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await Session.Chat.StoryCards.SaveInstanceAsync(DraftInstance);
+            await OnInstanceSaved.InvokeAsync(DraftInstance);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Saving the story card failed.",
+                "Saving story card instance {StoryCardInstanceId} failed.",
+                DraftInstance.Id);
+        }
+    }
+
+    void SetTemplateForm(StatefulFormContext<StoryCardTemplate> form)
+    {
+        TemplateForm = form;
+    }
+
+    void SetInstanceForm(StatefulFormContext<StoryCardInstance> form)
+    {
+        InstanceForm = form;
+    }
+}

@@ -13,6 +13,9 @@ public sealed class NullStoryCardCatalogService : IStoryCardCatalogService
     public Task<StoryCardTemplate?> LoadTemplateAsync(CurrentAppUser user, string templateId, bool lineageView = false, CancellationToken cancellationToken = default) =>
         Task.FromResult<StoryCardTemplate?>(null);
 
+    public Task<StoryCardTemplateDetails?> LoadTemplateDetailsAsync(CurrentAppUser user, string templateId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<StoryCardTemplateDetails?>(null);
+
     public Task<StoryCardTemplate> SaveTemplateAsync(CurrentAppUser user, StoryCardTemplate template, CancellationToken cancellationToken = default) =>
         throw new InvalidOperationException("Saving story cards is not available.");
 

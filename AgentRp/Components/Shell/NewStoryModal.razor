@@ -81,24 +81,22 @@
                         }
                         else
                         {
-                            <SelectableList Class="new-story-card-picker">
+                            <div class="story-card-catalog-grid is-compact new-story-card-picker">
                                 @foreach (var template in StoryCardTemplates)
                                 {
                                     var selected = SelectedStoryCardIds.Contains(template.Id);
                                     var limited = !selected && SelectedStoryCardIds.Count >= 2;
-                                    <SelectableRow @key="template.Id"
+                                    <StoryCardView @key="template.Id"
+                                                   Model="@StoryCardViewModel.FromTemplate(template)"
                                                    Selected="@selected"
-                                                   Limited="@limited"
                                                    Disabled="@limited"
-                                                   SelectionTooltipText="@CardSelectionTooltip(selected, limited)"
-                                                   OnToggle="@(_ => ToggleStoryCard(template.Id))">
-                                        <div class="story-card-picker-row">
-                                            <strong>@template.Title</strong>
-                                            <small>@StoryCardSummary(template)</small>
-                                        </div>
-                                    </SelectableRow>
+                                                   OnSelect="@(() => ToggleStoryCard(template.Id))">
+                                        <ActionContent>
+                                            <AppButton Icon="eye" TooltipText="View" StopPropagation OnClick="@(_ => OpenStoryCardDetails(template.Id))" />
+                                        </ActionContent>
+                                    </StoryCardView>
                                 }
-                            </SelectableList>
+                            </div>
                         }
                     </Section>
 
@@ -142,6 +140,11 @@
     </ModalSplitLayout>
 </ModalShell>
 
+@if (!string.IsNullOrWhiteSpace(DetailsStoryCardTemplateId))
+{
+    <StoryCardDetailsModal TemplateId="@DetailsStoryCardTemplateId" OnClose="CloseStoryCardDetails" />
+}
+
 @code {
     const string Characters = "characters";
     const string Locations = "locations";
@@ -158,6 +161,7 @@
     bool ModelSelectionTouched;
     bool NarratorVoiceSelectionTouched;
     string ErrorMessage = "";
+    string DetailsStoryCardTemplateId = "";
     Dictionary<string, CharacterVoiceSelection> NarratorVoiceSelections = [];
     ActiveModelSelectionsState DraftModelSelections = ActiveModelSelectionsState.CreateDefault();
     List<StoryCardTemplate> StoryCardTemplates = [];
@@ -430,16 +434,16 @@
             SelectedStoryCardIds.Add(id);
     }
 
-    static string CardSelectionTooltip(bool selected, bool limited) =>
-        selected ? "Remove story card" : limited ? "Two story cards are already selected" : "Add story card";
-
-    static string StoryCardSummary(StoryCardTemplate template)
+    Task OpenStoryCardDetails(string templateId)
     {
-        if (!string.IsNullOrWhiteSpace(template.Summary))
-            return template.Summary;
+        DetailsStoryCardTemplateId = templateId;
+        return Task.CompletedTask;
+    }
 
-        var count = template.Phases.Count + template.Roles.Count + template.Items.Count + template.Locations.Count;
-        return count == 1 ? "1 child card" : $"{count} child cards";
+    Task CloseStoryCardDetails()
+    {
+        DetailsStoryCardTemplateId = "";
+        return Task.CompletedTask;
     }
 
     enum NewStoryStartMode

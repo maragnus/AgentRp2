@@ -1,0 +1,350 @@
+@namespace AgentRp.Components.StoryCards
+@inject IStoryCardCatalogService Catalog
+@inject ILogger<StoryCardDetailsModal> Logger
+
+<ModalShell Title="@Title" Icon="cards" MaxWidth="940px" Height="720px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalStackLayout BodyClass="modal-form-stack story-card-details-body">
+        <ChildContent>
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="modal-error">@ErrorMessage</div>
+            }
+            @if (Loading)
+            {
+                <StatusRow Icon="spinner" Tone="neutral">Loading story card...</StatusRow>
+            }
+            else if (ViewModel is null)
+            {
+                <EmptyState Icon="cards" Title="Story card unavailable" Message="The card could not be loaded." />
+            }
+            else
+            {
+                <div class="story-card-detail-hero">
+                    <img src="@StoryCardViewModel.CoverImageUrl" alt="" />
+                </div>
+
+                <Section Title="Overview" Class="story-card-details-section">
+                    <div class="story-card-detail-copy">
+                        <p>@OverviewSummary</p>
+                        @if (!string.IsNullOrWhiteSpace(OverviewInstructions))
+                        {
+                            <div class="story-card-detail-prose">@OverviewInstructions</div>
+                        }
+                    </div>
+                </Section>
+
+                @if (Instance is not null)
+                {
+                    <Section Title="Story State" Class="story-card-details-section">
+                        <div class="story-card-detail-metrics">
+                            @Metric("play", Instance.Status.ToString(), "Status")
+                            @Metric("timer", TurnRange(Instance), "Turn range")
+                            @Metric("branch", ActivePhaseTitle, "Active phase")
+                        </div>
+                    </Section>
+                }
+
+                @if (TemplateForDetails is not null)
+                {
+                    <Section Title="Catalog" Class="story-card-details-section">
+                        <div class="story-card-detail-metrics">
+                            @Metric("user", OwnerText(TemplateForDetails), "Owner")
+                            @Metric("lock-open", AccessText(TemplateForDetails), "Access")
+                            @Metric("cards", TemplateForDetails.Stats.DirectStoryCount.ToString(), "Usages")
+                            @Metric("timer", AverageTurnsText(TemplateForDetails), "Avg turns")
+                            @Metric("copy", TemplateForDetails.Stats.RemixCount.ToString(), "Remixes")
+                            @Metric("refresh", StatsDateText(TemplateForDetails), "Stats")
+                        </div>
+                    </Section>
+                }
+
+                <Section Title="Contents" Class="story-card-details-section">
+                    <div class="story-card-detail-metrics">
+                        @Metric("branch", ViewModel.PhaseCount.ToString(), "Phases")
+                        @Metric("users", ViewModel.RoleCount.ToString(), "Roles")
+                        @Metric("map-pin", ViewModel.LocationCount.ToString(), "Locations")
+                        @Metric("box", ViewModel.ItemCount.ToString(), "Items")
+                    </div>
+                </Section>
+
+                @ChildSection("Phase Cards", PhaseItems)
+                @ChildSection("Role Cards", RoleItems)
+                @ChildSection("Location Cards", LocationItems)
+                @ChildSection("Item Cards", ItemItems)
+
+                @if (Instance?.Assignments.Count > 0)
+                {
+                    <Section Title="Assignments" Count="@Instance.Assignments.Count" Class="story-card-details-section">
+                        <div class="story-card-detail-list">
+                            @foreach (var assignment in Instance.Assignments.OrderBy(assignment => assignment.SortOrder))
+                            {
+                                <div @key="assignment.Id" class="story-card-detail-row">
+                                    <FaIcon Name="@TypeIcon(assignment.ChildCardType)" />
+                                    <span><strong>@assignment.EntityName</strong><small>@ChildTitle(assignment.ChildCardType, assignment.ChildCardId)</small></span>
+                                </div>
+                            }
+                        </div>
+                    </Section>
+                }
+
+                @if (Details is not null)
+                {
+                    <Section Title="Pedigree" Class="story-card-details-section">
+                        <div class="story-card-detail-list">
+                            @if (Details.Parent is not null)
+                            {
+                                <div class="story-card-detail-row">
+                                    <FaIcon Name="git-branch" />
+                                    <span><strong>@Details.Parent.Title</strong><small>Source card</small></span>
+                                </div>
+                            }
+                            @if (Details.Root is not null)
+                            {
+                                <div class="story-card-detail-row">
+                                    <FaIcon Name="cards" />
+                                    <span><strong>@Details.Root.Title</strong><small>Root card</small></span>
+                                </div>
+                            }
+                            @if (Details.Remixes.Count == 0)
+                            {
+                                <div class="story-card-detail-empty">No visible remixes yet.</div>
+                            }
+                            else
+                            {
+                                @foreach (var remix in Details.Remixes)
+                                {
+                                    <div @key="remix.Id" class="story-card-detail-row">
+                                        <FaIcon Name="copy" />
+                                        <span><strong>@remix.Title</strong><small>Updated @RelativeDateFormatter.FormatDate(remix.UpdatedUtc)</small></span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </Section>
+                }
+
+                @if (Instance?.History.Count > 0)
+                {
+                    <Section Title="History" Count="@Instance.History.Count" Class="story-card-details-section">
+                        <div class="story-card-detail-list">
+                            @foreach (var item in Instance.History)
+                            {
+                                <div @key="item.Id" class="story-card-detail-row">
+                                    <FaIcon Name="clock" />
+                                    <span><strong>@item.Title</strong><small>@HistorySummary(item)</small></span>
+                                </div>
+                            }
+                        </div>
+                    </Section>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            <span class="modal-action-spacer"></span>
+            <span class="modal-action-group">
+                <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Close</AppButton>
+                @if (Instance is not null && CanInspectInstance)
+                {
+                    <BusyButton Variant="secondary" Disabled="@(Instance.Status == StoryCardStatus.Active)" OnClick="@(() => SetStatus(StoryCardStatus.Active))">Active</BusyButton>
+                    <BusyButton Variant="secondary" Disabled="@(Instance.Status == StoryCardStatus.Dormant)" OnClick="@(() => SetStatus(StoryCardStatus.Dormant))">Dormant</BusyButton>
+                    <BusyButton Variant="secondary" Disabled="@(Instance.Status == StoryCardStatus.Concluded)" OnClick="@(() => SetStatus(StoryCardStatus.Concluded))">Concluded</BusyButton>
+                    <AppButton Variant="secondary" OnClick="@(_ => OnEditInstance.InvokeAsync(Instance))"><FaIcon Name="edit" />Edit</AppButton>
+                }
+                else if (TemplateForDetails is not null)
+                {
+                    @if (OnAddToCurrentStory.HasDelegate && CanApplyTemplate)
+                    {
+                        <BusyButton OnClick="@AddToCurrentStory"><FaIcon Name="plus" />Add to Current Story</BusyButton>
+                    }
+                    @if (OnRemixTemplate.HasDelegate)
+                    {
+                        <BusyButton Variant="secondary" OnClick="@(() => OnRemixTemplate.InvokeAsync(TemplateForDetails.Id))"><FaIcon Name="copy" />Remix</BusyButton>
+                    }
+                    @if (OnRefreshStats.HasDelegate)
+                    {
+                        <BusyButton Variant="secondary" OnClick="@(() => OnRefreshStats.InvokeAsync(TemplateForDetails.Id))"><FaIcon Name="refresh" />Refresh Stats</BusyButton>
+                    }
+                    @if (OnEditTemplate.HasDelegate && CanEditTemplate)
+                    {
+                        <AppButton Variant="secondary" OnClick="@(_ => OnEditTemplate.InvokeAsync(TemplateForDetails))"><FaIcon Name="edit" />Edit</AppButton>
+                    }
+                }
+            </span>
+        </Footer>
+    </ModalStackLayout>
+</ModalShell>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public string TemplateId { get; set; } = "";
+    [Parameter] public StoryCardInstance? Instance { get; set; }
+    [Parameter] public int CurrentTurnNumber { get; set; }
+    [Parameter] public bool CanInspectInstance { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnAddToCurrentStory { get; set; }
+    [Parameter] public EventCallback<StoryCardTemplate> OnEditTemplate { get; set; }
+    [Parameter] public EventCallback<StoryCardInstance> OnEditInstance { get; set; }
+    [Parameter] public EventCallback<string> OnRemixTemplate { get; set; }
+    [Parameter] public EventCallback<string> OnRefreshStats { get; set; }
+    [Parameter] public EventCallback<StoryCardStatus> OnSetInstanceStatus { get; set; }
+
+    StoryCardTemplateDetails? Details;
+    string ErrorMessage = "";
+    string LoadedTemplateId = "";
+    bool Loading;
+    StoryCardTemplate? TemplateForDetails => Instance is null ? Details?.Template : Details?.Template;
+    StoryCardViewModel? ViewModel => Instance is not null
+        ? StoryCardViewModel.FromInstance(Instance, CurrentTurnNumber)
+        : Details?.Template is { } template
+            ? StoryCardViewModel.FromTemplate(template)
+            : null;
+    string EffectiveTemplateId => !string.IsNullOrWhiteSpace(TemplateId) ? TemplateId : Instance?.SourceTemplateId ?? "";
+    string Title => Instance?.Title ?? TemplateForDetails?.Title ?? "Story Card";
+    bool CanApplyTemplate => TemplateForDetails is { RetiredUtc: null } template
+        && (template.IsShared || template.OwnerUserId == Session.CurrentUser.Id || Session.CurrentUser.IsAdmin);
+    bool CanEditTemplate => TemplateForDetails is not null
+        && (Session.CurrentUser.IsAdmin || TemplateForDetails.OwnerUserId == Session.CurrentUser.Id);
+    string OverviewSummary => Instance?.Summary ?? TemplateForDetails?.Summary ?? "No summary.";
+    string OverviewInstructions => Instance?.Instructions ?? TemplateForDetails?.Instructions ?? "";
+    string ActivePhaseTitle => Instance?.Phases.FirstOrDefault(phase => phase.Id == Instance.ActivePhaseId)?.Title ?? "None";
+    IReadOnlyList<StoryCardDetailItem> PhaseItems => Instance is not null
+        ? Instance.Phases.OrderBy(phase => phase.SortOrder).Select(phase => new StoryCardDetailItem(phase.Id, phase.Title, phase.PlanningContext, "branch")).ToList()
+        : TemplateForDetails?.Phases.OrderBy(phase => phase.SortOrder).Select(phase => new StoryCardDetailItem(phase.Id, phase.Title, phase.PlanningContext, "branch")).ToList() ?? [];
+    IReadOnlyList<StoryCardDetailItem> RoleItems => Instance is not null
+        ? Instance.Roles.OrderBy(role => role.SortOrder).Select(role => new StoryCardDetailItem(role.Id, role.Title, role.OngoingContext, "users")).ToList()
+        : TemplateForDetails?.Roles.OrderBy(role => role.SortOrder).Select(role => new StoryCardDetailItem(role.Id, role.Title, role.OngoingContext, "users")).ToList() ?? [];
+    IReadOnlyList<StoryCardDetailItem> ItemItems => Instance is not null
+        ? Instance.Items.OrderBy(item => item.SortOrder).Select(item => new StoryCardDetailItem(item.Id, item.Title, item.OngoingContext, "box")).ToList()
+        : TemplateForDetails?.Items.OrderBy(item => item.SortOrder).Select(item => new StoryCardDetailItem(item.Id, item.Title, item.OngoingContext, "box")).ToList() ?? [];
+    IReadOnlyList<StoryCardDetailItem> LocationItems => Instance is not null
+        ? Instance.Locations.OrderBy(location => location.SortOrder).Select(location => new StoryCardDetailItem(location.Id, location.Title, location.OngoingContext, "map-pin")).ToList()
+        : TemplateForDetails?.Locations.OrderBy(location => location.SortOrder).Select(location => new StoryCardDetailItem(location.Id, location.Title, location.OngoingContext, "map-pin")).ToList() ?? [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var templateId = EffectiveTemplateId;
+        if (templateId == LoadedTemplateId)
+            return;
+
+        LoadedTemplateId = templateId;
+        Details = null;
+        if (string.IsNullOrWhiteSpace(templateId))
+            return;
+
+        Loading = true;
+        ErrorMessage = "";
+        try
+        {
+            Details = await Catalog.LoadTemplateDetailsAsync(Session.CurrentUser, templateId);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading story card details failed.",
+                "Loading story card details failed for template {TemplateId}.",
+                templateId);
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+
+    RenderFragment ChildSection(string title, IReadOnlyList<StoryCardDetailItem> items) => @<Section Title="@title" Count="@items.Count" Class="story-card-details-section">
+        @if (items.Count == 0)
+        {
+            <div class="story-card-detail-empty">No cards yet.</div>
+        }
+        else
+        {
+            <div class="story-card-detail-list">
+                @foreach (var item in items)
+                {
+                    <div @key="item.Id" class="story-card-detail-row">
+                        <FaIcon Name="@item.Icon" />
+                        <span><strong>@item.Title</strong><small>@DetailText(item.Detail)</small></span>
+                    </div>
+                }
+            </div>
+        }
+    </Section>;
+
+    static RenderFragment Metric(string icon, string value, string label) => @<span>
+        <strong>@value</strong>
+        <small><FaIcon Name="@icon" />@label</small>
+    </span>;
+
+    async Task AddToCurrentStory()
+    {
+        if (TemplateForDetails is null)
+            return;
+
+        ErrorMessage = "";
+        try
+        {
+            await OnAddToCurrentStory.InvokeAsync(TemplateForDetails.Id);
+        }
+        catch (Exception exception)
+        {
+            ErrorMessage = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                $"Adding story card '{TemplateForDetails.Title}' failed.",
+                "Adding story card template {TemplateId} failed.",
+                TemplateForDetails.Id);
+        }
+    }
+
+    Task SetStatus(StoryCardStatus status) => OnSetInstanceStatus.HasDelegate ? OnSetInstanceStatus.InvokeAsync(status) : Task.CompletedTask;
+
+    string TurnRange(StoryCardInstance card)
+    {
+        var end = card.EndTurnNumber ?? CurrentTurnNumber;
+        return $"Turns {card.StartTurnNumber} to {end}";
+    }
+
+    static string AverageTurnsText(StoryCardTemplate template) =>
+        template.Stats.DirectStoryCount > 0
+            ? Math.Round((double)template.Stats.DirectActiveTurnCount / template.Stats.DirectStoryCount, MidpointRounding.AwayFromZero).ToString()
+            : "-";
+
+    static string StatsDateText(StoryCardTemplate template) =>
+        template.Stats.RefreshedUtc is { } refreshed ? RelativeDateFormatter.FormatDate(refreshed) : "Not refreshed";
+
+    static string OwnerText(StoryCardTemplate template) =>
+        string.IsNullOrWhiteSpace(template.OwnerDisplayName) ? "Unknown" : template.OwnerDisplayName;
+
+    static string AccessText(StoryCardTemplate template) =>
+        template.IsShared ? "Shared" : "Private";
+
+    static string DetailText(string detail) => string.IsNullOrWhiteSpace(detail) ? "No details" : detail;
+
+    string ChildTitle(StoryCardChildCardType type, string childCardId)
+    {
+        if (Instance is null)
+            return type.ToString();
+
+        return type switch
+        {
+            StoryCardChildCardType.Role => Instance.Roles.FirstOrDefault(role => role.Id == childCardId)?.Title ?? "Role card",
+            StoryCardChildCardType.Item => Instance.Items.FirstOrDefault(item => item.Id == childCardId)?.Title ?? "Item card",
+            StoryCardChildCardType.Location => Instance.Locations.FirstOrDefault(location => location.Id == childCardId)?.Title ?? "Location card",
+            _ => type.ToString()
+        };
+    }
+
+    static string TypeIcon(StoryCardChildCardType type) => type switch
+    {
+        StoryCardChildCardType.Role => "users",
+        StoryCardChildCardType.Item => "box",
+        StoryCardChildCardType.Location => "map-pin",
+        _ => "cards"
+    };
+
+    static string HistorySummary(StoryCardHistoryItem item) =>
+        $"{item.Details} - {TranscriptTurnNumbering.Format(new RpSnapshotDraftTurn { TurnNumber = item.TurnNumber })}";
+
+    sealed record StoryCardDetailItem(string Id, string Title, string Detail, string Icon);
+}

@@ -10,140 +10,94 @@
 
     <Section Title="Story Cards" Count="@Cards.Count">
         <RightContent>
-            <AppButton Icon="plus" TooltipText="Inject story card" OnClick="@(_ => PickerOpen = true)" />
+            <AppButton Icon="plus" TooltipText="Add story card" OnClick="@(_ => CatalogOpen = true)" />
         </RightContent>
         <ChildContent>
             @if (Cards.Count == 0)
             {
-                <EmptyState Icon="cards" Title="No story cards" Message="Inject a card when the story needs a reusable arc, role, item, or location structure." />
+                <EmptyState Icon="cards" Title="No story cards" Message="Add a card when the story needs a reusable arc, role, item, or location structure." />
             }
             else
             {
-                <div class="story-card-instance-list">
+                <div class="story-card-catalog-grid is-compact">
                     @foreach (var card in Cards)
                     {
-                        <div @key="card.Id" class="@InstanceRowClass(card)" @onclick="@(() => Select(card.Id))">
-                            <span class="story-card-row-icon"><FaIcon Name="@StatusIcon(card.Status)" /></span>
-                            <span class="story-card-row-main">
-                                <strong>@card.Title</strong>
-                                <small>@InstanceSummary(card)</small>
-                            </span>
-                            <Badge Tone="@StatusTone(card.Status)">@card.Status</Badge>
-                        </div>
+                        <StoryCardView @key="card.Id"
+                                       Model="@StoryCardViewModel.FromInstance(card, CurrentTurnNumber)"
+                                       OnSelect="@(() => OpenDetails(card.Id))">
+                            <ActionContent>
+                                <AppButton Icon="eye" TooltipText="View" StopPropagation OnClick="@(_ => OpenDetails(card.Id))" />
+                                @if (CanInspect)
+                                {
+                                    <AppButton Icon="edit" TooltipText="Edit" StopPropagation OnClick="@(_ => OpenEditor(card))" />
+                                }
+                            </ActionContent>
+                        </StoryCardView>
                     }
                 </div>
             }
         </ChildContent>
     </Section>
-
-    @if (SelectedDraft is not null)
-    {
-        <Section Title="Selected Card" Class="story-card-selected-panel">
-            <div class="story-card-status-actions">
-                <Badge Tone="@StatusTone(SelectedDraft.Status)">@SelectedDraft.Status</Badge>
-                <span>@TurnRange(SelectedDraft)</span>
-                <span class="toolbar-spacer"></span>
-                @if (CanInspect)
-                {
-                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Active)" OnClick="@(() => SetStatus(StoryCardStatus.Active))">Active</BusyButton>
-                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Dormant)" OnClick="@(() => SetStatus(StoryCardStatus.Dormant))">Dormant</BusyButton>
-                    <BusyButton Variant="secondary" Disabled="@(SelectedDraft.Status == StoryCardStatus.Concluded)" OnClick="@(() => SetStatus(StoryCardStatus.Concluded))">Concluded</BusyButton>
-                }
-            </div>
-            @if (!CanInspect)
-            {
-                <p class="story-card-summary-text">@SelectedDraft.Summary</p>
-            }
-        </Section>
-
-        @if (CanInspect)
-        {
-            <StatefulForm Model="@SelectedDraft" Baseline="@SelectedBaseline" OnSave="SaveSelected" OnClose="Noop" ContextChanged="SetInstanceForm" DisableNavigationGuard>
-                <ChildContent Context="form">
-                    <StoryCardAssignmentsEditor Instance="SelectedDraft"
-                                                BaselineAssignments="SelectedBaseline.Assignments"
-                                                Characters="Session.Chat.Characters.Items"
-                                                Items="Session.Chat.Items.Items"
-                                                Locations="Session.Chat.Locations.Items" />
-                    <StoryCardEditor Instance="SelectedDraft" InstanceBaseline="SelectedBaseline" Editable="true" Height="520px">
-                        <Footer>
-                            <span class="modal-action-spacer"></span>
-                            <AppButton Variant="secondary" Disabled="@(!form.HasChanges)" OnClick="@(_ => ResetSelectedDraft())">Cancel</AppButton>
-                            <BusyButton Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save Card</BusyButton>
-                        </Footer>
-                    </StoryCardEditor>
-                </ChildContent>
-            </StatefulForm>
-        }
-
-        @if (SelectedDraft.History.Count > 0)
-        {
-            <Section Title="History" Count="@SelectedDraft.History.Count">
-                <div class="story-card-history-list">
-                    @foreach (var item in SelectedDraft.History)
-                    {
-                        <div @key="item.Id" class="story-card-history-row">
-                            <FaIcon Name="clock" />
-                            <span><strong>@item.Title</strong><small>@HistorySummary(item)</small></span>
-                        </div>
-                    }
-                </div>
-            </Section>
-        }
-    }
 </div>
 
-@if (PickerOpen)
+@if (CatalogOpen)
 {
-    <StoryCardCatalogModal PickerMode="true" OnUseTemplate="Inject" OnClose="ClosePicker" />
+    <StoryCardCatalogModal OnAddToCurrentStory="Inject" OnClose="CloseCatalog" />
+}
+
+@if (DetailsInstance is not null)
+{
+    <StoryCardDetailsModal Instance="DetailsInstance"
+                           CurrentTurnNumber="@CurrentTurnNumber"
+                           CanInspectInstance="@CanInspect"
+                           OnClose="CloseDetails"
+                           OnEditInstance="EditInstanceFromDetails"
+                           OnSetInstanceStatus="SetStatus" />
+}
+
+@if (EditorInstance is not null)
+{
+    <StoryCardEditorModal Instance="EditorInstance"
+                          IncludeAssignments="true"
+                          OnInstanceSaved="InstanceSaved"
+                          OnClose="CloseEditor" />
 }
 
 @code {
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    StoryCardInstance? SelectedDraft;
-    StoryCardInstance SelectedBaseline = new();
-    StatefulFormContext<StoryCardInstance>? InstanceForm;
-    string SelectedId = "";
+    string DetailsInstanceId = "";
+    StoryCardInstance? EditorInstance;
     string ErrorMessage = "";
-    bool PickerOpen;
+    bool CatalogOpen;
     List<StoryCardInstance> Cards => Session.Chat.StoryCards.Items;
     bool CanInspect => Session.Chat.StoryCards.CanInspectInternals();
+    int CurrentTurnNumber => Session.Chats.Active?.LastGeneratedTurnNumber ?? Session.ActiveChat.Current?.Chat.LastGeneratedTurnNumber ?? 0;
+    StoryCardInstance? DetailsInstance => Cards.FirstOrDefault(card => card.Id == DetailsInstanceId);
 
     protected override void OnInitialized()
     {
         Session.Chat.StoryCards.Changed += OnStoreChanged;
-        SelectDirect(Cards.FirstOrDefault()?.Id ?? "");
     }
 
-    Task OnStoreChanged()
-    {
-        if (!string.IsNullOrWhiteSpace(SelectedId) && InstanceForm?.HasChanges != true)
-            SelectDirect(SelectedId);
-        return InvokeAsync(StateHasChanged);
-    }
+    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
 
-    Task Select(string id) => InstanceForm?.GuardAsync(() => SelectDirectAsync(id)) ?? SelectDirectAsync(id);
-
-    Task SelectDirectAsync(string id)
+    Task OpenDetails(string id)
     {
-        SelectDirect(id);
+        DetailsInstanceId = id;
         return Task.CompletedTask;
     }
 
-    void SelectDirect(string id)
+    Task CloseDetails()
     {
-        SelectedId = id;
-        if (Cards.FirstOrDefault(card => card.Id == id) is { } card)
-        {
-            SelectedDraft = SessionCloner.Clone(card);
-            SelectedBaseline = SessionCloner.Clone(card);
-        }
-        else
-        {
-            SelectedDraft = null;
-            SelectedBaseline = new();
-        }
+        DetailsInstanceId = "";
+        return Task.CompletedTask;
+    }
+
+    Task CloseCatalog()
+    {
+        CatalogOpen = false;
+        return Task.CompletedTask;
     }
 
     async Task Inject(string templateId)
@@ -151,9 +105,9 @@
         ErrorMessage = "";
         try
         {
-            PickerOpen = false;
             var instance = await Session.Chat.StoryCards.InjectAsync(templateId);
-            SelectDirect(instance.Id);
+            CatalogOpen = false;
+            DetailsInstanceId = instance.Id;
         }
         catch (Exception exception)
         {
@@ -167,24 +121,27 @@
         }
     }
 
-    Task ClosePicker()
+    Task EditInstanceFromDetails(StoryCardInstance instance)
     {
-        PickerOpen = false;
+        DetailsInstanceId = "";
+        OpenEditor(instance);
         return Task.CompletedTask;
     }
 
-    Task SetStatus(StoryCardStatus status) => InstanceForm?.GuardAsync(() => SetStatusDirect(status)) ?? SetStatusDirect(status);
-
-    async Task SetStatusDirect(StoryCardStatus status)
+    void OpenEditor(StoryCardInstance instance)
     {
-        if (SelectedDraft is null)
+        EditorInstance = SessionCloner.Clone(instance);
+    }
+
+    async Task SetStatus(StoryCardStatus status)
+    {
+        if (DetailsInstance is null)
             return;
 
         ErrorMessage = "";
         try
         {
-            await Session.Chat.StoryCards.SetStatusAsync(SelectedDraft.Id, status);
-            SelectDirect(SelectedDraft.Id);
+            await Session.Chat.StoryCards.SetStatusAsync(DetailsInstance.Id, status);
         }
         catch (Exception exception)
         {
@@ -193,73 +150,21 @@
                 exception,
                 "Updating story card status failed.",
                 "Updating story card {StoryCardInstanceId} status failed.",
-                SelectedDraft.Id);
+                DetailsInstance.Id);
         }
     }
 
-    async Task SaveSelected()
+    Task InstanceSaved(StoryCardInstance instance)
     {
-        if (SelectedDraft is null)
-            return;
-
-        ErrorMessage = "";
-        try
-        {
-            await Session.Chat.StoryCards.SaveInstanceAsync(SelectedDraft);
-            SelectDirect(SelectedDraft.Id);
-        }
-        catch (Exception exception)
-        {
-            ErrorMessage = UserFacingErrorReporter.Capture(
-                Logger,
-                exception,
-                "Saving the story card failed.",
-                "Saving story card instance {StoryCardInstanceId} failed.",
-                SelectedDraft.Id);
-        }
+        DetailsInstanceId = instance.Id;
+        return Task.CompletedTask;
     }
 
-    void ResetSelectedDraft()
+    Task CloseEditor()
     {
-        if (!string.IsNullOrWhiteSpace(SelectedId))
-            SelectDirect(SelectedId);
+        EditorInstance = null;
+        return Task.CompletedTask;
     }
-
-    string InstanceRowClass(StoryCardInstance card) =>
-        $"story-card-instance-row {(SelectedId == card.Id ? "is-selected" : "")}";
-
-    string InstanceSummary(StoryCardInstance card) =>
-        string.IsNullOrWhiteSpace(card.Summary) ? TurnRange(card) : $"{card.Summary} · {TurnRange(card)}";
-
-    string TurnRange(StoryCardInstance card)
-    {
-        var end = card.EndTurnNumber ?? Session.Chats.Active?.LastGeneratedTurnNumber ?? Session.ActiveChat.Current?.Chat.LastGeneratedTurnNumber ?? 0;
-        return $"Turns {card.StartTurnNumber} to {end}";
-    }
-
-    static string StatusIcon(StoryCardStatus status) => status switch
-    {
-        StoryCardStatus.Dormant => "pause",
-        StoryCardStatus.Concluded => "check",
-        _ => "play"
-    };
-
-    static string StatusTone(StoryCardStatus status) => status switch
-    {
-        StoryCardStatus.Dormant => "amber",
-        StoryCardStatus.Concluded => "emerald",
-        _ => "blue"
-    };
-
-    static string HistorySummary(StoryCardHistoryItem item) =>
-        $"{item.Details} · {TranscriptTurnNumbering.Format(new RpSnapshotDraftTurn { TurnNumber = item.TurnNumber })}";
-
-    void SetInstanceForm(StatefulFormContext<StoryCardInstance> form)
-    {
-        InstanceForm = form;
-    }
-
-    static Task Noop() => Task.CompletedTask;
 
     public void Dispose()
     {

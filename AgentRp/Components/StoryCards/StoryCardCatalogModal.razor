@@ -1,143 +1,124 @@
 @namespace AgentRp.Components.StoryCards
 @inject IStoryCardCatalogService Catalog
+@inject IAppSettingsService AppSettings
 @inject ILogger<StoryCardCatalogModal> Logger
 
-<ModalShell Title="@Title" Icon="cards" MaxWidth="1040px" BodyClass="is-flush" OnClose="RequestClose">
-    <ModalSplitLayout Height="680px" RailWidth="280px" Class="story-card-catalog">
-        <RailHeader>
-            <span>Catalog</span>
-            @if (!PickerMode)
-            {
+<ModalShell Title="Card Library" Icon="cards" MaxWidth="1080px" Height="720px" BodyClass="is-flush" OnClose="OnClose">
+    <ModalStackLayout BodyClass="story-card-catalog-body">
+        <Header>
+            <ModalPaneToolbar Class="story-card-catalog-toolbar">
+                <div class="segmented">
+                    <AppButton Size="sm" Active="@(View == MyCardsView)" OnClick="@(_ => SetView(MyCardsView))">
+                        <FaIcon Name="user" />My Cards
+                    </AppButton>
+                    <AppButton Size="sm" Active="@(View == FavoritesView)" OnClick="@(_ => SetView(FavoritesView))">
+                        <FaIcon Name="star" />Favorites
+                    </AppButton>
+                    <AppButton Size="sm" Active="@(View == AllCardsView)" OnClick="@(_ => SetView(AllCardsView))">
+                        <FaIcon Name="cards" />All Cards
+                    </AppButton>
+                </div>
+                <SearchField Value="@Search" ValueChanged="SetSearch" Placeholder="Search cards..." />
+                <span class="toolbar-spacer"></span>
                 <AppButton Icon="plus" TooltipText="New story card" OnClick="@(_ => NewTemplate())" />
-            }
-        </RailHeader>
-        <RailContent>
+            </ModalPaneToolbar>
             @if (!string.IsNullOrWhiteSpace(ErrorMessage))
             {
                 <div class="modal-error">@ErrorMessage</div>
             }
+        </Header>
+        <ChildContent>
             @if (Templates.Count == 0)
             {
                 <EmptyState Icon="cards" Title="No story cards" Message="Create a card template to reuse it across stories." />
             }
+            else if (FilteredTemplates.Count == 0)
+            {
+                <EmptyState Icon="cards" Title="@EmptyTitle" Message="@EmptyMessage" />
+            }
             else
             {
-                <SelectableList Class="story-card-template-list">
-                    @foreach (var template in Templates)
+                <div class="story-card-catalog-grid">
+                    @foreach (var template in FilteredTemplates)
                     {
-                        <div @key="template.Id" class="@TemplateRowClass(template)" @onclick="@(() => Select(template.Id))">
-                            <span class="story-card-row-icon"><FaIcon Name="cards" /></span>
-                            <span class="story-card-row-main">
-                                <strong>@template.Title</strong>
-                                <small>@TemplateSummary(template)</small>
-                            </span>
-                            @if (template.IsShared)
-                            {
-                                <Badge Tone="emerald">Shared</Badge>
-                            }
-                        </div>
+                        <StoryCardView @key="template.Id"
+                                       Model="@StoryCardViewModel.FromTemplate(template)"
+                                       OnSelect="@(() => OpenDetails(template.Id))">
+                            <ActionContent>
+                                <AppButton Icon="star" Active="@FavoriteTemplateIds.Contains(template.Id)" TooltipText="@FavoriteTooltip(template)" StopPropagation OnClick="@(_ => ToggleFavorite(template.Id))" />
+                                <AppButton Icon="eye" TooltipText="View" StopPropagation OnClick="@(_ => OpenDetails(template.Id))" />
+                                @if (CanEdit(template))
+                                {
+                                    <AppButton Icon="edit" TooltipText="Edit" StopPropagation OnClick="@(_ => EditTemplate(template))" />
+                                }
+                                <BusyButton Variant="ghost" TooltipText="Remix" StopPropagation OnClick="@(() => Remix(template.Id))"><FaIcon Name="copy" /></BusyButton>
+                            </ActionContent>
+                        </StoryCardView>
                     }
-                </SelectableList>
-            }
-        </RailContent>
-        <RailFooter>
-            @if (!PickerMode)
-            {
-                <div class="prompt-rail-note">
-                    <p>Shared cards appear in the wider catalog. Remixes keep lineage back to their source.</p>
                 </div>
             }
-        </RailFooter>
-        <MainContent>
-            @if (Selected is null)
-            {
-                <ModalStackLayout Class="modal-editor-main" BodyClass="modal-form-stack">
-                    <ChildContent>
-                        <EmptyState Icon="cards" Title="Select a card" Message="Pick a story card from the catalog." />
-                    </ChildContent>
-                </ModalStackLayout>
-            }
-            else
-            {
-                <StatefulForm Model="@Selected" Baseline="@SelectedBaseline" OnSave="Save" OnClose="OnClose" ContextChanged="SetTemplateForm" DisableNavigationGuard="@PickerMode">
-                    <ChildContent Context="form">
-                        <StoryCardEditor Template="Selected"
-                                         TemplateBaseline="SelectedBaseline"
-                                         Editable="@CanEditSelected"
-                                         SourceText="@SourceText"
-                                         Height="680px">
-                            <Footer>
-                                <span class="modal-action-spacer"></span>
-                                <span class="modal-action-group">
-                                    @if (PickerMode)
-                                    {
-                                        <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                                        <BusyButton Disabled="@(!CanApplySelected)" OnClick="@UseSelected"><FaIcon Name="plus" />Add Card</BusyButton>
-                                    }
-                                    else
-                                    {
-                                        <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
-                                        @if (!string.IsNullOrWhiteSpace(Selected.ParentTemplateId))
-                                        {
-                                            <AppButton Variant="secondary" OnClick="@(_ => Select(Selected.ParentTemplateId))"><FaIcon Name="git-branch" />Parent</AppButton>
-                                        }
-                                        <BusyButton Variant="secondary" OnClick="@RefreshStats"><FaIcon Name="rotate" />Refresh Stats</BusyButton>
-                                        <BusyButton Variant="secondary" OnClick="@Remix"><FaIcon Name="copy" />Remix</BusyButton>
-                                        @if (CanEditSelected)
-                                        {
-                                            <BusyButton Variant="secondary" OnClick="@Archive"><FaIcon Name="archive" />Archive</BusyButton>
-                                            <BusyButton Disabled="@(!form.CanSave)" OnClick="@form.SaveAsync"><FaIcon Name="check" />Save</BusyButton>
-                                        }
-                                    }
-                                </span>
-                            </Footer>
-                        </StoryCardEditor>
-                    </ChildContent>
-                </StatefulForm>
-            }
-        </MainContent>
-    </ModalSplitLayout>
+        </ChildContent>
+    </ModalStackLayout>
 </ModalShell>
+
+@if (!string.IsNullOrWhiteSpace(DetailsTemplateId))
+{
+    <StoryCardDetailsModal @key="DetailsKey"
+                           TemplateId="@DetailsTemplateId"
+                           OnClose="@CloseDetails"
+                           OnAddToCurrentStory="OnAddToCurrentStory"
+                           OnEditTemplate="EditTemplateFromDetails"
+                           OnRemixTemplate="Remix"
+                           OnRefreshStats="RefreshStats" />
+}
+
+@if (EditorTemplate is not null)
+{
+    <StoryCardEditorModal Template="EditorTemplate"
+                          OnTemplateSaved="TemplateSaved"
+                          OnTemplateArchived="TemplateArchived"
+                          OnClose="CloseEditor" />
+}
 
 @code {
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
-    [Parameter] public bool PickerMode { get; set; }
-    [Parameter] public EventCallback<string> OnUseTemplate { get; set; }
+    [Parameter] public EventCallback<string> OnAddToCurrentStory { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    const string MyCardsView = "mine";
+    const string FavoritesView = "favorites";
+    const string AllCardsView = "all";
+
     List<StoryCardTemplate> Templates = [];
-    StoryCardTemplate? Selected;
-    StoryCardTemplate SelectedBaseline = new();
-    StatefulFormContext<StoryCardTemplate>? TemplateForm;
+    HashSet<string> FavoriteTemplateIds = new(StringComparer.Ordinal);
+    string View = MyCardsView;
+    string Search = "";
+    string DetailsTemplateId = "";
+    int DetailsVersion;
+    StoryCardTemplate? EditorTemplate;
     string ErrorMessage = "";
-    string Title => PickerMode ? "Add Story Card" : "Card Library";
-    bool CanEditSelected => Selected is not null && (Session.CurrentUser.IsAdmin || Selected.OwnerUserId == Session.CurrentUser.Id);
-    bool CanApplySelected => Selected is not null && Selected.RetiredUtc is null && (Selected.IsShared || Selected.OwnerUserId == Session.CurrentUser.Id || Session.CurrentUser.IsAdmin);
-    string SourceText => Selected is null
-        ? ""
-        : !string.IsNullOrWhiteSpace(Selected.ParentTemplateId)
-            ? "Remix of another story card"
-            : Selected.IsShared
-                ? $"Created by {Selected.OwnerDisplayName}"
-                : "Private template";
+    string DetailsKey => $"{DetailsTemplateId}:{DetailsVersion}";
+    IReadOnlyList<StoryCardTemplate> FilteredTemplates => Templates
+        .Where(MatchesView)
+        .Where(MatchesSearch)
+        .ToList();
+    string EmptyTitle => View == FavoritesView ? "No favorite cards" : "No cards found";
+    string EmptyMessage => View == FavoritesView
+        ? "Use the star on a card to keep it here."
+        : "Adjust search or switch catalog views.";
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadPreferencesAsync();
         await LoadAsync();
     }
 
-    async Task LoadAsync(string selectedId = "")
+    async Task LoadAsync()
     {
         ErrorMessage = "";
         try
         {
             Templates = (await Catalog.LoadCatalogAsync(Session.CurrentUser)).ToList();
-            if (!string.IsNullOrWhiteSpace(selectedId))
-                await LoadSelectedAsync(selectedId);
-            else if (Selected is not null)
-                await LoadSelectedAsync(Selected.Id);
-            else
-                SetSelected(Templates.FirstOrDefault());
         }
         catch (Exception exception)
         {
@@ -149,31 +130,39 @@
         }
     }
 
-    Task Select(string id) => GuardSelectedAsync(() => LoadSelectedAsync(id));
-
-    async Task LoadSelectedAsync(string id)
+    async Task LoadPreferencesAsync()
     {
-        ErrorMessage = "";
-        try
-        {
-            SetSelected(await Catalog.LoadTemplateAsync(Session.CurrentUser, id, lineageView: true));
-        }
-        catch (Exception exception)
-        {
-            ErrorMessage = UserFacingErrorReporter.Capture(
-                Logger,
-                exception,
-                "Loading the story card failed.",
-                "Loading story card template {TemplateId} failed.",
-                id);
-        }
+        var preferences = await AppSettings.GetAsync(
+            StoryCardCatalogPreferencesState.SettingsKey(Session.CurrentUser.Id),
+            StoryCardCatalogPreferencesState.Default);
+        FavoriteTemplateIds = preferences.FavoriteTemplateIds.ToHashSet(StringComparer.Ordinal);
     }
 
-    Task NewTemplate() => GuardSelectedAsync(NewTemplateDirect);
-
-    Task NewTemplateDirect()
+    Task SetView(string value)
     {
-        SetSelected(new()
+        View = value;
+        return Task.CompletedTask;
+    }
+
+    Task SetSearch(string value)
+    {
+        Search = value;
+        return Task.CompletedTask;
+    }
+
+    async Task ToggleFavorite(string templateId)
+    {
+        if (!FavoriteTemplateIds.Remove(templateId))
+            FavoriteTemplateIds.Add(templateId);
+
+        await AppSettings.SaveAsync(
+            StoryCardCatalogPreferencesState.SettingsKey(Session.CurrentUser.Id),
+            new StoryCardCatalogPreferencesState(FavoriteTemplateIds.OrderBy(id => id, StringComparer.Ordinal).ToList()));
+    }
+
+    void NewTemplate()
+    {
+        EditorTemplate = new()
         {
             Title = "New Story Card",
             OwnerUserId = Session.CurrentUser.Id,
@@ -182,93 +171,62 @@
             [
                 new() { Id = $"phase-{Guid.NewGuid():N}", Title = "Opening Phase", SortOrder = 0, IsEnding = true }
             ]
-        }, new());
+        };
+    }
+
+    Task OpenDetails(string templateId)
+    {
+        DetailsTemplateId = templateId;
         return Task.CompletedTask;
     }
 
-    async Task Save()
+    Task CloseDetails()
     {
-        if (Selected is null)
-            return;
-
-        ErrorMessage = "";
-        try
-        {
-            var saved = await Catalog.SaveTemplateAsync(Session.CurrentUser, Selected);
-            await LoadAsync(saved.Id);
-        }
-        catch (Exception exception)
-        {
-            ErrorMessage = UserFacingErrorReporter.Capture(
-                Logger,
-                exception,
-                $"Saving story card '{Selected.Title}' failed.",
-                "Saving story card template {TemplateId} failed.",
-                Selected.Id);
-        }
+        DetailsTemplateId = "";
+        return Task.CompletedTask;
     }
 
-    Task Remix() => GuardSelectedAsync(RemixSelected);
-
-    async Task RemixSelected()
+    Task EditTemplateFromDetails(StoryCardTemplate template)
     {
-        if (Selected is null)
-            return;
-
-        ErrorMessage = "";
-        try
-        {
-            Selected = await Catalog.RemixAsync(Session.CurrentUser, Selected.Id);
-            await LoadAsync(Selected.Id);
-        }
-        catch (Exception exception)
-        {
-            ErrorMessage = UserFacingErrorReporter.Capture(
-                Logger,
-                exception,
-                $"Remixing story card '{Selected.Title}' failed.",
-                "Remixing story card template {TemplateId} failed.",
-                Selected.Id);
-        }
+        DetailsTemplateId = "";
+        EditTemplate(template);
+        return Task.CompletedTask;
     }
 
-    Task Archive() => GuardSelectedAsync(ArchiveSelected);
-
-    async Task ArchiveSelected()
+    void EditTemplate(StoryCardTemplate template)
     {
-        if (Selected is null)
-            return;
+        EditorTemplate = SessionCloner.Clone(template);
+    }
 
+    async Task Remix(string templateId)
+    {
         ErrorMessage = "";
         try
         {
-            await Catalog.ArchiveAsync(Session.CurrentUser, Selected.Id);
-            Selected = null;
+            var remix = await Catalog.RemixAsync(Session.CurrentUser, templateId);
             await LoadAsync();
+            DetailsTemplateId = remix.Id;
         }
         catch (Exception exception)
         {
             ErrorMessage = UserFacingErrorReporter.Capture(
                 Logger,
                 exception,
-                "Archiving the story card failed.",
-                "Archiving story card template {TemplateId} failed.",
-                Selected?.Id);
+                "Remixing story card failed.",
+                "Remixing story card template {TemplateId} failed.",
+                templateId);
         }
     }
 
-    Task RefreshStats() => GuardSelectedAsync(RefreshSelectedStats);
-
-    async Task RefreshSelectedStats()
+    async Task RefreshStats(string templateId)
     {
-        if (Selected is null)
-            return;
-
         ErrorMessage = "";
         try
         {
-            var refreshed = await Catalog.RefreshStatsAsync(Session.CurrentUser, Selected.Id);
-            await LoadAsync(refreshed.Id);
+            var refreshed = await Catalog.RefreshStatsAsync(Session.CurrentUser, templateId);
+            await LoadAsync();
+            DetailsTemplateId = refreshed.Id;
+            DetailsVersion++;
         }
         catch (Exception exception)
         {
@@ -277,48 +235,52 @@
                 exception,
                 "Refreshing story card stats failed.",
                 "Refreshing story card template {TemplateId} stats failed.",
-                Selected.Id);
+                templateId);
         }
     }
 
-    async Task UseSelected()
+    async Task TemplateSaved(StoryCardTemplate template)
     {
-        if (Selected is null || !CanApplySelected)
-            return;
-
-        await OnUseTemplate.InvokeAsync(Selected.Id);
+        await LoadAsync();
+        DetailsTemplateId = template.Id;
     }
 
-    Task RequestClose() => TemplateForm?.RequestCloseAsync() ?? OnClose.InvokeAsync();
-
-    Task GuardSelectedAsync(Func<Task> action) => TemplateForm?.GuardAsync(action) ?? action();
-
-    void SetTemplateForm(StatefulFormContext<StoryCardTemplate> form)
+    async Task TemplateArchived(string templateId)
     {
-        TemplateForm = form;
+        await LoadAsync();
+        if (DetailsTemplateId == templateId)
+            DetailsTemplateId = "";
     }
 
-    void SetSelected(StoryCardTemplate? template, StoryCardTemplate? baseline = null)
+    Task CloseEditor()
     {
-        if (template is null)
-        {
-            Selected = null;
-            SelectedBaseline = new();
-            return;
-        }
-
-        Selected = SessionCloner.Clone(template);
-        SelectedBaseline = baseline is null ? SessionCloner.Clone(template) : SessionCloner.Clone(baseline);
+        EditorTemplate = null;
+        return Task.CompletedTask;
     }
 
-    string TemplateRowClass(StoryCardTemplate template) =>
-        $"story-card-template-row {(Selected?.Id == template.Id ? "is-selected" : "")}";
+    bool CanEdit(StoryCardTemplate template) =>
+        Session.CurrentUser.IsAdmin || template.OwnerUserId == Session.CurrentUser.Id;
 
-    static string TemplateSummary(StoryCardTemplate template)
+    bool MatchesView(StoryCardTemplate template) => View switch
     {
-        if (!string.IsNullOrWhiteSpace(template.Summary))
-            return template.Summary;
-        var childCount = template.Phases.Count + template.Roles.Count + template.Items.Count + template.Locations.Count;
-        return childCount == 1 ? "1 child card" : $"{childCount} child cards";
+        FavoritesView => FavoriteTemplateIds.Contains(template.Id),
+        AllCardsView => true,
+        _ => template.OwnerUserId == Session.CurrentUser.Id
+    };
+
+    bool MatchesSearch(StoryCardTemplate template)
+    {
+        if (string.IsNullOrWhiteSpace(Search))
+            return true;
+
+        return Contains(template.Title, Search)
+            || Contains(template.Summary, Search)
+            || Contains(template.OwnerDisplayName, Search);
     }
+
+    string FavoriteTooltip(StoryCardTemplate template) =>
+        FavoriteTemplateIds.Contains(template.Id) ? $"Remove {template.Title} from favorites" : $"Add {template.Title} to favorites";
+
+    static bool Contains(string value, string search) =>
+        !string.IsNullOrWhiteSpace(value) && value.Contains(search, StringComparison.OrdinalIgnoreCase);
 }

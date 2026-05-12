@@ -1,0 +1,73 @@
+@namespace AgentRp.Components.StoryCards
+
+<article class="@CssClass" @onclick="Select" aria-disabled="@Disabled">
+    <div class="story-card-view-cover">
+        <img src="@Model.CoverUrl" alt="" />
+        @if (Selected)
+        {
+            <span class="story-card-view-check" aria-label="Selected"><FaIcon Name="check" /></span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.StatusText))
+        {
+            <Badge Tone="@Model.StatusTone">@Model.StatusText</Badge>
+        }
+        else if (Model.IsShared)
+        {
+            <Badge Tone="emerald">Shared</Badge>
+        }
+    </div>
+    <div class="story-card-view-body">
+        <div class="story-card-view-title">
+            <strong>@Model.Title</strong>
+            @if (Model.IsRetired)
+            {
+                <Badge Tone="muted">Archived</Badge>
+            }
+        </div>
+        <p>@Model.Summary</p>
+        <div class="story-card-view-counts" aria-label="Card contents">
+            <span title="Phases"><FaIcon Name="branch" />@Model.PhaseCount</span>
+            <span title="Roles"><FaIcon Name="users" />@Model.RoleCount</span>
+            <span title="Locations"><FaIcon Name="map-pin" />@Model.LocationCount</span>
+            <span title="Items"><FaIcon Name="box" />@Model.ItemCount</span>
+        </div>
+        <div class="story-card-view-stats">
+            @if (Model.Kind == StoryCardViewKind.Template)
+            {
+                <span><strong>@Model.UsageCount</strong><small><FaIcon Name="cards" />@UsageText</small></span>
+                <span><strong>@AverageTurnsText</strong><small><FaIcon Name="timer" />avg turns</small></span>
+            }
+            else
+            {
+                <span><strong>@Model.TurnRangeText</strong><small><FaIcon Name="timer" />range</small></span>
+            }
+        </div>
+    </div>
+    @if (ActionContent is not null)
+    {
+        <div class="story-card-view-actions">
+            @ActionContent
+        </div>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public StoryCardViewModel Model { get; set; } = new();
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback OnSelect { get; set; }
+    [Parameter] public RenderFragment? ActionContent { get; set; }
+
+    string CssClass => string.Join(" ", new[]
+    {
+        "story-card-view",
+        Selected ? "is-selected" : null,
+        Disabled ? "is-disabled" : null,
+        Class
+    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string UsageText => Model.UsageCount == 1 ? "usage" : "usages";
+    string AverageTurnsText => Model.AverageTurns.HasValue ? Model.AverageTurns.Value.ToString() : "-";
+
+    Task Select() => Disabled || !OnSelect.HasDelegate ? Task.CompletedTask : OnSelect.InvokeAsync();
+}

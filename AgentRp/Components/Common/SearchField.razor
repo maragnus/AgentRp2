@@ -1,19 +1,41 @@
-<div class="@CssClass">
-    <FaIcon Name="search" />
+<InputGroup Class="@CssClass">
+    <InputGroupAddon Class="search-field-icon">
+        <FaIcon Name="search" />
+    </InputGroupAddon>
     <AppInput Class="search-field"
+              Type="search"
+              aria-label="@AriaLabel"
               Placeholder="@Placeholder"
               Value="@Value"
               ValueChanged="HandleInput"
+              @bind-IsEmpty="SearchIsEmpty"
               UpdateMode="TextUpdateMode.Live" />
-</div>
+    @if (ShowClear && !SearchIsEmpty)
+    {
+        <AppButton Icon="x"
+                   TooltipText="Clear search"
+                   AriaLabel="Clear search"
+                   OnClick="@(_ => ClearSearch())" />
+    }
+</InputGroup>
 
 @code {
+    bool SearchIsEmpty = true;
+
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Search...";
+    [Parameter] public string AriaLabel { get; set; } = "Search";
+    [Parameter] public bool ShowClear { get; set; } = true;
     [Parameter] public string? Class { get; set; }
 
     string CssClass => $"search-field-wrap {Class}".Trim();
 
     Task HandleInput(string value) => ValueChanged.InvokeAsync(value);
+
+    async Task ClearSearch()
+    {
+        SearchIsEmpty = true;
+        await ValueChanged.InvokeAsync("");
+    }
 }
