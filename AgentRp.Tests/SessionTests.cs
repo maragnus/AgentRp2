@@ -303,7 +303,6 @@ public sealed class SessionTests
             Assert.True(component.FindAll(".claude-composer-actions button[disabled]").Count > 0);
         });
 
-        await component.Find("textarea").KeyDownAsync(new KeyboardEventArgs { Key = "Enter", CtrlKey = true });
         Assert.Equal(1, generation.GenerateCalls);
 
         generation.Release.SetResult();

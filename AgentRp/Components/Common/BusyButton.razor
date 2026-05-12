@@ -1,4 +1,14 @@
-<AppButton Variant="@Variant" Size="@Size" Class="@Class" Disabled="@(Busy || Disabled)" Bare="@Bare" OnClick="@HandleClick" TooltipText="@TooltipText" AriaLabel="@AriaLabel" StopPropagation="@StopPropagation">
+<AppButton Variant="@Variant"
+           Size="@Size"
+           Class="@Class"
+           Disabled="@(Busy || Disabled)"
+           Bare="@Bare"
+           OnClick="@HandleClick"
+           TooltipText="@TooltipText"
+           AriaLabel="@AriaLabel"
+           StopPropagation="@StopPropagation"
+           data-text-command-component-disabled="@Busy"
+           @attributes="AdditionalAttributes">
     @if (Busy)
     {
         <span class="spinner" aria-hidden="true"></span>
@@ -19,6 +29,7 @@
     [Parameter] public bool StopPropagation { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
     async Task HandleClick()
     {

@@ -127,13 +127,17 @@
                     {
                         <div class="story-review-note">
                             <AppTextarea Rows="2"
-                                         @bind-Value:get="NoteFor(item.Id)"
-                                         @bind-Value:set="value => SetNote(item.Id, value)"
-                                         @bind-IsEmpty:get="NoteIsEmpty(item.Id)"
-                                         @bind-IsEmpty:set="value => SetNoteEmpty(item.Id, value)"
-                                         UpdateMode="TextUpdateMode.Empty"
-                                         Placeholder="Your answer" />
-                            <BusyButton Variant="primary" Disabled="@NoteIsEmpty(item.Id)" OnClick="@(() => AnswerQuestion(item.Id, NoteFor(item.Id)))">Send</BusyButton>
+                                         Placeholder="Your answer"
+                                         data-text-command-input="true"
+                                         data-text-command-group="@QuestionCommandGroup(item.Id)"
+                                         data-text-command-ctrl-enter="answer" />
+                            <BusyButton Variant="primary"
+                                        Disabled="true"
+                                        OnClick="@(() => AnswerFreeformQuestion(item.Id))"
+                                        data-text-command-action="answer"
+                                        data-text-command-group="@QuestionCommandGroup(item.Id)"
+                                        data-text-command-requires-text="true"
+                                        data-text-command-app-disabled="false">Send</BusyButton>
                         </div>
                     }
                 }
@@ -189,12 +193,9 @@
                 {
                     <div class="story-review-note">
                         <AppTextarea Rows="2"
-                                     @bind-Value:get="NoteFor(item.Id)"
-                                     @bind-Value:set="value => SetNote(item.Id, value)"
-                                     @bind-IsEmpty:get="NoteIsEmpty(item.Id)"
-                                     @bind-IsEmpty:set="value => SetNoteEmpty(item.Id, value)"
-                                     UpdateMode="TextUpdateMode.Empty"
-                                     Placeholder="Optional guidance" />
+                                     Placeholder="Optional guidance"
+                                     data-text-command-input="true"
+                                     data-text-command-group="@ReviewCommandGroup(item.Id)" />
                         <div class="story-review-actions">
                             <BusyButton Variant="primary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.Accept))">Accept</BusyButton>
                             <BusyButton Variant="secondary" OnClick="@(() => Decide(item.Id, StoryAssistantDecisionKind.TryAgain))">Try Again</BusyButton>
@@ -221,26 +222,14 @@
 }
 
 @code {
-    readonly Dictionary<string, string> Notes = [];
-    readonly Dictionary<string, bool> EmptyNotes = [];
     readonly Dictionary<string, HashSet<string>> SelectedChoices = [];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public bool ShowBusyPlaceholder { get; set; }
     [Parameter] public int RenderVersion { get; set; }
 
-    string NoteFor(string id) => Notes.GetValueOrDefault(id, "");
-
-    bool NoteIsEmpty(string id) =>
-        EmptyNotes.GetValueOrDefault(id, string.IsNullOrWhiteSpace(NoteFor(id)));
-
-    void SetNote(string id, string value)
-    {
-        Notes[id] = value;
-        EmptyNotes[id] = string.IsNullOrWhiteSpace(value);
-    }
-
-    void SetNoteEmpty(string id, bool isEmpty) => EmptyNotes[id] = isEmpty;
+    static string QuestionCommandGroup(string id) => $"story-assistant-question-{id}";
+    static string ReviewCommandGroup(string id) => $"story-assistant-review-{id}";
 
     bool IsChoiceSelected(string itemId, string choiceId) =>
         SelectedChoices.TryGetValue(itemId, out var selected) && selected.Contains(choiceId);
@@ -264,18 +253,32 @@
 
     async Task Decide(string id, StoryAssistantDecisionKind kind)
     {
-        await Session.Chat.StoryAssistant.ResolveReviewAsync(id, kind, NoteFor(id));
-        Notes.Remove(id);
-        EmptyNotes.Remove(id);
+        var reason = await ReadCommandTextAsync(ReviewCommandGroup(id));
+        await Session.Chat.StoryAssistant.ResolveReviewAsync(id, kind, reason);
+        await ClearCommandTextAsync(ReviewCommandGroup(id));
     }
 
     async Task AnswerQuestion(string id, string answer)
     {
         await Session.Chat.StoryAssistant.ResolveQuestionAsync(id, answer);
-        Notes.Remove(id);
-        EmptyNotes.Remove(id);
         SelectedChoices.Remove(id);
     }
+
+    async Task AnswerFreeformQuestion(string id)
+    {
+        var answer = await ReadCommandTextAsync(QuestionCommandGroup(id));
+        if (string.IsNullOrWhiteSpace(answer))
+            return;
+
+        await AnswerQuestion(id, answer.Trim());
+        await ClearCommandTextAsync(QuestionCommandGroup(id));
+    }
+
+    async Task<string> ReadCommandTextAsync(string groupId) =>
+        await JS.InvokeAsync<string>("agentRp.textCommands.value", groupId);
+
+    async Task ClearCommandTextAsync(string groupId) =>
+        await JS.InvokeVoidAsync("agentRp.textCommands.clear", groupId);
 
     Task Retry(string id) => Session.Chat.StoryAssistant.RetryAsync(id);
 

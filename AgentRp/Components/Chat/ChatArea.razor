@@ -197,8 +197,7 @@
             }
             @if (!CyoaActive)
             {
-                <TranscriptComposer @bind-Draft="Draft"
-                                    Characters="Characters"
+                <TranscriptComposer Characters="Characters"
                                     SpeakerName="@SpeakerName"
                                     SpeakerMentionType="@SpeakerMentionType"
                                     SpeakerMentionId="@SpeakerMentionId"
@@ -213,7 +212,6 @@
                                     OnPickSpeaker="PickSpeaker"
                                     OnPickShape="PickShape"
                                     OnToggleTurnShapeLocked="ToggleTurnShapeLocked"
-                                    OnKeyDown="HandleKeyDown"
                                     OnGenerate="GenerateTurn"
                                     OnPostManual="PostManual" />
             }
@@ -271,7 +269,6 @@
 }
 
 @code {
-    string Draft = "";
     string ActiveChatId = "";
     string PendingAutoSpeakTurnId = "";
     string LastTranscriptScrollSignature = "";
@@ -314,7 +311,6 @@
     IReadOnlyList<StoryPreview> ResumeStories => Session.Chats.Items.Take(3).ToList();
     string SelectionError => string.IsNullOrWhiteSpace(RouteSelectionError) ? StorySelectionError : RouteSelectionError;
 
-    bool IsGuided => Draft.Trim().Length > 0;
     bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
     RpCharacter? CurrentSpeaker => Session.SpeakingAs is null
         ? null
@@ -615,37 +611,29 @@
         }
     }
 
-    async Task HandleKeyDown(KeyboardEventArgs args)
-    {
-        if (!TranscriptBusy && args.Key == "Enter" && args.CtrlKey)
-            await GenerateTurn();
-    }
-
-    async Task GenerateTurn()
+    async Task GenerateTurn(string guidance)
     {
         if (!CanGenerate)
             return;
 
-        var text = Draft.Trim();
+        var text = guidance.Trim();
         var isGuided = text.Length > 0;
         var speaker = Session.SpeakingAs;
         var turnShape = TurnShape;
-        Draft = "";
         await Session.Chat.Transcript.GenerateAsync(text, speaker, speaker is null, isGuided ? "guided" : "automatic", turnShape);
         if (!Options.TurnShapeLocked)
             await Session.Chat.Transcript.SetTurnShapeAsync(TurnShapePickerOptions.Auto);
     }
 
-    async Task PostManual()
+    async Task PostManual(string message)
     {
         if (TranscriptBusy)
             return;
 
-        var text = Draft.Trim();
+        var text = message.Trim();
         if (text.Length == 0)
             return;
 
-        Draft = "";
         await Session.Chat.Transcript.PostManualAsync(text, Session.SpeakingAs);
     }
 

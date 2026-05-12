@@ -1,4 +1,5 @@
 @using AgentRp.Models
+@inject IJSRuntime JS
 
 <article class="narrative-message cyoa-decision">
     <div class="narrative-card cyoa-card">
@@ -21,12 +22,19 @@
                 </div>
                 <AppTextarea Class="cyoa-guidance-field"
                              Rows="4"
-                             @bind-Value="FastForwardGuidance"
-                             @bind-IsEmpty="FastForwardGuidanceIsEmpty"
-                             UpdateMode="TextUpdateMode.Empty" />
+                             Value="@FastForwardGuidance"
+                             data-text-command-input="true"
+                             data-text-command-group="@FastForwardCommandGroup"
+                             data-text-command-ctrl-enter="fast-forward" />
                 <div class="cyoa-actions">
                     <AppButton Variant="secondary" Disabled="@Disabled" OnClick="@(_ => OnCancelFastForward.InvokeAsync())">Back</AppButton>
-                    <BusyButton Variant="primary" Disabled="@(Disabled || FastForwardGuidanceIsEmpty)" OnClick="ApplyFastForward">
+                    <BusyButton Variant="primary"
+                                Disabled="@FastForwardDisabled"
+                                OnClick="ApplyFastForward"
+                                data-text-command-action="fast-forward"
+                                data-text-command-group="@FastForwardCommandGroup"
+                                data-text-command-requires-text="true"
+                                data-text-command-app-disabled="@Disabled">
                         <FaIcon Name="check" />Apply
                     </BusyButton>
                 </div>
@@ -52,15 +60,21 @@
                 <AppTextarea Class="cyoa-guidance-field"
                              Rows="3"
                              Placeholder="@CustomPlaceholder"
-                             @bind-Value="CustomGuidance"
-                             @bind-IsEmpty="CustomGuidanceIsEmpty"
-                             UpdateMode="TextUpdateMode.Empty" />
+                             data-text-command-input="true"
+                             data-text-command-group="@CustomCommandGroup"
+                             data-text-command-ctrl-enter="custom-guidance" />
                 <div class="cyoa-actions">
                     @if (IsAdventure)
                     {
                         <AppButton Variant="secondary" Disabled="@Disabled" OnClick="@(_ => OnSkip.InvokeAsync())">Skip</AppButton>
                     }
-                    <BusyButton Variant="primary" Disabled="@(Disabled || CustomGuidanceIsEmpty)" OnClick="SubmitCustom">
+                    <BusyButton Variant="primary"
+                                Disabled="@CustomGuidanceDisabled"
+                                OnClick="SubmitCustom"
+                                data-text-command-action="custom-guidance"
+                                data-text-command-group="@CustomCommandGroup"
+                                data-text-command-requires-text="true"
+                                data-text-command-app-disabled="@Disabled">
                         <FaIcon Name="sparkle" />Use Guidance
                     </BusyButton>
                 </div>
@@ -71,10 +85,7 @@
 
 @code {
     string LoadedDecisionId = "";
-    string CustomGuidance = "";
     string FastForwardGuidance = "";
-    bool CustomGuidanceIsEmpty = true;
-    bool FastForwardGuidanceIsEmpty = true;
     const string DefaultFastForwardGuidance = "Move the scene forward in time while preserving established continuity.";
 
     [Parameter] public RpCyoaPendingDecision Decision { get; set; } = new();
@@ -92,6 +103,10 @@
     string ActorMentionType => Decision.RequestedNarrator ? EntityTypes.Narrator : EntityTypes.Character;
     string ActorMentionId => Decision.RequestedNarrator ? EntityIds.Narrator : Decision.ActorCharacterId;
     string CustomPlaceholder => IsDirector ? "Guide the next story beat." : $"Guide {ActorName}'s next move.";
+    string CustomCommandGroup => $"cyoa-custom-{Decision.Id}";
+    string FastForwardCommandGroup => $"cyoa-fast-forward-{Decision.Id}";
+    bool CustomGuidanceDisabled => true;
+    bool FastForwardDisabled => Disabled || string.IsNullOrWhiteSpace(FastForwardGuidance);
     string ActorBadge(RpCyoaOption option) => IsDirector && !string.IsNullOrWhiteSpace(option.ActorName)
         ? option.RequestedNarrator ? "Narrator" : option.ActorName
         : "";
@@ -109,26 +124,34 @@
             return;
 
         LoadedDecisionId = Decision.Id;
-        CustomGuidance = "";
-        CustomGuidanceIsEmpty = true;
         FastForwardGuidance = string.IsNullOrWhiteSpace(Decision.FastForwardReview?.Proposal.Guidance)
             ? DefaultFastForwardGuidance
             : Decision.FastForwardReview.Proposal.Guidance;
-        FastForwardGuidanceIsEmpty = string.IsNullOrWhiteSpace(FastForwardGuidance);
     }
 
     async Task SubmitCustom()
     {
-        var guidance = CustomGuidance.Trim();
+        var guidance = (await ReadCommandTextAsync(CustomCommandGroup)).Trim();
         if (guidance.Length == 0)
             return;
 
-        CustomGuidance = "";
         await OnCustomGuidance.InvokeAsync(guidance);
+        await ClearCommandTextAsync(CustomCommandGroup);
     }
 
     async Task ApplyFastForward()
     {
-        await OnApplyFastForward.InvokeAsync(FastForwardGuidance.Trim());
+        var guidance = (await ReadCommandTextAsync(FastForwardCommandGroup)).Trim();
+        if (guidance.Length == 0)
+            return;
+
+        await OnApplyFastForward.InvokeAsync(guidance);
+        await ClearCommandTextAsync(FastForwardCommandGroup);
     }
+
+    async Task<string> ReadCommandTextAsync(string groupId) =>
+        await JS.InvokeAsync<string>("agentRp.textCommands.value", groupId);
+
+    async Task ClearCommandTextAsync(string groupId) =>
+        await JS.InvokeVoidAsync("agentRp.textCommands.clear", groupId);
 }

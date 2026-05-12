@@ -1,0 +1,37 @@
+trigger:
+- main
+
+pool:
+  name: 'Azure Pipelines'
+  vmImage: ubuntu-latest
+
+parameters:
+- name: buildConfiguration
+  type: string
+  default: Release
+
+variables:
+  solution: '**/*.slnx'
+  buildPlatform: 'Any CPU'
+
+steps:
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '10.x'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Publish Questloom'
+  inputs:
+    azureSubscription: 'Development(d9105f81-10a3-4945-a1fb-1bd804a52425)'
+    command: 'publish'
+    publishWebProjects: false
+    projects: AgentRp/AgentRp.csproj
+    arguments: '-c ${{ parameters.buildConfiguration }} -p:ApplicationVersion=$(Build.BuildId) -o $(Build.ArtifactStagingDirectory)'
+    zipAfterPublish: false
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'drop'
+    publishLocation: 'Container'

@@ -95,6 +95,10 @@
 
     async Task Send(string text)
     {
+        text = text.Trim();
+        if (text.Length == 0)
+            return;
+
         if (ContextChips.Count == 0)
         {
             await Session.Chat.StoryAssistant.SendAsync(text);

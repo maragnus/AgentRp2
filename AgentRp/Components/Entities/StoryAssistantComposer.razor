@@ -1,3 +1,5 @@
+@inject IJSRuntime JS
+
 <div class="story-assistant-composer">
     @if (ContextChips.Count > 0)
     {
@@ -13,10 +15,10 @@
         </div>
     }
     <AppTextarea Rows="3"
-                 @bind-Value="Draft"
-                 @bind-IsEmpty="DraftIsEmpty"
-                 UpdateMode="TextUpdateMode.Empty"
-                 Placeholder="Ask the assistant to build or revise story entities" />
+                 Placeholder="Ask the assistant to build or revise story entities"
+                 data-text-command-input="true"
+                 data-text-command-group="@CommandGroup"
+                 data-text-command-ctrl-enter="send" />
     <div class="story-assistant-actions">
         @if (ContextChips.Count > 0)
         {
@@ -35,7 +37,13 @@
         else
         {
             <span class="toolbar-spacer"></span>
-            <BusyButton Variant="primary" Disabled="@(!CanSend)" OnClick="Send">
+            <BusyButton Variant="primary"
+                        Disabled="true"
+                        OnClick="Send"
+                        data-text-command-action="send"
+                        data-text-command-group="@CommandGroup"
+                        data-text-command-requires-text="true"
+                        data-text-command-app-disabled="@(!CanRun || NeedsRestart)">
                 <FaIcon Name="send" /> Send
             </BusyButton>
         }
@@ -43,8 +51,7 @@
 </div>
 
 @code {
-    string Draft = "";
-    bool DraftIsEmpty = true;
+    readonly string CommandGroup = $"story-assistant-composer-{Guid.NewGuid():N}";
 
     [Parameter] public bool CanRun { get; set; }
     [Parameter] public bool NeedsRestart { get; set; }
@@ -56,15 +63,24 @@
     [Parameter] public EventCallback<StoryAssistantContextChip> OnRemoveContext { get; set; }
     [Parameter] public EventCallback<bool> KeepContextChanged { get; set; }
 
-    bool CanSend => CanRun && !NeedsRestart && !DraftIsEmpty;
-
     async Task Send()
     {
-        var text = Draft;
-        Draft = "";
-        DraftIsEmpty = true;
+        if (!CanRun || NeedsRestart)
+            return;
+
+        var text = await ReadCommandTextAsync();
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
         await OnSend.InvokeAsync(text);
+        await ClearCommandTextAsync();
     }
+
+    async Task<string> ReadCommandTextAsync() =>
+        await JS.InvokeAsync<string>("agentRp.textCommands.value", CommandGroup);
+
+    async Task ClearCommandTextAsync() =>
+        await JS.InvokeVoidAsync("agentRp.textCommands.clear", CommandGroup);
 
     Task SetKeepContext(ChangeEventArgs args) =>
         KeepContextChanged.InvokeAsync(args.Value is bool value

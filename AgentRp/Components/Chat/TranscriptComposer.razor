@@ -1,14 +1,15 @@
 @using AgentRp.Models
+@inject IJSRuntime JS
 
 <div class="claude-composer @(TranscriptBusy ? "is-locked" : "")">
     <AppTextarea Rows="3"
                  Value="@Draft"
-                 ValueChanged="UpdateDraft"
-                 @bind-IsEmpty="DraftIsEmpty"
-                 UpdateMode="TextUpdateMode.Empty"
                  Disabled="@TranscriptBusy"
                  Placeholder="Guide the next turn, or leave blank to let AI continue the scene..."
-                 @onkeydown="OnKeyDown" />
+                 data-text-command-input="true"
+                 data-text-command-group="@CommandGroup"
+                 data-text-command-enter="manual"
+                 data-text-command-ctrl-enter="generate" />
     <div class="claude-composer-actions">
         <AnchoredPopover Placement="OverlayPlacement.TopStart" Class="composer-popover">
             <Trigger Context="speaker">
@@ -52,19 +53,35 @@
             <span class="composer-busy-status"><span class="spinner" aria-hidden="true"></span>@TranscriptBusyMessage</span>
         }
         <span class="shortcut">Ctrl+Enter</span>
-        <AppButton Variant="primary" Size="xs" Class="composer-action-button" Disabled="@(!CanGenerate)" TooltipText="@GenerateTitle" OnClick="@OnGenerate">
+        <AppButton Variant="primary"
+                   Size="xs"
+                   Class="composer-action-button"
+                   Disabled="@(!CanGenerate)"
+                   TooltipText="@GenerateTitle"
+                   OnClick="@Generate"
+                   data-text-command-action="generate"
+                   data-text-command-group="@CommandGroup"
+                   data-text-command-requires-text="false"
+                   data-text-command-app-disabled="@(!CanGenerate)">
             <FaIcon Name="sparkle" /> Generate
         </AppButton>
-        <AppButton Icon="paper-plane-top" Variant="secondary" Class="composer-manual-button" Disabled="@(TranscriptBusy || DraftIsEmpty)" TooltipText="Post manual turn" OnClick="@OnPostManual" />
+        <AppButton Icon="paper-plane-top"
+                   Variant="secondary"
+                   Class="composer-manual-button"
+                   Disabled="@ManualPostDisabled"
+                   TooltipText="Post manual turn"
+                   OnClick="@PostManual"
+                   data-text-command-action="manual"
+                   data-text-command-group="@CommandGroup"
+                   data-text-command-requires-text="true"
+                   data-text-command-app-disabled="@TranscriptBusy" />
     </div>
 </div>
 
 @code {
-    string LoadedDraft = "";
-    bool DraftIsEmpty = true;
+    readonly string CommandGroup = $"transcript-composer-{Guid.NewGuid():N}";
 
     [Parameter] public string Draft { get; set; } = "";
-    [Parameter] public EventCallback<string> DraftChanged { get; set; }
     [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
     [Parameter] public string SpeakerName { get; set; } = "Narrator";
     [Parameter] public string SpeakerMentionType { get; set; } = EntityTypes.Narrator;
@@ -80,24 +97,37 @@
     [Parameter] public EventCallback<RpCharacter?> OnPickSpeaker { get; set; }
     [Parameter] public EventCallback<string> OnPickShape { get; set; }
     [Parameter] public EventCallback OnToggleTurnShapeLocked { get; set; }
-    [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
-    [Parameter] public EventCallback OnGenerate { get; set; }
-    [Parameter] public EventCallback OnPostManual { get; set; }
+    [Parameter] public EventCallback<string> OnGenerate { get; set; }
+    [Parameter] public EventCallback<string> OnPostManual { get; set; }
 
-    protected override void OnParametersSet()
+    bool ManualPostDisabled => TranscriptBusy || string.IsNullOrWhiteSpace(Draft);
+
+    async Task Generate()
     {
-        if (string.Equals(LoadedDraft, Draft, StringComparison.Ordinal))
+        if (!CanGenerate)
             return;
 
-        LoadedDraft = Draft;
-        DraftIsEmpty = string.IsNullOrWhiteSpace(Draft);
+        var guidance = await ReadCommandTextAsync();
+        await OnGenerate.InvokeAsync(guidance);
+        await ClearCommandTextAsync();
     }
 
-    async Task UpdateDraft(string value)
+    async Task PostManual()
     {
-        Draft = value;
-        LoadedDraft = value;
-        DraftIsEmpty = string.IsNullOrWhiteSpace(value);
-        await DraftChanged.InvokeAsync(Draft);
+        if (TranscriptBusy)
+            return;
+
+        var text = await ReadCommandTextAsync();
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        await OnPostManual.InvokeAsync(text);
+        await ClearCommandTextAsync();
     }
+
+    async Task<string> ReadCommandTextAsync() =>
+        await JS.InvokeAsync<string>("agentRp.textCommands.value", CommandGroup);
+
+    async Task ClearCommandTextAsync() =>
+        await JS.InvokeVoidAsync("agentRp.textCommands.clear", CommandGroup);
 }

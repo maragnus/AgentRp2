@@ -10,7 +10,7 @@ namespace AgentRp.Tests;
 public sealed class StoryCardRequirementPickerTests
 {
     [Fact]
-    public async Task CreateButtonUpdatesInsideOpenPopoverWhenDraftChanges()
+    public void CreateFormSubmitsCurrentCommandTextInsideOpenPopover()
     {
         using var context = new BunitContext();
         context.JSInterop.Mode = JSRuntimeMode.Loose;
@@ -29,15 +29,14 @@ public sealed class StoryCardRequirementPickerTests
 
         picker.Find("button").Click();
         var createButton = overlays.Find("button[title='Create role card']");
+        var input = overlays.Find("[data-text-command-input]");
+        var groupId = input.GetAttribute("data-text-command-group") ?? "";
         Assert.True(createButton.HasAttribute("disabled"));
+        Assert.Equal(groupId, createButton.GetAttribute("data-text-command-group"));
+        context.JSInterop.Setup<string>("agentRp.textCommands.value", groupId)
+            .SetResult("  Mentor  ");
 
-        var input = overlays.FindComponent<AppInput>();
-        await input.InvokeAsync(() => input.Instance.NotifyTextValueChanged("  Mentor  "));
-
-        createButton = overlays.Find("button[title='Create role card']");
-        Assert.False(createButton.HasAttribute("disabled"));
-
-        createButton.Click();
+        overlays.Find("form.story-card-requirement-create").Submit();
 
         Assert.NotNull(added);
         Assert.Equal("phase", added.PhaseId);

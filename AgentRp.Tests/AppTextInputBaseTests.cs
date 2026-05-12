@@ -136,12 +136,15 @@ public sealed class AppTextInputBaseTests
                 return Task.CompletedTask;
             }));
 
-        var textarea = component.FindComponent<AppTextarea>();
+        var commandInput = component.Find("[data-text-command-input]");
+        var groupId = commandInput.GetAttribute("data-text-command-group") ?? "";
+        context.JSInterop.Setup<string>("agentRp.textCommands.value", groupId)
+            .SetResult("  Use this exact guidance.  ");
 
-        await textarea.InvokeAsync(() => textarea.Instance.NotifyTextValueChanged("  Use this exact guidance.  "));
-        component.FindAll("button")
-            .Single(button => button.TextContent.Contains("Use Guidance", StringComparison.Ordinal))
-            .Click();
+        var button = component.FindAll("button")
+            .Single(button => button.TextContent.Contains("Use Guidance", StringComparison.Ordinal));
+        button.RemoveAttribute("disabled");
+        button.Click();
 
         Assert.Equal("Use this exact guidance.", submitted);
     }

@@ -353,6 +353,244 @@ window.agentRp = {
 
         return { track };
     })(),
+    textCommands: (() => {
+        const values = new Map();
+        let observing = false;
+        let updateFrame = 0;
+
+        function cssEscape(value) {
+            if (window.CSS && typeof window.CSS.escape === "function") {
+                return window.CSS.escape(value);
+            }
+
+            return String(value).replace(/["\\]/g, "\\$&");
+        }
+
+        function groupSelector(groupId, suffix) {
+            return `[data-text-command-group="${cssEscape(groupId)}"]${suffix}`;
+        }
+
+        function inputFor(groupId) {
+            if (!groupId) {
+                return null;
+            }
+
+            return document.querySelector(groupSelector(groupId, "[data-text-command-input]"));
+        }
+
+        function buttonsFor(groupId) {
+            if (!groupId) {
+                return [];
+            }
+
+            return Array.from(document.querySelectorAll(groupSelector(groupId, "[data-text-command-action]")));
+        }
+
+        function groupFrom(element) {
+            return element?.dataset?.textCommandGroup || "";
+        }
+
+        function isTextInput(element) {
+            return !!element?.matches?.("[data-text-command-input][data-text-command-group]");
+        }
+
+        function textValue(element) {
+            return element?.value ?? "";
+        }
+
+        function isEmpty(value) {
+            return !value || value.trim().length === 0;
+        }
+
+        function isTrue(value) {
+            return String(value || "").toLowerCase() === "true";
+        }
+
+        function rememberInput(input) {
+            const groupId = groupFrom(input);
+            if (!groupId) {
+                return;
+            }
+
+            values.set(groupId, textValue(input));
+        }
+
+        function restoreInput(input) {
+            const groupId = groupFrom(input);
+            if (!groupId) {
+                return;
+            }
+
+            if (!values.has(groupId)) {
+                values.set(groupId, textValue(input));
+                return;
+            }
+
+            const cachedValue = values.get(groupId) || "";
+            if (textValue(input) !== cachedValue) {
+                input.value = cachedValue;
+            }
+        }
+
+        function updateGroup(groupId) {
+            const input = inputFor(groupId);
+            if (input) {
+                restoreInput(input);
+            }
+
+            const currentValue = input ? textValue(input) : values.get(groupId) || "";
+            const empty = isEmpty(currentValue);
+            for (const button of buttonsFor(groupId)) {
+                const appDisabled = isTrue(button.dataset.textCommandAppDisabled);
+                const componentDisabled = isTrue(button.dataset.textCommandComponentDisabled);
+                const requiresText = !button.dataset.textCommandRequiresText
+                    || isTrue(button.dataset.textCommandRequiresText);
+                button.disabled = componentDisabled || appDisabled || (requiresText && empty);
+            }
+        }
+
+        function updateAll() {
+            const groups = new Set();
+            for (const element of document.querySelectorAll("[data-text-command-group]")) {
+                const groupId = groupFrom(element);
+                if (groupId) {
+                    groups.add(groupId);
+                }
+            }
+
+            for (const groupId of groups) {
+                updateGroup(groupId);
+            }
+        }
+
+        function scheduleUpdateAll() {
+            if (updateFrame) {
+                return;
+            }
+
+            updateFrame = window.requestAnimationFrame(() => {
+                updateFrame = 0;
+                updateAll();
+            });
+        }
+
+        function triggerAction(groupId, action) {
+            if (!groupId || !action) {
+                return false;
+            }
+
+            updateGroup(groupId);
+            const button = document.querySelector(`${groupSelector(groupId, "[data-text-command-action]")}[data-text-command-action="${cssEscape(action)}"]`);
+            if (!button || button.disabled) {
+                return false;
+            }
+
+            button.click();
+            return true;
+        }
+
+        function handleInput(event) {
+            if (!isTextInput(event.target)) {
+                return;
+            }
+
+            rememberInput(event.target);
+            updateGroup(groupFrom(event.target));
+        }
+
+        function handleFocus(event) {
+            if (!isTextInput(event.target)) {
+                return;
+            }
+
+            updateGroup(groupFrom(event.target));
+        }
+
+        function handleKeyDown(event) {
+            if (!isTextInput(event.target) || event.defaultPrevented || event.isComposing) {
+                return;
+            }
+
+            if (event.key !== "Enter") {
+                return;
+            }
+
+            const groupId = groupFrom(event.target);
+            const isTextArea = event.target.tagName === "TEXTAREA";
+            const ctrlEnter = event.ctrlKey || event.metaKey;
+            const action = ctrlEnter
+                ? event.target.dataset.textCommandCtrlEnter
+                : event.shiftKey && isTextArea
+                    ? ""
+                    : event.target.dataset.textCommandEnter;
+
+            if (!action) {
+                return;
+            }
+
+            event.preventDefault();
+            triggerAction(groupId, action);
+        }
+
+        function value(groupId) {
+            const input = inputFor(groupId);
+            if (input) {
+                rememberInput(input);
+                return textValue(input);
+            }
+
+            return values.get(groupId) || "";
+        }
+
+        function clear(groupId) {
+            values.set(groupId, "");
+            const input = inputFor(groupId);
+            if (input) {
+                input.value = "";
+            }
+
+            updateGroup(groupId);
+        }
+
+        function ensureStarted() {
+            if (observing) {
+                return;
+            }
+
+            observing = true;
+            document.addEventListener("input", handleInput, true);
+            document.addEventListener("change", handleInput, true);
+            document.addEventListener("focusin", handleFocus, true);
+            document.addEventListener("keydown", handleKeyDown, true);
+
+            const observer = new MutationObserver(scheduleUpdateAll);
+            observer.observe(document.documentElement, {
+                attributes: true,
+                childList: true,
+                subtree: true,
+                attributeFilter: [
+                    "data-text-command-group",
+                    "data-text-command-input",
+                    "data-text-command-action",
+                    "data-text-command-app-disabled",
+                    "data-text-command-component-disabled",
+                    "data-text-command-requires-text",
+                    "disabled",
+                    "value"
+                ]
+            });
+
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", updateAll, { once: true });
+            } else {
+                scheduleUpdateAll();
+            }
+        }
+
+        ensureStarted();
+
+        return { value, clear, update: updateGroup };
+    })(),
     numberInputs: (() => {
         function step(element, direction) {
             if (!element || element.disabled) {

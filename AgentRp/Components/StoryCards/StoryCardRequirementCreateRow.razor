@@ -1,34 +1,34 @@
 @namespace AgentRp.Components.StoryCards
+@inject IJSRuntime JS
 
-<div class="story-card-requirement-create">
-    <AppInput @bind-Value="Draft"
-              @bind-IsEmpty="DraftIsEmpty"
-              UpdateMode="TextUpdateMode.Empty"
-              Placeholder="@($"New {ChildCardType} name")" />
+<form class="story-card-requirement-create" @onsubmit="AddNew" @onsubmit:preventDefault="true">
+    <AppInput Placeholder="@($"New {ChildCardType} name")"
+              required
+              data-text-command-input="true"
+              data-text-command-group="@CommandGroup" />
     <AppButton Icon="plus"
+               Type="submit"
                TooltipText="@($"Create {ChildCardType.ToString().ToLowerInvariant()} card")"
-               Disabled="@DraftIsEmpty"
-               OnClick="@(_ => AddNew())" />
-</div>
+               Disabled="true"
+               data-text-command-action="create"
+               data-text-command-group="@CommandGroup"
+               data-text-command-requires-text="true"
+               data-text-command-app-disabled="false" />
+</form>
 
 @code {
-    string Draft = "";
-    bool DraftIsEmpty = true;
+    readonly string CommandGroup = $"story-card-requirement-create-{Guid.NewGuid():N}";
 
     [Parameter] public StoryCardChildCardType ChildCardType { get; set; }
     [Parameter] public EventCallback<string> OnAddNew { get; set; }
 
     async Task AddNew()
     {
-        if (DraftIsEmpty)
-            return;
-
-        var title = Draft.Trim();
+        var title = (await JS.InvokeAsync<string>("agentRp.textCommands.value", CommandGroup)).Trim();
         if (title.Length == 0)
             return;
 
         await OnAddNew.InvokeAsync(title);
-        Draft = "";
-        DraftIsEmpty = true;
+        await JS.InvokeVoidAsync("agentRp.textCommands.clear", CommandGroup);
     }
 }

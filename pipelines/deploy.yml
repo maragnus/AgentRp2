@@ -1,0 +1,31 @@
+name: Deploy Cicero Demo - Staging
+
+trigger: none
+
+pool:
+  name: 'Azure Pipelines'
+  vmImage: ubuntu-latest
+
+variables:
+  artifactName: 'drop'
+  webAppName: 'rp-questloom'
+
+steps:
+- task: DownloadBuildArtifacts@1
+  inputs:
+    buildType: 'specific'
+    project: '11aa8450-dd7e-4266-a108-93ea0001e4b7'
+    pipeline: '1'
+    specificBuildWithTriggering: true
+    buildVersionToDownload: 'latest'
+    downloadType: 'single'
+    artifactName: '$(artifactName)'
+    downloadPath: '$(System.ArtifactsDirectory)'
+    cleanDestinationFolder: true
+
+- task: AzureWebApp@1
+  inputs:
+    azureSubscription: 'Development(d9105f81-10a3-4945-a1fb-1bd804a52425)'
+    appType: 'webAppLinux'
+    appName: 'rp-questloom'
+    package: '$(System.ArtifactsDirectory)/$(artifactName)/AgentRp'
