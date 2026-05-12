@@ -58,16 +58,21 @@
 
         @if (CanInspect)
         {
-            <StoryCardAssignmentsEditor Instance="SelectedDraft"
-                                        Characters="Session.Chat.Characters.Items"
-                                        Items="Session.Chat.Items.Items"
-                                        Locations="Session.Chat.Locations.Items" />
-            <StoryCardEditor Instance="SelectedDraft" Editable="true" Height="520px">
-                <Footer>
-                    <span class="modal-action-spacer"></span>
-                    <BusyButton OnClick="SaveSelected"><FaIcon Name="check" />Save Card</BusyButton>
-                </Footer>
-            </StoryCardEditor>
+            <StatefulForm Model="@SelectedDraft" Baseline="@SelectedBaseline" OnSave="SaveSelected" OnClose="Noop" ContextChanged="SetInstanceForm" DisableNavigationGuard>
+                <ChildContent Context="form">
+                    <StoryCardAssignmentsEditor Instance="SelectedDraft"
+                                                Characters="Session.Chat.Characters.Items"
+                                                Items="Session.Chat.Items.Items"
+                                                Locations="Session.Chat.Locations.Items" />
+                    <StoryCardEditor Instance="SelectedDraft" InstanceBaseline="SelectedBaseline" Editable="true" Height="520px">
+                        <Footer>
+                            <span class="modal-action-spacer"></span>
+                            <AppButton Variant="secondary" Disabled="@(!form.HasChanges)" OnClick="@(_ => ResetSelectedDraft())">Cancel</AppButton>
+                            <BusyButton Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save Card</BusyButton>
+                        </Footer>
+                    </StoryCardEditor>
+                </ChildContent>
+            </StatefulForm>
         }
 
         @if (SelectedDraft.History.Count > 0)
@@ -96,6 +101,8 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
     StoryCardInstance? SelectedDraft;
+    StoryCardInstance SelectedBaseline = new();
+    StatefulFormContext<StoryCardInstance>? InstanceForm;
     string SelectedId = "";
     string ErrorMessage = "";
     bool PickerOpen;
@@ -105,20 +112,37 @@
     protected override void OnInitialized()
     {
         Session.Chat.StoryCards.Changed += OnStoreChanged;
-        Select(Cards.FirstOrDefault()?.Id ?? "");
+        SelectDirect(Cards.FirstOrDefault()?.Id ?? "");
     }
 
     Task OnStoreChanged()
     {
-        if (!string.IsNullOrWhiteSpace(SelectedId))
-            Select(SelectedId);
+        if (!string.IsNullOrWhiteSpace(SelectedId) && InstanceForm?.HasChanges != true)
+            SelectDirect(SelectedId);
         return InvokeAsync(StateHasChanged);
     }
 
-    void Select(string id)
+    Task Select(string id) => InstanceForm?.GuardAsync(() => SelectDirectAsync(id)) ?? SelectDirectAsync(id);
+
+    Task SelectDirectAsync(string id)
+    {
+        SelectDirect(id);
+        return Task.CompletedTask;
+    }
+
+    void SelectDirect(string id)
     {
         SelectedId = id;
-        SelectedDraft = Cards.FirstOrDefault(card => card.Id == id) is { } card ? SessionCloner.Clone(card) : null;
+        if (Cards.FirstOrDefault(card => card.Id == id) is { } card)
+        {
+            SelectedDraft = SessionCloner.Clone(card);
+            SelectedBaseline = SessionCloner.Clone(card);
+        }
+        else
+        {
+            SelectedDraft = null;
+            SelectedBaseline = new();
+        }
     }
 
     async Task Inject(string templateId)
@@ -128,7 +152,7 @@
         {
             PickerOpen = false;
             var instance = await Session.Chat.StoryCards.InjectAsync(templateId);
-            Select(instance.Id);
+            SelectDirect(instance.Id);
         }
         catch (Exception exception)
         {
@@ -148,7 +172,9 @@
         return Task.CompletedTask;
     }
 
-    async Task SetStatus(StoryCardStatus status)
+    Task SetStatus(StoryCardStatus status) => InstanceForm?.GuardAsync(() => SetStatusDirect(status)) ?? SetStatusDirect(status);
+
+    async Task SetStatusDirect(StoryCardStatus status)
     {
         if (SelectedDraft is null)
             return;
@@ -157,7 +183,7 @@
         try
         {
             await Session.Chat.StoryCards.SetStatusAsync(SelectedDraft.Id, status);
-            Select(SelectedDraft.Id);
+            SelectDirect(SelectedDraft.Id);
         }
         catch (Exception exception)
         {
@@ -179,7 +205,7 @@
         try
         {
             await Session.Chat.StoryCards.SaveInstanceAsync(SelectedDraft);
-            Select(SelectedDraft.Id);
+            SelectDirect(SelectedDraft.Id);
         }
         catch (Exception exception)
         {
@@ -190,6 +216,12 @@
                 "Saving story card instance {StoryCardInstanceId} failed.",
                 SelectedDraft.Id);
         }
+    }
+
+    void ResetSelectedDraft()
+    {
+        if (!string.IsNullOrWhiteSpace(SelectedId))
+            SelectDirect(SelectedId);
     }
 
     string InstanceRowClass(StoryCardInstance card) =>
@@ -220,6 +252,13 @@
 
     static string HistorySummary(StoryCardHistoryItem item) =>
         $"{item.Details} · {TranscriptTurnNumbering.Format(new RpSnapshotDraftTurn { TurnNumber = item.TurnNumber })}";
+
+    void SetInstanceForm(StatefulFormContext<StoryCardInstance> form)
+    {
+        InstanceForm = form;
+    }
+
+    static Task Noop() => Task.CompletedTask;
 
     public void Dispose()
     {

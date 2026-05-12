@@ -1,7 +1,7 @@
 @using AgentRp.Models
 @using AgentRp.Services
 
-<ModalShell Title="Snapshot Draft" Icon="flag" MaxWidth="900px" BodyClass="is-flush" CloseDisabled="@CloseDisabled" OnClose="Close">
+<ModalShell Title="Snapshot Draft" Icon="flag" MaxWidth="900px" BodyClass="is-flush" CloseDisabled="@CloseDisabled" OnClose="RequestClose">
     @if (IsLoading || Draft is null)
     {
         <ModalStackLayout BodyClass="modal-form-stack snapshot-loading-pane">
@@ -41,20 +41,27 @@
     }
     else
     {
+        <StatefulForm Model="@Editor"
+                      Baseline="@Baseline"
+                      CanSave="@(() => CanSave)"
+                      OnSave="Save"
+                      OnClose="Close"
+                      ContextChanged="SetSnapshotForm">
+            <ChildContent Context="form">
         <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="600px" RailWidth="164px" Class="snapshot-draft-tabs">
             <ChildContent>
-                <ModalTab Id="summary" Title="Summary" Summary="Required" Dirty="@SummaryChanged">
+                <ModalTab Id="summary" Title="Summary" Summary="Required" DirtyPath="@nameof(Editor.Summary)">
                     <LeadingContent><FaIcon Name="align-left" /></LeadingContent>
                 </ModalTab>
-                <ModalTab Id="timeline" Title="Timeline" Summary="@TimelineSummary" Dirty="@TimelineEntries.Any(entry => !string.IsNullOrWhiteSpace(entry.Title))">
+                <ModalTab Id="timeline" Title="Timeline" Summary="@TimelineSummary" DirtyPath="@nameof(Editor.TimelineEntries)">
                     <LeadingContent><FaIcon Name="clock" /></LeadingContent>
-                    <TrailingContent><Badge Tone="amber">@TimelineEntries.Count</Badge></TrailingContent>
+                    <TrailingContent><Badge Tone="amber">@Editor.TimelineEntries.Count</Badge></TrailingContent>
                 </ModalTab>
                 <ModalTab Id="continuity" Title="Continuity" Summary="@ContinuitySummary">
                     <LeadingContent><FaIcon Name="eye" /></LeadingContent>
                     <TrailingContent><Badge Tone="violet">@ContinuityCount</Badge></TrailingContent>
                 </ModalTab>
-                <ModalTab Id="relationships" Title="Relationships" Summary="@RelationshipSummary" Dirty="@RelationshipUpdates.Any(update => update.ApplyChange)">
+                <ModalTab Id="relationships" Title="Relationships" Summary="@RelationshipSummary" DirtyPath="@nameof(Editor.RelationshipUpdates)">
                     <LeadingContent><FaIcon Name="users" /></LeadingContent>
                     <TrailingContent><Badge Tone="blue">@RelationshipUpdates.Count</Badge></TrailingContent>
                 </ModalTab>
@@ -114,11 +121,11 @@
                         }
                         @if (ActiveTab == "summary")
                         {
-                            <SnapshotSummaryEditor Draft="@Draft" Summary="@Summary" SummaryChanged="SetSummary" />
+                            <SnapshotSummaryEditor Draft="@Draft" Summary="@Editor.Summary" SummaryChanged="SetSummary" />
                         }
                         else if (ActiveTab == "timeline")
                         {
-                            <SnapshotTimelineEditor Entries="@TimelineEntries" OnChanged="Refresh" />
+                            <SnapshotTimelineEditor Entries="@Editor.TimelineEntries" OnChanged="Refresh" />
                         }
                         else if (ActiveTab == "continuity")
                         {
@@ -126,7 +133,7 @@
                         }
                         else if (ActiveTab == "relationships")
                         {
-                            <SnapshotRelationshipsEditor Updates="RelationshipUpdates"
+                            <SnapshotRelationshipsEditor Updates="Editor.RelationshipUpdates"
                                                          Characters="Session.Chat.Characters.Items"
                                                          Library="Session.Chat.CharacterTraitLibrary.State"
                                                          OnChanged="Refresh" />
@@ -143,13 +150,15 @@
                     <Footer>
                         <span class="modal-action-spacer"></span>
                         <span class="modal-action-group">
-                            <AppButton Variant="secondary" Disabled="@CloseDisabled" OnClick="@(_ => Close())">Discard</AppButton>
+                            <AppButton Variant="secondary" Disabled="@CloseDisabled" OnClick="@(_ => form.RequestCloseAsync())">Discard</AppButton>
                             <BusyButton Variant="primary" Disabled="@(!CanSave)" OnClick="Save">Save Snapshot</BusyButton>
                         </span>
                     </Footer>
                 </ModalStackLayout>
             </MainContent>
         </ModalTabGroup>
+            </ChildContent>
+        </StatefulForm>
     }
 </ModalShell>
 
@@ -164,16 +173,16 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<RpTranscriptSnapshotDraft> OnSave { get; set; }
 
-    readonly List<SnapshotDraftTimelineEntryEditor> TimelineEntries = [];
     RpTranscriptSnapshotDraft? LoadedDraft;
-    string Summary = "";
+    SnapshotDraftEditorState Editor = new();
+    SnapshotDraftEditorState Baseline = new();
+    StatefulFormContext<SnapshotDraftEditorState>? SnapshotForm;
     string ActiveTab = "summary";
 
-    bool CanSave => !IsLoading && !IsSaving && Draft is not null && !string.IsNullOrWhiteSpace(Summary);
-    bool SummaryChanged => Draft is not null && !string.Equals(Summary, Draft.Summary, StringComparison.Ordinal);
+    bool CanSave => !IsLoading && !IsSaving && Draft is not null && !string.IsNullOrWhiteSpace(Editor.Summary);
     int ContinuityCount => Draft is null ? 0 : Draft.PrivateIntentByCharacterId.Keys.Concat(Draft.CharacterAppearances.Keys).Distinct(StringComparer.Ordinal).Count();
-    List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates => Draft?.RelationshipUpdates ?? [];
-    string TimelineSummary => $"{TimelineEntries.Count} item{(TimelineEntries.Count == 1 ? "" : "s")}";
+    List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates => Editor.RelationshipUpdates;
+    string TimelineSummary => $"{Editor.TimelineEntries.Count} item{(Editor.TimelineEntries.Count == 1 ? "" : "s")}";
     string ContinuitySummary => $"{ContinuityCount} character{(ContinuityCount == 1 ? "" : "s")}";
     string RelationshipSummary => RelationshipUpdates.Count == 0
         ? "No changes"
@@ -202,8 +211,8 @@
         if (Draft is null)
         {
             LoadedDraft = null;
-            Summary = "";
-            TimelineEntries.Clear();
+            Editor = new();
+            Baseline = new();
             return;
         }
 
@@ -212,10 +221,13 @@
 
         LoadedDraft = Draft;
         ActiveTab = "summary";
-        Summary = Draft.Summary;
-        TimelineEntries.Clear();
-        TimelineEntries.AddRange(Draft.TimelineEntries.Select(SnapshotDraftTimelineEntryEditor.From));
+        Editor = SnapshotDraftEditorState.From(Draft);
+        Baseline = SnapshotDraftEditorState.From(Draft);
     }
+
+    void SetSnapshotForm(StatefulFormContext<SnapshotDraftEditorState> form) => SnapshotForm = form;
+
+    Task RequestClose() => SnapshotForm?.RequestCloseAsync() ?? Close();
 
     async Task Close()
     {
@@ -234,13 +246,13 @@
         {
             TurnId = Draft.TurnId,
             CreatedUtc = Draft.CreatedUtc,
-            Summary = Summary,
+            Summary = Editor.Summary,
             CoveredTurnIds = [.. Draft.CoveredTurnIds],
             IncludedTurns = [.. Draft.IncludedTurns],
             PrivateIntentByCharacterId = Draft.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             CharacterAppearances = Draft.CharacterAppearances.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
-            TimelineEntries = TimelineEntries.Select(entry => entry.ToModel()).ToList(),
-            RelationshipUpdates = Draft.RelationshipUpdates.Select(CloneRelationshipUpdate).ToList(),
+            TimelineEntries = Editor.TimelineEntries.Select(entry => entry.ToModel()).ToList(),
+            RelationshipUpdates = Editor.RelationshipUpdates.Select(SnapshotDraftEditorState.CloneRelationshipUpdate).ToList(),
             Scene = SessionCloner.Clone(Draft.Scene),
             Trace = Draft.Trace is null ? null : SessionCloner.Clone(Draft.Trace)
         };
@@ -255,29 +267,24 @@
 
     Task SetSummary(string value)
     {
-        Summary = value;
+        Editor.Summary = value;
+        SnapshotForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
-    Task Refresh() => InvokeAsync(StateHasChanged);
+    Task Refresh()
+    {
+        SnapshotForm?.NotifyChanged();
+        return InvokeAsync(StateHasChanged);
+    }
 
-    void AddTimelineEntry() => TimelineEntries.Add(new());
+    void AddTimelineEntry()
+    {
+        Editor.TimelineEntries.Add(new());
+        SnapshotForm?.NotifyChanged();
+    }
 
     static string FormatPreviewEndpoint(string speakerName, int turnNumber) =>
         $"{speakerName} ({TranscriptTurnNumbering.Format(turnNumber)})";
 
-    static RpTranscriptSnapshotRelationshipUpdate CloneRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
-    {
-        RelationshipId = value.RelationshipId,
-        ApplyChange = value.ApplyChange,
-        SourceCharacterId = value.SourceCharacterId,
-        TargetCharacterId = value.TargetCharacterId,
-        RelationshipTypes = [.. value.RelationshipTypes],
-        PrivateTensions = [.. value.PrivateTensions],
-        HowSourceSeesTarget = value.HowSourceSeesTarget,
-        HowTargetSeesSource = value.HowTargetSeesSource,
-        PublicDynamic = value.PublicDynamic,
-        Reason = value.Reason,
-        EvidenceTurnNumbers = [.. value.EvidenceTurnNumbers]
-    };
 }

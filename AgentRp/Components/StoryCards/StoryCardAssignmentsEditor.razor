@@ -20,6 +20,7 @@
     [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
     [Parameter] public IReadOnlyList<RpItem> Items { get; set; } = [];
     [Parameter] public IReadOnlyList<RpLocation> Locations { get; set; } = [];
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     int AssignmentCount => Instance.Assignments.Count(assignment => !string.IsNullOrWhiteSpace(assignment.EntityId));
 
@@ -69,16 +70,21 @@
             ChildCardId = childCardId,
             SortOrder = Instance.Assignments.Count
         });
+        StatefulForm?.NotifyChanged();
     }
 
     void SetAssignment(StoryCardEntityAssignment assignment, string entityId, IReadOnlyList<EntityOption> options)
     {
         assignment.EntityId = entityId;
         assignment.EntityName = options.FirstOrDefault(option => option.Id == entityId)?.Name ?? "";
+        StatefulForm?.NotifyChanged();
     }
 
-    void RemoveAssignment(string assignmentId) =>
+    void RemoveAssignment(string assignmentId)
+    {
         Instance.Assignments.RemoveAll(assignment => assignment.Id == assignmentId);
+        StatefulForm?.NotifyChanged();
+    }
 
     string AssignmentProgress(string childCardId, StoryCardChildCardType type)
     {

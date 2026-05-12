@@ -2,12 +2,14 @@
 @implements IDisposable
 @inject ILogger<PromptLibraryModal> Logger
 
-<ModalShell Title="Prompt Library" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
+<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="SaveChangesAsync" OnClose="OnClose" ContextChanged="SetPromptForm">
+<ChildContent Context="form">
+<ModalShell Title="Prompt Library" MaxWidth="900px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SwitchStep" Height="600px" RailWidth="184px">
         <ChildContent>
             @foreach (var step in Steps)
             {
-                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Summary="@step.Group" Dirty="@IsDirtyStep(step.Id)" />
+                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Summary="@step.Group" Dirty="@IsUnsavedStep(step.Id)" />
             }
         </ChildContent>
         <RailFooter>
@@ -28,7 +30,7 @@
                         }
                     </div>
                     <span class="toolbar-spacer"></span>
-                    <AppButton Variant="danger" Size="xs" Disabled="@(!IsDirty())" TooltipText="Reset all prompt pages" OnClick="@(_ => ConfirmResetAll = true)">
+                    <AppButton Variant="danger" Size="xs" Disabled="@(!IsCustomized())" TooltipText="Reset all prompt pages" OnClick="@(_ => ConfirmResetAll = true)">
                         <FaIcon Name="refresh" />Reset All
                     </AppButton>
                     <SelectableButton Class="@($"placeholder-toggle {(ShowPlaceholders ? "is-active" : "")}")" OnClick="@(_ => ShowPlaceholders = !ShowPlaceholders)">
@@ -63,18 +65,20 @@
                 <PromptTextSection Label="System Prompt"
                                    Value="@PromptValues[Active].System"
                                    ValueChanged="@(value => SetSystem(value))"
+                                   DirtyPath="@PromptPath(Active, nameof(PromptPairState.System))"
                                    IsDirty="@(PromptValues[Active].System != DefaultPrompts[Active].System)"
                                    OnReset="@(() => ResetPrompt("system"))" />
 
                 <PromptTextSection Label="User Prompt Template"
                                    Value="@PromptValues[Active].User"
                                    ValueChanged="@(value => SetUser(value))"
+                                   DirtyPath="@PromptPath(Active, nameof(PromptPairState.User))"
                                    IsDirty="@(PromptValues[Active].User != DefaultPrompts[Active].User)"
                                    OnReset="@(() => ResetPrompt("user"))" />
 
                 @if (CurrentStep.HasTurnShapes)
                 {
-                    <Section Title="Turn Shapes">
+                    <Section Title="Turn Shapes" Dirty="@IsUnsavedTurnShapes(Active)">
                         <div class="turn-shape-list">
                             @foreach (var shape in TurnShapes[Active])
                             {
@@ -92,13 +96,15 @@
                 }
             </ChildContent>
             <Footer>
-                <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                <BusyButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</BusyButton>
+                <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                <BusyButton Variant="primary" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save</BusyButton>
             </Footer>
         </ModalStackLayout>
         </MainContent>
     </ModalTabGroup>
 </ModalShell>
+</ChildContent>
+</StatefulForm>
 
 @if (ConfirmResetAll)
 {
@@ -121,6 +127,8 @@
     readonly IReadOnlyList<PromptLibraryStageDefinition> Steps = PromptLibraryService.GetStageDefinitions();
     readonly PromptLibraryState Defaults = PromptLibraryService.CreateDefaultState();
     PromptLibraryState Draft = PromptLibraryState.CreateDefault();
+    PromptLibraryState Baseline = PromptLibraryState.CreateDefault();
+    StatefulFormContext<PromptLibraryState>? PromptForm;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
@@ -133,14 +141,22 @@
 
     protected override void OnInitialized()
     {
-        Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
+        LoadDraft();
         Session.PromptLibrary.Changed += OnStoreChanged;
     }
 
     Task OnStoreChanged()
     {
-        Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
+        if (PromptForm?.HasChanges != true)
+            LoadDraft();
+
         return InvokeAsync(StateHasChanged);
+    }
+
+    void LoadDraft()
+    {
+        Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
+        Baseline = SessionCloner.Clone(Draft);
     }
 
     void SwitchStep(string? id)
@@ -153,47 +169,63 @@
         ErrorMessage = null;
     }
 
-    bool IsDirtyStep(string id)
+    bool IsCustomizedStep(string id)
     {
         var promptDirty = PromptValues[id].System != DefaultPrompts[id].System || PromptValues[id].User != DefaultPrompts[id].User;
         var shapeDirty = TurnShapes.ContainsKey(id) && TurnShapes[id].Any(shape => shape.Value != DefaultTurnShapes[id].First(def => def.Id == shape.Id).Value);
         return promptDirty || shapeDirty;
     }
 
-    bool IsDirty() => Steps.Any(step => IsDirtyStep(step.Id));
+    bool IsUnsavedStep(string id)
+    {
+        var promptDirty = PromptValues[id].System != Baseline.Prompts[id].System || PromptValues[id].User != Baseline.Prompts[id].User;
+        return promptDirty || IsUnsavedTurnShapes(id);
+    }
 
-    async Task SetSystem(string value)
+    bool IsUnsavedTurnShapes(string id) =>
+        TurnShapes.ContainsKey(id) && TurnShapes[id].Any(shape => shape.Value != Baseline.TurnShapes[id].First(def => def.Id == shape.Id).Value);
+
+    bool IsCustomized() => Steps.Any(step => IsCustomizedStep(step.Id));
+
+    static string PromptPath(string id, string field) => $"{nameof(PromptLibraryState.Prompts)}.{id}.{field}";
+
+    Task SetSystem(string value)
     {
         PromptValues[Active].System = value;
-        await SaveChangesAsync();
+        PromptForm?.NotifyChanged();
+        return Task.CompletedTask;
     }
 
-    async Task SetUser(string value)
+    Task SetUser(string value)
     {
         PromptValues[Active].User = value;
-        await SaveChangesAsync();
+        PromptForm?.NotifyChanged();
+        return Task.CompletedTask;
     }
 
-    async Task ResetPrompt(string field)
+    Task ResetPrompt(string field)
     {
         if (field == "system")
             PromptValues[Active].System = DefaultPrompts[Active].System;
         else
             PromptValues[Active].User = DefaultPrompts[Active].User;
 
-        await SaveChangesAsync();
+        PromptForm?.NotifyChanged();
+        return Task.CompletedTask;
     }
 
-    async Task UpdateTurnShape(string id, string value)
+    Task UpdateTurnShape(string id, string value)
     {
         TurnShapes[Active].First(shape => shape.Id == id).Value = value;
-        await SaveChangesAsync();
+        PromptForm?.NotifyChanged();
+        return Task.CompletedTask;
     }
 
-    async Task ResetTurnShape(string id)
+    Task ResetTurnShape(string id)
     {
         TurnShapes[Active].First(shape => shape.Id == id).Value = DefaultTurnShapes[Active].First(shape => shape.Id == id).Value;
-        await SaveChangesAsync();
+        PromptForm?.NotifyChanged();
+        return Task.CompletedTask;
     }
 
     async Task ResetAllPrompts()
@@ -203,7 +235,7 @@
         try
         {
             Draft = PromptLibraryState.CreateDefault();
-            await Session.PromptLibrary.SaveAsync(Draft);
+            PromptForm?.NotifyChanged();
         }
         catch (Exception exception)
         {
@@ -222,14 +254,13 @@
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", token);
     }
 
-    Task Save() => SaveChangesAsync();
-
     async Task SaveChangesAsync()
     {
         ErrorMessage = null;
         try
         {
             await Session.PromptLibrary.SaveAsync(Draft);
+            Baseline = SessionCloner.Clone(PromptLibraryService.NormalizeState(Draft));
         }
         catch (Exception exception)
         {
@@ -240,6 +271,11 @@
                 "Saving prompt library failed for chat {ChatId}.",
                 Session.Chats.Active?.ChatId);
         }
+    }
+
+    void SetPromptForm(StatefulFormContext<PromptLibraryState> form)
+    {
+        PromptForm = form;
     }
 
     public void Dispose()

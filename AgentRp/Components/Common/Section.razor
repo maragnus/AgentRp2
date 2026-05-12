@@ -27,16 +27,24 @@
     [Parameter] public string? BodyClass { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public bool Flush { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnHeaderClick { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] public StatefulFormPathScope? PathScope { get; set; }
 
     string CssClass
     {
         get
         {
             var toneClass = Tone.HasValue ? $"tone-{NormalizeTone(Tone.Value)}" : "";
-            return $"section {toneClass} {(Compact ? "is-compact" : "")} {(Flush ? "is-flush" : "")} {(ChildContent is null ? "is-header-only" : "")} {Class}".Trim();
+            return $"section {toneClass} {(Compact ? "is-compact" : "")} {(Flush ? "is-flush" : "")} {(ChildContent is null ? "is-header-only" : "")} {(IsDirty ? "is-dirty" : "")} {Class}".Trim();
         }
     }
+
+    bool IsDirty => StatefulFormDirtyState.Resolve(StatefulForm, PathScope, Dirty, DirtyPath, DirtyPaths, DirtyScopeId);
 
     string BodyCssClass => $"section-body {BodyClass}".Trim();
 

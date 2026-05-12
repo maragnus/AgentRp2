@@ -1,0 +1,317 @@
+@inject ILogger<ChatMessageEditPlanModal> Logger
+@inject IServiceProvider Services
+
+<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="Save" OnClose="OnClose" CanSave="@(() => !TranscriptBusy)" ContextChanged="SetForm">
+    <ChildContent Context="form">
+        <ModalShell Title="Edit Saved Plan" Subtitle="@Subtitle" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="form.RequestCloseAsync">
+            <ChildContent>
+                <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
+                    <ChildContent>
+                        <ModalTab Id="appearance" Title="Continuity" Dirty="@AppearanceDirty()" />
+                        <ModalTab Id="plan" Title="Plan" Dirty="@PlanDirty()" />
+                        <ModalTab Id="private" Title="Private Intent" Dirty="@PrivateIntentDirty()" />
+                        <ModalTab Id="speech" Title="Speech" />
+                    </ChildContent>
+                    <RailFooter>
+                        <div class="prompt-rail-note">
+                            <p>Saved plan fields are reused when regenerating this turn.</p>
+                        </div>
+                    </RailFooter>
+                    <MainContent>
+                        <ModalStackLayout Class="modal-editor-main edit-plan-main" BodyClass="modal-form-stack edit-plan-fields">
+                            <Header>
+                                <ModalPaneToolbar Class="tuning-toolbar">
+                                    <strong>@ActiveTitle</strong>
+                                </ModalPaneToolbar>
+                            </Header>
+                            <ChildContent>
+                                @if (ActivePlanTab == "appearance")
+                                {
+                                    @foreach (var character in Characters)
+                                    {
+                                        <FormSection @key="character.Id" Title="@character.Name" Class="edit-plan-section" Dirty="@AppearanceFieldDirty(character.Id)">
+                                            <AppTextarea Class="plan-field"
+                                                         Rows="3"
+                                                         Dirty="@AppearanceFieldDirty(character.Id)"
+                                                         Placeholder="@($"What is physically true for {character.Name}?")"
+                                                         Value="@GetAppearance(character.Id)"
+                                                         ValueChanged="value => SetAppearance(character.Id, value)" />
+                                        </FormSection>
+                                    }
+                                }
+                                else if (ActivePlanTab == "plan")
+                                {
+                                    <Section Title="Turn Shape" Hint="Regeneration target" Class="edit-plan-section">
+                                        <div class="turn-shape-chip-grid" role="group" aria-label="Turn Shape">
+                                            @foreach (var shape in TurnShapePickerOptions.Explicit)
+                                            {
+                                                <button @key="shape" type="button" class="turn-shape-chip @(Draft.PlanShape == shape ? "is-selected" : "")" @onclick="@(() => SetPlanShape(shape))">
+                                                    @shape
+                                                </button>
+                                            }
+                                        </div>
+                                    </Section>
+
+                                    <FormSection Title="Scene Beat" Class="edit-plan-section" DirtyPaths="@SceneBeatPaths">
+                                        <FieldRow Label="Beat" DirtyPath="@nameof(Draft.Beat)">
+                                            <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" DirtyPath="@nameof(Draft.Beat)" Placeholder="What story beat does this turn serve?" @bind-Value="Draft.Beat" />
+                                        </FieldRow>
+                                        <FieldRow Label="Change Introduced" DirtyPath="@nameof(Draft.ChangeIntroduced)">
+                                            <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" DirtyPath="@nameof(Draft.ChangeIntroduced)" Placeholder="What shifts as a result of this turn?" @bind-Value="Draft.ChangeIntroduced" />
+                                        </FieldRow>
+                                    </FormSection>
+
+                                    <FormSection Title="Character Aim" Class="edit-plan-section" DirtyPaths="@CharacterAimPaths">
+                                        <FieldRow Label="Intent" DirtyPath="@nameof(Draft.Intent)">
+                                            <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" DirtyPath="@nameof(Draft.Intent)" Placeholder="What does the character intend to do?" @bind-Value="Draft.Intent" />
+                                        </FieldRow>
+                                        <FieldRow Label="Immediate Goal" DirtyPath="@nameof(Draft.ImmediateGoal)">
+                                            <AppInput Class="plan-field" DirtyPath="@nameof(Draft.ImmediateGoal)" Placeholder="What does the character want right now?" @bind-Value="Draft.ImmediateGoal" />
+                                        </FieldRow>
+                                        <FieldRow Label="Why Now" DirtyPath="@nameof(Draft.WhyNow)">
+                                            <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" DirtyPath="@nameof(Draft.WhyNow)" Placeholder="Why is the character acting at this moment?" @bind-Value="Draft.WhyNow" />
+                                        </FieldRow>
+                                        <FieldRow Label="Guardrails" DirtyPath="@nameof(Draft.Guardrails)">
+                                            <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" DirtyPath="@nameof(Draft.Guardrails)" Placeholder="What should the AI avoid or preserve?" @bind-Value="Draft.Guardrails" />
+                                        </FieldRow>
+                                    </FormSection>
+                                }
+                                else if (ActivePlanTab == "private")
+                                {
+                                    var activeCharacter = ActivePrivateIntentCharacter;
+                                    if (activeCharacter is null)
+                                    {
+                                        <p class="empty-note">Narrator turns do not have a private character intent.</p>
+                                    }
+                                    else
+                                    {
+                                        <FormSection @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section" Dirty="@PrivateIntentFieldDirty(activeCharacter.Id)">
+                                            <AppTextarea Class="plan-field"
+                                                         Rows="3"
+                                                         Dirty="@PrivateIntentFieldDirty(activeCharacter.Id)"
+                                                         Placeholder="@($"What private intention is {activeCharacter.Name} carrying?")"
+                                                         Value="@GetPrivateIntent(activeCharacter.Id)"
+                                                         ValueChanged="value => SetPrivateIntent(activeCharacter.Id, value)" />
+                                        </FormSection>
+                                    }
+                                }
+                                else
+                                {
+                                    <FormSection Title="TTS Input" Hint="@SpeechInputHint" Class="edit-plan-section">
+                                        @if (SpeechInputLoading)
+                                        {
+                                            <StatusRow Icon="spinner">Loading speech input...</StatusRow>
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(SpeechInputError))
+                                        {
+                                            <StatusRow Icon="warning" Tone="danger">@SpeechInputError</StatusRow>
+                                        }
+                                        else if (SpeechInputSnapshot is null || SpeechInputSnapshot.Inputs.Count == 0)
+                                        {
+                                            <p class="empty-note">Generate read-aloud to capture the TTS input for this message.</p>
+                                        }
+                                        else if (SpeechInputSnapshot.Inputs.Count == 1)
+                                        {
+                                            <AppTextarea Class="plan-field speech-input-field" Rows="8" readonly Value="@SpeechInputSnapshot.Inputs[0].Text" />
+                                        }
+                                        else
+                                        {
+                                            <div class="speech-input-list">
+                                                @for (var i = 0; i < SpeechInputSnapshot.Inputs.Count; i++)
+                                                {
+                                                    var input = SpeechInputSnapshot.Inputs[i];
+                                                    <FieldRow @key="SpeechInputKey(input, i)" Label="@SpeechInputLabel(input, i)">
+                                                        <AppTextarea Class="plan-field speech-input-field" Rows="4" readonly Value="@input.Text" />
+                                                    </FieldRow>
+                                                }
+                                            </div>
+                                        }
+                                    </FormSection>
+                                }
+                            </ChildContent>
+                            <Footer>
+                                <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                                <BusyButton Variant="primary" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save Plan</BusyButton>
+                            </Footer>
+                        </ModalStackLayout>
+                    </MainContent>
+                </ModalTabGroup>
+            </ChildContent>
+        </ModalShell>
+    </ChildContent>
+</StatefulForm>
+
+@code {
+    sealed class EditPlanDraft
+    {
+        public string PlanShape { get; set; } = TurnShapePickerOptions.Default;
+        public string Beat { get; set; } = "";
+        public string Intent { get; set; } = "";
+        public string ImmediateGoal { get; set; } = "";
+        public string WhyNow { get; set; } = "";
+        public string ChangeIntroduced { get; set; } = "";
+        public string Guardrails { get; set; } = "";
+        public Dictionary<string, string> Appearances { get; set; } = [];
+        public Dictionary<string, string> PrivateIntents { get; set; } = [];
+    }
+
+    const int PlanTextareaRows = 1;
+    static readonly string[] SceneBeatPaths = [nameof(EditPlanDraft.Beat), nameof(EditPlanDraft.ChangeIntroduced)];
+    static readonly string[] CharacterAimPaths = [nameof(EditPlanDraft.Intent), nameof(EditPlanDraft.ImmediateGoal), nameof(EditPlanDraft.WhyNow), nameof(EditPlanDraft.Guardrails)];
+    EditPlanDraft Draft = new();
+    EditPlanDraft Baseline = new();
+    StatefulFormContext<EditPlanDraft>? Form;
+    string LoadedMessageId = "";
+    string ActivePlanTab = "plan";
+    bool SpeechInputLoading;
+    string SpeechInputError = "";
+    MessageSpeechInputSnapshot? SpeechInputSnapshot;
+
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public RpTranscriptTurn Message { get; set; } = new();
+    [Parameter] public List<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public bool TranscriptBusy { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
+    string DisplayAuthorName => Characters.FirstOrDefault(character => character.Id == Message.AuthorCharacterId)?.Name ?? Message.AuthorName;
+    string Subtitle => $"{DisplayAuthorName} Â· {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}";
+    string ActiveTitle => ActivePlanTab == "speech" ? "TTS Input" : ActivePlanTab == "appearance" ? "Characters" : ActivePlanTab == "private" ? "Private Intent" : "Plan";
+    RpCharacter? ActivePrivateIntentCharacter => ResolveActivePrivateIntentCharacter();
+    string SpeechInputHint => SpeechInputSnapshot is null
+        ? "Captured after read-aloud generation"
+        : $"{SpeechInputSnapshot.ProviderName} Â· {SpeechInputSnapshot.ModelId} Â· {SpeechInputSnapshot.Status}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (LoadedMessageId == Message.Id)
+            return;
+
+        LoadedMessageId = Message.Id;
+        Draft = FromMessage(Message);
+        Baseline = StatefulFormSnapshot.Clone(Draft);
+        ActivePlanTab = "plan";
+        await LoadSpeechInputSnapshot();
+    }
+
+    static EditPlanDraft FromMessage(RpTranscriptTurn message) => new()
+    {
+        PlanShape = TurnShapePickerOptions.NormalizeExplicit(message.Plan.TurnShape),
+        Beat = message.Plan.Beat,
+        Intent = message.Plan.Intent,
+        ImmediateGoal = message.Plan.ImmediateGoal,
+        WhyNow = message.Plan.WhyNow,
+        ChangeIntroduced = message.Plan.ChangeIntroduced,
+        Guardrails = message.Plan.Guardrails,
+        Appearances = message.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+        PrivateIntents = message.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+    };
+
+    void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
+
+    void SetPlanShape(string shape)
+    {
+        Draft.PlanShape = shape;
+        Form?.NotifyChanged();
+    }
+
+    bool AppearanceDirty() => !StatefulFormSnapshot.Equivalent(Draft.Appearances, Baseline.Appearances);
+    bool PlanDirty() =>
+        Draft.PlanShape != Baseline.PlanShape ||
+        Draft.Beat != Baseline.Beat ||
+        Draft.ChangeIntroduced != Baseline.ChangeIntroduced ||
+        Draft.Intent != Baseline.Intent ||
+        Draft.ImmediateGoal != Baseline.ImmediateGoal ||
+        Draft.WhyNow != Baseline.WhyNow ||
+        Draft.Guardrails != Baseline.Guardrails;
+    bool PrivateIntentDirty() => !StatefulFormSnapshot.Equivalent(Draft.PrivateIntents, Baseline.PrivateIntents);
+    bool AppearanceFieldDirty(string characterId) => GetAppearance(characterId) != GetBaselineAppearance(characterId);
+    bool PrivateIntentFieldDirty(string characterId) => GetPrivateIntent(characterId) != GetBaselinePrivateIntent(characterId);
+
+    string GetAppearance(string characterId) => Draft.Appearances.TryGetValue(characterId, out var appearance) ? appearance : "";
+    string GetBaselineAppearance(string characterId) => Baseline.Appearances.TryGetValue(characterId, out var appearance) ? appearance : "";
+    void SetAppearance(string characterId, string appearance)
+    {
+        Draft.Appearances[characterId] = appearance;
+        Form?.NotifyChanged();
+    }
+
+    string GetPrivateIntent(string characterId) => Draft.PrivateIntents.TryGetValue(characterId, out var intent) ? intent : "";
+    string GetBaselinePrivateIntent(string characterId) => Baseline.PrivateIntents.TryGetValue(characterId, out var intent) ? intent : "";
+    void SetPrivateIntent(string characterId, string intent)
+    {
+        Draft.PrivateIntents[characterId] = intent;
+        Form?.NotifyChanged();
+    }
+
+    async Task Save()
+    {
+        var plan = new RpTurnPlan
+        {
+            TurnShape = TurnShapePickerOptions.NormalizeExplicit(Draft.PlanShape),
+            Beat = Draft.Beat,
+            Intent = Draft.Intent,
+            ImmediateGoal = Draft.ImmediateGoal,
+            WhyNow = Draft.WhyNow,
+            ChangeIntroduced = Draft.ChangeIntroduced,
+            Guardrails = Draft.Guardrails
+        };
+        await Session.Chat.Transcript.SavePlanAsync(Message.Id, plan, Draft.Appearances, Draft.PrivateIntents);
+        Baseline = StatefulFormSnapshot.Clone(Draft);
+        await OnClose.InvokeAsync();
+    }
+
+    async Task LoadSpeechInputSnapshot()
+    {
+        SpeechInputSnapshot = null;
+        SpeechInputError = "";
+        if (SpeechService is null || string.IsNullOrWhiteSpace(Message.Speech.VoiceMessageId))
+            return;
+
+        SpeechInputLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            SpeechInputSnapshot = await SpeechService.LoadInputSnapshotAsync(Message);
+        }
+        catch (Exception exception)
+        {
+            SpeechInputError = UserFacingErrorReporter.Capture(
+                Logger,
+                exception,
+                "Loading TTS input failed.",
+                "Loading TTS input failed for message {TurnId}.",
+                Message.Id);
+        }
+        finally
+        {
+            SpeechInputLoading = false;
+        }
+    }
+
+    static string SpeechInputLabel(SpeechGenerationInput input, int index) =>
+        string.IsNullOrWhiteSpace(input.VoiceId)
+            ? $"Input {index + 1}"
+            : $"Input {index + 1} Â· {input.VoiceId}";
+
+    static string SpeechInputKey(SpeechGenerationInput input, int index) =>
+        $"{index}:{input.VoiceId}:{input.Text.Length}";
+
+    RpCharacter? ResolveActivePrivateIntentCharacter()
+    {
+        if (string.IsNullOrWhiteSpace(Message.ActorCharacterId))
+            return null;
+
+        return Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId)
+            ?? new()
+            {
+                Id = Message.ActorCharacterId,
+                Name = Message.AuthorName
+            };
+    }
+
+    void SetForm(StatefulFormContext<EditPlanDraft> form)
+    {
+        Form = form;
+    }
+}

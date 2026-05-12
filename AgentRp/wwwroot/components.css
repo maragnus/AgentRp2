@@ -2913,6 +2913,33 @@
     border-color: var(--c-amberDim);
 }
 
+.field.is-dirty,
+.select.is-dirty,
+.field-row.is-dirty .field,
+.field-row.is-dirty .select {
+    border-color: var(--section-color, var(--c-amberDim));
+    box-shadow: inset 3px 0 0 var(--section-color, var(--c-amberDim));
+}
+
+.field-row.is-dirty .field-label::after,
+.section.is-dirty .section-title-text::after,
+.form-section.is-dirty .section-title-text::after {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: var(--space-icon-gap);
+    border-radius: 50%;
+    background: var(--section-color, var(--c-amberDim));
+    vertical-align: middle;
+}
+
+.toggle-switch.is-dirty,
+.range-slider.is-dirty {
+    outline: 1px solid var(--section-color, var(--c-amberDim));
+    outline-offset: 3px;
+}
+
 .key-input-wrap {
     position: relative;
 }

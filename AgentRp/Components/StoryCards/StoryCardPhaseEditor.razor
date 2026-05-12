@@ -109,46 +109,54 @@
     [Parameter] public EventCallback<string> OnRemoveRequirement { get; set; }
     [Parameter] public EventCallback<StoryCardChildReference> OnOpenChild { get; set; }
     [Parameter] public EventCallback<string> OnRemove { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     Task SetTitle(string value)
     {
         Phase.Title = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetSetup(string value)
     {
         Phase.SetupInstructions = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetPlanning(string value)
     {
         Phase.PlanningContext = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetEnd(string value)
     {
         Phase.EndCondition = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetOptional(bool value)
     {
         Phase.IsOptional = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetEnding(bool value)
     {
         Phase.IsEnding = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetRequiredCount(StoryCardRequirementEditorRow requirement, string value)
     {
         requirement.RequiredCount = int.TryParse(value, out var count) ? count : 1;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 

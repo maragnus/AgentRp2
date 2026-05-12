@@ -5,6 +5,10 @@
             Selected="@Selected"
             MultiValues="@MultiValues"
             Max="@Max"
+            Dirty="@Dirty"
+            DirtyPath="@DirtyPath"
+            DirtyPaths="@DirtyPaths"
+            DirtyScopeId="@DirtyScopeId"
             OnSelect="@OnSelect"
             OnToggle="@OnToggle" />
 
@@ -16,6 +20,10 @@
     [Parameter] public string? Selected { get; set; }
     [Parameter] public List<string>? MultiValues { get; set; }
     [Parameter] public int? Max { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public EventCallback<string> OnSelect { get; set; }
     [Parameter] public EventCallback<string> OnToggle { get; set; }
 }

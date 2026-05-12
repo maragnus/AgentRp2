@@ -1,11 +1,11 @@
-<FormSection Title="@Label">
+<FormSection Title="@Label" DirtyPath="@DirtyPath">
     <RightContent>
         <AppButton Variant="ghost" Size="xs" Disabled="@(!IsDirty)" TooltipText="Reset to default" OnClick="@(_ => OnReset.InvokeAsync())">
             <FaIcon Name="refresh" /> Reset
         </AppButton>
     </RightContent>
     <ChildContent>
-        <AppTextarea Class="mono prompt-textarea" Rows="6" Value="@Value" ValueChanged="HandleChange" />
+        <AppTextarea Class="mono prompt-textarea" Rows="6" Value="@Value" ValueChanged="HandleChange" DirtyPath="@DirtyPath" />
     </ChildContent>
 </FormSection>
 
@@ -14,6 +14,7 @@
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public bool IsDirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
     [Parameter] public EventCallback OnReset { get; set; }
 
     Task HandleChange(string value) => ValueChanged.InvokeAsync(value);

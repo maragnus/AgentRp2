@@ -1,6 +1,4 @@
 @using AgentRp.Services
-@inject ILogger<ChatMessage> Logger
-@inject IServiceProvider Services
 
 <article class="narrative-message">
     @if (ShowProcess && Message.Trace is not null)
@@ -119,161 +117,17 @@
 
 @if (EditPlan)
 {
-    <ModalShell Title="Edit Saved Plan" Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")" Icon="sliders" MaxWidth="760px" BodyClass="is-flush" Class="edit-plan-modal" OnClose="@(() => EditPlan = false)">
-        <ChildContent>
-            <ModalTabGroup ActiveId="@ActivePlanTab" ActiveIdChanged="SetActivePlanTab" Height="560px" RailWidth="152px" Class="edit-plan-tabs">
-                <ChildContent>
-                    <ModalTab Id="appearance" Title="Continuity" Dirty="@Appearances.Any(pair => !string.IsNullOrWhiteSpace(pair.Value))" />
-                    <ModalTab Id="plan" Title="Plan" Dirty="@IsPlanDirty()" />
-                    <ModalTab Id="private" Title="Private Intent" Dirty="@IsActivePrivateIntentSet" />
-                    <ModalTab Id="speech" Title="Speech" />
-                </ChildContent>
-                <RailFooter>
-                    <div class="prompt-rail-note">
-                        <p>Saved plan fields are reused when regenerating this turn.</p>
-                    </div>
-                </RailFooter>
-                <MainContent>
-                    <ModalStackLayout Class="modal-editor-main edit-plan-main" BodyClass="modal-form-stack edit-plan-fields">
-                        <Header>
-                            @if (ActivePlanTab == "appearance")
-                            {
-                                <ModalPaneToolbar Class="tuning-toolbar">
-                                    <strong>Characters</strong>
-                                </ModalPaneToolbar>
-                            }
-                            else if (ActivePlanTab == "plan")
-                            {
-                                <ModalPaneToolbar Class="tuning-toolbar">
-                                    <strong>Plan</strong>
-                                </ModalPaneToolbar>
-                            }
-                            else
-                            {
-                                <ModalPaneToolbar Class="tuning-toolbar">
-                                    <strong>@(ActivePlanTab == "speech" ? "TTS Input" : "Private Intent")</strong>
-                                </ModalPaneToolbar>
-                            }
-                        </Header>
-                        <ChildContent>
-                            @if (ActivePlanTab == "appearance")
-                            {
-                                @foreach (var character in Characters)
-                                {
-                                    <FormSection @key="character.Id" Title="@character.Name" Class="edit-plan-section">
-                                        <AppTextarea Class="plan-field"
-                                                     Rows="3"
-                                                     Placeholder="@($"What is physically true for {character.Name}?")"
-                                                     Value="@GetAppearance(character.Id)"
-                                                     ValueChanged="value => SetAppearance(character.Id, value)" />
-                                    </FormSection>
-                                }
-                            }
-                            else if (ActivePlanTab == "plan")
-                            {
-                                <Section Title="Turn Shape" Hint="Regeneration target" Class="edit-plan-section">
-                                    <div class="turn-shape-chip-grid" role="group" aria-label="Turn Shape">
-                                        @foreach (var shape in TurnShapePickerOptions.Explicit)
-                                        {
-                                            <button @key="shape" type="button" class="turn-shape-chip @(PlanShape == shape ? "is-selected" : "")" @onclick="@(() => PlanShape = shape)">
-                                                @shape
-                                            </button>
-                                        }
-                                    </div>
-                                </Section>
-
-                                <FormSection Title="Scene Beat" Class="edit-plan-section">
-                                    <FieldRow Label="Beat">
-                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What story beat does this turn serve?" @bind-Value="Beat" />
-                                    </FieldRow>
-                                    <FieldRow Label="Change Introduced">
-                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What shifts as a result of this turn?" @bind-Value="ChangeIntroduced" />
-                                    </FieldRow>
-                                </FormSection>
-
-                                <FormSection Title="Character Aim" Class="edit-plan-section">
-                                    <FieldRow Label="Intent">
-                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What does the character intend to do?" @bind-Value="Intent" />
-                                    </FieldRow>
-                                    <FieldRow Label="Immediate Goal">
-                                        <AppInput Class="plan-field" Placeholder="What does the character want right now?" @bind-Value="ImmediateGoal" />
-                                    </FieldRow>
-                                    <FieldRow Label="Why Now">
-                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="Why is the character acting at this moment?" @bind-Value="WhyNow" />
-                                    </FieldRow>
-                                    <FieldRow Label="Guardrails">
-                                        <AppTextarea Class="plan-field" Rows="@PlanTextareaRows" Placeholder="What should the AI avoid or preserve?" @bind-Value="Guardrails" />
-                                    </FieldRow>
-                                </FormSection>
-                            }
-                            else if (ActivePlanTab == "private")
-                            {
-                                var activeCharacter = ActivePrivateIntentCharacter;
-                                if (activeCharacter is null)
-                                {
-                                    <p class="empty-note">Narrator turns do not have a private character intent.</p>
-                                }
-                                else
-                                {
-                                    <FormSection @key="activeCharacter.Id" Title="@activeCharacter.Name" Class="edit-plan-section">
-                                        <AppTextarea Class="plan-field"
-                                                     Rows="3"
-                                                     Placeholder="@($"What private intention is {activeCharacter.Name} carrying?")"
-                                                     Value="@GetPrivateIntent(activeCharacter.Id)"
-                                                     ValueChanged="value => SetPrivateIntent(activeCharacter.Id, value)" />
-                                    </FormSection>
-                                }
-                            }
-                            else
-                            {
-                                <FormSection Title="TTS Input" Hint="@SpeechInputHint" Class="edit-plan-section">
-                                    @if (SpeechInputLoading)
-                                    {
-                                        <StatusRow Icon="spinner">Loading speech input...</StatusRow>
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(SpeechInputError))
-                                    {
-                                        <StatusRow Icon="warning" Tone="danger">@SpeechInputError</StatusRow>
-                                    }
-                                    else if (SpeechInputSnapshot is null || SpeechInputSnapshot.Inputs.Count == 0)
-                                    {
-                                        <p class="empty-note">Generate read-aloud to capture the TTS input for this message.</p>
-                                    }
-                                    else if (SpeechInputSnapshot.Inputs.Count == 1)
-                                    {
-                                        <AppTextarea Class="plan-field speech-input-field" Rows="8" readonly Value="@SpeechInputSnapshot.Inputs[0].Text" />
-                                    }
-                                    else
-                                    {
-                                        <div class="speech-input-list">
-                                            @for (var i = 0; i < SpeechInputSnapshot.Inputs.Count; i++)
-                                            {
-                                                var input = SpeechInputSnapshot.Inputs[i];
-                                                <FieldRow @key="SpeechInputKey(input, i)" Label="@SpeechInputLabel(input, i)">
-                                                    <AppTextarea Class="plan-field speech-input-field" Rows="4" readonly Value="@input.Text" />
-                                                </FieldRow>
-                                            }
-                                        </div>
-                                    }
-                                </FormSection>
-                            }
-                        </ChildContent>
-                        <Footer>
-                            <AppButton Variant="secondary" OnClick="@(_ => EditPlan = false)">Cancel</AppButton>
-                            <AppButton Variant="primary" Disabled="@TranscriptBusy" OnClick="@(_ => SavePlan())"><FaIcon Name="check" />Save Plan</AppButton>
-                        </Footer>
-                    </ModalStackLayout>
-                </MainContent>
-            </ModalTabGroup>
-        </ChildContent>
-    </ModalShell>
+    <ChatMessageEditPlanModal Message="Message"
+                              Characters="Characters"
+                              TranscriptBusy="@TranscriptBusy"
+                              OnClose="@ClosePlanEditor" />
 }
 
 @if (NewPlan)
 {
     <ChatMessageNewPlanModal InitialGuidance="@Message.Guidance"
                              InitialTurnShape="@NewPlanInitialTurnShape"
-                             Subtitle="@($"{DisplayAuthorName} Â· {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")"
+                             Subtitle="@($"{DisplayAuthorName} · {RelativeDateFormatter.FormatDate(Message.CreatedUtc)}")"
                              TranscriptBusy="@TranscriptBusy"
                              OnClose="@CloseNewPlan"
                              OnSubmit="@SubmitNewPlan" />
@@ -299,22 +153,8 @@
     bool EditPlan;
     bool NewPlan;
     bool EditBody;
-    bool SpeechInputLoading;
-    string ActivePlanTab = "plan";
     string SelectedTurnShape = "";
     string BodyDraft = "";
-    string PlanShape = TurnShapePickerOptions.Default;
-    string Beat = "";
-    string Intent = "";
-    string ImmediateGoal = "";
-    string WhyNow = "";
-    string ChangeIntroduced = "";
-    string Guardrails = "";
-    string SpeechInputError = "";
-    MessageSpeechInputSnapshot? SpeechInputSnapshot;
-    Dictionary<string, string> Appearances = [];
-    Dictionary<string, string> PrivateIntents = [];
-    const int PlanTextareaRows = 1;
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTranscriptTurn Message { get; set; } = new();
@@ -328,7 +168,6 @@
     [Parameter] public EventCallback<string> OnCreateSnapshot { get; set; }
     [Inject] IJSRuntime JS { get; set; } = default!;
 
-    IMessageSpeechService? SpeechService => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetService<IMessageSpeechService>(Services);
     bool IsNarrator => string.IsNullOrWhiteSpace(Message.AuthorCharacterId);
     RpCharacter? AuthorCharacter => IsNarrator ? null : Characters.FirstOrDefault(character => character.Id == Message.AuthorCharacterId);
     string DisplayAuthorName => AuthorCharacter?.Name ?? Message.AuthorName;
@@ -368,15 +207,9 @@
     string FailureMessage => Message.Trace?.Status == "failed" && Message.Trace?.Data.TryGetPropertyValue("error", out var errorNode) == true
         ? errorNode?.GetValue<string>() ?? ""
         : "";
-    string SpeechInputHint => SpeechInputSnapshot is null
-        ? "Captured after read-aloud generation"
-        : $"{SpeechInputSnapshot.ProviderName} · {SpeechInputSnapshot.ModelId} · {SpeechInputSnapshot.Status}";
-
     string NewPlanInitialTurnShape => string.IsNullOrWhiteSpace(Message.Plan.TurnShape)
         ? TurnShapePickerOptions.Auto
         : TurnShapePickerOptions.Normalize(Message.Plan.TurnShape);
-    RpCharacter? ActivePrivateIntentCharacter => ResolveActivePrivateIntentCharacter();
-    bool IsActivePrivateIntentSet => ActivePrivateIntentCharacter is not null && !string.IsNullOrWhiteSpace(GetPrivateIntent(ActivePrivateIntentCharacter.Id));
 
     protected override void OnParametersSet()
     {
@@ -406,22 +239,6 @@
         if (CanSelectNextSibling)
             await Session.Chat.Transcript.SelectSiblingAsync(Siblings[SiblingIndex + 1].Id);
     }
-
-    void SetActivePlanTab(string? id) => ActivePlanTab = id ?? ActivePlanTab;
-
-    bool IsPlanDirty() =>
-        PlanShape != TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape) ||
-        Beat != Message.Plan.Beat ||
-        ChangeIntroduced != Message.Plan.ChangeIntroduced ||
-        Intent != Message.Plan.Intent ||
-        ImmediateGoal != Message.Plan.ImmediateGoal ||
-        WhyNow != Message.Plan.WhyNow ||
-        Guardrails != Message.Plan.Guardrails;
-
-    string GetAppearance(string characterId) => Appearances.TryGetValue(characterId, out var appearance) ? appearance : "";
-    void SetAppearance(string characterId, string appearance) => Appearances[characterId] = appearance;
-    string GetPrivateIntent(string characterId) => PrivateIntents.TryGetValue(characterId, out var intent) ? intent : "";
-    void SetPrivateIntent(string characterId, string intent) => PrivateIntents[characterId] = intent;
 
     async Task CopyMessage(MouseEventArgs args) => await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Body);
 
@@ -467,18 +284,14 @@
 
     async Task OpenPlanEditor()
     {
-        PlanShape = TurnShapePickerOptions.NormalizeExplicit(Message.Plan.TurnShape);
-        Beat = Message.Plan.Beat;
-        Intent = Message.Plan.Intent;
-        ImmediateGoal = Message.Plan.ImmediateGoal;
-        WhyNow = Message.Plan.WhyNow;
-        ChangeIntroduced = Message.Plan.ChangeIntroduced;
-        Guardrails = Message.Plan.Guardrails;
-        Appearances = Message.AppearanceByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        PrivateIntents = Message.PrivateIntentByCharacterId.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        ActivePlanTab = "plan";
         EditPlan = true;
-        await LoadSpeechInputSnapshot();
+        await Task.CompletedTask;
+    }
+
+    Task ClosePlanEditor()
+    {
+        EditPlan = false;
+        return Task.CompletedTask;
     }
 
     void OpenEditBody()
@@ -493,74 +306,9 @@
         await Session.Chat.Transcript.EditTurnAsync(Message.Id, BodyDraft, Message.Plan, Message.AppearanceByCharacterId, Message.PrivateIntentByCharacterId);
     }
 
-    async Task SavePlan()
-    {
-        var plan = new RpTurnPlan
-        {
-            TurnShape = TurnShapePickerOptions.NormalizeExplicit(PlanShape),
-            Beat = Beat,
-            Intent = Intent,
-            ImmediateGoal = ImmediateGoal,
-            WhyNow = WhyNow,
-            ChangeIntroduced = ChangeIntroduced,
-            Guardrails = Guardrails
-        };
-        await Session.Chat.Transcript.SavePlanAsync(Message.Id, plan, Appearances, PrivateIntents);
-        EditPlan = false;
-    }
-
     async Task RecastTurn(RpCharacter? character)
     {
         await Session.Chat.Transcript.RecastTurnAsync(Message.Id, character);
-    }
-
-    async Task LoadSpeechInputSnapshot()
-    {
-        SpeechInputSnapshot = null;
-        SpeechInputError = "";
-        if (SpeechService is null || string.IsNullOrWhiteSpace(Message.Speech.VoiceMessageId))
-            return;
-
-        SpeechInputLoading = true;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            SpeechInputSnapshot = await SpeechService.LoadInputSnapshotAsync(Message);
-        }
-        catch (Exception exception)
-        {
-            SpeechInputError = UserFacingErrorReporter.Capture(
-                Logger,
-                exception,
-                "Loading TTS input failed.",
-                "Loading TTS input failed for message {TurnId}.",
-                Message.Id);
-        }
-        finally
-        {
-            SpeechInputLoading = false;
-        }
-    }
-
-    static string SpeechInputLabel(SpeechGenerationInput input, int index) =>
-        string.IsNullOrWhiteSpace(input.VoiceId)
-            ? $"Input {index + 1}"
-            : $"Input {index + 1} · {input.VoiceId}";
-
-    static string SpeechInputKey(SpeechGenerationInput input, int index) =>
-        $"{index}:{input.VoiceId}:{input.Text.Length}";
-
-    RpCharacter? ResolveActivePrivateIntentCharacter()
-    {
-        if (string.IsNullOrWhiteSpace(Message.ActorCharacterId))
-            return null;
-
-        return Characters.FirstOrDefault(character => character.Id == Message.ActorCharacterId)
-            ?? new()
-            {
-                Id = Message.ActorCharacterId,
-                Name = string.IsNullOrWhiteSpace(Message.ActorName) ? "Active character" : Message.ActorName
-            };
     }
 
     ActiveModelSelection? ResolveActiveTextModel() => Session.ModelSelection.Resolve(AiModelRole.Reasoning);

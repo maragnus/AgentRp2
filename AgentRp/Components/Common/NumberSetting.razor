@@ -1,12 +1,21 @@
-<FieldRow Label="@Label" Class="number-setting">
-    <input class="field mono" type="number" placeholder="model default" value="@Value" disabled="@Disabled" @onchange="HandleChange" />
+<FieldRow Label="@Label" Class="number-setting" Dirty="@Dirty" DirtyPath="@DirtyPath">
+    <AppInput Class="mono"
+              Type="number"
+              Placeholder="model default"
+              Value="@Value"
+              ValueChanged="HandleChange"
+              Dirty="@Dirty"
+              DirtyPath="@DirtyPath"
+              Disabled="@Disabled" />
 </FieldRow>
 
 @code {
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
-    Task HandleChange(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    Task HandleChange(string value) => ValueChanged.InvokeAsync(value);
 }

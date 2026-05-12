@@ -274,6 +274,103 @@ static class SessionCloner
         Values = value.Values.ToDictionary(pair => pair.Key, pair => Clone(pair.Value))
     };
 
+    public static StoryCardTemplate Clone(StoryCardTemplate value) => new()
+    {
+        Id = value.Id,
+        OwnerUserId = value.OwnerUserId,
+        OwnerDisplayName = value.OwnerDisplayName,
+        Title = value.Title,
+        Summary = value.Summary,
+        Instructions = value.Instructions,
+        IsShared = value.IsShared,
+        RetiredUtc = value.RetiredUtc,
+        ParentTemplateId = value.ParentTemplateId,
+        RootTemplateId = value.RootTemplateId,
+        TemplateVersion = value.TemplateVersion,
+        Stats = Clone(value.Stats),
+        CreatedUtc = value.CreatedUtc,
+        UpdatedUtc = value.UpdatedUtc,
+        Phases = value.Phases.Select(Clone).ToList(),
+        PhaseTransitions = value.PhaseTransitions.Select(Clone).ToList(),
+        PhaseRequirements = value.PhaseRequirements.Select(Clone).ToList(),
+        Roles = value.Roles.Select(Clone).ToList(),
+        Items = value.Items.Select(Clone).ToList(),
+        Locations = value.Locations.Select(Clone).ToList()
+    };
+
+    static StoryCardStats Clone(StoryCardStats value) => new()
+    {
+        DirectStoryCount = value.DirectStoryCount,
+        DirectActiveTurnCount = value.DirectActiveTurnCount,
+        RemixCount = value.RemixCount,
+        RemixStoryCount = value.RemixStoryCount,
+        RemixActiveTurnCount = value.RemixActiveTurnCount,
+        RefreshedUtc = value.RefreshedUtc
+    };
+
+    static PhaseCardTemplate Clone(PhaseCardTemplate value) => new()
+    {
+        Id = value.Id,
+        Title = value.Title,
+        SetupInstructions = value.SetupInstructions,
+        PlanningContext = value.PlanningContext,
+        EndCondition = value.EndCondition,
+        IsOptional = value.IsOptional,
+        IsEnding = value.IsEnding,
+        SortOrder = value.SortOrder
+    };
+
+    static PhaseTransitionTemplate Clone(PhaseTransitionTemplate value) => new()
+    {
+        Id = value.Id,
+        FromPhaseId = value.FromPhaseId,
+        ToPhaseId = value.ToPhaseId,
+        ConditionInstructions = value.ConditionInstructions,
+        IsDefault = value.IsDefault,
+        SortOrder = value.SortOrder
+    };
+
+    static PhaseCardRequirementTemplate Clone(PhaseCardRequirementTemplate value) => new()
+    {
+        Id = value.Id,
+        PhaseId = value.PhaseId,
+        ChildCardType = value.ChildCardType,
+        ChildCardId = value.ChildCardId,
+        RequiredCount = value.RequiredCount,
+        SortOrder = value.SortOrder
+    };
+
+    static RoleCardTemplate Clone(RoleCardTemplate value) => new()
+    {
+        Id = value.Id,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        PrivateContext = value.PrivateContext,
+        SortOrder = value.SortOrder
+    };
+
+    static ItemCardTemplate Clone(ItemCardTemplate value) => new()
+    {
+        Id = value.Id,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        SortOrder = value.SortOrder
+    };
+
+    static LocationCardTemplate Clone(LocationCardTemplate value) => new()
+    {
+        Id = value.Id,
+        Title = value.Title,
+        SelectionInstructions = value.SelectionInstructions,
+        CreationInstructions = value.CreationInstructions,
+        OngoingContext = value.OngoingContext,
+        SortOrder = value.SortOrder
+    };
+
     public static StoryCardInstance Clone(StoryCardInstance value) => new()
     {
         Id = value.Id,

@@ -1,6 +1,8 @@
 @implements IDisposable
 
-<ModalShell Title="Story Entities" MaxWidth="960px" BodyClass="is-flush" OnClose="OnClose">
+<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="SaveDraft" OnClose="OnClose" ContextChanged="SetEntityForm">
+    <ChildContent Context="form">
+<ModalShell Title="Story Entities" MaxWidth="960px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalBodyTabs AriaLabel="Story entity sections">
         @foreach (var type in EntityTypes)
         {
@@ -81,7 +83,7 @@
                     <Actions>
                         <EntityHeaderActionStack>
                             <TopActions>
-                                <VoicePicker VoiceSelections="Session.Chat.NarratorProfile.State.VoiceSelections"
+                                <VoicePicker VoiceSelections="SelectedNarratorVoiceSelections"
                                              ActiveVoiceModel="ActiveVoiceModel"
                                              Compact
                                              OwnerName="Narrator"
@@ -149,7 +151,7 @@
         <ItemTemplate>
             @if (Type == "characters" && SelectedId == NarratorId)
             {
-                <NarratorEditor Profile="Session.Chat.NarratorProfile.State" />
+                <NarratorEditor Profile="@(SelectedNarrator ?? NarratorProfileState.CreateDefault())" />
             }
             else if (Type == "characters" && SelectedCharacter is not null)
             {
@@ -157,28 +159,41 @@
             }
             else if (Type == "locations" && SelectedLocation is not null)
             {
-                <LocationEditor Location="SelectedLocation"
-                                OnChanged="Changed" />
+                <StatefulFormScope PathPrefix="Location">
+                    <LocationEditor Location="SelectedLocation"
+                                    OnChanged="Changed" />
+                </StatefulFormScope>
             }
             else if (Type == "items" && SelectedItem is not null)
             {
-                <ItemEditor Item="SelectedItem"
-                            OnChanged="Changed" />
+                <StatefulFormScope PathPrefix="Item">
+                    <ItemEditor Item="SelectedItem"
+                                OnChanged="Changed" />
+                </StatefulFormScope>
             }
             else if (Type == "timeline" && SelectedTimeline is not null)
             {
-                <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" />
+                <StatefulFormScope PathPrefix="Timeline">
+                    <TimelineEditor Entry="SelectedTimeline" OnChanged="Changed" />
+                </StatefulFormScope>
             }
             else
             {
                 <div class="empty-preview"><FaIcon Name="@ActiveIcon" /><span>Select an entity to edit, or add a new one</span><AppButton Variant="secondary" OnClick="@(_ => AddEntity())"><FaIcon Name="plus" />Add @ActiveSingular</AppButton></div>
             }
         </ItemTemplate>
+        <ItemFooterTemplate>
+            <span class="modal-action-spacer"></span>
+            <AppButton Variant="secondary" Disabled="@(!form.HasChanges)" OnClick="@(_ => ResetDraft())">Cancel</AppButton>
+            <BusyButton Variant="primary" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync">Save</BusyButton>
+        </ItemFooterTemplate>
         <EmptySelectionTemplate>
             <div class="empty-preview"><FaIcon Name="@ActiveIcon" /><span>Select an entity to edit, or add a new one</span><AppButton Variant="secondary" OnClick="@(_ => AddEntity())"><FaIcon Name="plus" />Add @ActiveSingular</AppButton></div>
         </EmptySelectionTemplate>
     </EntityListEditor>
 </ModalShell>
+    </ChildContent>
+</StatefulForm>
 
 @if (CharacterWizardOpen && SelectedCharacter is not null)
 {
@@ -187,7 +202,7 @@
 
 @if (NarratorWizardOpen)
 {
-    <NarratorWizardModal Profile="Session.Chat.NarratorProfile.State" OnClose="@(() => NarratorWizardOpen = false)" OnChanged="Changed" />
+    <NarratorWizardModal Profile="@(SelectedNarrator ?? NarratorProfileState.CreateDefault())" OnClose="@(() => NarratorWizardOpen = false)" OnChanged="Changed" />
 }
 
 @if (ConfirmDeleteOpen && SelectedId is not null)
@@ -201,6 +216,9 @@
     bool CharacterWizardOpen;
     bool NarratorWizardOpen;
     bool ConfirmDeleteOpen;
+    EntityManagerDraftState Draft = EntityManagerDraftState.Empty();
+    EntityManagerDraftState Baseline = EntityManagerDraftState.Empty();
+    StatefulFormContext<EntityManagerDraftState>? EntityForm;
     const string NarratorId = EntityIds.Narrator;
     sealed record EntityEntry(string Id, string Title, string Subtitle, string ImageId, bool Active, bool IsNarrator = false);
     readonly (string Key, string Label, string Icon)[] EntityTypes =
@@ -224,10 +242,12 @@
     List<RpItem> Items => Session.Chat.Items.Items;
     List<RpTimelineEntry> Timeline => Session.Chat.Timeline.Items;
     List<GalleryImage> Images => Session.Chat.Images.Items;
-    RpCharacter? SelectedCharacter => Characters.FirstOrDefault(character => character.Id == SelectedId);
-    RpLocation? SelectedLocation => Locations.FirstOrDefault(location => location.Id == SelectedId);
-    RpItem? SelectedItem => Items.FirstOrDefault(item => item.Id == SelectedId);
-    RpTimelineEntry? SelectedTimeline => Timeline.FirstOrDefault(entry => entry.Id == SelectedId);
+    RpCharacter? SelectedCharacter => Draft.Character;
+    RpLocation? SelectedLocation => Draft.Location;
+    RpItem? SelectedItem => Draft.Item;
+    RpTimelineEntry? SelectedTimeline => Draft.Timeline;
+    NarratorProfileState? SelectedNarrator => Draft.Narrator;
+    Dictionary<string, CharacterVoiceSelection> SelectedNarratorVoiceSelections => SelectedNarrator?.VoiceSelections ?? [];
     ActiveModelSelection? ActiveVoiceModel => Session.ModelSelection.Resolve(AiModelRole.Voice);
 
     bool HasToggle => Type is "characters" or "locations" or "items";
@@ -287,18 +307,42 @@
         Session.Providers.Changed += OnStoreChanged;
 
         Type = InitialType;
-        SelectedId = InitialId ?? Entries.FirstOrDefault()?.Id;
+        SelectDirect(InitialId ?? Entries.FirstOrDefault()?.Id);
     }
 
-    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+    Task OnStoreChanged()
+    {
+        if (EntityForm?.HasChanges != true)
+            SelectDirect(SelectedId);
 
-    void SelectType(string type)
+        return InvokeAsync(StateHasChanged);
+    }
+
+    Task SelectType(string type) => GuardSelectionAsync(() =>
     {
         Type = type;
-        SelectedId = Entries.FirstOrDefault()?.Id;
+        SelectDirect(Entries.FirstOrDefault()?.Id);
+        return Task.CompletedTask;
+    });
+
+    Task SetSelected(string? id) => GuardSelectionAsync(() =>
+    {
+        SelectDirect(id);
+        return Task.CompletedTask;
+    });
+
+    Task GuardSelectionAsync(Func<Task> action) => EntityForm?.GuardAsync(action) ?? action();
+
+    void SetEntityForm(StatefulFormContext<EntityManagerDraftState> form) => EntityForm = form;
+
+    void SelectDirect(string? id)
+    {
+        SelectedId = id ?? "";
+        Draft = CreateDraft(Type, SelectedId);
+        Baseline = Draft.Clone();
     }
 
-    void SetSelected(string? id) => SelectedId = id;
+    void ResetDraft() => SelectDirect(SelectedId);
 
     GalleryImage? ImageFor(string imageId) => Images.FirstOrDefault(image => image.Id == imageId);
 
@@ -307,9 +351,11 @@
     Task SelectSelectedEntityImage(MouseEventArgs args) => SelectedId is null
         || SelectedId == NarratorId
         ? Task.CompletedTask
-        : SelectEntityImage(Type, SelectedId);
+        : GuardSelectionAsync(() => SelectEntityImage(Type, SelectedId));
 
-    async Task AddEntity()
+    Task AddEntity() => GuardSelectionAsync(AddEntityDirect);
+
+    async Task AddEntityDirect()
     {
         if (Type == "characters")
         {
@@ -319,28 +365,30 @@
         if (Type == "locations")
         {
             var location = await Session.Chat.Locations.AddAsync();
-            SelectedId = location.Id;
+            SelectDirect(location.Id);
         }
         else if (Type == "items")
         {
             var item = await Session.Chat.Items.AddAsync();
-            SelectedId = item.Id;
+            SelectDirect(item.Id);
         }
         else
         {
             var entry = await Session.Chat.Timeline.AddAsync();
-            SelectedId = entry.Id;
+            SelectDirect(entry.Id);
         }
     }
 
     async Task CreateCharacter()
     {
         var character = await Session.Chat.Characters.AddAsync();
-        SelectedId = character.Id;
+        SelectDirect(character.Id);
         CharacterWizardOpen = true;
     }
 
-    async Task ToggleActive(string id)
+    Task ToggleActive(string id) => GuardSelectionAsync(() => ToggleActiveDirect(id));
+
+    async Task ToggleActiveDirect(string id)
     {
         if (Type == "characters")
             await Session.Chat.Characters.ToggleInSceneAsync(id);
@@ -373,7 +421,7 @@
         else
             await Session.Chat.Timeline.DeleteAsync(SelectedId);
 
-        SelectedId = Entries.FirstOrDefault()?.Id;
+        SelectDirect(Entries.FirstOrDefault()?.Id);
     }
 
     async Task ConfirmDeleteSelected()
@@ -381,16 +429,84 @@
         ConfirmDeleteOpen = false;
         CharacterWizardOpen = false;
         NarratorWizardOpen = false;
-        await DeleteSelected();
+        await GuardSelectionAsync(DeleteSelected);
     }
 
-    Task Changed() => Type switch
+    Task Changed()
     {
-        "characters" when SelectedId == NarratorId => Session.Chat.NarratorProfile.MarkChangedAsync(),
-        "characters" => Session.Chat.Characters.MarkChangedAsync(SelectedId ?? ""),
-        "locations" => Session.Chat.Locations.MarkChangedAsync(SelectedId ?? ""),
-        "items" => Session.Chat.Items.MarkChangedAsync(SelectedId ?? ""),
-        _ => Session.Chat.Timeline.MarkChangedAsync(SelectedId ?? "")
+        EntityForm?.NotifyChanged();
+        return Task.CompletedTask;
+    }
+
+    async Task SaveDraft()
+    {
+        if (SelectedId == NarratorId && Draft.Narrator is not null && Session.ActiveChat.Current is not null)
+        {
+            Session.ActiveChat.Current.NarratorProfile = SessionCloner.Clone(Draft.Narrator);
+            await Session.Chat.NarratorProfile.MarkChangedAsync();
+            SelectDirect(SelectedId);
+            return;
+        }
+
+        if (Type == "characters" && Draft.Character is not null)
+        {
+            ReplaceById(Characters, Draft.Character.Id, SessionCloner.Clone(Draft.Character));
+            await Session.Chat.Characters.MarkChangedAsync(Draft.Character.Id);
+        }
+        else if (Type == "locations" && Draft.Location is not null)
+        {
+            ReplaceById(Locations, Draft.Location.Id, SessionCloner.Clone(Draft.Location));
+            await Session.Chat.Locations.MarkChangedAsync(Draft.Location.Id);
+        }
+        else if (Type == "items" && Draft.Item is not null)
+        {
+            ReplaceById(Items, Draft.Item.Id, SessionCloner.Clone(Draft.Item));
+            await Session.Chat.Items.MarkChangedAsync(Draft.Item.Id);
+        }
+        else if (Type == "timeline" && Draft.Timeline is not null)
+        {
+            ReplaceById(Timeline, Draft.Timeline.Id, SessionCloner.Clone(Draft.Timeline));
+            await Session.Chat.Timeline.MarkChangedAsync(Draft.Timeline.Id);
+        }
+
+        SelectDirect(SelectedId);
+    }
+
+    EntityManagerDraftState CreateDraft(string type, string selectedId)
+    {
+        if (type == "characters" && selectedId == NarratorId)
+            return EntityManagerDraftState.ForNarrator(Session.Chat.NarratorProfile.State);
+
+        if (type == "characters" && Characters.FirstOrDefault(character => character.Id == selectedId) is { } character)
+            return EntityManagerDraftState.ForCharacter(character);
+
+        if (type == "locations" && Locations.FirstOrDefault(location => location.Id == selectedId) is { } location)
+            return EntityManagerDraftState.ForLocation(location);
+
+        if (type == "items" && Items.FirstOrDefault(item => item.Id == selectedId) is { } item)
+            return EntityManagerDraftState.ForItem(item);
+
+        if (type == "timeline" && Timeline.FirstOrDefault(entry => entry.Id == selectedId) is { } entry)
+            return EntityManagerDraftState.ForTimeline(entry);
+
+        return EntityManagerDraftState.Empty(type);
+    }
+
+    static void ReplaceById<TItem>(List<TItem> items, string id, TItem replacement)
+        where TItem : class
+    {
+        var index = items.FindIndex(item => ItemId(item) == id);
+        if (index >= 0)
+            items[index] = replacement;
+    }
+
+    static string ItemId<TItem>(TItem item) => item switch
+    {
+        RpCharacter character => character.Id,
+        RpLocation location => location.Id,
+        RpItem storyItem => storyItem.Id,
+        RpTimelineEntry entry => entry.Id,
+        _ => ""
     };
 
     public void Dispose()

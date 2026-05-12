@@ -1,5 +1,5 @@
 <div class="character-appearance-editor">
-    <Section Title="Hair" Count="HairCount">
+    <Section Title="Hair" Count="HairCount" DirtyPaths="@HairPaths">
         <div class="character-appearance-group">
             <div class="character-appearance-field">
                 <span>Color</span>
@@ -24,7 +24,7 @@
     </Section>
 
     <div class="character-appearance-two-col">
-        <Section Title="Eyes" Count="@(string.IsNullOrWhiteSpace(Profile.EyeColor) ? 0 : 1)">
+        <Section Title="Eyes" Count="@(string.IsNullOrWhiteSpace(Profile.EyeColor) ? 0 : 1)" DirtyPath="@ProfilePath(nameof(Profile.EyeColor))">
             <div class="character-wizard-chip-list">
                 @foreach (var option in Options.EyeColors)
                 {
@@ -32,7 +32,7 @@
                 }
             </div>
         </Section>
-        <Section Title="Face" Count="@(string.IsNullOrWhiteSpace(Profile.FaceShape) ? 0 : 1)">
+        <Section Title="Face" Count="@(string.IsNullOrWhiteSpace(Profile.FaceShape) ? 0 : 1)" DirtyPath="@ProfilePath(nameof(Profile.FaceShape))">
             <div class="character-wizard-chip-list">
                 @foreach (var option in Options.FaceShapes)
                 {
@@ -42,7 +42,7 @@
         </Section>
     </div>
 
-    <Section Title="Skin" Count="SkinCount">
+    <Section Title="Skin" Count="SkinCount" DirtyPaths="@SkinPaths">
         <div class="character-appearance-group">
             <div class="character-appearance-field">
                 <span>Tone</span>
@@ -66,7 +66,7 @@
         </div>
     </Section>
 
-    <Section Title="Height & Build" Count="HeightBuildCount">
+    <Section Title="Height & Build" Count="HeightBuildCount" DirtyPaths="@HeightBuildPaths">
         <div class="character-appearance-two-col is-tight">
             <div class="character-appearance-field">
                 <span>Height</span>
@@ -89,7 +89,7 @@
         </div>
     </Section>
 
-    <Section Title="Body Proportions" Count="Profile.BodyProportions.Count" MaxCount="CharacterProfileRules.MaxBodyProportions">
+    <Section Title="Body Proportions" Count="Profile.BodyProportions.Count" MaxCount="CharacterProfileRules.MaxBodyProportions" DirtyPath="@ProfilePath(nameof(Profile.BodyProportions))">
         <div class="character-wizard-chip-list">
             @foreach (var option in Options.BodyProportions)
             {
@@ -99,7 +99,7 @@
         </div>
     </Section>
 
-    <Section Title="Presentation & Bearing" Count="Profile.Presentation.Count" MaxCount="CharacterProfileRules.MaxPresentation">
+    <Section Title="Presentation & Bearing" Count="Profile.Presentation.Count" MaxCount="CharacterProfileRules.MaxPresentation" DirtyPath="@ProfilePath(nameof(Profile.Presentation))">
         <div class="character-wizard-chip-list">
             @foreach (var option in Options.Presentations)
             {
@@ -109,7 +109,7 @@
         </div>
     </Section>
 
-    <Section Title="Attractiveness" Count="@(string.IsNullOrWhiteSpace(Profile.Attractiveness) ? 0 : 1)">
+    <Section Title="Attractiveness" Count="@(string.IsNullOrWhiteSpace(Profile.Attractiveness) ? 0 : 1)" DirtyPath="@ProfilePath(nameof(Profile.Attractiveness))">
         <div class="character-wizard-chip-list">
             @foreach (var option in Options.AttractivenessLevels)
             {
@@ -118,12 +118,13 @@
         </div>
     </Section>
 
-    <Section Title="Custom Appearance Text">
+    <Section Title="Custom Appearance Text" DirtyPath="@nameof(Character.Appearance)">
         <AppTextarea Class="character-wizard-textarea"
                      Rows="3"
                      Placeholder="Specific details, clothing defaults, unusual traits, or anything the structured fields miss."
                      Value="@Character.Appearance"
                      ValueChanged="value => Character.Appearance = value"
+                     DirtyPath="@nameof(Character.Appearance)"
                      UpdateMode="TextUpdateMode.Change" />
     </Section>
 </div>
@@ -131,20 +132,29 @@
 @code {
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     CharacterAppearanceState Profile => Character.AppearanceProfile;
     CharacterTraitLibraryState Options => CharacterTraitLibraryService.NormalizeState(Library);
     int HairCount => (string.IsNullOrWhiteSpace(Profile.HairColor) ? 0 : 1) + Profile.HairStyles.Count;
     int SkinCount => (string.IsNullOrWhiteSpace(Profile.SkinTone) ? 0 : 1) + Profile.Complexion.Count;
     int HeightBuildCount => (string.IsNullOrWhiteSpace(Profile.Height) ? 0 : 1) + (string.IsNullOrWhiteSpace(Profile.Build) ? 0 : 1);
+    static readonly string[] HairPaths = [ProfilePath(nameof(CharacterAppearanceState.HairColor)), ProfilePath(nameof(CharacterAppearanceState.HairStyles))];
+    static readonly string[] SkinPaths = [ProfilePath(nameof(CharacterAppearanceState.SkinTone)), ProfilePath(nameof(CharacterAppearanceState.Complexion))];
+    static readonly string[] HeightBuildPaths = [ProfilePath(nameof(CharacterAppearanceState.Height)), ProfilePath(nameof(CharacterAppearanceState.Build))];
 
     void ToggleLimited(List<string> values, string value, int max)
     {
         if (values.Remove(value))
+        {
+            StatefulForm?.NotifyChanged();
             return;
+        }
 
         if (values.Count < max)
             values.Add(value);
+
+        StatefulForm?.NotifyChanged();
     }
 
     void SetSingle(string property, string value)
@@ -186,7 +196,11 @@
                 Profile.Attractiveness = next;
                 break;
         }
+
+        StatefulForm?.NotifyChanged();
     }
+
+    static string ProfilePath(string property) => $"{nameof(RpCharacter.AppearanceProfile)}.{property}";
 
     static string ChipClass(bool selected) => $"character-wizard-mini-chip {(selected ? "is-selected" : "")}";
 }

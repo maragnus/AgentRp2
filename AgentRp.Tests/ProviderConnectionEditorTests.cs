@@ -98,6 +98,47 @@ public sealed class ProviderConnectionEditorTests
         Assert.True(test.HasAttribute("disabled"));
     }
 
+    [Fact]
+    public async Task EditorEnablesSaveAfterRealChange()
+    {
+        using var context = new BunitContext();
+        context.JSInterop.Mode = JSRuntimeMode.Loose;
+        context.Services.AddScoped<IAiProviderConnectionService, TestProviderConnectionService>();
+        await using var liveStore = new LiveRoleplayStore(new SeedRoleplayPersistence(), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
+        var session = new RoleplaySession(liveStore);
+        await session.InitializeAsync();
+        var provider = new AiProvider
+        {
+            Id = "provider",
+            Name = "Compatible",
+            Type = "compatible",
+            Enabled = true,
+            ApiKey = "key",
+            Endpoint = "https://example.com/v1"
+        };
+        var meta = new AiProviderMeta
+        {
+            Id = "compatible",
+            Name = "Compatible",
+            KeyLabel = "API Key",
+            NeedsEndpoint = true,
+            EndpointRequired = true,
+            ApiKeyRequired = true
+        };
+
+        var component = context.Render<ProviderConnectionEditor>(parameters => parameters
+            .AddCascadingValue(session)
+            .Add(item => item.Provider, provider)
+            .Add(item => item.Meta, meta));
+
+        var nameInput = component.FindComponents<AppInput>().First(input => input.Instance.Value == "Compatible");
+        await nameInput.InvokeAsync(() => nameInput.Instance.NotifyTextValueChanged("Compatible Plus"));
+
+        var save = component.FindAll("button").First(button => button.TextContent.Contains("Save", StringComparison.Ordinal));
+        Assert.False(save.HasAttribute("disabled"));
+        Assert.Contains("is-dirty", component.Markup);
+    }
+
     sealed class TestProviderConnectionService : IAiProviderConnectionService
     {
         public Task TestProviderAsync(AiProvider provider, CancellationToken cancellationToken = default) => Task.CompletedTask;

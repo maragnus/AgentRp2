@@ -1,0 +1,17 @@
+<ConfirmDialog Title="Save changes?"
+               Body="You have unsaved edits. Save them before leaving, abandon them, or stay here."
+               Icon="floppy-disk"
+               OnCancel="OnCancel">
+    <Actions>
+        <AppButton Variant="secondary" OnClick="@(_ => OnCancel.InvokeAsync())">Cancel</AppButton>
+        <AppButton Variant="danger" OnClick="@(_ => OnAbandon.InvokeAsync())">Abandon Changes</AppButton>
+        <BusyButton Variant="primary" Disabled="@(!CanSave)" OnClick="OnSave"><FaIcon Name="check" />Save Changes</BusyButton>
+    </Actions>
+</ConfirmDialog>
+
+@code {
+    [Parameter] public bool CanSave { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnAbandon { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

@@ -11,7 +11,7 @@
                            Title="@tab.Title"
                            Summary="@tab.Summary"
                            Active="@(tab.Id == ActiveId)"
-                           Dirty="@tab.Dirty"
+                           Dirty="@TabDirty(tab)"
                            Done="@tab.Done"
                            Disabled="@tab.Disabled"
                            Locked="@tab.Locked"
@@ -41,6 +41,8 @@
     [Parameter] public RenderFragment? RailFooter { get; set; }
     [Parameter] public RenderFragment? MainContent { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] public StatefulFormPathScope? PathScope { get; set; }
 
     ModalTab? ActiveTab => Tabs.FirstOrDefault(tab => tab.Id == ActiveId) ?? Tabs.FirstOrDefault();
 
@@ -55,6 +57,8 @@
         Tabs.Remove(tab);
         _ = InvokeAsync(StateHasChanged);
     }
+
+    bool TabDirty(ModalTab tab) => StatefulFormDirtyState.Resolve(StatefulForm, PathScope, tab.Dirty, tab.DirtyPath, tab.DirtyPaths, tab.DirtyScopeId);
 
     Task Select(string id) => ActiveIdChanged.InvokeAsync(id);
 }

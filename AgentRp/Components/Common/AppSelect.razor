@@ -1,15 +1,43 @@
+@using System.Linq.Expressions
+
 <select class="@CssClass" value="@Value" @onchange="HandleChange">
     @ChildContent
 </select>
 
 @code {
+    FieldIdentifier? FieldIdentifier;
+
+    [CascadingParameter] EditContext? EditContext { get; set; }
+    [CascadingParameter] IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] StatefulFormPathScope? PathScope { get; set; }
+
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public string Size { get; set; } = "field";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<string>>? ValueExpression { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    string CssClass => string.Join(" ", new[] { "select", $"select-{Size}", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string CssClass => string.Join(" ", new[] { "select", $"select-{Size}", Class, IsDirty ? "is-dirty" : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    bool IsDirty =>
+        StatefulFormDirtyState.Resolve(StatefulForm, PathScope, Dirty, DirtyPath, DirtyPaths, DirtyScopeId) ||
+        (FieldIdentifier is { } dirtyField && StatefulForm?.IsFieldDirty(dirtyField) == true);
 
-    Task HandleChange(ChangeEventArgs args) => ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+    protected override void OnParametersSet()
+    {
+        FieldIdentifier = ValueExpression is null ? null : Microsoft.AspNetCore.Components.Forms.FieldIdentifier.Create(ValueExpression);
+    }
+
+    async Task HandleChange(ChangeEventArgs args)
+    {
+        await ValueChanged.InvokeAsync(args.Value?.ToString() ?? "");
+        if (FieldIdentifier is { } field)
+            EditContext?.NotifyFieldChanged(field);
+
+        StatefulForm?.NotifyChanged();
+    }
 }

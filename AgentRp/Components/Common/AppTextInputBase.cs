@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
+using System.Linq.Expressions;
 using AgentRp.Models;
 
 namespace AgentRp.Components.Common;
@@ -14,18 +16,28 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
     bool PendingTextUpdate = true;
     bool PendingInitialEmptySync = true;
     bool Disposed;
+    FieldIdentifier? FieldIdentifier;
     string LastParameterValue = "";
     string LastReportedValue = "";
     bool LastReportedEmpty;
+
+    [CascadingParameter] EditContext? EditContext { get; set; }
+    [CascadingParameter] IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] StatefulFormPathScope? PathScope { get; set; }
 
     [Inject] protected IJSRuntime JS { get; set; } = default!;
     [Inject] protected ILogger<TComponent> Logger { get; set; } = default!;
 
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<string>>? ValueExpression { get; set; }
     [Parameter] public bool IsEmpty { get; set; }
     [Parameter] public EventCallback<bool> IsEmptyChanged { get; set; }
     [Parameter] public TextUpdateMode UpdateMode { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
 
     protected ElementReference InputElement
     {
@@ -35,6 +47,8 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
 
     protected override void OnParametersSet()
     {
+        FieldIdentifier = ValueExpression is null ? null : Microsoft.AspNetCore.Components.Forms.FieldIdentifier.Create(ValueExpression);
+
         if (!string.Equals(LastParameterValue, Value, StringComparison.Ordinal))
         {
             LastParameterValue = Value;
@@ -68,6 +82,7 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
             LastReportedValue = value;
             LastParameterValue = value;
             await ValueChanged.InvokeAsync(value);
+            NotifyFieldChanged();
         }
 
         await NotifyTextEmptyChanged(IsEmptyValue(value));
@@ -166,6 +181,24 @@ public abstract class AppTextInputBase<TComponent> : ComponentBase, IAsyncDispos
         changeDebounceMilliseconds = 2000,
         liveDebounceMilliseconds = 500
     };
+
+    protected string BuildFieldCssClass(string? componentClass = null)
+    {
+        var values = new[] { "field", componentClass, IsDirty ? "is-dirty" : null };
+        return string.Join(" ", values.Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
+
+    protected bool IsDirty =>
+        StatefulFormDirtyState.Resolve(StatefulForm, PathScope, Dirty, DirtyPath, DirtyPaths, DirtyScopeId) ||
+        (FieldIdentifier is { } dirtyField && StatefulForm?.IsFieldDirty(dirtyField) == true);
+
+    void NotifyFieldChanged()
+    {
+        if (FieldIdentifier is { } field)
+            EditContext?.NotifyFieldChanged(field);
+
+        StatefulForm?.NotifyChanged();
+    }
 
     async ValueTask DisposeTextUpdateAsync()
     {

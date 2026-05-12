@@ -32,3 +32,32 @@ public sealed class SnapshotDraftTimelineEntryEditor
         ItemNames = [.. ItemNames]
     };
 }
+
+public sealed class SnapshotDraftEditorState
+{
+    public string Summary { get; set; } = "";
+    public List<SnapshotDraftTimelineEntryEditor> TimelineEntries { get; set; } = [];
+    public List<RpTranscriptSnapshotRelationshipUpdate> RelationshipUpdates { get; set; } = [];
+
+    public static SnapshotDraftEditorState From(RpTranscriptSnapshotDraft draft) => new()
+    {
+        Summary = draft.Summary,
+        TimelineEntries = draft.TimelineEntries.Select(SnapshotDraftTimelineEntryEditor.From).ToList(),
+        RelationshipUpdates = draft.RelationshipUpdates.Select(CloneRelationshipUpdate).ToList()
+    };
+
+    public static RpTranscriptSnapshotRelationshipUpdate CloneRelationshipUpdate(RpTranscriptSnapshotRelationshipUpdate value) => new()
+    {
+        RelationshipId = value.RelationshipId,
+        ApplyChange = value.ApplyChange,
+        SourceCharacterId = value.SourceCharacterId,
+        TargetCharacterId = value.TargetCharacterId,
+        RelationshipTypes = [.. value.RelationshipTypes],
+        PrivateTensions = [.. value.PrivateTensions],
+        HowSourceSeesTarget = value.HowSourceSeesTarget,
+        HowTargetSeesSource = value.HowTargetSeesSource,
+        PublicDynamic = value.PublicDynamic,
+        Reason = value.Reason,
+        EvidenceTurnNumbers = [.. value.EvidenceTurnNumbers]
+    };
+}

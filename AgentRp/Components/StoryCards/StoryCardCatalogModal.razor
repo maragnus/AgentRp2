@@ -2,7 +2,7 @@
 @inject IStoryCardCatalogService Catalog
 @inject ILogger<StoryCardCatalogModal> Logger
 
-<ModalShell Title="@Title" Icon="cards" MaxWidth="1040px" BodyClass="is-flush" OnClose="OnClose">
+<ModalShell Title="@Title" Icon="cards" MaxWidth="1040px" BodyClass="is-flush" OnClose="RequestClose">
     <ModalSplitLayout Height="680px" RailWidth="280px" Class="story-card-catalog">
         <RailHeader>
             <span>Catalog</span>
@@ -59,34 +59,41 @@
             }
             else
             {
-                <StoryCardEditor Template="Selected"
-                                 Editable="@CanEditSelected"
-                                 SourceText="@SourceText"
-                                 Height="680px">
-                    <Footer>
-                        <span class="modal-action-spacer"></span>
-                        <span class="modal-action-group">
-                            @if (PickerMode)
-                            {
-                                <BusyButton Disabled="@(!CanApplySelected)" OnClick="@UseSelected"><FaIcon Name="plus" />Add Card</BusyButton>
-                            }
-                            else
-                            {
-                                @if (!string.IsNullOrWhiteSpace(Selected.ParentTemplateId))
-                                {
-                                    <AppButton Variant="secondary" OnClick="@(_ => Select(Selected.ParentTemplateId))"><FaIcon Name="git-branch" />Parent</AppButton>
-                                }
-                                <BusyButton Variant="secondary" OnClick="@RefreshStats"><FaIcon Name="rotate" />Refresh Stats</BusyButton>
-                                <BusyButton Variant="secondary" OnClick="@Remix"><FaIcon Name="copy" />Remix</BusyButton>
-                                @if (CanEditSelected)
-                                {
-                                    <BusyButton Variant="secondary" OnClick="@Archive"><FaIcon Name="archive" />Archive</BusyButton>
-                                    <BusyButton OnClick="@Save"><FaIcon Name="check" />Save</BusyButton>
-                                }
-                            }
-                        </span>
-                    </Footer>
-                </StoryCardEditor>
+                <StatefulForm Model="@Selected" Baseline="@SelectedBaseline" OnSave="Save" OnClose="OnClose" ContextChanged="SetTemplateForm" DisableNavigationGuard="@PickerMode">
+                    <ChildContent Context="form">
+                        <StoryCardEditor Template="Selected"
+                                         TemplateBaseline="SelectedBaseline"
+                                         Editable="@CanEditSelected"
+                                         SourceText="@SourceText"
+                                         Height="680px">
+                            <Footer>
+                                <span class="modal-action-spacer"></span>
+                                <span class="modal-action-group">
+                                    @if (PickerMode)
+                                    {
+                                        <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
+                                        <BusyButton Disabled="@(!CanApplySelected)" OnClick="@UseSelected"><FaIcon Name="plus" />Add Card</BusyButton>
+                                    }
+                                    else
+                                    {
+                                        <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                                        @if (!string.IsNullOrWhiteSpace(Selected.ParentTemplateId))
+                                        {
+                                            <AppButton Variant="secondary" OnClick="@(_ => Select(Selected.ParentTemplateId))"><FaIcon Name="git-branch" />Parent</AppButton>
+                                        }
+                                        <BusyButton Variant="secondary" OnClick="@RefreshStats"><FaIcon Name="rotate" />Refresh Stats</BusyButton>
+                                        <BusyButton Variant="secondary" OnClick="@Remix"><FaIcon Name="copy" />Remix</BusyButton>
+                                        @if (CanEditSelected)
+                                        {
+                                            <BusyButton Variant="secondary" OnClick="@Archive"><FaIcon Name="archive" />Archive</BusyButton>
+                                            <BusyButton Disabled="@(!form.CanSave)" OnClick="@form.SaveAsync"><FaIcon Name="check" />Save</BusyButton>
+                                        }
+                                    }
+                                </span>
+                            </Footer>
+                        </StoryCardEditor>
+                    </ChildContent>
+                </StatefulForm>
             }
         </MainContent>
     </ModalSplitLayout>
@@ -100,6 +107,8 @@
 
     List<StoryCardTemplate> Templates = [];
     StoryCardTemplate? Selected;
+    StoryCardTemplate SelectedBaseline = new();
+    StatefulFormContext<StoryCardTemplate>? TemplateForm;
     string ErrorMessage = "";
     string Title => PickerMode ? "Add Story Card" : "Story Cards";
     bool CanEditSelected => Selected is not null && (Session.CurrentUser.IsAdmin || Selected.OwnerUserId == Session.CurrentUser.Id);
@@ -124,11 +133,11 @@
         {
             Templates = (await Catalog.LoadCatalogAsync(Session.CurrentUser)).ToList();
             if (!string.IsNullOrWhiteSpace(selectedId))
-                Selected = await Catalog.LoadTemplateAsync(Session.CurrentUser, selectedId, lineageView: true);
+                await LoadSelectedAsync(selectedId);
             else if (Selected is not null)
-                Selected = Templates.FirstOrDefault(template => template.Id == Selected.Id) ?? Selected;
+                await LoadSelectedAsync(Selected.Id);
             else
-                Selected = Templates.FirstOrDefault();
+                SetSelected(Templates.FirstOrDefault());
         }
         catch (Exception exception)
         {
@@ -140,12 +149,14 @@
         }
     }
 
-    async Task Select(string id)
+    Task Select(string id) => GuardSelectedAsync(() => LoadSelectedAsync(id));
+
+    async Task LoadSelectedAsync(string id)
     {
         ErrorMessage = "";
         try
         {
-            Selected = await Catalog.LoadTemplateAsync(Session.CurrentUser, id, lineageView: true);
+            SetSelected(await Catalog.LoadTemplateAsync(Session.CurrentUser, id, lineageView: true));
         }
         catch (Exception exception)
         {
@@ -158,9 +169,11 @@
         }
     }
 
-    void NewTemplate()
+    Task NewTemplate() => GuardSelectedAsync(NewTemplateDirect);
+
+    Task NewTemplateDirect()
     {
-        Selected = new()
+        SetSelected(new()
         {
             Title = "New Story Card",
             OwnerUserId = Session.CurrentUser.Id,
@@ -169,7 +182,8 @@
             [
                 new() { Id = $"phase-{Guid.NewGuid():N}", Title = "Opening Phase", SortOrder = 0, IsEnding = true }
             ]
-        };
+        }, new());
+        return Task.CompletedTask;
     }
 
     async Task Save()
@@ -180,8 +194,8 @@
         ErrorMessage = "";
         try
         {
-            Selected = await Catalog.SaveTemplateAsync(Session.CurrentUser, Selected);
-            await LoadAsync(Selected.Id);
+            var saved = await Catalog.SaveTemplateAsync(Session.CurrentUser, Selected);
+            await LoadAsync(saved.Id);
         }
         catch (Exception exception)
         {
@@ -194,7 +208,9 @@
         }
     }
 
-    async Task Remix()
+    Task Remix() => GuardSelectedAsync(RemixSelected);
+
+    async Task RemixSelected()
     {
         if (Selected is null)
             return;
@@ -216,7 +232,9 @@
         }
     }
 
-    async Task Archive()
+    Task Archive() => GuardSelectedAsync(ArchiveSelected);
+
+    async Task ArchiveSelected()
     {
         if (Selected is null)
             return;
@@ -239,7 +257,9 @@
         }
     }
 
-    async Task RefreshStats()
+    Task RefreshStats() => GuardSelectedAsync(RefreshSelectedStats);
+
+    async Task RefreshSelectedStats()
     {
         if (Selected is null)
             return;
@@ -247,8 +267,8 @@
         ErrorMessage = "";
         try
         {
-            Selected = await Catalog.RefreshStatsAsync(Session.CurrentUser, Selected.Id);
-            await LoadAsync(Selected.Id);
+            var refreshed = await Catalog.RefreshStatsAsync(Session.CurrentUser, Selected.Id);
+            await LoadAsync(refreshed.Id);
         }
         catch (Exception exception)
         {
@@ -267,6 +287,28 @@
             return;
 
         await OnUseTemplate.InvokeAsync(Selected.Id);
+    }
+
+    Task RequestClose() => TemplateForm?.RequestCloseAsync() ?? OnClose.InvokeAsync();
+
+    Task GuardSelectedAsync(Func<Task> action) => TemplateForm?.GuardAsync(action) ?? action();
+
+    void SetTemplateForm(StatefulFormContext<StoryCardTemplate> form)
+    {
+        TemplateForm = form;
+    }
+
+    void SetSelected(StoryCardTemplate? template, StoryCardTemplate? baseline = null)
+    {
+        if (template is null)
+        {
+            Selected = null;
+            SelectedBaseline = new();
+            return;
+        }
+
+        Selected = SessionCloner.Clone(template);
+        SelectedBaseline = baseline is null ? SessionCloner.Clone(template) : SessionCloner.Clone(baseline);
     }
 
     string TemplateRowClass(StoryCardTemplate template) =>

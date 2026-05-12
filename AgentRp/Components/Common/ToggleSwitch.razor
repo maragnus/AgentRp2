@@ -1,13 +1,42 @@
+@using System.Linq.Expressions
+
 <AppButton Bare Class="@CssClass" TooltipText="@TooltipText" AriaLabel="@TooltipText" Disabled="@Disabled" OnClick="@Toggle">
     <span></span>
 </AppButton>
 
 @code {
+    FieldIdentifier? FieldIdentifier;
+
+    [CascadingParameter] EditContext? EditContext { get; set; }
+    [CascadingParameter] IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] StatefulFormPathScope? PathScope { get; set; }
+
     [Parameter] public bool Value { get; set; }
     [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<bool>>? ValueExpression { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public string TooltipText { get; set; } = "Toggle";
 
-    Task Toggle(MouseEventArgs args) => ValueChanged.InvokeAsync(!Value);
-    string CssClass => $"toggle-switch {(Value ? "is-on" : "")}";
+    string CssClass => string.Join(" ", new[] { "toggle-switch", Value ? "is-on" : null, IsDirty ? "is-dirty" : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    bool IsDirty =>
+        StatefulFormDirtyState.Resolve(StatefulForm, PathScope, Dirty, DirtyPath, DirtyPaths, DirtyScopeId) ||
+        (FieldIdentifier is { } dirtyField && StatefulForm?.IsFieldDirty(dirtyField) == true);
+
+    protected override void OnParametersSet()
+    {
+        FieldIdentifier = ValueExpression is null ? null : Microsoft.AspNetCore.Components.Forms.FieldIdentifier.Create(ValueExpression);
+    }
+
+    async Task Toggle(MouseEventArgs args)
+    {
+        await ValueChanged.InvokeAsync(!Value);
+        if (FieldIdentifier is { } field)
+            EditContext?.NotifyFieldChanged(field);
+
+        StatefulForm?.NotifyChanged();
+    }
 }

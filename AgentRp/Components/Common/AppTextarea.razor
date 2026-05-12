@@ -1,7 +1,7 @@
 @inherits AppTextInputBase<AppTextarea>
 
 <textarea @attributes="AdditionalAttributes"
-          class="field @Class"
+          class="@BuildFieldCssClass(Class)"
           @ref="InputElement"
           rows="@Rows"
           style="@TextareaStyle"

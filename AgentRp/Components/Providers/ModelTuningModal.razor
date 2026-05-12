@@ -1,12 +1,18 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-<ModalShell Title="Model Tuning" MaxWidth="780px" BodyClass="is-flush" OnClose="OnClose">
+<StatefulForm Model="@Draft"
+              Baseline="@Baseline"
+              OnSave="Save"
+              OnClose="OnClose"
+              ContextChanged="SetTuningForm">
+    <ChildContent Context="form">
+<ModalShell Title="Model Tuning" MaxWidth="780px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalTabGroup ActiveId="@Active" ActiveIdChanged="SetActive" Height="540px" RailWidth="156px">
         <ChildContent>
             @foreach (var step in Steps)
             {
-                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" Dirty="@IsDirtyStep(step.Id)" />
+                <ModalTab @key="step.Id" Id="@step.Id" Title="@step.Label" DirtyPath="@StepPath(step.Id)" />
             }
         </ChildContent>
         <RailFooter>
@@ -78,8 +84,9 @@
                     }
                 </div>
 
-                <FormSection Title="Sampling" Class="tuning-section">
-                    <FieldRow Label="Temperature">
+                <StatefulFormScope PathPrefix="@StepPath(Active)">
+                <FormSection Title="Sampling" Class="tuning-section" DirtyPaths="@SamplingPaths">
+                    <FieldRow Label="Temperature" DirtyPath="@nameof(Current.Temperature)">
                         <LabelAction>
                             @if (Current.Temperature is double temperature)
                             {
@@ -99,6 +106,7 @@
                             {
                                 <RangeSlider Value="@TemperatureSliderValue"
                                              ValueChanged="SetTemperature"
+                                             DirtyPath="@nameof(Current.Temperature)"
                                              Min="0"
                                              Max="2"
                                              Step="0.01"
@@ -112,34 +120,37 @@
                         </ChildContent>
                     </FieldRow>
                     <div class="tuning-grid">
-                        <NumberSetting Label="Top P" Value="@Current.TopP" Disabled="@(ActiveCapabilities.TopP != TuningSupport.Supported)" ValueChanged="value => Current.TopP = value" />
-                        <NumberSetting Label="Seed" Value="@Current.Seed" Disabled="@(ActiveCapabilities.Seed != TuningSupport.Supported)" ValueChanged="value => Current.Seed = value" />
+                        <NumberSetting Label="Top P" Value="@Current.TopP" Disabled="@(ActiveCapabilities.TopP != TuningSupport.Supported)" DirtyPath="@nameof(Current.TopP)" ValueChanged="SetTopP" />
+                        <NumberSetting Label="Seed" Value="@Current.Seed" Disabled="@(ActiveCapabilities.Seed != TuningSupport.Supported)" DirtyPath="@nameof(Current.Seed)" ValueChanged="SetSeed" />
                     </div>
                 </FormSection>
 
-                <FormSection Title="Limits & Penalties" Class="tuning-section">
+                <FormSection Title="Limits & Penalties" Class="tuning-section" DirtyPaths="@LimitPaths">
                     <div class="tuning-grid">
-                        <NumberSetting Label="Max Output Tokens" Value="@Current.MaxTokens" Disabled="@(ActiveCapabilities.MaxTokens != TuningSupport.Supported)" ValueChanged="value => Current.MaxTokens = value" />
-                        <NumberSetting Label="Frequency Penalty" Value="@Current.FrequencyPenalty" Disabled="@(ActiveCapabilities.FrequencyPenalty != TuningSupport.Supported)" ValueChanged="value => Current.FrequencyPenalty = value" />
-                        <NumberSetting Label="Presence Penalty" Value="@Current.PresencePenalty" Disabled="@(ActiveCapabilities.PresencePenalty != TuningSupport.Supported)" ValueChanged="value => Current.PresencePenalty = value" />
+                        <NumberSetting Label="Max Output Tokens" Value="@Current.MaxTokens" Disabled="@(ActiveCapabilities.MaxTokens != TuningSupport.Supported)" DirtyPath="@nameof(Current.MaxTokens)" ValueChanged="SetMaxTokens" />
+                        <NumberSetting Label="Frequency Penalty" Value="@Current.FrequencyPenalty" Disabled="@(ActiveCapabilities.FrequencyPenalty != TuningSupport.Supported)" DirtyPath="@nameof(Current.FrequencyPenalty)" ValueChanged="SetFrequencyPenalty" />
+                        <NumberSetting Label="Presence Penalty" Value="@Current.PresencePenalty" Disabled="@(ActiveCapabilities.PresencePenalty != TuningSupport.Supported)" DirtyPath="@nameof(Current.PresencePenalty)" ValueChanged="SetPresencePenalty" />
                     </div>
                 </FormSection>
 
-                <FormSection Title="Stop Conditions" Class="tuning-section">
-                    <FieldRow Label="Stop Sequences" Hint="Enter one stop sequence per line.">
-                        <AppTextarea Class="mono" Rows="3" @bind-Value="Current.StopSequences" Disabled="@(ActiveCapabilities.StopSequences != TuningSupport.Supported)" Placeholder="One stop sequence per line…" />
+                <FormSection Title="Stop Conditions" Class="tuning-section" DirtyPath="@nameof(Current.StopSequences)">
+                    <FieldRow Label="Stop Sequences" Hint="Enter one stop sequence per line." DirtyPath="@nameof(Current.StopSequences)">
+                        <AppTextarea Class="mono" Rows="3" Value="@Current.StopSequences" ValueChanged="SetStopSequences" DirtyPath="@nameof(Current.StopSequences)" Disabled="@(ActiveCapabilities.StopSequences != TuningSupport.Supported)" Placeholder="One stop sequence per line..." />
                     </FieldRow>
                 </FormSection>
+                </StatefulFormScope>
             </ChildContent>
 
             <Footer>
-                <AppButton Variant="secondary" OnClick="@(_ => OnClose.InvokeAsync())">Cancel</AppButton>
-                <AppButton Variant="primary" OnClick="Save"><FaIcon Name="check" />Save</AppButton>
+                <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                <BusyButton Variant="primary" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync">Save</BusyButton>
             </Footer>
         </ModalStackLayout>
         </MainContent>
     </ModalTabGroup>
 </ModalShell>
+    </ChildContent>
+</StatefulForm>
 
 @code {
     sealed record StepDef(string Id, string Label);
@@ -157,6 +168,10 @@
 
     Dictionary<string, ModelTuningStepState> Defaults = new();
     ModelTuningState Draft = ModelTuningState.CreateDefault();
+    ModelTuningState Baseline = ModelTuningState.CreateDefault();
+    StatefulFormContext<ModelTuningState>? TuningForm;
+    static readonly string[] SamplingPaths = [nameof(ModelTuningStepState.Temperature), nameof(ModelTuningStepState.TopP), nameof(ModelTuningStepState.Seed)];
+    static readonly string[] LimitPaths = [nameof(ModelTuningStepState.MaxTokens), nameof(ModelTuningStepState.FrequencyPenalty), nameof(ModelTuningStepState.PresencePenalty)];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
@@ -180,7 +195,8 @@
 
     protected override void OnInitialized()
     {
-        Draft = Session.ModelTuning.State;
+        Draft = SessionCloner.Clone(Session.ModelTuning.State);
+        Baseline = SessionCloner.Clone(Draft);
         Session.ModelTuning.Changed += OnStoreChanged;
         Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
@@ -191,7 +207,11 @@
 
     Task OnStoreChanged()
     {
-        Draft = Session.ModelTuning.State;
+        if (TuningForm?.HasChanges == true)
+            return InvokeAsync(StateHasChanged);
+
+        Draft = SessionCloner.Clone(Session.ModelTuning.State);
+        Baseline = SessionCloner.Clone(Draft);
         return InvokeAsync(StateHasChanged);
     }
 
@@ -206,20 +226,18 @@
         StopSequences = value.StopSequences
     };
 
-    bool IsDirty() => IsDirtyStep(Active);
+    void SetTuningForm(StatefulFormContext<ModelTuningState> form) => TuningForm = form;
+
+    bool IsDirty() => IsFactoryDefaultDirtyStep(Active);
     void SetActive(string? id) => Active = id ?? Active;
 
-    bool IsDirtyStep(string id)
+    static string StepPath(string id) => $"{nameof(ModelTuningState.Values)}.{id}";
+
+    bool IsFactoryDefaultDirtyStep(string id)
     {
         var current = Values[id];
         var def = Defaults[id];
-        return current.Temperature != def.Temperature ||
-               current.TopP != def.TopP ||
-               current.MaxTokens != def.MaxTokens ||
-               current.Seed != def.Seed ||
-               current.FrequencyPenalty != def.FrequencyPenalty ||
-               current.PresencePenalty != def.PresencePenalty ||
-               current.StopSequences != def.StopSequences;
+        return !Equivalent(current, def);
     }
 
     void EnableTemperature()
@@ -228,23 +246,68 @@
             return;
 
         Current.Temperature ??= 1d;
+        Touch();
     }
 
-    void ClearTemperature() => Current.Temperature = null;
+    void ClearTemperature()
+    {
+        Current.Temperature = null;
+        Touch();
+    }
 
-    void SetTemperature(double value) => Current.Temperature = value;
+    void SetTemperature(double value)
+    {
+        Current.Temperature = value;
+        Touch();
+    }
 
-    async Task Reset()
+    void SetTopP(string value)
+    {
+        Current.TopP = value;
+        Touch();
+    }
+
+    void SetSeed(string value)
+    {
+        Current.Seed = value;
+        Touch();
+    }
+
+    void SetMaxTokens(string value)
+    {
+        Current.MaxTokens = value;
+        Touch();
+    }
+
+    void SetFrequencyPenalty(string value)
+    {
+        Current.FrequencyPenalty = value;
+        Touch();
+    }
+
+    void SetPresencePenalty(string value)
+    {
+        Current.PresencePenalty = value;
+        Touch();
+    }
+
+    void SetStopSequences(string value)
+    {
+        Current.StopSequences = value;
+        Touch();
+    }
+
+    void Reset()
     {
         Values[Active] = Clone(Defaults[Active]);
-        await Session.ModelTuning.SaveAsync(Draft);
+        Touch();
     }
 
     void CopyTo(string targetId)
     {
         Values[targetId] = Clone(Current);
         CopiedToast = $"Copied to {Steps.First(step => step.Id == targetId).Label}";
-        _ = Session.ModelTuning.SaveAsync(Draft);
+        Touch();
     }
 
     void CopyToAll()
@@ -253,7 +316,7 @@
             Values[step.Id] = Clone(Current);
 
         CopiedToast = "Copied to all phases";
-        _ = Session.ModelTuning.SaveAsync(Draft);
+        Touch();
     }
 
     async Task ExportSettings()
@@ -274,7 +337,7 @@
             if (parsed is not null)
             {
                 Values[Active] = parsed;
-                await Session.ModelTuning.SaveAsync(Draft);
+                Touch();
             }
         }
         catch
@@ -283,7 +346,22 @@
         }
     }
 
-    Task Save(MouseEventArgs args) => Session.ModelTuning.SaveAsync(Draft);
+    async Task Save()
+    {
+        await Session.ModelTuning.SaveAsync(Draft);
+        Baseline = SessionCloner.Clone(Draft);
+    }
+
+    void Touch() => TuningForm?.NotifyChanged();
+
+    static bool Equivalent(ModelTuningStepState current, ModelTuningStepState baseline) =>
+        current.Temperature == baseline.Temperature &&
+        current.TopP == baseline.TopP &&
+        current.MaxTokens == baseline.MaxTokens &&
+        current.Seed == baseline.Seed &&
+        current.FrequencyPenalty == baseline.FrequencyPenalty &&
+        current.PresencePenalty == baseline.PresencePenalty &&
+        current.StopSequences == baseline.StopSequences;
 
     public void Dispose()
     {

@@ -2,22 +2,22 @@
 
 <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="@Height" RailWidth="170px" Class="story-card-editor-tabs">
     <ChildContent>
-        <ModalTab Id="overview" Title="Overview" Summary="@OverviewSummary" Dirty="false">
+        <ModalTab Id="overview" Title="Overview" Summary="@OverviewSummary" Dirty="@OverviewDirty()">
             <LeadingContent><FaIcon Name="book-open" /></LeadingContent>
         </ModalTab>
-        <ModalTab Id="phases" Title="Phases" Summary="@CountSummary(PhaseCount)" Dirty="false">
+        <ModalTab Id="phases" Title="Phases" Summary="@CountSummary(PhaseCount)" Dirty="@PhasesDirty()">
             <LeadingContent><FaIcon Name="branch" /></LeadingContent>
             <TrailingContent><Badge Tone="blue">@PhaseCount</Badge></TrailingContent>
         </ModalTab>
-        <ModalTab Id="roles" Title="Roles" Summary="@CountSummary(RoleCount)" Dirty="false">
+        <ModalTab Id="roles" Title="Roles" Summary="@CountSummary(RoleCount)" Dirty="@RolesDirty()">
             <LeadingContent><FaIcon Name="users" /></LeadingContent>
             <TrailingContent><Badge Tone="violet">@RoleCount</Badge></TrailingContent>
         </ModalTab>
-        <ModalTab Id="items" Title="Items" Summary="@CountSummary(ItemCount)" Dirty="false">
+        <ModalTab Id="items" Title="Items" Summary="@CountSummary(ItemCount)" Dirty="@ItemsDirty()">
             <LeadingContent><FaIcon Name="box" /></LeadingContent>
             <TrailingContent><Badge Tone="amber">@ItemCount</Badge></TrailingContent>
         </ModalTab>
-        <ModalTab Id="locations" Title="Locations" Summary="@CountSummary(LocationCount)" Dirty="false">
+        <ModalTab Id="locations" Title="Locations" Summary="@CountSummary(LocationCount)" Dirty="@LocationsDirty()">
             <LeadingContent><FaIcon Name="map-pin" /></LeadingContent>
             <TrailingContent><Badge Tone="emerald">@LocationCount</Badge></TrailingContent>
         </ModalTab>
@@ -37,15 +37,15 @@
             <ChildContent>
                 @if (ActiveTab == "overview")
                 {
-                    <FormSection Title="Card">
-                        <FieldRow Label="Title">
-                            <AppInput Value="@Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+                    <FormSection Title="Card" Dirty="@OverviewDirty()">
+                        <FieldRow Label="Title" Dirty="@TitleDirty()">
+                            <AppInput Value="@Title" ValueChanged="SetTitle" Dirty="@TitleDirty()" Disabled="@(!Editable)" />
                         </FieldRow>
-                        <FieldRow Label="Summary">
-                            <AppTextarea Rows="3" Value="@Summary" ValueChanged="SetSummary" Disabled="@(!Editable)" />
+                        <FieldRow Label="Summary" Dirty="@SummaryDirty()">
+                            <AppTextarea Rows="3" Value="@Summary" ValueChanged="SetSummary" Dirty="@SummaryDirty()" Disabled="@(!Editable)" />
                         </FieldRow>
-                        <FieldRow Label="Instructions">
-                            <AppTextarea Rows="7" Value="@Instructions" ValueChanged="SetInstructions" Disabled="@(!Editable)" />
+                        <FieldRow Label="Instructions" Dirty="@InstructionsDirty()">
+                            <AppTextarea Rows="7" Value="@Instructions" ValueChanged="SetInstructions" Dirty="@InstructionsDirty()" Disabled="@(!Editable)" />
                         </FieldRow>
                     </FormSection>
                     @if (!string.IsNullOrWhiteSpace(SourceText))
@@ -116,11 +116,14 @@
 
 @code {
     [Parameter] public StoryCardTemplate? Template { get; set; }
+    [Parameter] public StoryCardTemplate? TemplateBaseline { get; set; }
     [Parameter] public StoryCardInstance? Instance { get; set; }
+    [Parameter] public StoryCardInstance? InstanceBaseline { get; set; }
     [Parameter] public bool Editable { get; set; }
     [Parameter] public string Height { get; set; } = "600px";
     [Parameter] public string SourceText { get; set; } = "";
     [Parameter] public RenderFragment? Footer { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     string ActiveTab = "overview";
     string Title
@@ -200,18 +203,21 @@
     Task SetTitle(string value)
     {
         Title = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetSummary(string value)
     {
         Summary = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetInstructions(string value)
     {
         Instructions = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
@@ -220,11 +226,15 @@
         if (Template is not null)
         {
             AddTemplateChild(Template);
+            StatefulForm?.NotifyChanged();
             return;
         }
 
         if (Instance is not null)
+        {
             AddInstanceChild(Instance);
+            StatefulForm?.NotifyChanged();
+        }
     }
 
     void AddTemplateChild(StoryCardTemplate template)
@@ -330,6 +340,7 @@
                 : "";
         if (!string.IsNullOrWhiteSpace(childCardId))
             AddRequirement(request.PhaseId, request.ChildCardType, childCardId);
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
@@ -370,6 +381,7 @@
     {
         Template?.PhaseRequirements.RemoveAll(requirement => requirement.Id == requirementId);
         Instance?.PhaseRequirements.RemoveAll(requirement => requirement.Id == requirementId);
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
@@ -399,8 +411,56 @@
             Instance.PhaseRequirements.RemoveAll(requirement => requirement.PhaseId == phaseId);
         }
 
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
+
+    bool OverviewDirty() => TitleDirty() || SummaryDirty() || InstructionsDirty();
+
+    bool TitleDirty() => CurrentBaselineTitle() != Title;
+    bool SummaryDirty() => CurrentBaselineSummary() != Summary;
+    bool InstructionsDirty() => CurrentBaselineInstructions() != Instructions;
+
+    bool PhasesDirty()
+    {
+        if (Template is not null && TemplateBaseline is not null)
+            return !StatefulFormSnapshot.Equivalent(Template.Phases, TemplateBaseline.Phases)
+                || !StatefulFormSnapshot.Equivalent(Template.PhaseRequirements, TemplateBaseline.PhaseRequirements)
+                || !StatefulFormSnapshot.Equivalent(Template.PhaseTransitions, TemplateBaseline.PhaseTransitions);
+
+        return Instance is not null && InstanceBaseline is not null
+            && (!StatefulFormSnapshot.Equivalent(Instance.Phases, InstanceBaseline.Phases)
+                || !StatefulFormSnapshot.Equivalent(Instance.PhaseRequirements, InstanceBaseline.PhaseRequirements)
+                || !StatefulFormSnapshot.Equivalent(Instance.PhaseTransitions, InstanceBaseline.PhaseTransitions));
+    }
+
+    bool RolesDirty()
+    {
+        if (Template is not null && TemplateBaseline is not null)
+            return !StatefulFormSnapshot.Equivalent(Template.Roles, TemplateBaseline.Roles);
+
+        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Roles, InstanceBaseline.Roles);
+    }
+
+    bool ItemsDirty()
+    {
+        if (Template is not null && TemplateBaseline is not null)
+            return !StatefulFormSnapshot.Equivalent(Template.Items, TemplateBaseline.Items);
+
+        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Items, InstanceBaseline.Items);
+    }
+
+    bool LocationsDirty()
+    {
+        if (Template is not null && TemplateBaseline is not null)
+            return !StatefulFormSnapshot.Equivalent(Template.Locations, TemplateBaseline.Locations);
+
+        return Instance is not null && InstanceBaseline is not null && !StatefulFormSnapshot.Equivalent(Instance.Locations, InstanceBaseline.Locations);
+    }
+
+    string CurrentBaselineTitle() => TemplateBaseline?.Title ?? InstanceBaseline?.Title ?? "";
+    string CurrentBaselineSummary() => TemplateBaseline?.Summary ?? InstanceBaseline?.Summary ?? "";
+    string CurrentBaselineInstructions() => TemplateBaseline?.Instructions ?? InstanceBaseline?.Instructions ?? "";
 
     static string CountSummary(int count) => count == 1 ? "1 card" : $"{count} cards";
 

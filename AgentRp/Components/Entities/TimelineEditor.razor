@@ -1,12 +1,12 @@
 <FormStack>
-    <FormSection Title="Event">
+    <FormSection Title="Event" DirtyPaths="@EventPaths">
         <div class="field-row-grid cols-3">
-            <FieldRow Label="Title" Class="span-2"><AppInput Value="@Entry.Title" ValueChanged="SetTitle" /></FieldRow>
-            <FieldRow Label="When"><AppInput Value="@Entry.Date" ValueChanged="SetDate" /></FieldRow>
+            <FieldRow Label="Title" Class="span-2" DirtyPath="Title"><AppInput Value="@Entry.Title" ValueChanged="SetTitle" DirtyPath="Title" /></FieldRow>
+            <FieldRow Label="When" DirtyPath="Date"><AppInput Value="@Entry.Date" ValueChanged="SetDate" DirtyPath="Date" /></FieldRow>
         </div>
-        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Entry.Description" ValueChanged="SetDescription" /></FieldRow>
+        <FieldRow Label="Description" DirtyPath="Description"><AppTextarea Rows="5" Value="@Entry.Description" ValueChanged="SetDescription" DirtyPath="Description" /></FieldRow>
     </FormSection>
-    <FormSection Title="Linked Characters">
+    <FormSection Title="Linked Characters" DirtyPath="CharacterIds">
         <TiledSelectList Items="Characters"
                          SelectedIds="SelectedCharacterIds"
                          GetId="character => character.Id"
@@ -23,7 +23,7 @@
             <EmptyContent>No characters yet.</EmptyContent>
         </TiledSelectList>
     </FormSection>
-    <FormSection Title="Linked Locations">
+    <FormSection Title="Linked Locations" DirtyPath="LocationIds">
         <TiledSelectList Items="Locations"
                          SelectedIds="SelectedLocationIds"
                          GetId="location => location.Id"
@@ -40,8 +40,8 @@
             <EmptyContent>No locations yet.</EmptyContent>
         </TiledSelectList>
     </FormSection>
-    <FormSection Title="Story Context">
-        <FieldRow Label="Significance"><AppTextarea Rows="4" Value="@Entry.Significance" ValueChanged="SetSignificance" /></FieldRow>
+    <FormSection Title="Story Context" DirtyPath="Significance">
+        <FieldRow Label="Significance" DirtyPath="Significance"><AppTextarea Rows="4" Value="@Entry.Significance" ValueChanged="SetSignificance" DirtyPath="Significance" /></FieldRow>
     </FormSection>
 </FormStack>
 
@@ -49,6 +49,8 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public RpTimelineEntry Entry { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    static readonly string[] EventPaths = [nameof(RpTimelineEntry.Title), nameof(RpTimelineEntry.Date), nameof(RpTimelineEntry.Description)];
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<RpLocation> Locations => Session.Chat.Locations.Items;

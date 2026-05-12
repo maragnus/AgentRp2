@@ -5,7 +5,7 @@
 @inject IAiProviderCapabilityPipeline CapabilityPipeline
 @inject ILogger<AIProvidersModal> Logger
 
-<ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="OnClose">
+<ModalShell Title="AI Providers" MaxWidth="900px" BodyClass="is-flush" OnClose="RequestClose">
     <ModalSplitLayout RailWidth="230px">
         <RailHeader>
             <span>Providers</span>
@@ -168,11 +168,11 @@
                         </ModalPaneHeader>
 
                         <ModalPaneActionBar Class="provider-action-bar">
-                            <BusyButton Variant="secondary" Size="sm" OnClick="RefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
-                            <BusyButton Variant="secondary" Size="sm" Disabled="@(!CanRefreshVoices(Selected))" OnClick="RefreshVoices"><FaIcon Name="waveform-lines" />Refresh voices</BusyButton>
+                            <BusyButton Variant="secondary" Size="sm" OnClick="RequestRefreshModels"><FaIcon Name="refresh" />Refresh models</BusyButton>
+                            <BusyButton Variant="secondary" Size="sm" Disabled="@(!CanRefreshVoices(Selected))" OnClick="RequestRefreshVoices"><FaIcon Name="waveform-lines" />Refresh voices</BusyButton>
                             @if (IsElevenLabs(Selected))
                             {
-                                <AppButton Variant="secondary" Size="sm" OnClick="@(_ => VoiceCatalogOpen = true)"><FaIcon Name="book-open" />Voice Catalog</AppButton>
+                                <AppButton Variant="secondary" Size="sm" OnClick="@(_ => OpenVoiceCatalog())"><FaIcon Name="book-open" />Voice Catalog</AppButton>
                             }
                             <span class="modal-action-spacer"></span>
                             <AppButton Variant="danger" Size="sm" OnClick="@(_ => ConfirmDelete = true)"><FaIcon Name="trash" />Delete</AppButton>
@@ -183,7 +183,7 @@
                         {
                             <div class="modal-error">@ProviderError</div>
                         }
-                        <ProviderConnectionEditor Provider="Selected" Meta="meta" />
+                        <ProviderConnectionEditor Provider="Selected" Meta="meta" FormContextChanged="SetProviderConnectionForm" />
                         <ProviderWidgetPanel @key="Selected.Id" Provider="Selected" />
 
                         <Section Title="Models" Hint="Enable models for Chat, Image Gen, or Voice." Class="provider-section">
@@ -193,7 +193,7 @@
                                                    ShowNeedsSetup="@ShowModelsNeedingSetup"
                                                    ShowNeedsSetupChanged="value => ShowModelsNeedingSetup = value"
                                                    OnChanged="SaveSelected"
-                                                   OnSetup="model => OpenSetup(Selected, model)" />
+                                                   OnSetup="model => RequestOpenSetup(Selected, model)" />
                             </ChildContent>
                         </Section>
                         <ProviderVoiceInventory Provider="Selected" />
@@ -218,7 +218,7 @@
     <ConfirmDialog Title="@($"Delete \"{Selected.Name}\" provider?")"
                    Body="This provider and all its configured models will be removed."
                    OnCancel="@(() => ConfirmDelete = false)"
-                   OnConfirm="DeleteProvider" />
+                   OnConfirm="RequestDeleteProvider" />
 }
 
 @if (SetupModel is not null)
@@ -260,13 +260,13 @@
 
             <FormSection Title="Tuning Support">
                 <div class="setup-tuning-grid">
-                    <FieldRow Label="Temperature"><AppSelect Value="@SetupTemperature" ValueChanged="value => SetupTemperature = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Top P"><AppSelect Value="@SetupTopP" ValueChanged="value => SetupTopP = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Max Tokens"><AppSelect Value="@SetupMaxTokens" ValueChanged="value => SetupMaxTokens = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Seed"><AppSelect Value="@SetupSeed" ValueChanged="value => SetupSeed = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Frequency Penalty"><AppSelect Value="@SetupFrequencyPenalty" ValueChanged="value => SetupFrequencyPenalty = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Presence Penalty"><AppSelect Value="@SetupPresencePenalty" ValueChanged="value => SetupPresencePenalty = value">@TuningOptions()</AppSelect></FieldRow>
-                    <FieldRow Label="Stop Sequences"><AppSelect Value="@SetupStopSequences" ValueChanged="value => SetupStopSequences = value">@TuningOptions()</AppSelect></FieldRow>
+                    <FieldRow Label="Temperature"><AppSelect Value="@SetupTemperature" ValueChanged="value => SetupTemperature = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Top P"><AppSelect Value="@SetupTopP" ValueChanged="value => SetupTopP = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Max Tokens"><AppSelect Value="@SetupMaxTokens" ValueChanged="value => SetupMaxTokens = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Seed"><AppSelect Value="@SetupSeed" ValueChanged="value => SetupSeed = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Frequency Penalty"><AppSelect Value="@SetupFrequencyPenalty" ValueChanged="value => SetupFrequencyPenalty = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Presence Penalty"><AppSelect Value="@SetupPresencePenalty" ValueChanged="value => SetupPresencePenalty = value">@TuningOptions</AppSelect></FieldRow>
+                    <FieldRow Label="Stop Sequences"><AppSelect Value="@SetupStopSequences" ValueChanged="value => SetupStopSequences = value">@TuningOptions</AppSelect></FieldRow>
                 </div>
             </FormSection>
         </ChildContent>
@@ -313,6 +313,7 @@
     string SetupStopSequences = nameof(TuningSupport.Unsupported);
     string ProviderError = "";
     List<AiProviderModel> OnboardModels = [];
+    IStatefulFormContext? ProviderConnectionForm;
     readonly IReadOnlyList<AiProviderMeta> ProviderTypes = SeedData.ProviderMetadata();
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
@@ -351,23 +352,35 @@
             enabled.Count(AiProviderModelSelectionRules.IsSelectedForVoice));
     }
 
-    void Select(string id)
+    Task RequestClose() => GuardProviderConnection(() => OnClose.InvokeAsync());
+
+    void SetProviderConnectionForm(IStatefulFormContext form) => ProviderConnectionForm = form;
+
+    Task GuardProviderConnection(Func<Task> action) =>
+        ProviderConnectionForm?.HasChanges == true
+            ? ProviderConnectionForm.GuardAsync(action)
+            : action();
+
+    Task Select(string id) => GuardProviderConnection(() =>
     {
         SelectedId = id;
         OnboardStep = 0;
         ProviderError = "";
-    }
+        return Task.CompletedTask;
+    });
 
-    void StartAdd()
+    Task StartAdd() => GuardProviderConnection(() =>
     {
         SelectedId = null;
+        ProviderConnectionForm = null;
         OnboardStep = 1;
         OnboardType = null;
         OnboardApiKey = "";
         OnboardEndpoint = "";
         OnboardModels = [];
         ProviderError = "";
-    }
+        return Task.CompletedTask;
+    });
 
     void CancelOnboarding()
     {
@@ -437,6 +450,24 @@
     }
 
     Task OnOnboardModelChanged() => InvokeAsync(StateHasChanged);
+
+    Task RequestRefreshModels() => GuardProviderConnection(RefreshModels);
+
+    Task RequestRefreshVoices() => GuardProviderConnection(RefreshVoices);
+
+    Task RequestDeleteProvider() => GuardProviderConnection(DeleteProvider);
+
+    Task OpenVoiceCatalog() => GuardProviderConnection(() =>
+    {
+        VoiceCatalogOpen = true;
+        return Task.CompletedTask;
+    });
+
+    Task RequestOpenSetup(AiProvider provider, AiProviderModel model) => GuardProviderConnection(() =>
+    {
+        OpenSetup(provider, model);
+        return Task.CompletedTask;
+    });
 
     async Task RefreshModels()
     {
@@ -620,21 +651,11 @@
     static TuningSupport ParseSupport(string value) =>
         Enum.TryParse<TuningSupport>(value, out var parsed) ? parsed : TuningSupport.Unsupported;
 
-    static RenderFragment TuningOptions() => builder =>
-    {
-        builder.OpenElement(0, "option");
-        builder.AddAttribute(1, "value", nameof(TuningSupport.Unsupported));
-        builder.AddContent(2, "Unsupported");
-        builder.CloseElement();
-        builder.OpenElement(3, "option");
-        builder.AddAttribute(4, "value", nameof(TuningSupport.DefaultOnly));
-        builder.AddContent(5, "Default only");
-        builder.CloseElement();
-        builder.OpenElement(6, "option");
-        builder.AddAttribute(7, "value", nameof(TuningSupport.Supported));
-        builder.AddContent(8, "Supported");
-        builder.CloseElement();
-    };
+    RenderFragment TuningOptions => @<text>
+        <option value="@nameof(TuningSupport.Unsupported)">Unsupported</option>
+        <option value="@nameof(TuningSupport.DefaultOnly)">Default only</option>
+        <option value="@nameof(TuningSupport.Supported)">Supported</option>
+    </text>;
 
     static AiProviderModel Clone(AiProviderModel model) => new()
     {

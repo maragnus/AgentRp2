@@ -1,4 +1,4 @@
-<FieldRow Label="@Label" Hint="@Hint" Class="@Class" LabelAction="@LabelAction">
+<FieldRow Label="@Label" Hint="@Hint" Class="@Class" Dirty="@Dirty" DirtyPath="@DirtyPath" DirtyPaths="@DirtyPaths" DirtyScopeId="@DirtyScopeId" LabelAction="@LabelAction">
     @ChildContent
 </FieldRow>
 
@@ -6,6 +6,10 @@
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string? Hint { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public RenderFragment? LabelAction { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 }

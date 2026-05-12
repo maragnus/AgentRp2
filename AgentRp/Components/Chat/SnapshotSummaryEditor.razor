@@ -1,7 +1,7 @@
 @using AgentRp.Models
 
-<FormSection Title="Summary" Hint="Required before saving" Class="snapshot-review-section">
-    <AppTextarea Rows="9" Class="snapshot-summary-field" Value="@Summary" ValueChanged="SummaryChanged" />
+<FormSection Title="Summary" Hint="Required before saving" Class="snapshot-review-section" DirtyPath="Summary">
+    <AppTextarea Rows="9" Class="snapshot-summary-field" Value="@Summary" ValueChanged="SummaryChanged" DirtyPath="Summary" />
 </FormSection>
 
 <Section Title="Snapshot Range" Count="@Draft.IncludedTurns.Count" Class="snapshot-review-section">

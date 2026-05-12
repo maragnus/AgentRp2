@@ -1,22 +1,24 @@
 @implements IDisposable
 @inject ILogger<ChatDirectionModal> Logger
 
-<ModalShell Title="Direction" Icon="book-open" MaxWidth="900px" BodyClass="is-flush" OnClose="Close">
+<StatefulForm Model="@Draft" Baseline="@Saved" OnSave="Save" OnClose="OnClose" ContextChanged="SetDirectionForm" RenderFormElement="false">
+<ChildContent Context="form">
+<ModalShell Title="Direction" Icon="book-open" MaxWidth="900px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalTabGroup ActiveId="@ActiveTab" ActiveIdChanged="SetActiveTab" Height="620px" RailWidth="164px" Class="chat-direction-tabs">
         <RailHeader>
             <div class="chat-direction-rail-header">
                 <label for="chat-direction-title">Story Title</label>
-                <AppInput id="chat-direction-title" Class="chat-direction-title-field" Value="@DraftTitle" ValueChanged="SetDraftTitle" />
+                <AppInput id="chat-direction-title" Class="chat-direction-title-field" Value="@DraftTitle" ValueChanged="SetDraftTitle" Dirty="@(DraftTitle != SavedTitle)" />
             </div>
         </RailHeader>
         <ChildContent>
-            <ModalTab Id="mood" Title="Mood" Summary="@MoodSummary" Dirty="@IsMoodDirty()">
+            <ModalTab Id="mood" Title="Mood" Summary="@MoodSummary" DirtyPaths="@MoodPaths">
                 <LeadingContent><FaIcon Name="sparkle" /></LeadingContent>
             </ModalTab>
-            <ModalTab Id="shape" Title="Shape" Summary="@ShapeSummary" Dirty="@IsShapeDirty()">
+            <ModalTab Id="shape" Title="Shape" Summary="@ShapeSummary" DirtyPaths="@ShapePaths">
                 <LeadingContent><FaIcon Name="branch" /></LeadingContent>
             </ModalTab>
-            <ModalTab Id="limits" Title="Limits" Summary="@LimitsSummary" Dirty="@IsLimitsDirty()">
+            <ModalTab Id="limits" Title="Limits" Summary="@LimitsSummary" DirtyPaths="@LimitPaths">
                 <LeadingContent><FaIcon Name="warning" /></LeadingContent>
             </ModalTab>
             <ModalTab Id="world" Title="World" Summary="@WorldSummary" Dirty="@IsWorldDirty()">
@@ -49,32 +51,32 @@
 
                     @if (ActiveTab == "mood")
                     {
-                        <OptionGrid Title="Genres" Hint="@($"Pick up to {ChatDirectionService.MaxGenres}")" Columns="2" Items="@Library.Genres" MultiValues="@Draft.Genres" Max="@ChatDirectionService.MaxGenres" OnToggle="@(id => ToggleLimited(Draft.Genres, id, ChatDirectionService.MaxGenres))" />
-                        <OptionGrid Title="Tone" Hint="@($"Pick up to {ChatDirectionService.MaxTones}")" Columns="2" Items="@Library.Tones" MultiValues="@Draft.Tones" Max="@ChatDirectionService.MaxTones" OnToggle="@(id => ToggleLimited(Draft.Tones, id, ChatDirectionService.MaxTones))" />
-                        <OptionGrid Title="Themes" Hint="@($"Pick up to {ChatDirectionService.MaxThemes}")" Columns="2" Items="@Library.Themes" MultiValues="@Draft.Themes" Max="@ChatDirectionService.MaxThemes" OnToggle="@(id => ToggleLimited(Draft.Themes, id, ChatDirectionService.MaxThemes))" />
+                        <OptionGrid Title="Genres" Hint="@($"Pick up to {ChatDirectionService.MaxGenres}")" Columns="2" Items="@Library.Genres" MultiValues="@Draft.Genres" Max="@ChatDirectionService.MaxGenres" DirtyPath="@nameof(Draft.Genres)" OnToggle="@(id => ToggleLimited(Draft.Genres, id, ChatDirectionService.MaxGenres))" />
+                        <OptionGrid Title="Tone" Hint="@($"Pick up to {ChatDirectionService.MaxTones}")" Columns="2" Items="@Library.Tones" MultiValues="@Draft.Tones" Max="@ChatDirectionService.MaxTones" DirtyPath="@nameof(Draft.Tones)" OnToggle="@(id => ToggleLimited(Draft.Tones, id, ChatDirectionService.MaxTones))" />
+                        <OptionGrid Title="Themes" Hint="@($"Pick up to {ChatDirectionService.MaxThemes}")" Columns="2" Items="@Library.Themes" MultiValues="@Draft.Themes" Max="@ChatDirectionService.MaxThemes" DirtyPath="@nameof(Draft.Themes)" OnToggle="@(id => ToggleLimited(Draft.Themes, id, ChatDirectionService.MaxThemes))" />
                     }
                     else if (ActiveTab == "shape")
                     {
-                        <OptionGrid Title="Pacing" Hint="@($"Pick up to {ChatDirectionService.MaxPacing}")" Columns="2" Items="@Library.Pacing" MultiValues="@Draft.Pacing" Max="@ChatDirectionService.MaxPacing" OnToggle="@(id => ToggleLimited(Draft.Pacing, id, ChatDirectionService.MaxPacing))" />
-                        <OptionGrid Title="Focus" Hint="@($"Pick up to {ChatDirectionService.MaxStoryFocus}")" Columns="2" Items="@Library.StoryFocus" MultiValues="@Draft.StoryFocus" Max="@ChatDirectionService.MaxStoryFocus" OnToggle="@(id => ToggleLimited(Draft.StoryFocus, id, ChatDirectionService.MaxStoryFocus))" />
+                        <OptionGrid Title="Pacing" Hint="@($"Pick up to {ChatDirectionService.MaxPacing}")" Columns="2" Items="@Library.Pacing" MultiValues="@Draft.Pacing" Max="@ChatDirectionService.MaxPacing" DirtyPath="@nameof(Draft.Pacing)" OnToggle="@(id => ToggleLimited(Draft.Pacing, id, ChatDirectionService.MaxPacing))" />
+                        <OptionGrid Title="Focus" Hint="@($"Pick up to {ChatDirectionService.MaxStoryFocus}")" Columns="2" Items="@Library.StoryFocus" MultiValues="@Draft.StoryFocus" Max="@ChatDirectionService.MaxStoryFocus" DirtyPath="@nameof(Draft.StoryFocus)" OnToggle="@(id => ToggleLimited(Draft.StoryFocus, id, ChatDirectionService.MaxStoryFocus))" />
                     }
                     else if (ActiveTab == "limits")
                     {
-                        <ContentIntensityControl Label="Explicit Content" Value="@Draft.ExplicitContent" ValueChanged="@(value => Draft.ExplicitContent = value)" />
-                        <ContentIntensityControl Label="Violent Content" Value="@Draft.ViolentContent" ValueChanged="@(value => Draft.ViolentContent = value)" />
-                        <OptionGrid Title="Boundaries" Hint="@($"Pick up to {ChatDirectionService.MaxBoundaries}")" Columns="2" Items="@Library.Boundaries" MultiValues="@Draft.Boundaries" Max="@ChatDirectionService.MaxBoundaries" OnToggle="@(id => ToggleLimited(Draft.Boundaries, id, ChatDirectionService.MaxBoundaries))" />
+                        <ContentIntensityControl Label="Explicit Content" Value="@Draft.ExplicitContent" ValueChanged="@(value => Draft.ExplicitContent = value)" DirtyPath="@nameof(Draft.ExplicitContent)" />
+                        <ContentIntensityControl Label="Violent Content" Value="@Draft.ViolentContent" ValueChanged="@(value => Draft.ViolentContent = value)" DirtyPath="@nameof(Draft.ViolentContent)" />
+                        <OptionGrid Title="Boundaries" Hint="@($"Pick up to {ChatDirectionService.MaxBoundaries}")" Columns="2" Items="@Library.Boundaries" MultiValues="@Draft.Boundaries" Max="@ChatDirectionService.MaxBoundaries" DirtyPath="@nameof(Draft.Boundaries)" OnToggle="@(id => ToggleLimited(Draft.Boundaries, id, ChatDirectionService.MaxBoundaries))" />
                     }
                     else if (ActiveTab == "world")
                     {
                         <div class="field-stack">
-                            <FieldRow Label="Setting">
-                                <AppTextarea Rows="5" Value="@Draft.Setting" ValueChanged="value => Draft.Setting = value" Placeholder="Where this story lives, socially and physically." />
+                            <FieldRow Label="Setting" DirtyPath="@nameof(Draft.Setting)">
+                                <AppTextarea Rows="5" Value="@Draft.Setting" ValueChanged="value => Draft.Setting = value" DirtyPath="@nameof(Draft.Setting)" Placeholder="Where this story lives, socially and physically." />
                             </FieldRow>
-                            <FieldRow Label="Premise">
-                                <AppTextarea Rows="5" Value="@Draft.Premise" ValueChanged="value => Draft.Premise = value" Placeholder="The current story promise or direction." />
+                            <FieldRow Label="Premise" DirtyPath="@nameof(Draft.Premise)">
+                                <AppTextarea Rows="5" Value="@Draft.Premise" ValueChanged="value => Draft.Premise = value" DirtyPath="@nameof(Draft.Premise)" Placeholder="The current story promise or direction." />
                             </FieldRow>
-                            <FieldRow Label="Custom Guidance">
-                                <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" Placeholder="Any extra direction this story should consistently honor." />
+                            <FieldRow Label="Custom Guidance" DirtyPath="@nameof(Draft.CustomGuidance)">
+                                <AppTextarea Rows="5" Value="@Draft.CustomGuidance" ValueChanged="value => Draft.CustomGuidance = value" DirtyPath="@nameof(Draft.CustomGuidance)" Placeholder="Any extra direction this story should consistently honor." />
                             </FieldRow>
                         </div>
                     }
@@ -84,22 +86,28 @@
                     }
                 </ChildContent>
                 <Footer>
-                    <AppButton Variant="secondary" OnClick="Close">Cancel</AppButton>
-                    <BusyButton OnClick="Save"><FaIcon Name="check" />Save</BusyButton>
+                    <AppButton Variant="secondary" OnClick="@(_ => form.RequestCloseAsync())">Cancel</AppButton>
+                    <BusyButton Disabled="@(!form.CanSave)" OnClick="form.SaveAsync"><FaIcon Name="check" />Save</BusyButton>
                 </Footer>
             </ModalStackLayout>
         </MainContent>
     </ModalTabGroup>
 </ModalShell>
+</ChildContent>
+</StatefulForm>
 
 @code {
     ChatDirectionState Draft = ChatDirectionState.CreateDefault();
     ChatDirectionState Saved = ChatDirectionState.CreateDefault();
+    StatefulFormContext<ChatDirectionState>? DirectionForm;
     ChatDirectionLibrary Library => ChatDirectionService.Library;
     string ErrorMessage = "";
     string ActiveTab = "mood";
     string DraftTitle = "";
     string SavedTitle = "";
+    static readonly string[] MoodPaths = [nameof(ChatDirectionState.Genres), nameof(ChatDirectionState.Tones), nameof(ChatDirectionState.Themes)];
+    static readonly string[] ShapePaths = [nameof(ChatDirectionState.Pacing), nameof(ChatDirectionState.StoryFocus)];
+    static readonly string[] LimitPaths = [nameof(ChatDirectionState.Boundaries), nameof(ChatDirectionState.ExplicitContent), nameof(ChatDirectionState.ViolentContent)];
 
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
@@ -140,7 +148,13 @@
         Session.Chat.ChatDirection.Changed += OnStoreChanged;
     }
 
-    Task OnStoreChanged() => InvokeAsync(StateHasChanged);
+    Task OnStoreChanged()
+    {
+        if (DirectionForm?.HasChanges != true)
+            LoadDraft();
+
+        return InvokeAsync(StateHasChanged);
+    }
 
     void LoadDraft()
     {
@@ -161,6 +175,7 @@
             CopyInto(Session.Chat.ChatDirection.State, Draft);
             await Session.Chat.ChatDirection.MarkChangedAsync();
             await Session.Chats.RefreshAsync();
+            LoadDraft();
             await Close();
         }
         catch (Exception exception)
@@ -176,19 +191,10 @@
 
     Task Close() => OnClose.InvokeAsync();
 
-    bool IsMoodDirty() =>
-        !SameValues(Draft.Genres, Saved.Genres) ||
-        !SameValues(Draft.Tones, Saved.Tones) ||
-        !SameValues(Draft.Themes, Saved.Themes);
-
-    bool IsShapeDirty() =>
-        !SameValues(Draft.Pacing, Saved.Pacing) ||
-        !SameValues(Draft.StoryFocus, Saved.StoryFocus);
-
-    bool IsLimitsDirty() =>
-        !SameValues(Draft.Boundaries, Saved.Boundaries) ||
-        Draft.ExplicitContent != Saved.ExplicitContent ||
-        Draft.ViolentContent != Saved.ViolentContent;
+    void SetDirectionForm(StatefulFormContext<ChatDirectionState> form)
+    {
+        DirectionForm = form;
+    }
 
     bool IsWorldDirty() =>
         DraftTitle != SavedTitle ||
@@ -215,9 +221,6 @@
         var count = values.Count(value => value);
         return count == 1 ? "1 field" : $"{count} fields";
     }
-
-    static bool SameValues(IReadOnlyList<string> left, IReadOnlyList<string> right) =>
-        left.SequenceEqual(right, StringComparer.Ordinal);
 
     static void CopyInto(ChatDirectionState target, ChatDirectionState source)
     {

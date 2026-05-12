@@ -15,7 +15,7 @@
         </InputGroupAddon>
     }
     <input @attributes="AdditionalAttributes"
-           class="@InputCssClass"
+           class="@BuildFieldCssClass(InputCssClass)"
            type="number"
            @ref="InputElement"
            value="@Value"
@@ -59,7 +59,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
     string CssClass => string.Join(" ", new[] { "app-number-input", Class }.Where(value => !string.IsNullOrWhiteSpace(value)));
-    string InputCssClass => string.Join(" ", new[] { "field", "app-number-input-field", InputClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    string InputCssClass => string.Join(" ", new[] { "app-number-input-field", InputClass }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
     async Task StepValue(int direction)
     {

@@ -1,0 +1,32 @@
+@implements IDisposable
+
+<CascadingValue Value="@Scope">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    StatefulFormPathScope Scope => new(CombinedPathPrefix);
+    IDisposable? Registration;
+
+    [CascadingParameter] public IStatefulFormContext? Form { get; set; }
+    [CascadingParameter] public StatefulFormPathScope? ParentScope { get; set; }
+    [Parameter] public string PathPrefix { get; set; } = "";
+    [Parameter] public string? ScopeId { get; set; }
+    [Parameter] public Func<bool>? IsDirty { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    string CombinedPathPrefix => ParentScope?.Combine(PathPrefix) ?? PathPrefix;
+
+    protected override void OnParametersSet()
+    {
+        Registration?.Dispose();
+        Registration = !string.IsNullOrWhiteSpace(ScopeId) && IsDirty is not null
+            ? Form?.RegisterScope(ScopeId, IsDirty)
+            : null;
+    }
+
+    public void Dispose()
+    {
+        Registration?.Dispose();
+    }
+}

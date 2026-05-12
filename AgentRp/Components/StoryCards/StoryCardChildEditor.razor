@@ -30,34 +30,40 @@
 @code {
     [Parameter] public StoryCardChildEditorRow Child { get; set; } = default!;
     [Parameter] public bool Editable { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     Task SetTitle(string value)
     {
         Child.Title = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetSelection(string value)
     {
         Child.SelectionInstructions = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetCreation(string value)
     {
         Child.CreationInstructions = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetOngoing(string value)
     {
         Child.OngoingContext = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 
     Task SetPrivate(string value)
     {
         Child.PrivateContext = value;
+        StatefulForm?.NotifyChanged();
         return Task.CompletedTask;
     }
 

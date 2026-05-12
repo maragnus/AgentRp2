@@ -5,6 +5,8 @@ This is a list of future tweaks that are planned. Be sure to remove these as the
 ## Low hanging fruit
 
 - LiveRoleplayStore is utter shit and needs to use SemaphoreSlim, ConcurrentDictionary, DistributedCache
+- All text fields should send an update after a delay of 2 seconds after being changed.
+  Essentially, all text fields should be `TextUpdateMode.Change` by default, but should not update while actively typing, only after being unchanged for 2 seconds (reuse changeDebounceMilliseconds).
 
 ## Story Cards
 - The story premise should be like the TV series premise that is consistent through all seasons and episodes

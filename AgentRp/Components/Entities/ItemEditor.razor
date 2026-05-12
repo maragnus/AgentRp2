@@ -1,16 +1,19 @@
 <FormStack>
-    <FormSection Title="Identity">
-        <FieldRow Label="Name"><AppInput Value="@Item.Name" ValueChanged="SetName" /></FieldRow>
-        <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Item.Summary" ValueChanged="SetSummary" /></FieldRow>
+    <FormSection Title="Identity" DirtyPaths="@IdentityPaths">
+        <FieldRow Label="Name" DirtyPath="Name"><AppInput Value="@Item.Name" ValueChanged="SetName" DirtyPath="Name" /></FieldRow>
+        <FieldRow Label="Summary" DirtyPath="Summary"><AppTextarea Rows="3" Value="@Item.Summary" ValueChanged="SetSummary" DirtyPath="Summary" /></FieldRow>
     </FormSection>
-    <FormSection Title="Object Details">
-        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Item.Description" ValueChanged="SetDescription" /></FieldRow>
-        <FieldRow Label="History"><AppTextarea Rows="4" Value="@Item.History" ValueChanged="SetHistory" /></FieldRow>
-        <FieldRow Label="Properties"><AppTextarea Rows="4" Value="@Item.Properties" ValueChanged="SetProperties" /></FieldRow>
+    <FormSection Title="Object Details" DirtyPaths="@DetailPaths">
+        <FieldRow Label="Description" DirtyPath="Description"><AppTextarea Rows="5" Value="@Item.Description" ValueChanged="SetDescription" DirtyPath="Description" /></FieldRow>
+        <FieldRow Label="History" DirtyPath="History"><AppTextarea Rows="4" Value="@Item.History" ValueChanged="SetHistory" DirtyPath="History" /></FieldRow>
+        <FieldRow Label="Properties" DirtyPath="Properties"><AppTextarea Rows="4" Value="@Item.Properties" ValueChanged="SetProperties" DirtyPath="Properties" /></FieldRow>
     </FormSection>
 </FormStack>
 
 @code {
+    static readonly string[] IdentityPaths = [nameof(RpItem.Name), nameof(RpItem.Summary)];
+    static readonly string[] DetailPaths = [nameof(RpItem.Description), nameof(RpItem.History), nameof(RpItem.Properties)];
+
     [Parameter] public RpItem Item { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     Task Changed() => OnChanged.InvokeAsync();

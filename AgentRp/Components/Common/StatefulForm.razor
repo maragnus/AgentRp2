@@ -1,0 +1,94 @@
+@typeparam TDraft where TDraft : class
+@implements IDisposable
+@inject NavigationManager Navigation
+
+@if (Context is not null)
+{
+    @if (RenderFormElement)
+    {
+        <EditForm EditContext="@Context.EditContext" OnSubmit="Submit">
+            <CascadingValue Value="Context">
+                <CascadingValue Value="@((IStatefulFormContext)Context)">
+                    @ChildContent(Context)
+                </CascadingValue>
+            </CascadingValue>
+        </EditForm>
+    }
+    else
+    {
+        <CascadingValue Value="Context">
+            <CascadingValue Value="@((IStatefulFormContext)Context)">
+                @ChildContent(Context)
+            </CascadingValue>
+        </CascadingValue>
+    }
+
+    @if (!DisableNavigationGuard)
+    {
+        <NavigationLock ConfirmExternalNavigation="@Context.HasChanges" OnBeforeInternalNavigation="BeforeInternalNavigation" />
+    }
+
+    @if (Context.ShowUnsavedChangesDialog)
+    {
+        <UnsavedChangesDialog CanSave="@Context.CanSave"
+                              OnSave="@Context.ConfirmSaveAndContinueAsync"
+                              OnAbandon="@Context.AbandonAndContinueAsync"
+                              OnCancel="@Context.CancelPendingActionAsync" />
+    }
+}
+
+@code {
+    StatefulFormContext<TDraft>? Context;
+    bool AllowNavigation;
+
+    [Parameter, EditorRequired] public TDraft Model { get; set; } = default!;
+    [Parameter, EditorRequired] public TDraft Baseline { get; set; } = default!;
+    [Parameter, EditorRequired] public EventCallback OnSave { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
+    [Parameter] public Func<bool>? CanSave { get; set; }
+    [Parameter] public Func<TDraft, TDraft, bool>? HasChanges { get; set; }
+    [Parameter] public bool DisableNavigationGuard { get; set; }
+    [Parameter] public bool RenderFormElement { get; set; } = true;
+    [Parameter] public Action<StatefulFormContext<TDraft>>? ContextChanged { get; set; }
+    [Parameter] public RenderFragment<StatefulFormContext<TDraft>> ChildContent { get; set; } = default!;
+
+    protected override void OnParametersSet()
+    {
+        if (Context is null)
+        {
+            Context = new(Model, Baseline, Save, Close, RequestRender, CanSave, HasChanges);
+            ContextChanged?.Invoke(Context);
+            return;
+        }
+
+        Context.UpdateModel(Model, Baseline);
+        ContextChanged?.Invoke(Context);
+    }
+
+    Task Submit() => Context?.SaveAsync() ?? Task.CompletedTask;
+
+    Task Save() => OnSave.InvokeAsync();
+
+    Task Close() => OnClose.InvokeAsync();
+
+    void RequestRender() => _ = InvokeAsync(StateHasChanged);
+
+    async Task BeforeInternalNavigation(LocationChangingContext context)
+    {
+        if (Context is null || AllowNavigation || !Context.HasChanges)
+            return;
+
+        context.PreventNavigation();
+        await Context.GuardAsync(async () =>
+        {
+            AllowNavigation = true;
+            Navigation.NavigateTo(context.TargetLocation);
+            await Task.CompletedTask;
+        });
+    }
+
+    public void Dispose()
+    {
+        Context?.Dispose();
+    }
+}

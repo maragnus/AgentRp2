@@ -1,15 +1,17 @@
-<ModalShell Title="@WizardTitle" Subtitle="Guided Profile" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="Close">
+<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="Save" OnClose="OnClose" ContextChanged="SetForm" RenderFormElement="false">
+<ChildContent Context="form">
+<ModalShell Title="@WizardTitle" Subtitle="Guided Profile" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="character-wizard-rail">
             <RailHeader>
                 <div class="character-wizard-profile">
-                    <Avatar Name="@(string.IsNullOrWhiteSpace(Character.Name) ? "?" : Character.Name)" Size="52" />
-                    <span class="character-wizard-profile-name @(string.IsNullOrWhiteSpace(Character.Name) ? "is-empty" : "")">
-                        @(string.IsNullOrWhiteSpace(Character.Name) ? "Unnamed" : Character.Name)
+                    <Avatar Name="@(string.IsNullOrWhiteSpace(Draft.Name) ? "?" : Draft.Name)" Size="52" />
+                    <span class="character-wizard-profile-name @(string.IsNullOrWhiteSpace(Draft.Name) ? "is-empty" : "")">
+                        @(string.IsNullOrWhiteSpace(Draft.Name) ? "Unnamed" : Draft.Name)
                     </span>
-                    @if (Character.SceneRoles.Count > 0)
+                    @if (Draft.SceneRoles.Count > 0)
                     {
                         <div class="character-wizard-role-list">
-                            @foreach (var roleId in Character.SceneRoles)
+                            @foreach (var roleId in Draft.SceneRoles)
                             {
                                 var role = Find(SceneRoles, roleId);
                                 if (role is not null)
@@ -33,6 +35,7 @@
                                    Summary="@step.Sub"
                                    Active="@(Step == index)"
                                    Done="@done"
+                                   Dirty="@StepDirty(index)"
                                    Locked="@(!accessible)"
                                    Disabled="@(!accessible)"
                                    Class="character-wizard-step"
@@ -71,38 +74,40 @@
                     @if (Step == 0)
                     {
                         <div class="character-wizard-step-stack">
-                            <FormSection Title="Name">
+                            <FormSection Title="Name" DirtyPath="@nameof(Draft.Name)">
                                 <AppInput Class="character-wizard-name-input"
                                           Placeholder="Character name..."
-                                          Value="@Character.Name"
-                                          ValueChanged="value => Character.Name = value"
+                                          Value="@Draft.Name"
+                                          ValueChanged="value => Draft.Name = value"
+                                          DirtyPath="@nameof(Draft.Name)"
                                           UpdateMode="TextUpdateMode.Change" />
                             </FormSection>
-                            <FormSection Title="Summary" Hint="— one sentence, optional">
+                            <FormSection Title="Summary" Hint="— one sentence, optional" DirtyPath="@nameof(Draft.Summary)">
                                 <AppTextarea Class="character-wizard-textarea"
                                              Rows="2"
                                              Placeholder="Who is this character in a sentence?"
-                                             Value="@Character.Summary"
-                                             ValueChanged="value => Character.Summary = value"
+                                             Value="@Draft.Summary"
+                                             ValueChanged="value => Draft.Summary = value"
+                                             DirtyPath="@nameof(Draft.Summary)"
                                              UpdateMode="TextUpdateMode.Change" />
                             </FormSection>
-                            <Section Title="Pronouns">
+                            <Section Title="Pronouns" DirtyPath="@nameof(Draft.Pronouns)">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var pronoun in PronounOptions)
                                     {
-                                        var selected = Character.Pronouns.Contains(pronoun.Id);
-                                        <SelectableButton @key="pronoun.Id" TooltipText="@pronoun.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(Character.Pronouns, pronoun.Id))">
+                                        var selected = Draft.Pronouns.Contains(pronoun.Id);
+                                        <SelectableButton @key="pronoun.Id" TooltipText="@pronoun.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" OnClick="@(_ => ToggleText(Draft.Pronouns, pronoun.Id))">
                                             @pronoun.Label
                                         </SelectableButton>
                                     }
                                 </div>
                             </Section>
-                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Character.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles">
+                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Draft.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles" DirtyPath="@nameof(Draft.SceneRoles)">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var role in SceneRoles)
                                     {
-                                        var selected = Character.SceneRoles.Contains(role.Id);
-                                        <SelectableButton @key="role.Id" TooltipText="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.SceneRoles.Count >= CharacterProfileRules.MaxSceneRoles)" OnClick="@(_ => ToggleLimited(Character.SceneRoles, role.Id, CharacterProfileRules.MaxSceneRoles))">
+                                        var selected = Draft.SceneRoles.Contains(role.Id);
+                                        <SelectableButton @key="role.Id" TooltipText="@role.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Draft.SceneRoles.Count >= CharacterProfileRules.MaxSceneRoles)" OnClick="@(_ => ToggleLimited(Draft.SceneRoles, role.Id, CharacterProfileRules.MaxSceneRoles))">
                                             @role.Label
                                         </SelectableButton>
                                     }
@@ -112,24 +117,24 @@
                     }
                     else if (Step == 1)
                     {
-                        <CharacterAppearanceEditor Character="Character" Library="TraitLibrary" />
+                        <CharacterAppearanceEditor Character="Draft" Library="TraitLibrary" />
                     }
                     else if (Step == 2)
                     {
                         <div class="character-wizard-personality-intro">
                             <p>Pick @CharacterProfileRules.RecommendedMinTraits to @CharacterProfileRules.MaxTraits total. Hover any trait for a description.</p>
-                            <span class="character-wizard-count-pill @(Character.Traits.Count >= CharacterProfileRules.RecommendedMinTraits ? "is-ready" : "")">@Character.Traits.Count / @CharacterProfileRules.MaxTraits</span>
+                            <span class="character-wizard-count-pill @(Draft.Traits.Count >= CharacterProfileRules.RecommendedMinTraits ? "is-ready" : "")">@Draft.Traits.Count / @CharacterProfileRules.MaxTraits</span>
                         </div>
                         <div class="character-wizard-trait-section-list">
                             @foreach (var group in TraitCategories)
                             {
-                                var selectedCount = group.Items.Count(item => Character.Traits.Contains(item.Id));
-                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="character-wizard-trait-group">
+                                var selectedCount = group.Items.Count(item => Draft.Traits.Contains(item.Id));
+                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="character-wizard-trait-group" DirtyPath="@nameof(Draft.Traits)">
                                     <div class="character-wizard-chip-list">
                                         @foreach (var trait in group.Items)
                                         {
-                                            var selected = Character.Traits.Contains(trait.Id);
-                                            <SelectableButton @key="trait.Id" TooltipText="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Character.Traits.Count >= CharacterProfileRules.MaxTraits)" OnClick="@(_ => ToggleLimited(Character.Traits, trait.Id, CharacterProfileRules.MaxTraits))">
+                                            var selected = Draft.Traits.Contains(trait.Id);
+                                            <SelectableButton @key="trait.Id" TooltipText="@trait.Hover" Class="@($"character-wizard-chip {(selected ? "is-selected" : "")}")" Disabled="@(!selected && Draft.Traits.Count >= CharacterProfileRules.MaxTraits)" OnClick="@(_ => ToggleLimited(Draft.Traits, trait.Id, CharacterProfileRules.MaxTraits))">
                                                 @trait.Label
                                             </SelectableButton>
                                         }
@@ -142,34 +147,34 @@
                     {
                         <p class="character-wizard-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Character.CoreDrive" OnSelect="@(id => SetSingle(nameof(Character.CoreDrive), id))" />
-                            <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Character.CoreFear" OnSelect="@(id => SetSingle(nameof(Character.CoreFear), id))" />
-                            <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Character.SurfaceMask" OnSelect="@(id => SetSingle(nameof(Character.SurfaceMask), id))" />
-                            <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Character.HiddenTruth" OnSelect="@(id => SetSingle(nameof(Character.HiddenTruth), id))" />
+                            <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Draft.CoreDrive" DirtyPath="@nameof(Draft.CoreDrive)" OnSelect="@(id => SetSingle(nameof(Draft.CoreDrive), id))" />
+                            <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Draft.CoreFear" DirtyPath="@nameof(Draft.CoreFear)" OnSelect="@(id => SetSingle(nameof(Draft.CoreFear), id))" />
+                            <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Draft.SurfaceMask" DirtyPath="@nameof(Draft.SurfaceMask)" OnSelect="@(id => SetSingle(nameof(Draft.SurfaceMask), id))" />
+                            <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Draft.HiddenTruth" DirtyPath="@nameof(Draft.HiddenTruth)" OnSelect="@(id => SetSingle(nameof(Draft.HiddenTruth), id))" />
                         </div>
                     }
                     else if (Step == 4)
                     {
                         <p class="character-wizard-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Character.SentenceStyle" OnSelect="@(id => SetSingle(nameof(Character.SentenceStyle), id))" />
-                            <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Character.HonestyStyle" OnSelect="@(id => SetSingle(nameof(Character.HonestyStyle), id))" />
-                            <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Character.EmotionalLeakage" OnSelect="@(id => SetSingle(nameof(Character.EmotionalLeakage), id))" />
-                            <CharacterOptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Character.ActionFingerprint" OnSelect="@(id => SetSingle(nameof(Character.ActionFingerprint), id))" />
-                            <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Character.StressPattern" OnSelect="@(id => SetSingle(nameof(Character.StressPattern), id))" />
+                            <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Draft.SentenceStyle" DirtyPath="@nameof(Draft.SentenceStyle)" OnSelect="@(id => SetSingle(nameof(Draft.SentenceStyle), id))" />
+                            <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Draft.HonestyStyle" DirtyPath="@nameof(Draft.HonestyStyle)" OnSelect="@(id => SetSingle(nameof(Draft.HonestyStyle), id))" />
+                            <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Draft.EmotionalLeakage" DirtyPath="@nameof(Draft.EmotionalLeakage)" OnSelect="@(id => SetSingle(nameof(Draft.EmotionalLeakage), id))" />
+                            <CharacterOptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Draft.ActionFingerprint" DirtyPath="@nameof(Draft.ActionFingerprint)" OnSelect="@(id => SetSingle(nameof(Draft.ActionFingerprint), id))" />
+                            <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Draft.StressPattern" DirtyPath="@nameof(Draft.StressPattern)" OnSelect="@(id => SetSingle(nameof(Draft.StressPattern), id))" />
                         </div>
                     }
                     else if (Step == 5)
                     {
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Character.SoftSpots" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Character.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
-                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Character.AvoidPatterns" Max="CharacterProfileRules.MaxAvoidPatterns" OnToggle="@(id => ToggleLimited(Character.AvoidPatterns, id, CharacterProfileRules.MaxAvoidPatterns))" />
+                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Draft.SoftSpots" DirtyPath="@nameof(Draft.SoftSpots)" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Draft.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
+                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Draft.AvoidPatterns" DirtyPath="@nameof(Draft.AvoidPatterns)" Max="CharacterProfileRules.MaxAvoidPatterns" OnToggle="@(id => ToggleLimited(Draft.AvoidPatterns, id, CharacterProfileRules.MaxAvoidPatterns))" />
                         </div>
                     }
                     else
                     {
                         <CharacterRelationshipsEditor Document="Session.ActiveChat.Current!"
-                                                      Character="Character"
+                                                      Character="Draft"
                                                       ExistingCharacters="ExistingCharacters"
                                                       Library="TraitLibrary" />
                     }
@@ -183,14 +188,14 @@
                     <span class="modal-action-spacer"></span>
                     @if (Step == Steps.Length - 1)
                     {
-                        <AppButton Variant="primary" Size="sm" Disabled="@string.IsNullOrWhiteSpace(Character.Name)" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
+                        <BusyButton Variant="primary" Size="sm" Disabled="@string.IsNullOrWhiteSpace(Draft.Name)" OnClick="@(() => Complete(form))"><FaIcon Name="check" />Done</BusyButton>
                     }
                     else
                     {
                         <AppButton Variant="primary" Size="sm" Disabled="@(!CanNext)" OnClick="Next">Next<FaIcon Name="chevron-right" /></AppButton>
                         @if (IsComplete)
                         {
-                            <AppButton Variant="secondary" Size="sm" OnClick="Done"><FaIcon Name="check" />Done</AppButton>
+                            <BusyButton Variant="secondary" Size="sm" OnClick="@(() => Complete(form))"><FaIcon Name="check" />Done</BusyButton>
                         }
                     }
                 </Footer>
@@ -198,9 +203,15 @@
             </MainContent>
         </ModalSplitLayout>
 </ModalShell>
+</ChildContent>
+</StatefulForm>
 
 @code {
     int Step;
+    string LoadedCharacterId = "";
+    RpCharacter Draft = new();
+    RpCharacter Baseline = new();
+    StatefulFormContext<RpCharacter>? Form;
 
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
@@ -208,7 +219,7 @@
     [Parameter] public EventCallback OnChanged { get; set; }
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
-    string WizardTitle => string.IsNullOrWhiteSpace(Character.Name) ? "New Character" : Character.Name;
+    string WizardTitle => string.IsNullOrWhiteSpace(Draft.Name) ? "New Character" : Draft.Name;
     CharacterTraitLibraryState TraitLibrary => Session.Chat.CharacterTraitLibrary.State;
     IReadOnlyList<CharacterOption> PronounOptions => CharacterProfileRules.PronounOptions;
     IReadOnlyList<CharacterOption> SceneRoles => TraitLibrary.SceneRoles;
@@ -237,119 +248,184 @@
     ];
 
     int DoneCount => Enumerable.Range(0, Steps.Length).Count(StepDone);
-    bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Character.Name);
+    bool CanNext => Step != 0 || !string.IsNullOrWhiteSpace(Draft.Name);
     bool IsComplete => DoneCount == Steps.Length;
+
+    protected override void OnParametersSet()
+    {
+        if (LoadedCharacterId == Character.Id)
+            return;
+
+        LoadedCharacterId = Character.Id;
+        Draft = SessionCloner.Clone(Character);
+        Baseline = SessionCloner.Clone(Character);
+    }
 
     bool StepDone(int step) => step switch
     {
-        0 => !string.IsNullOrWhiteSpace(Character.Name),
-        1 => CharacterAppearanceFormatter.HasStructuredAppearance(Character.AppearanceProfile) || !string.IsNullOrWhiteSpace(Character.Appearance),
-        2 => Character.Traits.Count >= 1,
-        3 => !string.IsNullOrWhiteSpace(Character.CoreDrive) || !string.IsNullOrWhiteSpace(Character.CoreFear) || !string.IsNullOrWhiteSpace(Character.SurfaceMask) || !string.IsNullOrWhiteSpace(Character.HiddenTruth),
-        4 => !string.IsNullOrWhiteSpace(Character.SentenceStyle) || !string.IsNullOrWhiteSpace(Character.StressPattern),
-        5 => Character.SoftSpots.Count > 0 || Character.AvoidPatterns.Count > 0,
+        0 => !string.IsNullOrWhiteSpace(Draft.Name),
+        1 => CharacterAppearanceFormatter.HasStructuredAppearance(Draft.AppearanceProfile) || !string.IsNullOrWhiteSpace(Draft.Appearance),
+        2 => Draft.Traits.Count >= 1,
+        3 => !string.IsNullOrWhiteSpace(Draft.CoreDrive) || !string.IsNullOrWhiteSpace(Draft.CoreFear) || !string.IsNullOrWhiteSpace(Draft.SurfaceMask) || !string.IsNullOrWhiteSpace(Draft.HiddenTruth),
+        4 => !string.IsNullOrWhiteSpace(Draft.SentenceStyle) || !string.IsNullOrWhiteSpace(Draft.StressPattern),
+        5 => Draft.SoftSpots.Count > 0 || Draft.AvoidPatterns.Count > 0,
         _ => true
+    };
+
+    bool StepDirty(int step) => step switch
+    {
+        0 => Form?.IsAnyPathDirty(nameof(Draft.Name), nameof(Draft.Summary), nameof(Draft.Pronouns), nameof(Draft.SceneRoles)) == true,
+        1 => Form?.IsAnyPathDirty(nameof(Draft.Appearance), nameof(Draft.AppearanceProfile)) == true,
+        2 => Form?.IsPathDirty(nameof(Draft.Traits)) == true,
+        3 => Form?.IsAnyPathDirty(nameof(Draft.CoreDrive), nameof(Draft.CoreFear), nameof(Draft.SurfaceMask), nameof(Draft.HiddenTruth)) == true,
+        4 => Form?.IsAnyPathDirty(nameof(Draft.SentenceStyle), nameof(Draft.HonestyStyle), nameof(Draft.EmotionalLeakage), nameof(Draft.ActionFingerprint), nameof(Draft.StressPattern)) == true,
+        5 => Form?.IsAnyPathDirty(nameof(Draft.SoftSpots), nameof(Draft.AvoidPatterns)) == true,
+        _ => false
     };
 
     void ToggleLimited(List<string> values, string value, int max)
     {
         if (values.Remove(value))
+        {
+            Form?.NotifyChanged();
             return;
+        }
 
         if (values.Count < max)
             values.Add(value);
+
+        Form?.NotifyChanged();
     }
 
-    static void ToggleText(List<string> values, string value)
+    void ToggleText(List<string> values, string value)
     {
         if (!values.Remove(value))
             values.Add(value);
+
+        Form?.NotifyChanged();
     }
 
     void SetSingle(string property, string value)
     {
         var current = property switch
         {
-            nameof(Character.CoreDrive) => Character.CoreDrive,
-            nameof(Character.CoreFear) => Character.CoreFear,
-            nameof(Character.SurfaceMask) => Character.SurfaceMask,
-            nameof(Character.HiddenTruth) => Character.HiddenTruth,
-            nameof(Character.SentenceStyle) => Character.SentenceStyle,
-            nameof(Character.HonestyStyle) => Character.HonestyStyle,
-            nameof(Character.EmotionalLeakage) => Character.EmotionalLeakage,
-            nameof(Character.ActionFingerprint) => Character.ActionFingerprint,
-            nameof(Character.StressPattern) => Character.StressPattern,
+            nameof(Draft.CoreDrive) => Draft.CoreDrive,
+            nameof(Draft.CoreFear) => Draft.CoreFear,
+            nameof(Draft.SurfaceMask) => Draft.SurfaceMask,
+            nameof(Draft.HiddenTruth) => Draft.HiddenTruth,
+            nameof(Draft.SentenceStyle) => Draft.SentenceStyle,
+            nameof(Draft.HonestyStyle) => Draft.HonestyStyle,
+            nameof(Draft.EmotionalLeakage) => Draft.EmotionalLeakage,
+            nameof(Draft.ActionFingerprint) => Draft.ActionFingerprint,
+            nameof(Draft.StressPattern) => Draft.StressPattern,
             _ => ""
         };
         var next = current == value ? "" : value;
 
         switch (property)
         {
-            case nameof(Character.CoreDrive):
-                Character.CoreDrive = next;
+            case nameof(Draft.CoreDrive):
+                Draft.CoreDrive = next;
                 break;
-            case nameof(Character.CoreFear):
-                Character.CoreFear = next;
+            case nameof(Draft.CoreFear):
+                Draft.CoreFear = next;
                 break;
-            case nameof(Character.SurfaceMask):
-                Character.SurfaceMask = next;
+            case nameof(Draft.SurfaceMask):
+                Draft.SurfaceMask = next;
                 break;
-            case nameof(Character.HiddenTruth):
-                Character.HiddenTruth = next;
+            case nameof(Draft.HiddenTruth):
+                Draft.HiddenTruth = next;
                 break;
-            case nameof(Character.SentenceStyle):
-                Character.SentenceStyle = next;
+            case nameof(Draft.SentenceStyle):
+                Draft.SentenceStyle = next;
                 break;
-            case nameof(Character.HonestyStyle):
-                Character.HonestyStyle = next;
+            case nameof(Draft.HonestyStyle):
+                Draft.HonestyStyle = next;
                 break;
-            case nameof(Character.EmotionalLeakage):
-                Character.EmotionalLeakage = next;
+            case nameof(Draft.EmotionalLeakage):
+                Draft.EmotionalLeakage = next;
                 break;
-            case nameof(Character.ActionFingerprint):
-                Character.ActionFingerprint = next;
+            case nameof(Draft.ActionFingerprint):
+                Draft.ActionFingerprint = next;
                 break;
-            case nameof(Character.StressPattern):
-                Character.StressPattern = next;
+            case nameof(Draft.StressPattern):
+                Draft.StressPattern = next;
                 break;
         }
+
+        Form?.NotifyChanged();
     }
 
-    async Task GoToStep(int step)
+    Task GoToStep(int step)
     {
         Step = step;
-        await OnChanged.InvokeAsync();
+        return Task.CompletedTask;
     }
 
-    async Task Back()
+    Task Back()
     {
         if (Step > 0)
             Step--;
 
-        await OnChanged.InvokeAsync();
+        return Task.CompletedTask;
     }
 
-    async Task Next()
+    Task Next()
     {
         if (Step < Steps.Length - 1)
             Step++;
 
-        await OnChanged.InvokeAsync();
+        return Task.CompletedTask;
     }
 
-    async Task Done()
+    async Task Save()
     {
+        CopyCharacter(Character, Draft);
+        Baseline = SessionCloner.Clone(Draft);
         await OnChanged.InvokeAsync();
         await OnClose.InvokeAsync();
     }
 
-    async Task Close()
-    {
-        await OnChanged.InvokeAsync();
-        await OnClose.InvokeAsync();
-    }
+    Task Complete(StatefulFormContext<RpCharacter> form) =>
+        form.HasChanges ? form.SaveAsync() : OnClose.InvokeAsync();
+
+    void SetForm(StatefulFormContext<RpCharacter> form) => Form = form;
 
     static CharacterOption? Find(IEnumerable<CharacterOption> items, string id) => items.FirstOrDefault(item => item.Id == id);
+
+    static void CopyCharacter(RpCharacter target, RpCharacter source)
+    {
+        var clone = SessionCloner.Clone(source);
+        target.Id = clone.Id;
+        target.Name = clone.Name;
+        target.UpdatedUtc = clone.UpdatedUtc;
+        target.ImageId = clone.ImageId;
+        target.InScene = clone.InScene;
+        target.Summary = clone.Summary;
+        target.Personality = clone.Personality;
+        target.Appearance = clone.Appearance;
+        target.AppearanceProfile = clone.AppearanceProfile;
+        target.Backstory = clone.Backstory;
+        target.Voice = clone.Voice;
+        target.Notes = clone.Notes;
+        target.Pronouns = clone.Pronouns;
+        target.SceneRoles = clone.SceneRoles;
+        target.Traits = clone.Traits;
+        target.Drives = clone.Drives;
+        target.Limits = clone.Limits;
+        target.CoreDrive = clone.CoreDrive;
+        target.CoreFear = clone.CoreFear;
+        target.SurfaceMask = clone.SurfaceMask;
+        target.HiddenTruth = clone.HiddenTruth;
+        target.SentenceStyle = clone.SentenceStyle;
+        target.HonestyStyle = clone.HonestyStyle;
+        target.EmotionalLeakage = clone.EmotionalLeakage;
+        target.ActionFingerprint = clone.ActionFingerprint;
+        target.StressPattern = clone.StressPattern;
+        target.SoftSpots = clone.SoftSpots;
+        target.AvoidPatterns = clone.AvoidPatterns;
+        target.VoiceSelections = clone.VoiceSelections;
+    }
 
     public sealed record WizardStep(string Id, string Label, string Sub);
 }

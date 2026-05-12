@@ -1,73 +1,78 @@
 @inject IAiProviderConnectionService ProviderConnectionService
 @inject ILogger<ProviderConnectionEditor> Logger
 
-<FormSection Title="Connection" Class="provider-section">
-    <AppField Label="Display Name">
-        <AppInput Value="@Draft.Name" ValueChanged="SetName" UpdateMode="TextUpdateMode.Change" />
-    </AppField>
-    <AppField Label="@Meta.KeyLabel" Hint="Stored locally, never sent to our servers.">
-        <LabelAction>
-            @if (!string.IsNullOrWhiteSpace(Meta.KeyLink))
+<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="Save" OnClose="Noop" CanSave="@(() => Validation.IsValid)" ContextChanged="SetFormContext" DisableNavigationGuard>
+    <ChildContent Context="form">
+        <FormSection Title="Connection" Class="provider-section" Dirty="@form.HasChanges">
+            <AppField Label="Display Name" DirtyPath="@nameof(Draft.Name)">
+                <AppInput Value="@Draft.Name" ValueChanged="SetName" ValueExpression="@(() => Draft.Name)" DirtyPath="@nameof(Draft.Name)" UpdateMode="TextUpdateMode.Change" />
+            </AppField>
+            <AppField Label="@Meta.KeyLabel" Hint="Stored locally, never sent to our servers." DirtyPath="@nameof(Draft.ApiKey)">
+                <LabelAction>
+                    @if (!string.IsNullOrWhiteSpace(Meta.KeyLink))
+                    {
+                        <a href="@Meta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
+                    }
+                </LabelAction>
+                <ChildContent><KeyInput Value="@Draft.ApiKey" ValueChanged="SetApiKey" ValueExpression="@(() => Draft.ApiKey)" DirtyPath="@nameof(Draft.ApiKey)" /></ChildContent>
+            </AppField>
+            @if (Provider.Type is "grok" or "claude")
             {
-                <a href="@Meta.KeyLink" target="_blank" rel="noopener noreferrer">Get your key -></a>
+                <AppField Label="Admin / Management Key" Hint="Used only for provider usage, billing, or management widgets." DirtyPath="@nameof(Draft.ManagementApiKey)">
+                    <ChildContent><KeyInput Value="@Draft.ManagementApiKey" ValueChanged="SetManagementApiKey" ValueExpression="@(() => Draft.ManagementApiKey)" DirtyPath="@nameof(Draft.ManagementApiKey)" /></ChildContent>
+                </AppField>
             }
-        </LabelAction>
-        <ChildContent><KeyInput Value="@Draft.ApiKey" ValueChanged="SetApiKey" /></ChildContent>
-    </AppField>
-    @if (Provider.Type is "grok" or "claude")
-    {
-        <AppField Label="Admin / Management Key" Hint="Used only for provider usage, billing, or management widgets.">
-            <ChildContent><KeyInput Value="@Draft.ManagementApiKey" ValueChanged="SetManagementApiKey" /></ChildContent>
-        </AppField>
-    }
-    @if (Meta.NeedsEndpoint)
-    {
-        <AppField Label="Endpoint URL">
-            <LabelAction><span class="field-status-pill @(Meta.EndpointRequired ? "is-required" : "")">@(Meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
-            <ChildContent><AppInput Value="@Draft.Endpoint" ValueChanged="SetEndpoint" Placeholder="https://..." UpdateMode="TextUpdateMode.Change" /></ChildContent>
-        </AppField>
-    }
-    @if (Provider.Type is "openai" or "claude")
-    {
-        <AppField Label="Project">
-            <ChildContent><AppInput Value="@Draft.ProjectId" ValueChanged="SetProjectId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
-        </AppField>
-        <AppField Label="Account">
-            <ChildContent><AppInput Value="@Draft.AccountId" ValueChanged="SetAccountId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
-        </AppField>
-    }
-    @if (Provider.Type == "grok")
-    {
-        <AppField Label="Team">
-            <ChildContent><AppInput Value="@Draft.TeamId" ValueChanged="SetTeamId" UpdateMode="TextUpdateMode.Change" /></ChildContent>
-        </AppField>
-    }
+            @if (Meta.NeedsEndpoint)
+            {
+                <AppField Label="Endpoint URL" DirtyPath="@nameof(Draft.Endpoint)">
+                    <LabelAction><span class="field-status-pill @(Meta.EndpointRequired ? "is-required" : "")">@(Meta.EndpointRequired ? "Required" : "Optional")</span></LabelAction>
+                    <ChildContent><AppInput Value="@Draft.Endpoint" ValueChanged="SetEndpoint" ValueExpression="@(() => Draft.Endpoint)" DirtyPath="@nameof(Draft.Endpoint)" Placeholder="https://..." UpdateMode="TextUpdateMode.Change" /></ChildContent>
+                </AppField>
+            }
+            @if (Provider.Type is "openai" or "claude")
+            {
+                <AppField Label="Project" DirtyPath="@nameof(Draft.ProjectId)">
+                    <ChildContent><AppInput Value="@Draft.ProjectId" ValueChanged="SetProjectId" ValueExpression="@(() => Draft.ProjectId)" DirtyPath="@nameof(Draft.ProjectId)" UpdateMode="TextUpdateMode.Change" /></ChildContent>
+                </AppField>
+                <AppField Label="Account" DirtyPath="@nameof(Draft.AccountId)">
+                    <ChildContent><AppInput Value="@Draft.AccountId" ValueChanged="SetAccountId" ValueExpression="@(() => Draft.AccountId)" DirtyPath="@nameof(Draft.AccountId)" UpdateMode="TextUpdateMode.Change" /></ChildContent>
+                </AppField>
+            }
+            @if (Provider.Type == "grok")
+            {
+                <AppField Label="Team" DirtyPath="@nameof(Draft.TeamId)">
+                    <ChildContent><AppInput Value="@Draft.TeamId" ValueChanged="SetTeamId" ValueExpression="@(() => Draft.TeamId)" DirtyPath="@nameof(Draft.TeamId)" UpdateMode="TextUpdateMode.Change" /></ChildContent>
+                </AppField>
+            }
 
-    @if (!Validation.IsValid && HasChanges)
-    {
-        <div class="modal-error">@Validation.Message</div>
-    }
-    @if (!string.IsNullOrWhiteSpace(StatusMessage))
-    {
-        <span class="provider-connected"><FaIcon Name="check" />@StatusMessage</span>
-    }
-    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
-    {
-        <div class="modal-error">@ErrorMessage</div>
-    }
+            @if (!Validation.IsValid && form.HasChanges)
+            {
+                <div class="modal-error">@Validation.Message</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                <span class="provider-connected"><FaIcon Name="check" />@StatusMessage</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="modal-error">@ErrorMessage</div>
+            }
 
-    <div class="provider-section-actions">
-        <BusyButton Variant="primary" Size="sm" Disabled="@(!CanSave)" OnClick="Save">
-            <FaIcon Name="check" />Save
-        </BusyButton>
-        <BusyButton Variant="secondary" Size="sm" Disabled="@(!Validation.IsValid)" OnClick="Test">
-            <FaIcon Name="zap" />Test connection
-        </BusyButton>
-    </div>
-</FormSection>
+            <div class="provider-section-actions">
+                <BusyButton Variant="primary" Size="sm" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync">
+                    <FaIcon Name="check" />Save
+                </BusyButton>
+                <BusyButton Variant="secondary" Size="sm" Disabled="@(!Validation.IsValid)" OnClick="Test">
+                    <FaIcon Name="zap" />Test connection
+                </BusyButton>
+            </div>
+        </FormSection>
+    </ChildContent>
+</StatefulForm>
 
 @code {
     ProviderConnectionDraft Draft = new();
+    ProviderConnectionDraft Baseline = new();
     string? DraftProviderId;
     string ErrorMessage = "";
     string StatusMessage = "";
@@ -76,17 +81,16 @@
     [Parameter] public AiProvider Provider { get; set; } = new();
     [Parameter] public AiProviderMeta Meta { get; set; } = new();
     [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public Action<IStatefulFormContext>? FormContextChanged { get; set; }
 
     ProviderConnectionValidation Validation => ProviderConnectionValidation.Validate(Meta, Draft);
-    bool HasChanges => !Draft.Matches(Provider);
-    bool CanSave => HasChanges && Validation.IsValid;
-
     protected override void OnParametersSet()
     {
         if (DraftProviderId == Provider.Id)
             return;
 
         Draft = ProviderConnectionDraft.FromProvider(Provider);
+        Baseline = ProviderConnectionDraft.FromProvider(Provider);
         DraftProviderId = Provider.Id;
         ErrorMessage = "";
         StatusMessage = "";
@@ -96,7 +100,7 @@
     {
         ErrorMessage = "";
         StatusMessage = "";
-        if (!CanSave)
+        if (!Validation.IsValid)
             return;
 
         try
@@ -104,6 +108,7 @@
             Draft.ApplyTo(Provider);
             await Session.Providers.MarkChangedAsync();
             Draft = ProviderConnectionDraft.FromProvider(Provider);
+            Baseline = ProviderConnectionDraft.FromProvider(Provider);
             StatusMessage = "Saved";
             await OnSaved.InvokeAsync();
         }
@@ -158,6 +163,9 @@
     void SetAccountId(string value) => UpdateDraft(() => Draft.AccountId = value);
     void SetProjectId(string value) => UpdateDraft(() => Draft.ProjectId = value);
     void SetTeamId(string value) => UpdateDraft(() => Draft.TeamId = value);
+    static Task Noop() => Task.CompletedTask;
+
+    void SetFormContext(StatefulFormContext<ProviderConnectionDraft> form) => FormContextChanged?.Invoke(form);
 
     void UpdateDraft(Action update)
     {

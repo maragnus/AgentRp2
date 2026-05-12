@@ -1,4 +1,4 @@
-<label class="field-row @Class">
+<label class="@CssClass">
     <span class="field-label-row">
         <span class="field-label">@Label</span>
         @if (LabelAction is not null)
@@ -17,6 +17,15 @@
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public string? Hint { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public RenderFragment? LabelAction { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
+    [CascadingParameter] public StatefulFormPathScope? PathScope { get; set; }
+
+    string CssClass => string.Join(" ", new[] { "field-row", Class, IsDirty ? "is-dirty" : null }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    bool IsDirty => StatefulFormDirtyState.Resolve(StatefulForm, PathScope, Dirty, DirtyPath, DirtyPaths, DirtyScopeId);
 }

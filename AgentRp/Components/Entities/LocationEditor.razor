@@ -1,16 +1,19 @@
 <FormStack>
-    <FormSection Title="Identity">
-        <FieldRow Label="Name"><AppInput Value="@Location.Name" ValueChanged="SetName" /></FieldRow>
-        <FieldRow Label="Summary"><AppTextarea Rows="3" Value="@Location.Summary" ValueChanged="SetSummary" /></FieldRow>
+    <FormSection Title="Identity" DirtyPaths="@IdentityPaths">
+        <FieldRow Label="Name" DirtyPath="Name"><AppInput Value="@Location.Name" ValueChanged="SetName" DirtyPath="Name" /></FieldRow>
+        <FieldRow Label="Summary" DirtyPath="Summary"><AppTextarea Rows="3" Value="@Location.Summary" ValueChanged="SetSummary" DirtyPath="Summary" /></FieldRow>
     </FormSection>
-    <FormSection Title="Scene Texture">
-        <FieldRow Label="Description"><AppTextarea Rows="5" Value="@Location.Description" ValueChanged="SetDescription" /></FieldRow>
-        <FieldRow Label="Atmosphere"><AppTextarea Rows="4" Value="@Location.Atmosphere" ValueChanged="SetAtmosphere" /></FieldRow>
-        <FieldRow Label="Features"><AppTextarea Rows="4" Value="@Location.Features" ValueChanged="SetFeatures" /></FieldRow>
+    <FormSection Title="Scene Texture" DirtyPaths="@TexturePaths">
+        <FieldRow Label="Description" DirtyPath="Description"><AppTextarea Rows="5" Value="@Location.Description" ValueChanged="SetDescription" DirtyPath="Description" /></FieldRow>
+        <FieldRow Label="Atmosphere" DirtyPath="Atmosphere"><AppTextarea Rows="4" Value="@Location.Atmosphere" ValueChanged="SetAtmosphere" DirtyPath="Atmosphere" /></FieldRow>
+        <FieldRow Label="Features" DirtyPath="Features"><AppTextarea Rows="4" Value="@Location.Features" ValueChanged="SetFeatures" DirtyPath="Features" /></FieldRow>
     </FormSection>
 </FormStack>
 
 @code {
+    static readonly string[] IdentityPaths = [nameof(RpLocation.Name), nameof(RpLocation.Summary)];
+    static readonly string[] TexturePaths = [nameof(RpLocation.Description), nameof(RpLocation.Atmosphere), nameof(RpLocation.Features)];
+
     [Parameter] public RpLocation Location { get; set; } = new();
     [Parameter] public EventCallback OnChanged { get; set; }
     Task Changed() => OnChanged.InvokeAsync();

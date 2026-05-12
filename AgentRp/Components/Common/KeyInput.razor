@@ -3,6 +3,11 @@
               Type="@(Show ? "text" : "password")"
               Value="@Value"
               ValueChanged="HandleInput"
+              ValueExpression="@ValueExpression"
+              Dirty="@Dirty"
+              DirtyPath="@DirtyPath"
+              DirtyPaths="@DirtyPaths"
+              DirtyScopeId="@DirtyScopeId"
               Placeholder="@Placeholder"
               UpdateMode="TextUpdateMode.Change" />
     <AppButton Icon="eye"
@@ -17,6 +22,11 @@
 
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public System.Linq.Expressions.Expression<Func<string>>? ValueExpression { get; set; }
+    [Parameter] public bool Dirty { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+    [Parameter] public IReadOnlyList<string>? DirtyPaths { get; set; }
+    [Parameter] public string? DirtyScopeId { get; set; }
     [Parameter] public string Placeholder { get; set; } = "sk-...";
 
     Task HandleInput(string value) => ValueChanged.InvokeAsync(value);

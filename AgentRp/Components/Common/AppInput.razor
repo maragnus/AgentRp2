@@ -1,7 +1,7 @@
 @inherits AppTextInputBase<AppInput>
 
 <input @attributes="AdditionalAttributes"
-       class="field @Class"
+       class="@BuildFieldCssClass(Class)"
        type="@Type"
        @ref="InputElement"
        value="@Value"
