@@ -1,0 +1,30 @@
+<FormSection Title="@Title" Hint="@($"- {LevelLabel}")" DirtyPath="@DirtyPath">
+    <FieldRow Label="@LevelLabel" Hint="@Hint" DirtyPath="@DirtyPath">
+        <RangeSlider Value="@Value"
+                     ValueChanged="SetValue"
+                     Min="0"
+                     Max="2"
+                     Step="1"
+                     StartLabel="low"
+                     EndLabel="high"
+                     AriaLabel="@Title"
+                     DirtyPath="@DirtyPath" />
+    </FieldRow>
+</FormSection>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Hint { get; set; } = "";
+    [Parameter] public int Value { get; set; }
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+    [Parameter] public string? DirtyPath { get; set; }
+
+    string LevelLabel => Math.Clamp(Value, 0, 2) switch
+    {
+        0 => "Low",
+        1 => "Balanced",
+        _ => "High"
+    };
+
+    Task SetValue(double value) => ValueChanged.InvokeAsync((int)value);
+}

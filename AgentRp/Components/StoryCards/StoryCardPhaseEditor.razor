@@ -1,23 +1,23 @@
 @namespace AgentRp.Components.StoryCards
 
-<FormSection Title="@ChildTitle(Phase.Title)" Class="story-card-child-section">
-    <FieldRow Label="Title">
-        <AppInput Value="@Phase.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+<FormSection Title="@ChildTitle(Phase.Title)" Class="story-card-child-section" Dirty="@PhaseDirty">
+    <FieldRow Label="Title" Dirty="@TitleDirty">
+        <AppInput Value="@Phase.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" Dirty="@TitleDirty" />
     </FieldRow>
-    <FieldRow Label="Setup">
-        <AppTextarea Rows="4" Value="@Phase.SetupInstructions" ValueChanged="SetSetup" Disabled="@(!Editable)" />
+    <FieldRow Label="Setup" Dirty="@SetupDirty">
+        <AppTextarea Rows="4" Value="@Phase.SetupInstructions" ValueChanged="SetSetup" Disabled="@(!Editable)" Dirty="@SetupDirty" />
     </FieldRow>
-    <FieldRow Label="Planning Context">
-        <AppTextarea Rows="4" Value="@Phase.PlanningContext" ValueChanged="SetPlanning" Disabled="@(!Editable)" />
+    <FieldRow Label="Planning Context" Dirty="@PlanningDirty">
+        <AppTextarea Rows="4" Value="@Phase.PlanningContext" ValueChanged="SetPlanning" Disabled="@(!Editable)" Dirty="@PlanningDirty" />
     </FieldRow>
-    <FieldRow Label="End Condition">
-        <AppTextarea Rows="3" Value="@Phase.EndCondition" ValueChanged="SetEnd" Disabled="@(!Editable)" />
+    <FieldRow Label="End Condition" Dirty="@EndDirty">
+        <AppTextarea Rows="3" Value="@Phase.EndCondition" ValueChanged="SetEnd" Disabled="@(!Editable)" Dirty="@EndDirty" />
     </FieldRow>
     <div class="story-card-toggle-row">
         <span>Optional</span>
-        <ToggleSwitch Value="@Phase.IsOptional" ValueChanged="SetOptional" Disabled="@(!Editable)" TooltipText="Toggle optional phase" />
+        <ToggleSwitch Value="@Phase.IsOptional" ValueChanged="SetOptional" Disabled="@(!Editable)" Dirty="@OptionalDirty" TooltipText="Toggle optional phase" />
         <span>Ending</span>
-        <ToggleSwitch Value="@Phase.IsEnding" ValueChanged="SetEnding" Disabled="@(!Editable)" TooltipText="Toggle ending phase" />
+        <ToggleSwitch Value="@Phase.IsEnding" ValueChanged="SetEnding" Disabled="@(!Editable)" Dirty="@EndingDirty" TooltipText="Toggle ending phase" />
         @if (Editable)
         {
             <span class="toolbar-spacer"></span>
@@ -77,6 +77,7 @@
                             <AppNumberInput Value="@requirement.RequiredCount.ToString()"
                                             ValueChanged="value => SetRequiredCount(requirement, value)"
                                             Disabled="@(!Editable)"
+                                            Dirty="@RequirementDirty(requirement)"
                                             Min="1"
                                             PrefixText="Need"
                                             AriaLabel="@($"{requirement.ChildTitle} required count")"
@@ -99,7 +100,9 @@
 
 @code {
     [Parameter] public StoryCardPhaseEditorRow Phase { get; set; } = default!;
+    [Parameter] public StoryCardPhaseEditorRow? BaselinePhase { get; set; }
     [Parameter] public IReadOnlyList<StoryCardRequirementEditorRow> Requirements { get; set; } = [];
+    [Parameter] public IReadOnlyList<StoryCardRequirementEditorRow> BaselineRequirements { get; set; } = [];
     [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Roles { get; set; } = [];
     [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Items { get; set; } = [];
     [Parameter] public IReadOnlyList<StoryCardChildEditorRow> Locations { get; set; } = [];
@@ -169,4 +172,24 @@
     };
 
     static string ChildTitle(string title) => string.IsNullOrWhiteSpace(title) ? "Phase" : title;
+
+    bool PhaseDirty =>
+        BaselinePhase is null ||
+        TitleDirty ||
+        SetupDirty ||
+        PlanningDirty ||
+        EndDirty ||
+        OptionalDirty ||
+        EndingDirty ||
+        StatefulFormCollectionDirty.AnyDirty(Requirements, BaselineRequirements);
+
+    bool TitleDirty => BaselinePhase is null || Phase.Title != BaselinePhase.Title;
+    bool SetupDirty => BaselinePhase is null || Phase.SetupInstructions != BaselinePhase.SetupInstructions;
+    bool PlanningDirty => BaselinePhase is null || Phase.PlanningContext != BaselinePhase.PlanningContext;
+    bool EndDirty => BaselinePhase is null || Phase.EndCondition != BaselinePhase.EndCondition;
+    bool OptionalDirty => BaselinePhase is null || Phase.IsOptional != BaselinePhase.IsOptional;
+    bool EndingDirty => BaselinePhase is null || Phase.IsEnding != BaselinePhase.IsEnding;
+
+    bool RequirementDirty(StoryCardRequirementEditorRow requirement) =>
+        StatefulFormCollectionDirty.ItemDirty(Requirements, BaselineRequirements, requirement.Id, item => item.Id);
 }

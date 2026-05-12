@@ -71,6 +71,40 @@ public sealed class StatefulFormContextTests
     }
 
     [Fact]
+    public async Task AbandonClearsDirtyStateBeforeContinuing()
+    {
+        var model = new TestDraft { Title = "Saved" };
+        using var context = CreateContext(model);
+
+        model.Title = "Changed";
+        await context.GuardAsync(() => Task.CompletedTask);
+        await context.AbandonAndContinueAsync();
+
+        Assert.False(context.HasChanges);
+    }
+
+    [Fact]
+    public async Task GuardAfterAbandonRunsImmediatelyBeforeParameterRefresh()
+    {
+        var secondActionRan = false;
+        var model = new TestDraft { Title = "Saved" };
+        using var context = CreateContext(model);
+
+        model.Title = "Changed";
+        await context.GuardAsync(() => Task.CompletedTask);
+        await context.AbandonAndContinueAsync();
+
+        await context.GuardAsync(() =>
+        {
+            secondActionRan = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.True(secondActionRan);
+        Assert.False(context.ShowUnsavedChangesDialog);
+    }
+
+    [Fact]
     public async Task GuardSavesBeforeContinuing()
     {
         var actionRan = false;
@@ -135,6 +169,37 @@ public sealed class StatefulFormContextTests
     }
 
     [Fact]
+    public void NestedPathDirtyTreatsNullCurrentBranchAsNullValue()
+    {
+        var model = new TestDraft { OptionalChild = new() { Name = "Saved" } };
+        using var context = CreateContext(model);
+
+        model.OptionalChild = null;
+
+        Assert.True(context.IsPathDirty("OptionalChild.Name"));
+    }
+
+    [Fact]
+    public void NestedPathDirtyTreatsNullBaselineBranchAsNullValue()
+    {
+        var model = new TestDraft();
+        using var context = CreateContext(model);
+
+        model.OptionalChild = new() { Name = "Changed" };
+
+        Assert.True(context.IsPathDirty("OptionalChild.Name"));
+    }
+
+    [Fact]
+    public void NestedPathDirtyIsFalseWhenBothBranchesAreNull()
+    {
+        var model = new TestDraft();
+        using var context = CreateContext(model);
+
+        Assert.False(context.IsPathDirty("OptionalChild.Name"));
+    }
+
+    [Fact]
     public void CollectionPathDirtyReflectsBaselineDifference()
     {
         var model = new TestDraft { Tags = ["saved"] };
@@ -165,6 +230,54 @@ public sealed class StatefulFormContextTests
     }
 
     [Fact]
+    public async Task AllowSaveWithoutChangesPermitsPristineSave()
+    {
+        var saved = false;
+        var model = new TestDraft { Title = "Saved" };
+        using var context = new StatefulFormContext<TestDraft>(
+            model,
+            StatefulFormSnapshot.Clone(model),
+            () =>
+            {
+                saved = true;
+                return Task.CompletedTask;
+            },
+            () => Task.CompletedTask,
+            () => { },
+            allowSaveWithoutChanges: true);
+
+        Assert.False(context.HasChanges);
+        Assert.True(context.CanSave);
+
+        await context.SaveAsync();
+
+        Assert.True(saved);
+    }
+
+    [Fact]
+    public async Task AllowSaveWithoutChangesDoesNotTriggerPristineGuard()
+    {
+        var actionRan = false;
+        var model = new TestDraft { Title = "Saved" };
+        using var context = new StatefulFormContext<TestDraft>(
+            model,
+            StatefulFormSnapshot.Clone(model),
+            () => Task.CompletedTask,
+            () => Task.CompletedTask,
+            () => { },
+            allowSaveWithoutChanges: true);
+
+        await context.GuardAsync(() =>
+        {
+            actionRan = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.True(actionRan);
+        Assert.False(context.ShowUnsavedChangesDialog);
+    }
+
+    [Fact]
     public void FieldDirtyReflectsBaselineDifferenceNotTouchedState()
     {
         var model = new TestDraft { Title = "Saved" };
@@ -191,6 +304,7 @@ public sealed class StatefulFormContextTests
     {
         public string Title { get; set; } = "";
         public TestChild Child { get; set; } = new();
+        public TestChild? OptionalChild { get; set; }
         public List<string> Tags { get; set; } = [];
     }
 

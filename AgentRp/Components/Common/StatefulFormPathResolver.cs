@@ -17,7 +17,7 @@ static class StatefulFormPathResolver
         foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (current is null)
-                throw new InvalidOperationException($"Cannot resolve dirty path '{path}' because '{segment}' was reached through a null value.");
+                return null;
 
             current = ResolveSegment(current, segment, path);
         }

@@ -1,8 +1,8 @@
 @namespace AgentRp.Components.StoryCards
 
-<FormSection Title="@ChildTitle(Child.Title, Child.FallbackTitle)" Class="story-card-child-section">
-    <FieldRow Label="Title">
-        <AppInput Value="@Child.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" />
+<FormSection Title="@ChildTitle(Child.Title, Child.FallbackTitle)" Class="story-card-child-section" Dirty="@ChildDirty">
+    <FieldRow Label="Title" Dirty="@TitleDirty">
+        <AppInput Value="@Child.Title" ValueChanged="SetTitle" Disabled="@(!Editable)" Dirty="@TitleDirty" />
     </FieldRow>
     @if (Child.HasAssignment)
     {
@@ -10,25 +10,26 @@
             <span class="story-card-assignment">@Child.AssignmentText</span>
         </FieldRow>
     }
-    <FieldRow Label="Selection">
-        <AppTextarea Rows="4" Value="@Child.SelectionInstructions" ValueChanged="SetSelection" Disabled="@(!Editable)" />
+    <FieldRow Label="Selection" Dirty="@SelectionDirty">
+        <AppTextarea Rows="4" Value="@Child.SelectionInstructions" ValueChanged="SetSelection" Disabled="@(!Editable)" Dirty="@SelectionDirty" />
     </FieldRow>
-    <FieldRow Label="Creation">
-        <AppTextarea Rows="4" Value="@Child.CreationInstructions" ValueChanged="SetCreation" Disabled="@(!Editable)" />
+    <FieldRow Label="Creation" Dirty="@CreationDirty">
+        <AppTextarea Rows="4" Value="@Child.CreationInstructions" ValueChanged="SetCreation" Disabled="@(!Editable)" Dirty="@CreationDirty" />
     </FieldRow>
-    <FieldRow Label="Ongoing Context">
-        <AppTextarea Rows="4" Value="@Child.OngoingContext" ValueChanged="SetOngoing" Disabled="@(!Editable)" />
+    <FieldRow Label="Ongoing Context" Dirty="@OngoingDirty">
+        <AppTextarea Rows="4" Value="@Child.OngoingContext" ValueChanged="SetOngoing" Disabled="@(!Editable)" Dirty="@OngoingDirty" />
     </FieldRow>
     @if (Child.IncludePrivate)
     {
-        <FieldRow Label="Private Context">
-            <AppTextarea Rows="4" Value="@Child.PrivateContext" ValueChanged="SetPrivate" Disabled="@(!Editable)" />
+        <FieldRow Label="Private Context" Dirty="@PrivateDirty">
+            <AppTextarea Rows="4" Value="@Child.PrivateContext" ValueChanged="SetPrivate" Disabled="@(!Editable)" Dirty="@PrivateDirty" />
         </FieldRow>
     }
 </FormSection>
 
 @code {
     [Parameter] public StoryCardChildEditorRow Child { get; set; } = default!;
+    [Parameter] public StoryCardChildEditorRow? BaselineChild { get; set; }
     [Parameter] public bool Editable { get; set; }
     [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
@@ -68,4 +69,13 @@
     }
 
     static string ChildTitle(string title, string fallback) => string.IsNullOrWhiteSpace(title) ? fallback : title;
+
+    bool ChildDirty =>
+        BaselineChild is null || TitleDirty || SelectionDirty || CreationDirty || OngoingDirty || PrivateDirty;
+
+    bool TitleDirty => BaselineChild is null || Child.Title != BaselineChild.Title;
+    bool SelectionDirty => BaselineChild is null || Child.SelectionInstructions != BaselineChild.SelectionInstructions;
+    bool CreationDirty => BaselineChild is null || Child.CreationInstructions != BaselineChild.CreationInstructions;
+    bool OngoingDirty => BaselineChild is null || Child.OngoingContext != BaselineChild.OngoingContext;
+    bool PrivateDirty => Child.IncludePrivate && (BaselineChild is null || Child.PrivateContext != BaselineChild.PrivateContext);
 }

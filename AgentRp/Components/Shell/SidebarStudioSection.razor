@@ -1,3 +1,5 @@
+@implements IDisposable
+
 <Section Title="Studio" Compact="true">
     <RightContent>
         <AppButton Icon="@(AssistantExpanded ? "chevron-up" : "chevron-down")"
@@ -52,10 +54,26 @@
     string AssistantTooltip => HasActiveStory ? "Open Story Assistant" : "Select a story before opening Story Assistant";
     string ToggleTooltip => AssistantExpanded ? "Hide assistant preview" : "Show assistant preview";
 
+    protected override void OnInitialized()
+    {
+        Session.ActiveChat.Changed += OnActiveChatChanged;
+    }
+
     protected override void OnParametersSet()
     {
         if (!HasActiveStory)
             AssistantExpanded = false;
+    }
+
+    Task OnActiveChatChanged(ActiveChatChange change)
+    {
+        if (change.Area is not null)
+            return Task.CompletedTask;
+
+        if (change.Document is null)
+            AssistantExpanded = false;
+
+        return InvokeAsync(StateHasChanged);
     }
 
     Task OpenPromptLibrary(MouseEventArgs args) => OnOpenModal.InvokeAsync("promptLibrary");
@@ -72,5 +90,10 @@
     {
         if (HasActiveStory)
             AssistantExpanded = !AssistantExpanded;
+    }
+
+    public void Dispose()
+    {
+        Session.ActiveChat.Changed -= OnActiveChatChanged;
     }
 }

@@ -12,8 +12,9 @@ public sealed class SnapshotDraftTimelineEntryEditor
     public List<string> LocationIds { get; set; } = [];
     public List<string> ItemNames { get; set; } = [];
 
-    public static SnapshotDraftTimelineEntryEditor From(RpTranscriptSnapshotTimelineEntry entry) => new()
+    public static SnapshotDraftTimelineEntryEditor From(RpTranscriptSnapshotTimelineEntry entry, int index) => new()
     {
+        Id = $"timeline-{index}",
         TurnNumber = entry.TurnNumber,
         Title = entry.Title,
         Description = entry.Description,

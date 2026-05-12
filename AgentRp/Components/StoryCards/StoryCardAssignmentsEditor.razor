@@ -1,6 +1,6 @@
 @namespace AgentRp.Components.StoryCards
 
-<Section Title="Assignments" Class="story-card-assignments" Count="@AssignmentCount">
+<Section Title="Assignments" Class="story-card-assignments" Count="@AssignmentCount" Dirty="@AssignmentsDirty">
     @foreach (var role in Instance.Roles)
     {
         @AssignmentBlock(role.Id, StoryCardChildCardType.Role, role.Title, "character", Characters.Select(entity => new EntityOption(entity.Id, entity.Name)).ToList())
@@ -17,12 +17,14 @@
 
 @code {
     [Parameter] public StoryCardInstance Instance { get; set; } = new();
+    [Parameter] public IReadOnlyList<StoryCardEntityAssignment> BaselineAssignments { get; set; } = [];
     [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
     [Parameter] public IReadOnlyList<RpItem> Items { get; set; } = [];
     [Parameter] public IReadOnlyList<RpLocation> Locations { get; set; } = [];
     [CascadingParameter] public IStatefulFormContext? StatefulForm { get; set; }
 
     int AssignmentCount => Instance.Assignments.Count(assignment => !string.IsNullOrWhiteSpace(assignment.EntityId));
+    bool AssignmentsDirty => StatefulFormCollectionDirty.AnyDirty(Instance.Assignments, BaselineAssignments);
 
     RenderFragment AssignmentBlock(
         string childCardId,
@@ -42,7 +44,7 @@
                 @foreach (var assignment in AssignmentsFor(childCardId, type))
                 {
                     <div @key="assignment.Id" class="story-card-assignment-row">
-                        <AppSelect Value="@assignment.EntityId" ValueChanged="value => SetAssignment(assignment, value, options)">
+                        <AppSelect Value="@assignment.EntityId" ValueChanged="value => SetAssignment(assignment, value, options)" Dirty="@AssignmentDirty(assignment)">
                             <option value="">No @entityName assigned</option>
                             @foreach (var option in options)
                             {
@@ -85,6 +87,9 @@
         Instance.Assignments.RemoveAll(assignment => assignment.Id == assignmentId);
         StatefulForm?.NotifyChanged();
     }
+
+    bool AssignmentDirty(StoryCardEntityAssignment assignment) =>
+        StatefulFormCollectionDirty.ItemDirty(Instance.Assignments, BaselineAssignments, assignment.Id, item => item.Id);
 
     string AssignmentProgress(string childCardId, StoryCardChildCardType type)
     {

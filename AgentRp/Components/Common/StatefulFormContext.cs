@@ -7,11 +7,12 @@ public sealed class StatefulFormContext<TDraft> : IStatefulFormContext, IDisposa
 {
     readonly Func<Task> save;
     readonly Func<Task> close;
-    readonly Func<bool>? canSave;
-    readonly Func<TDraft, TDraft, bool>? hasChanges;
+    Func<bool>? canSave;
+    Func<TDraft, TDraft, bool>? hasChanges;
     readonly Dictionary<string, Func<bool>> scopes = new(StringComparer.Ordinal);
     readonly Action requestRender;
     Func<Task>? pendingAction;
+    bool allowSaveWithoutChanges;
     bool disposed;
 
     public StatefulFormContext(
@@ -21,6 +22,7 @@ public sealed class StatefulFormContext<TDraft> : IStatefulFormContext, IDisposa
         Func<Task> close,
         Action requestRender,
         Func<bool>? canSave = null,
+        bool allowSaveWithoutChanges = false,
         Func<TDraft, TDraft, bool>? hasChanges = null)
     {
         Model = model;
@@ -30,6 +32,7 @@ public sealed class StatefulFormContext<TDraft> : IStatefulFormContext, IDisposa
         this.close = close;
         this.requestRender = requestRender;
         this.canSave = canSave;
+        this.allowSaveWithoutChanges = allowSaveWithoutChanges;
         this.hasChanges = hasChanges;
         EditContext.OnFieldChanged += OnFieldChanged;
     }
@@ -41,7 +44,17 @@ public sealed class StatefulFormContext<TDraft> : IStatefulFormContext, IDisposa
     public EditContext EditContext { get; private set; }
     public bool ShowUnsavedChangesDialog { get; private set; }
     public bool HasChanges => hasChanges?.Invoke(Model, Baseline) ?? !StatefulFormSnapshot.Equivalent(Model, Baseline);
-    public bool CanSave => HasChanges && (canSave?.Invoke() ?? true);
+    public bool CanSave => (allowSaveWithoutChanges || HasChanges) && (canSave?.Invoke() ?? true);
+
+    public void UpdateOptions(
+        Func<bool>? canSave,
+        bool allowSaveWithoutChanges,
+        Func<TDraft, TDraft, bool>? hasChanges)
+    {
+        this.canSave = canSave;
+        this.allowSaveWithoutChanges = allowSaveWithoutChanges;
+        this.hasChanges = hasChanges;
+    }
 
     public void UpdateModel(TDraft model, TDraft baseline)
     {
@@ -139,6 +152,7 @@ public sealed class StatefulFormContext<TDraft> : IStatefulFormContext, IDisposa
         var action = pendingAction;
         pendingAction = null;
         ShowUnsavedChangesDialog = false;
+        Baseline = StatefulFormSnapshot.Clone(Model);
         NotifyChanged();
         if (action is not null)
             await action();

@@ -108,6 +108,8 @@ Use `StatefulFormScope` for nested editors so child components can use local pat
 
 Inside `LocationEditor`, use `DirtyPath="Name"` instead of `DirtyPath="Location.Name"`.
 
+Scoped paths may pass through nullable draft branches. If `Location` is temporarily `null`, `Location.Name` compares as `null` instead of throwing; missing properties or dictionary keys still throw because those are implementation errors.
+
 For complex child components that mutate lists or dictionaries without a bound input, call the cascaded form context after changing the draft:
 
 ```csharp

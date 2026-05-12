@@ -108,6 +108,7 @@
     protected override void OnInitialized()
     {
         Session.Changed += OnSessionChanged;
+        Session.ActiveChat.Changed += OnActiveChatChanged;
         Session.Chats.Changed += OnSessionChanged;
         Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Characters.Changed += OnSessionChanged;
@@ -118,11 +119,15 @@
 
     Task OnSessionChanged() => InvokeAsync(StateHasChanged);
 
+    Task OnActiveChatChanged(ActiveChatChange change) =>
+        change.Area is null ? InvokeAsync(StateHasChanged) : Task.CompletedTask;
+
     Task SetSpeakingAs(RpCharacter? character) => Session.SetSpeakingAsAsync(character);
 
     public void Dispose()
     {
         Session.Changed -= OnSessionChanged;
+        Session.ActiveChat.Changed -= OnActiveChatChanged;
         Session.Chats.Changed -= OnSessionChanged;
         Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;

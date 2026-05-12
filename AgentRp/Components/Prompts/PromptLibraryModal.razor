@@ -88,7 +88,7 @@
                                         <code class="@(dirty ? "is-dirty" : "")">@shape.Label</code>
                                         <AppButton Icon="refresh" TooltipText="Reset" Disabled="@(!dirty)" OnClick="@(_ => ResetTurnShape(shape.Id))" />
                                     </div>
-                                    <AppTextarea Class="mono" Rows="2" Value="@shape.Value" ValueChanged="value => UpdateTurnShape(shape.Id, value)" />
+                                    <AppTextarea Class="mono" Rows="2" Value="@shape.Value" ValueChanged="value => UpdateTurnShape(shape.Id, value)" Dirty="@dirty" />
                                 </div>
                             }
                         </div>
@@ -156,7 +156,7 @@
     void LoadDraft()
     {
         Draft = PromptLibraryService.NormalizeState(Session.PromptLibrary.State);
-        Baseline = SessionCloner.Clone(Draft);
+        Baseline = CloneResolvedState(Draft);
     }
 
     void SwitchStep(string? id)
@@ -234,7 +234,7 @@
         ErrorMessage = null;
         try
         {
-            Draft = PromptLibraryState.CreateDefault();
+            Draft = PromptLibraryService.CreateDefaultState();
             PromptForm?.NotifyChanged();
         }
         catch (Exception exception)
@@ -260,7 +260,7 @@
         try
         {
             await Session.PromptLibrary.SaveAsync(Draft);
-            Baseline = SessionCloner.Clone(PromptLibraryService.NormalizeState(Draft));
+            Baseline = CloneResolvedState(Draft);
         }
         catch (Exception exception)
         {
@@ -277,6 +277,9 @@
     {
         PromptForm = form;
     }
+
+    static PromptLibraryState CloneResolvedState(PromptLibraryState state) =>
+        StatefulFormSnapshot.Clone(PromptLibraryService.NormalizeState(state));
 
     public void Dispose()
     {

@@ -13,10 +13,13 @@ else
         {
             var sourceName = CharacterName(update.SourceCharacterId);
             var targetName = CharacterName(update.TargetCharacterId);
-            <article @key="update.RelationshipId" class="snapshot-relationship-update @(update.ApplyChange ? "is-applied" : "is-skipped")">
+            <article @key="update.RelationshipId" class="snapshot-relationship-update @(update.ApplyChange ? "is-applied" : "is-skipped") @(UpdateDirty(update) ? "is-dirty" : "")">
                 <header class="snapshot-relationship-update-head">
                     <label class="snapshot-relationship-apply">
-                        <input type="checkbox" checked="@update.ApplyChange" @onchange="args => SetApply(update, args)" />
+                        <ToggleSwitch Value="@update.ApplyChange"
+                                      ValueChanged="value => SetApply(update, value)"
+                                      Dirty="@ApplyDirty(update)"
+                                      TooltipText="Toggle relationship update" />
                         <span>Apply</span>
                     </label>
                     <div class="snapshot-relationship-title">
@@ -47,6 +50,11 @@ else
                                                    HowTargetSeesSourceChanged="value => update.HowTargetSeesSource = value"
                                                    PublicDynamic="@update.PublicDynamic"
                                                    PublicDynamicChanged="value => update.PublicDynamic = value"
+                                                   RelationshipTypesDirty="@RelationshipTypesDirty(update)"
+                                                   PrivateTensionsDirty="@PrivateTensionsDirty(update)"
+                                                   HowSourceSeesTargetDirty="@HowSourceSeesTargetDirty(update)"
+                                                   HowTargetSeesSourceDirty="@HowTargetSeesSourceDirty(update)"
+                                                   PublicDynamicDirty="@PublicDynamicDirty(update)"
                                                    OnChanged="OnChanged"
                                                    Class="snapshot-relationship-fields" />
             </article>
@@ -56,13 +64,14 @@ else
 
 @code {
     [Parameter] public List<RpTranscriptSnapshotRelationshipUpdate> Updates { get; set; } = [];
+    [Parameter] public IReadOnlyList<RpTranscriptSnapshotRelationshipUpdate> BaselineUpdates { get; set; } = [];
     [Parameter] public List<RpCharacter> Characters { get; set; } = [];
     [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    async Task SetApply(RpTranscriptSnapshotRelationshipUpdate update, ChangeEventArgs args)
+    async Task SetApply(RpTranscriptSnapshotRelationshipUpdate update, bool value)
     {
-        update.ApplyChange = args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        update.ApplyChange = value;
         await OnChanged.InvokeAsync();
     }
 
@@ -73,4 +82,28 @@ else
         update.EvidenceTurnNumbers.Count == 1
             ? $"Turn {update.EvidenceTurnNumbers[0]}"
             : $"Turns {string.Join(", ", update.EvidenceTurnNumbers)}";
+
+    RpTranscriptSnapshotRelationshipUpdate? BaselineFor(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineUpdates.FirstOrDefault(item => string.Equals(item.RelationshipId, update.RelationshipId, StringComparison.Ordinal));
+
+    bool UpdateDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        StatefulFormCollectionDirty.ItemDirty(Updates, BaselineUpdates, update.RelationshipId, item => item.RelationshipId);
+
+    bool ApplyDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || update.ApplyChange != baseline.ApplyChange;
+
+    bool RelationshipTypesDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || StatefulFormCollectionDirty.ValueDirty(update.RelationshipTypes, baseline.RelationshipTypes);
+
+    bool PrivateTensionsDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || StatefulFormCollectionDirty.ValueDirty(update.PrivateTensions, baseline.PrivateTensions);
+
+    bool HowSourceSeesTargetDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || update.HowSourceSeesTarget != baseline.HowSourceSeesTarget;
+
+    bool HowTargetSeesSourceDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || update.HowTargetSeesSource != baseline.HowTargetSeesSource;
+
+    bool PublicDynamicDirty(RpTranscriptSnapshotRelationshipUpdate update) =>
+        BaselineFor(update) is not { } baseline || update.PublicDynamic != baseline.PublicDynamic;
 }

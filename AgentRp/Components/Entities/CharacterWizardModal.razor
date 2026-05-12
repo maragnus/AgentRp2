@@ -1,4 +1,4 @@
-<StatefulForm Model="@Draft" Baseline="@Baseline" OnSave="Save" OnClose="OnClose" ContextChanged="SetForm" RenderFormElement="false">
+<StatefulForm Model="@DraftState" Baseline="@Baseline" OnSave="Save" OnClose="OnClose" ContextChanged="SetForm" RenderFormElement="false">
 <ChildContent Context="form">
 <ModalShell Title="@WizardTitle" Subtitle="Guided Profile" MaxWidth="960px" Height="680px" BodyClass="is-flush" OnClose="form.RequestCloseAsync">
     <ModalSplitLayout Height="100%" RailWidth="210px" RailClass="character-wizard-rail">
@@ -74,24 +74,24 @@
                     @if (Step == 0)
                     {
                         <div class="character-wizard-step-stack">
-                            <FormSection Title="Name" DirtyPath="@nameof(Draft.Name)">
+                            <FormSection Title="Name" DirtyPath="@CharacterPath(nameof(RpCharacter.Name))">
                                 <AppInput Class="character-wizard-name-input"
                                           Placeholder="Character name..."
                                           Value="@Draft.Name"
                                           ValueChanged="value => Draft.Name = value"
-                                          DirtyPath="@nameof(Draft.Name)"
+                                          DirtyPath="@CharacterPath(nameof(RpCharacter.Name))"
                                           UpdateMode="TextUpdateMode.Change" />
                             </FormSection>
-                            <FormSection Title="Summary" Hint="— one sentence, optional" DirtyPath="@nameof(Draft.Summary)">
+                            <FormSection Title="Summary" Hint="— one sentence, optional" DirtyPath="@CharacterPath(nameof(RpCharacter.Summary))">
                                 <AppTextarea Class="character-wizard-textarea"
                                              Rows="2"
                                              Placeholder="Who is this character in a sentence?"
                                              Value="@Draft.Summary"
                                              ValueChanged="value => Draft.Summary = value"
-                                             DirtyPath="@nameof(Draft.Summary)"
+                                             DirtyPath="@CharacterPath(nameof(RpCharacter.Summary))"
                                              UpdateMode="TextUpdateMode.Change" />
                             </FormSection>
-                            <Section Title="Pronouns" DirtyPath="@nameof(Draft.Pronouns)">
+                            <Section Title="Pronouns" DirtyPath="@CharacterPath(nameof(RpCharacter.Pronouns))">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var pronoun in PronounOptions)
                                     {
@@ -102,7 +102,7 @@
                                     }
                                 </div>
                             </Section>
-                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Draft.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles" DirtyPath="@nameof(Draft.SceneRoles)">
+                            <Section Title="Scene Roles" Hint="— what function they serve" Count="Draft.SceneRoles.Count" MaxCount="CharacterProfileRules.MaxSceneRoles" DirtyPath="@CharacterPath(nameof(RpCharacter.SceneRoles))">
                                 <div class="character-wizard-chip-list">
                                     @foreach (var role in SceneRoles)
                                     {
@@ -117,7 +117,9 @@
                     }
                     else if (Step == 1)
                     {
-                        <CharacterAppearanceEditor Character="Draft" Library="TraitLibrary" />
+                        <StatefulFormScope PathPrefix="@nameof(CharacterWizardDraftState.Character)">
+                            <CharacterAppearanceEditor Character="Draft" Library="TraitLibrary" />
+                        </StatefulFormScope>
                     }
                     else if (Step == 2)
                     {
@@ -129,7 +131,7 @@
                             @foreach (var group in TraitCategories)
                             {
                                 var selectedCount = group.Items.Count(item => Draft.Traits.Contains(item.Id));
-                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="character-wizard-trait-group" DirtyPath="@nameof(Draft.Traits)">
+                                <Section @key="group.Name" Title="@group.Name" Count="@selectedCount" Class="character-wizard-trait-group" DirtyPath="@CharacterPath(nameof(RpCharacter.Traits))">
                                     <div class="character-wizard-chip-list">
                                         @foreach (var trait in group.Items)
                                         {
@@ -147,36 +149,38 @@
                     {
                         <p class="character-wizard-help">Pick one for each. These four fields give the model emotional logic to draw from.</p>
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Draft.CoreDrive" DirtyPath="@nameof(Draft.CoreDrive)" OnSelect="@(id => SetSingle(nameof(Draft.CoreDrive), id))" />
-                            <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Draft.CoreFear" DirtyPath="@nameof(Draft.CoreFear)" OnSelect="@(id => SetSingle(nameof(Draft.CoreFear), id))" />
-                            <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Draft.SurfaceMask" DirtyPath="@nameof(Draft.SurfaceMask)" OnSelect="@(id => SetSingle(nameof(Draft.SurfaceMask), id))" />
-                            <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Draft.HiddenTruth" DirtyPath="@nameof(Draft.HiddenTruth)" OnSelect="@(id => SetSingle(nameof(Draft.HiddenTruth), id))" />
+                            <CharacterOptionGrid Title="Core Drive" Hint="The engine behind every choice." Columns="3" Items="CoreDrives" Selected="@Draft.CoreDrive" DirtyPath="@CharacterPath(nameof(RpCharacter.CoreDrive))" OnSelect="@(id => SetSingle(nameof(Draft.CoreDrive), id))" />
+                            <CharacterOptionGrid Title="Core Fear" Hint="What they most want to avoid." Columns="3" Items="CoreFears" Selected="@Draft.CoreFear" DirtyPath="@CharacterPath(nameof(RpCharacter.CoreFear))" OnSelect="@(id => SetSingle(nameof(Draft.CoreFear), id))" />
+                            <CharacterOptionGrid Title="Surface Mask" Hint="How they present to the world." Columns="2" Items="SurfaceMasks" Selected="@Draft.SurfaceMask" DirtyPath="@CharacterPath(nameof(RpCharacter.SurfaceMask))" OnSelect="@(id => SetSingle(nameof(Draft.SurfaceMask), id))" />
+                            <CharacterOptionGrid Title="Hidden Truth" Hint="What quietly drives them underneath." Columns="2" Items="HiddenTruths" Selected="@Draft.HiddenTruth" DirtyPath="@CharacterPath(nameof(RpCharacter.HiddenTruth))" OnSelect="@(id => SetSingle(nameof(Draft.HiddenTruth), id))" />
                         </div>
                     }
                     else if (Step == 4)
                     {
                         <p class="character-wizard-help">Pick one per category. Voice and behavior make characters feel distinct on the page.</p>
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Draft.SentenceStyle" DirtyPath="@nameof(Draft.SentenceStyle)" OnSelect="@(id => SetSingle(nameof(Draft.SentenceStyle), id))" />
-                            <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Draft.HonestyStyle" DirtyPath="@nameof(Draft.HonestyStyle)" OnSelect="@(id => SetSingle(nameof(Draft.HonestyStyle), id))" />
-                            <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Draft.EmotionalLeakage" DirtyPath="@nameof(Draft.EmotionalLeakage)" OnSelect="@(id => SetSingle(nameof(Draft.EmotionalLeakage), id))" />
-                            <CharacterOptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Draft.ActionFingerprint" DirtyPath="@nameof(Draft.ActionFingerprint)" OnSelect="@(id => SetSingle(nameof(Draft.ActionFingerprint), id))" />
-                            <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Draft.StressPattern" DirtyPath="@nameof(Draft.StressPattern)" OnSelect="@(id => SetSingle(nameof(Draft.StressPattern), id))" />
+                            <CharacterOptionGrid Title="Sentence Style" Hint="How they construct speech." Columns="2" Items="SentenceStyles" Selected="@Draft.SentenceStyle" DirtyPath="@CharacterPath(nameof(RpCharacter.SentenceStyle))" OnSelect="@(id => SetSingle(nameof(Draft.SentenceStyle), id))" />
+                            <CharacterOptionGrid Title="Honesty Style" Hint="How direct vs. evasive they are." Columns="2" Items="HonestyStyles" Selected="@Draft.HonestyStyle" DirtyPath="@CharacterPath(nameof(RpCharacter.HonestyStyle))" OnSelect="@(id => SetSingle(nameof(Draft.HonestyStyle), id))" />
+                            <CharacterOptionGrid Title="Emotional Leakage" Hint="How feelings escape their control." Columns="2" Items="EmotionalLeakages" Selected="@Draft.EmotionalLeakage" DirtyPath="@CharacterPath(nameof(RpCharacter.EmotionalLeakage))" OnSelect="@(id => SetSingle(nameof(Draft.EmotionalLeakage), id))" />
+                            <CharacterOptionGrid Title="Action Fingerprint" Hint="Their physical signature in a scene." Columns="2" Items="ActionFingerprints" Selected="@Draft.ActionFingerprint" DirtyPath="@CharacterPath(nameof(RpCharacter.ActionFingerprint))" OnSelect="@(id => SetSingle(nameof(Draft.ActionFingerprint), id))" />
+                            <CharacterOptionGrid Title="Stress Pattern" Hint="How behavior escalates under pressure." Columns="2" Items="StressPatterns" Selected="@Draft.StressPattern" DirtyPath="@CharacterPath(nameof(RpCharacter.StressPattern))" OnSelect="@(id => SetSingle(nameof(Draft.StressPattern), id))" />
                         </div>
                     }
                     else if (Step == 5)
                     {
                         <div class="character-wizard-step-stack is-roomy">
-                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Draft.SoftSpots" DirtyPath="@nameof(Draft.SoftSpots)" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Draft.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
-                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Draft.AvoidPatterns" DirtyPath="@nameof(Draft.AvoidPatterns)" Max="CharacterProfileRules.MaxAvoidPatterns" OnToggle="@(id => ToggleLimited(Draft.AvoidPatterns, id, CharacterProfileRules.MaxAvoidPatterns))" />
+                            <CharacterOptionGrid Title="Soft Spots" Hint="— what makes them open up" Columns="2" Items="SoftSpots" MultiValues="Draft.SoftSpots" DirtyPath="@CharacterPath(nameof(RpCharacter.SoftSpots))" Max="CharacterProfileRules.MaxSoftSpots" OnToggle="@(id => ToggleLimited(Draft.SoftSpots, id, CharacterProfileRules.MaxSoftSpots))" />
+                            <CharacterOptionGrid Title="Avoid Patterns" Hint="— what the model must not do" Columns="2" Items="AvoidPatterns" MultiValues="Draft.AvoidPatterns" DirtyPath="@CharacterPath(nameof(RpCharacter.AvoidPatterns))" Max="CharacterProfileRules.MaxAvoidPatterns" OnToggle="@(id => ToggleLimited(Draft.AvoidPatterns, id, CharacterProfileRules.MaxAvoidPatterns))" />
                         </div>
                     }
                     else
                     {
-                        <CharacterRelationshipsEditor Document="Session.ActiveChat.Current!"
-                                                      Character="Draft"
+                        <CharacterRelationshipsEditor Character="Draft"
                                                       ExistingCharacters="ExistingCharacters"
-                                                      Library="TraitLibrary" />
+                                                      Relationships="DraftState.Relationships"
+                                                      BaselineRelationships="Baseline.Relationships"
+                                                      Library="TraitLibrary"
+                                                      OnChanged="NotifyFormChanged" />
                     }
                     </ChildContent>
 
@@ -209,9 +213,9 @@
 @code {
     int Step;
     string LoadedCharacterId = "";
-    RpCharacter Draft = new();
-    RpCharacter Baseline = new();
-    StatefulFormContext<RpCharacter>? Form;
+    CharacterWizardDraftState DraftState = new();
+    CharacterWizardDraftState Baseline = new();
+    StatefulFormContext<CharacterWizardDraftState>? Form;
 
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
@@ -219,6 +223,7 @@
     [Parameter] public EventCallback OnChanged { get; set; }
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
+    RpCharacter Draft => DraftState.Character;
     string WizardTitle => string.IsNullOrWhiteSpace(Draft.Name) ? "New Character" : Draft.Name;
     CharacterTraitLibraryState TraitLibrary => Session.Chat.CharacterTraitLibrary.State;
     IReadOnlyList<CharacterOption> PronounOptions => CharacterProfileRules.PronounOptions;
@@ -257,8 +262,9 @@
             return;
 
         LoadedCharacterId = Character.Id;
-        Draft = SessionCloner.Clone(Character);
-        Baseline = SessionCloner.Clone(Character);
+        var document = Session.ActiveChat.Current ?? new();
+        DraftState = CharacterWizardDraftState.From(Character, document);
+        Baseline = StatefulFormSnapshot.Clone(DraftState);
     }
 
     bool StepDone(int step) => step switch
@@ -274,13 +280,13 @@
 
     bool StepDirty(int step) => step switch
     {
-        0 => Form?.IsAnyPathDirty(nameof(Draft.Name), nameof(Draft.Summary), nameof(Draft.Pronouns), nameof(Draft.SceneRoles)) == true,
-        1 => Form?.IsAnyPathDirty(nameof(Draft.Appearance), nameof(Draft.AppearanceProfile)) == true,
-        2 => Form?.IsPathDirty(nameof(Draft.Traits)) == true,
-        3 => Form?.IsAnyPathDirty(nameof(Draft.CoreDrive), nameof(Draft.CoreFear), nameof(Draft.SurfaceMask), nameof(Draft.HiddenTruth)) == true,
-        4 => Form?.IsAnyPathDirty(nameof(Draft.SentenceStyle), nameof(Draft.HonestyStyle), nameof(Draft.EmotionalLeakage), nameof(Draft.ActionFingerprint), nameof(Draft.StressPattern)) == true,
-        5 => Form?.IsAnyPathDirty(nameof(Draft.SoftSpots), nameof(Draft.AvoidPatterns)) == true,
-        _ => false
+        0 => Form?.IsAnyPathDirty(CharacterPath(nameof(RpCharacter.Name)), CharacterPath(nameof(RpCharacter.Summary)), CharacterPath(nameof(RpCharacter.Pronouns)), CharacterPath(nameof(RpCharacter.SceneRoles))) == true,
+        1 => Form?.IsAnyPathDirty(CharacterPath(nameof(RpCharacter.Appearance)), CharacterPath(nameof(RpCharacter.AppearanceProfile))) == true,
+        2 => Form?.IsPathDirty(CharacterPath(nameof(RpCharacter.Traits))) == true,
+        3 => Form?.IsAnyPathDirty(CharacterPath(nameof(RpCharacter.CoreDrive)), CharacterPath(nameof(RpCharacter.CoreFear)), CharacterPath(nameof(RpCharacter.SurfaceMask)), CharacterPath(nameof(RpCharacter.HiddenTruth))) == true,
+        4 => Form?.IsAnyPathDirty(CharacterPath(nameof(RpCharacter.SentenceStyle)), CharacterPath(nameof(RpCharacter.HonestyStyle)), CharacterPath(nameof(RpCharacter.EmotionalLeakage)), CharacterPath(nameof(RpCharacter.ActionFingerprint)), CharacterPath(nameof(RpCharacter.StressPattern))) == true,
+        5 => Form?.IsAnyPathDirty(CharacterPath(nameof(RpCharacter.SoftSpots)), CharacterPath(nameof(RpCharacter.AvoidPatterns))) == true,
+        _ => Form?.IsPathDirty(nameof(CharacterWizardDraftState.Relationships)) == true
     };
 
     void ToggleLimited(List<string> values, string value, int max)
@@ -380,52 +386,29 @@
 
     async Task Save()
     {
-        CopyCharacter(Character, Draft);
-        Baseline = SessionCloner.Clone(Draft);
+        if (Session.ActiveChat.Current is not { } document)
+            return;
+
+        DraftState.ApplyTo(Character, document);
+        Baseline = StatefulFormSnapshot.Clone(DraftState);
         await OnChanged.InvokeAsync();
         await OnClose.InvokeAsync();
     }
 
-    Task Complete(StatefulFormContext<RpCharacter> form) =>
+    Task Complete(StatefulFormContext<CharacterWizardDraftState> form) =>
         form.HasChanges ? form.SaveAsync() : OnClose.InvokeAsync();
 
-    void SetForm(StatefulFormContext<RpCharacter> form) => Form = form;
+    void SetForm(StatefulFormContext<CharacterWizardDraftState> form) => Form = form;
+
+    Task NotifyFormChanged()
+    {
+        Form?.NotifyChanged();
+        return Task.CompletedTask;
+    }
+
+    static string CharacterPath(string property) => $"{nameof(CharacterWizardDraftState.Character)}.{property}";
 
     static CharacterOption? Find(IEnumerable<CharacterOption> items, string id) => items.FirstOrDefault(item => item.Id == id);
-
-    static void CopyCharacter(RpCharacter target, RpCharacter source)
-    {
-        var clone = SessionCloner.Clone(source);
-        target.Id = clone.Id;
-        target.Name = clone.Name;
-        target.UpdatedUtc = clone.UpdatedUtc;
-        target.ImageId = clone.ImageId;
-        target.InScene = clone.InScene;
-        target.Summary = clone.Summary;
-        target.Personality = clone.Personality;
-        target.Appearance = clone.Appearance;
-        target.AppearanceProfile = clone.AppearanceProfile;
-        target.Backstory = clone.Backstory;
-        target.Voice = clone.Voice;
-        target.Notes = clone.Notes;
-        target.Pronouns = clone.Pronouns;
-        target.SceneRoles = clone.SceneRoles;
-        target.Traits = clone.Traits;
-        target.Drives = clone.Drives;
-        target.Limits = clone.Limits;
-        target.CoreDrive = clone.CoreDrive;
-        target.CoreFear = clone.CoreFear;
-        target.SurfaceMask = clone.SurfaceMask;
-        target.HiddenTruth = clone.HiddenTruth;
-        target.SentenceStyle = clone.SentenceStyle;
-        target.HonestyStyle = clone.HonestyStyle;
-        target.EmotionalLeakage = clone.EmotionalLeakage;
-        target.ActionFingerprint = clone.ActionFingerprint;
-        target.StressPattern = clone.StressPattern;
-        target.SoftSpots = clone.SoftSpots;
-        target.AvoidPatterns = clone.AvoidPatterns;
-        target.VoiceSelections = clone.VoiceSelections;
-    }
 
     public sealed record WizardStep(string Id, string Label, string Sub);
 }

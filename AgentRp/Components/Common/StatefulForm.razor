@@ -47,6 +47,7 @@
     [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
     [Parameter] public Func<bool>? CanSave { get; set; }
     [Parameter] public Func<TDraft, TDraft, bool>? HasChanges { get; set; }
+    [Parameter] public bool AllowSaveWithoutChanges { get; set; }
     [Parameter] public bool DisableNavigationGuard { get; set; }
     [Parameter] public bool RenderFormElement { get; set; } = true;
     [Parameter] public Action<StatefulFormContext<TDraft>>? ContextChanged { get; set; }
@@ -56,11 +57,12 @@
     {
         if (Context is null)
         {
-            Context = new(Model, Baseline, Save, Close, RequestRender, CanSave, HasChanges);
+            Context = new(Model, Baseline, Save, Close, RequestRender, CanSave, AllowSaveWithoutChanges, HasChanges);
             ContextChanged?.Invoke(Context);
             return;
         }
 
+        Context.UpdateOptions(CanSave, AllowSaveWithoutChanges, HasChanges);
         Context.UpdateModel(Model, Baseline);
         ContextChanged?.Invoke(Context);
     }

@@ -7,16 +7,22 @@ namespace AgentRp.Services;
 public static class CharacterRelationshipGraph
 {
     public static RpCharacterRelationship? Find(RpChatDocument document, string sourceCharacterId, string targetCharacterId)
+        => Find(document.CharacterRelationships, sourceCharacterId, targetCharacterId);
+
+    public static RpCharacterRelationship? Find(IEnumerable<RpCharacterRelationship> relationships, string sourceCharacterId, string targetCharacterId)
     {
         var pair = CanonicalPair(sourceCharacterId, targetCharacterId);
-        return document.CharacterRelationships.FirstOrDefault(relationship =>
+        return relationships.FirstOrDefault(relationship =>
             relationship.CharacterAId == pair.CharacterAId && relationship.CharacterBId == pair.CharacterBId);
     }
 
     public static RpCharacterRelationship GetOrCreate(RpChatDocument document, string sourceCharacterId, string targetCharacterId)
+        => GetOrCreate(document.CharacterRelationships, sourceCharacterId, targetCharacterId);
+
+    public static RpCharacterRelationship GetOrCreate(List<RpCharacterRelationship> relationships, string sourceCharacterId, string targetCharacterId)
     {
         var pair = CanonicalPair(sourceCharacterId, targetCharacterId);
-        var existing = Find(document, sourceCharacterId, targetCharacterId);
+        var existing = Find(relationships, sourceCharacterId, targetCharacterId);
         if (existing is not null)
             return existing;
 
@@ -26,14 +32,17 @@ public static class CharacterRelationshipGraph
             CharacterAId = pair.CharacterAId,
             CharacterBId = pair.CharacterBId
         };
-        document.CharacterRelationships.Add(relationship);
+        relationships.Add(relationship);
         return relationship;
     }
 
     public static bool Remove(RpChatDocument document, string sourceCharacterId, string targetCharacterId)
+        => Remove(document.CharacterRelationships, sourceCharacterId, targetCharacterId);
+
+    public static bool Remove(List<RpCharacterRelationship> relationships, string sourceCharacterId, string targetCharacterId)
     {
-        var relationship = Find(document, sourceCharacterId, targetCharacterId);
-        return relationship is not null && document.CharacterRelationships.Remove(relationship);
+        var relationship = Find(relationships, sourceCharacterId, targetCharacterId);
+        return relationship is not null && relationships.Remove(relationship);
     }
 
     public static string RelationshipIdFor(string firstCharacterId, string secondCharacterId)
@@ -44,6 +53,9 @@ public static class CharacterRelationshipGraph
 
     public static void RemoveCharacter(RpChatDocument document, string characterId) =>
         document.CharacterRelationships.RemoveAll(relationship => Contains(relationship, characterId));
+
+    public static bool ContainsCharacter(RpCharacterRelationship relationship, string characterId) =>
+        Contains(relationship, characterId);
 
     public static CharacterRelationshipView View(
         RpCharacterRelationship relationship,

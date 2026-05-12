@@ -15,21 +15,21 @@ else
         @for (var index = 0; index < Entries.Count; index++)
         {
             var entry = Entries[index];
-            <FormSection @key="entry.Id" Title="@EntryTitle(entry, index)" Hint="@EntryHint(entry)" Class="snapshot-review-section snapshot-timeline-entry">
+            <FormSection @key="entry.Id" Title="@EntryTitle(entry, index)" Hint="@EntryHint(entry)" Class="snapshot-review-section snapshot-timeline-entry" Dirty="@EntryDirty(entry)">
                 <RightContent>
                     <AppButton Icon="trash" TooltipText="Remove timeline item" OnClick="@(_ => Remove(entry.Id))" />
                 </RightContent>
                 <ChildContent>
                     <div class="snapshot-timeline-grid">
-                        <FieldRow Label="When">
-                            <AppInput Value="@FormatWhen(entry)" ValueChanged="value => UpdateTurnNumber(entry, value)" Placeholder="Turn 52" />
+                        <FieldRow Label="When" Dirty="@TurnNumberDirty(entry)">
+                            <AppInput Value="@FormatWhen(entry)" ValueChanged="value => UpdateTurnNumber(entry, value)" Dirty="@TurnNumberDirty(entry)" Placeholder="Turn 52" />
                         </FieldRow>
-                        <FieldRow Label="Title">
-                            <AppInput Value="@entry.Title" ValueChanged="value => Update(updated => entry.Title = updated, value)" Placeholder="Timeline title" UpdateMode="TextUpdateMode.Change" />
+                        <FieldRow Label="Title" Dirty="@TitleDirty(entry)">
+                            <AppInput Value="@entry.Title" ValueChanged="value => Update(updated => entry.Title = updated, value)" Dirty="@TitleDirty(entry)" Placeholder="Timeline title" UpdateMode="TextUpdateMode.Change" />
                         </FieldRow>
                     </div>
-                    <FieldRow Label="Description">
-                        <AppTextarea Rows="3" Value="@entry.Description" ValueChanged="value => Update(updated => entry.Description = updated, value)" />
+                    <FieldRow Label="Description" Dirty="@DescriptionDirty(entry)">
+                        <AppTextarea Rows="3" Value="@entry.Description" ValueChanged="value => Update(updated => entry.Description = updated, value)" Dirty="@DescriptionDirty(entry)" />
                     </FieldRow>
                 </ChildContent>
             </FormSection>
@@ -39,6 +39,7 @@ else
 
 @code {
     [Parameter] public List<SnapshotDraftTimelineEntryEditor> Entries { get; set; } = [];
+    [Parameter] public IReadOnlyList<SnapshotDraftTimelineEntryEditor> BaselineEntries { get; set; } = [];
     [Parameter] public EventCallback OnChanged { get; set; }
 
     async Task Remove(string id)
@@ -76,4 +77,19 @@ else
 
         return int.TryParse(text, out var turnNumber) ? Math.Max(0, turnNumber) : 0;
     }
+
+    SnapshotDraftTimelineEntryEditor? BaselineFor(SnapshotDraftTimelineEntryEditor entry) =>
+        BaselineEntries.FirstOrDefault(item => string.Equals(item.Id, entry.Id, StringComparison.Ordinal));
+
+    bool EntryDirty(SnapshotDraftTimelineEntryEditor entry) =>
+        StatefulFormCollectionDirty.ItemDirty(Entries, BaselineEntries, entry.Id, item => item.Id);
+
+    bool TurnNumberDirty(SnapshotDraftTimelineEntryEditor entry) =>
+        BaselineFor(entry) is not { } baseline || entry.TurnNumber != baseline.TurnNumber;
+
+    bool TitleDirty(SnapshotDraftTimelineEntryEditor entry) =>
+        BaselineFor(entry) is not { } baseline || entry.Title != baseline.Title;
+
+    bool DescriptionDirty(SnapshotDraftTimelineEntryEditor entry) =>
+        BaselineFor(entry) is not { } baseline || entry.Description != baseline.Description;
 }

@@ -44,6 +44,7 @@
         <StatefulForm Model="@Editor"
                       Baseline="@Baseline"
                       CanSave="@(() => CanSave)"
+                      AllowSaveWithoutChanges
                       OnSave="Save"
                       OnClose="Close"
                       ContextChanged="SetSnapshotForm">
@@ -125,7 +126,7 @@
                         }
                         else if (ActiveTab == "timeline")
                         {
-                            <SnapshotTimelineEditor Entries="@Editor.TimelineEntries" OnChanged="Refresh" />
+                            <SnapshotTimelineEditor Entries="@Editor.TimelineEntries" BaselineEntries="@Baseline.TimelineEntries" OnChanged="Refresh" />
                         }
                         else if (ActiveTab == "continuity")
                         {
@@ -134,6 +135,7 @@
                         else if (ActiveTab == "relationships")
                         {
                             <SnapshotRelationshipsEditor Updates="Editor.RelationshipUpdates"
+                                                         BaselineUpdates="Baseline.RelationshipUpdates"
                                                          Characters="Session.Chat.Characters.Items"
                                                          Library="Session.Chat.CharacterTraitLibrary.State"
                                                          OnChanged="Refresh" />
@@ -151,7 +153,7 @@
                         <span class="modal-action-spacer"></span>
                         <span class="modal-action-group">
                             <AppButton Variant="secondary" Disabled="@CloseDisabled" OnClick="@(_ => form.RequestCloseAsync())">Discard</AppButton>
-                            <BusyButton Variant="primary" Disabled="@(!CanSave)" OnClick="Save">Save Snapshot</BusyButton>
+                            <BusyButton Variant="primary" Disabled="@(!form.CanSave)" OnClick="form.SaveAsync">Save Snapshot</BusyButton>
                         </span>
                     </Footer>
                 </ModalStackLayout>

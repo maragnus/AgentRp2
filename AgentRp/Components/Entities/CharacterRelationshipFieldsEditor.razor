@@ -1,5 +1,5 @@
 <div class="character-relationship-detail @Class">
-    <Section Title="Bond Type">
+    <Section Title="Bond Type" Dirty="@RelationshipTypesDirty">
         <div class="character-wizard-chip-list">
             @foreach (var bond in BondTypes)
             {
@@ -8,7 +8,7 @@
             }
         </div>
     </Section>
-    <Section Title="Shared Dynamic">
+    <Section Title="Shared Dynamic" Dirty="@PrivateTensionsDirty">
         <div class="character-wizard-chip-list">
             @foreach (var dynamic in Dynamics)
             {
@@ -17,28 +17,31 @@
             }
         </div>
     </Section>
-    <FormSection Title="@($"How {SourceName} sees {TargetName}")">
+    <FormSection Title="@($"How {SourceName} sees {TargetName}")" Dirty="@HowSourceSeesTargetDirty">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="@($"How does {SourceName} perceive and treat {TargetName}?")"
                      Value="@HowSourceSeesTarget"
                      ValueChanged="SetHowSourceSeesTarget"
+                     Dirty="@HowSourceSeesTargetDirty"
                      UpdateMode="TextUpdateMode.Change" />
     </FormSection>
-    <FormSection Title="@($"How {TargetName} sees {SourceName}")">
+    <FormSection Title="@($"How {TargetName} sees {SourceName}")" Dirty="@HowTargetSeesSourceDirty">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="@($"How does {TargetName} perceive and treat {SourceName}?")"
                      Value="@HowTargetSeesSource"
                      ValueChanged="SetHowTargetSeesSource"
+                     Dirty="@HowTargetSeesSourceDirty"
                      UpdateMode="TextUpdateMode.Change" />
     </FormSection>
-    <FormSection Title="External Perception">
+    <FormSection Title="External Perception" Dirty="@PublicDynamicDirty">
         <AppTextarea Class="character-relationship-note"
                      Rows="1"
                      Placeholder="How would others describe this relationship from the outside?"
                      Value="@PublicDynamic"
                      ValueChanged="SetPublicDynamic"
+                     Dirty="@PublicDynamicDirty"
                      UpdateMode="TextUpdateMode.Change" />
     </FormSection>
 </div>
@@ -56,6 +59,11 @@
     [Parameter] public EventCallback<string> HowTargetSeesSourceChanged { get; set; }
     [Parameter] public string PublicDynamic { get; set; } = "";
     [Parameter] public EventCallback<string> PublicDynamicChanged { get; set; }
+    [Parameter] public bool RelationshipTypesDirty { get; set; }
+    [Parameter] public bool PrivateTensionsDirty { get; set; }
+    [Parameter] public bool HowSourceSeesTargetDirty { get; set; }
+    [Parameter] public bool HowTargetSeesSourceDirty { get; set; }
+    [Parameter] public bool PublicDynamicDirty { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public string Class { get; set; } = "";
 

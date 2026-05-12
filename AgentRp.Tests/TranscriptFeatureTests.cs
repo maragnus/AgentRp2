@@ -308,7 +308,7 @@ public sealed class TranscriptFeatureTests
         Assert.Contains("Bella / Gemma", component.Markup, StringComparison.Ordinal);
         Assert.Contains("The snapshot range changes their emotional stance.", component.Markup, StringComparison.Ordinal);
         Assert.Contains("Turns 2, 3", component.Markup, StringComparison.Ordinal);
-        Assert.True(component.Find("input[type='checkbox']").HasAttribute("checked"));
+        Assert.Contains("is-on", component.Find("button[title='Toggle relationship update']").ClassList);
     }
 
     [Fact]
@@ -393,7 +393,7 @@ public sealed class TranscriptFeatureTests
             }));
 
         component.Find("button[title='Relationships']").Click();
-        await component.Find("input[type='checkbox']").ChangeAsync(false);
+        component.Find("button[title='Toggle relationship update']").Click();
         component.FindAll("button").First(button => button.TextContent.Contains("Save Snapshot", StringComparison.Ordinal)).Click();
 
         Assert.NotNull(saved);

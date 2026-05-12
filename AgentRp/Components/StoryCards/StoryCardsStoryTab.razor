@@ -61,6 +61,7 @@
             <StatefulForm Model="@SelectedDraft" Baseline="@SelectedBaseline" OnSave="SaveSelected" OnClose="Noop" ContextChanged="SetInstanceForm" DisableNavigationGuard>
                 <ChildContent Context="form">
                     <StoryCardAssignmentsEditor Instance="SelectedDraft"
+                                                BaselineAssignments="SelectedBaseline.Assignments"
                                                 Characters="Session.Chat.Characters.Items"
                                                 Items="Session.Chat.Items.Items"
                                                 Locations="Session.Chat.Locations.Items" />

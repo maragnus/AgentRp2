@@ -14,7 +14,7 @@ else
             var rel = GetRelationship(other);
             var known = rel is not null;
             var expanded = ExpandedRelationships.Contains(other.Id);
-            <article @key="other.Id" class="character-relationship @(known ? "is-known" : "")">
+            <article @key="other.Id" class="character-relationship @(known ? "is-known" : "") @(RelationshipDirty(other) ? "is-dirty" : "")">
                 <SelectableButton Class="character-relationship-head" OnClick="@(_ => ToggleRelationshipRow(other))">
                     <span class="character-relationship-check @(known ? "is-selected" : "")" @onclick:stopPropagation="true" @onclick="() => ToggleRelationship(other)">
                         @if (known)
@@ -54,7 +54,13 @@ else
                                                        HowTargetSeesSource="@rel!.HowTargetSeesSource"
                                                        HowTargetSeesSourceChanged="value => rel!.HowTargetSeesSource = value"
                                                        PublicDynamic="@rel!.PublicDynamic"
-                                                       PublicDynamicChanged="value => rel!.PublicDynamic = value" />
+                                                       PublicDynamicChanged="value => rel!.PublicDynamic = value"
+                                                       RelationshipTypesDirty="@RelationshipTypesDirty(rel!)"
+                                                       PrivateTensionsDirty="@PrivateTensionsDirty(rel!)"
+                                                       HowSourceSeesTargetDirty="@HowSourceSeesTargetDirty(rel!)"
+                                                       HowTargetSeesSourceDirty="@HowTargetSeesSourceDirty(rel!)"
+                                                       PublicDynamicDirty="@PublicDynamicDirty(rel!)"
+                                                       OnChanged="Changed" />
                 }
             </article>
         }
@@ -64,10 +70,12 @@ else
 @code {
     readonly HashSet<string> ExpandedRelationships = [];
 
-    [Parameter] public RpChatDocument Document { get; set; } = new();
     [Parameter] public RpCharacter Character { get; set; } = new();
     [Parameter] public List<RpCharacter> ExistingCharacters { get; set; } = [];
+    [Parameter] public List<RpCharacterRelationship> Relationships { get; set; } = [];
+    [Parameter] public IReadOnlyList<RpCharacterRelationship> BaselineRelationships { get; set; } = [];
     [Parameter] public CharacterTraitLibraryState Library { get; set; } = CharacterTraitLibraryState.CreateDefault();
+    [Parameter] public EventCallback OnChanged { get; set; }
 
     IReadOnlyList<RpCharacter> OtherCharacters => ExistingCharacters.Where(character => character.Id != Character.Id).ToList();
     IReadOnlyList<string> BondTypes => Library.BondTypes;
@@ -75,26 +83,40 @@ else
     string SelfName => string.IsNullOrWhiteSpace(Character.Name) ? "this character" : Character.Name;
 
     CharacterRelationshipView? GetRelationship(RpCharacter other) =>
-        CharacterRelationshipGraph.View(Document, Character.Id, Character.Name, other.Id, other.Name);
+        CharacterRelationshipGraph.Find(Relationships, Character.Id, other.Id) is { } relationship
+            ? CharacterRelationshipGraph.View(relationship, Character.Id, Character.Name, other.Id, other.Name)
+            : null;
 
-    void ToggleRelationship(RpCharacter other)
+    CharacterRelationshipView? GetBaselineRelationship(CharacterRelationshipView relationship) =>
+        BaselineRelationships.FirstOrDefault(item => string.Equals(item.Id, relationship.Relationship.Id, StringComparison.Ordinal)) is { } baseline
+            ? CharacterRelationshipGraph.View(
+                baseline,
+                relationship.SourceCharacterId,
+                relationship.SourceCharacterName,
+                relationship.TargetCharacterId,
+                relationship.TargetCharacterName)
+            : null;
+
+    async Task ToggleRelationship(RpCharacter other)
     {
         if (GetRelationship(other) is not null)
         {
-            CharacterRelationshipGraph.Remove(Document, Character.Id, other.Id);
+            CharacterRelationshipGraph.Remove(Relationships, Character.Id, other.Id);
             ExpandedRelationships.Remove(other.Id);
+            await Changed();
             return;
         }
 
-        CharacterRelationshipGraph.GetOrCreate(Document, Character.Id, other.Id);
+        CharacterRelationshipGraph.GetOrCreate(Relationships, Character.Id, other.Id);
         ExpandedRelationships.Add(other.Id);
+        await Changed();
     }
 
-    void ToggleRelationshipRow(RpCharacter other)
+    async Task ToggleRelationshipRow(RpCharacter other)
     {
         if (GetRelationship(other) is null)
         {
-            ToggleRelationship(other);
+            await ToggleRelationship(other);
             return;
         }
 
@@ -102,4 +124,33 @@ else
             ExpandedRelationships.Add(other.Id);
     }
 
+    bool RelationshipDirty(RpCharacter other)
+    {
+        var id = CharacterRelationshipGraph.RelationshipIdFor(Character.Id, other.Id);
+        return StatefulFormCollectionDirty.ItemDirty(Relationships, BaselineRelationships, id, relationship => relationship.Id);
+    }
+
+    bool RelationshipTypesDirty(CharacterRelationshipView relationship) =>
+        StatefulFormCollectionDirty.ValueDirty(
+            relationship.RelationshipTypes,
+            GetBaselineRelationship(relationship)?.RelationshipTypes ?? []);
+
+    bool PrivateTensionsDirty(CharacterRelationshipView relationship) =>
+        StatefulFormCollectionDirty.ValueDirty(
+            relationship.PrivateTensions,
+            GetBaselineRelationship(relationship)?.PrivateTensions ?? []);
+
+    bool HowSourceSeesTargetDirty(CharacterRelationshipView relationship) =>
+        relationship.HowSourceSeesTarget != (GetBaselineRelationship(relationship)?.HowSourceSeesTarget ?? "");
+
+    bool HowTargetSeesSourceDirty(CharacterRelationshipView relationship) =>
+        relationship.HowTargetSeesSource != (GetBaselineRelationship(relationship)?.HowTargetSeesSource ?? "");
+
+    bool PublicDynamicDirty(CharacterRelationshipView relationship) =>
+        relationship.PublicDynamic != (GetBaselineRelationship(relationship)?.PublicDynamic ?? "");
+
+    async Task Changed()
+    {
+        await OnChanged.InvokeAsync();
+    }
 }

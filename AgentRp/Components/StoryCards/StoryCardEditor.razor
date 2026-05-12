@@ -64,7 +64,9 @@
                     {
                         <StoryCardPhaseEditor @key="phase.Id"
                                               Phase="phase"
+                                              BaselinePhase="BaselinePhaseRow(phase.Id)"
                                               Requirements="RequirementRows(phase.Id)"
+                                              BaselineRequirements="BaselineRequirementRows(phase.Id)"
                                               Roles="RoleRows"
                                               Items="ItemRows"
                                               Locations="LocationRows"
@@ -82,6 +84,7 @@
                     {
                         <StoryCardChildEditor @key="role.Id"
                                               Child="role"
+                                              BaselineChild="BaselineRoleRow(role.Id)"
                                               Editable="@Editable" />
                     }
                 }
@@ -91,6 +94,7 @@
                     {
                         <StoryCardChildEditor @key="item.Id"
                                               Child="item"
+                                              BaselineChild="BaselineItemRow(item.Id)"
                                               Editable="@Editable" />
                     }
                 }
@@ -100,6 +104,7 @@
                     {
                         <StoryCardChildEditor @key="location.Id"
                                               Child="location"
+                                              BaselineChild="BaselineLocationRow(location.Id)"
                                               Editable="@Editable" />
                     }
                 }
@@ -322,6 +327,66 @@
                 .ToList();
 
         return [];
+    }
+
+    StoryCardPhaseEditorRow? BaselinePhaseRow(string phaseId)
+    {
+        if (TemplateBaseline?.Phases.FirstOrDefault(phase => phase.Id == phaseId) is { } templatePhase)
+            return StoryCardPhaseEditorRow.Create(templatePhase);
+
+        return InstanceBaseline?.Phases.FirstOrDefault(phase => phase.Id == phaseId) is { } instancePhase
+            ? StoryCardPhaseEditorRow.Create(instancePhase)
+            : null;
+    }
+
+    IReadOnlyList<StoryCardRequirementEditorRow> BaselineRequirementRows(string phaseId)
+    {
+        if (TemplateBaseline is not null)
+            return TemplateBaseline.PhaseRequirements
+                .Where(requirement => requirement.PhaseId == phaseId)
+                .OrderBy(RequirementTypeSort)
+                .ThenBy(requirement => requirement.SortOrder)
+                .Select(requirement => StoryCardRequirementEditorRow.Create(requirement, TemplateBaseline))
+                .ToList();
+
+        return InstanceBaseline is not null
+            ? InstanceBaseline.PhaseRequirements
+                .Where(requirement => requirement.PhaseId == phaseId)
+                .OrderBy(RequirementTypeSort)
+                .ThenBy(requirement => requirement.SortOrder)
+                .Select(requirement => StoryCardRequirementEditorRow.Create(requirement, InstanceBaseline))
+                .ToList()
+            : [];
+    }
+
+    StoryCardChildEditorRow? BaselineRoleRow(string id)
+    {
+        if (TemplateBaseline?.Roles.FirstOrDefault(role => role.Id == id) is { } templateRole)
+            return StoryCardChildEditorRow.Create(templateRole);
+
+        return InstanceBaseline?.Roles.FirstOrDefault(role => role.Id == id) is { } instanceRole
+            ? StoryCardChildEditorRow.Create(instanceRole, InstanceBaseline.Assignments)
+            : null;
+    }
+
+    StoryCardChildEditorRow? BaselineItemRow(string id)
+    {
+        if (TemplateBaseline?.Items.FirstOrDefault(item => item.Id == id) is { } templateItem)
+            return StoryCardChildEditorRow.Create(templateItem);
+
+        return InstanceBaseline?.Items.FirstOrDefault(item => item.Id == id) is { } instanceItem
+            ? StoryCardChildEditorRow.Create(instanceItem, InstanceBaseline.Assignments)
+            : null;
+    }
+
+    StoryCardChildEditorRow? BaselineLocationRow(string id)
+    {
+        if (TemplateBaseline?.Locations.FirstOrDefault(location => location.Id == id) is { } templateLocation)
+            return StoryCardChildEditorRow.Create(templateLocation);
+
+        return InstanceBaseline?.Locations.FirstOrDefault(location => location.Id == id) is { } instanceLocation
+            ? StoryCardChildEditorRow.Create(instanceLocation, InstanceBaseline.Assignments)
+            : null;
     }
 
     Task AddExistingRequirement(StoryCardExistingRequirementRequest request)
