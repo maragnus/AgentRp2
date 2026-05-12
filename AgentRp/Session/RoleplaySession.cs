@@ -9,7 +9,7 @@ using AgentRp.UserSystem;
 
 namespace AgentRp.Session;
 
-public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabilityCatalog? capabilityCatalog = null, ITextGenerationService? textGenerationService = null, IMessageSpeechService? messageSpeechService = null, SceneTransitionService? sceneTransitionService = null, IStoryAssistantService? storyAssistantService = null, IStoryCardCatalogService? storyCardCatalog = null, IAiProviderCapabilityPipeline? capabilityPipeline = null, IAiProviderWidgetService? providerWidgetService = null, IEntityNotifier? entityNotifier = null, IGlobalModelSelectionStore? globalModelSelectionStore = null, IGlobalPromptLibraryStore? globalPromptLibraryStore = null, IGlobalModelTuningStore? globalModelTuningStore = null, IModelSelectionNotifier? modelSelectionNotifier = null, ICurrentAppUserAccessor? currentUserAccessor = null, ILoggerFactory? loggerFactory = null) : IAsyncDisposable
+public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabilityCatalog? capabilityCatalog = null, ITextGenerationService? textGenerationService = null, IMessageSpeechService? messageSpeechService = null, SceneTransitionService? sceneTransitionService = null, IStoryAssistantService? storyAssistantService = null, IStoryCardCatalogService? storyCardCatalog = null, IAiProviderCapabilityPipeline? capabilityPipeline = null, IAiProviderWidgetService? providerWidgetService = null, IEntityNotifier? entityNotifier = null, IUserImageLibraryService? imageLibraryService = null, IGlobalModelSelectionStore? globalModelSelectionStore = null, IGlobalPromptLibraryStore? globalPromptLibraryStore = null, IGlobalModelTuningStore? globalModelTuningStore = null, IModelSelectionNotifier? modelSelectionNotifier = null, ICurrentAppUserAccessor? currentUserAccessor = null, ILoggerFactory? loggerFactory = null) : IAsyncDisposable
 {
 	private readonly Guid _sessionId = Guid.NewGuid();
 
@@ -49,6 +49,8 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 
 	public GlobalModelTuningSessionStore ModelTuning { get; private set; } = null!;
 
+	public UserImageLibrarySessionStore ImageLibrary { get; private set; } = null!;
+
 	public ChatWorkspace Chat { get; private set; } = null!;
 
 	public bool IsInitialized => _initialized;
@@ -75,11 +77,13 @@ public sealed class RoleplaySession(ILiveRoleplayStore liveStore, IModelCapabili
 			Providers.ModelSelection = ModelSelection;
 			PromptLibrary = new GlobalPromptLibrarySessionStore(_globalPromptLibraryStore);
 			ModelTuning = new GlobalModelTuningSessionStore(_globalModelTuningStore);
+			ImageLibrary = new UserImageLibrarySessionStore(imageLibraryService ?? NullUserImageLibraryService.Instance, CurrentUser, _entityNotifier);
 			Chat = new ChatWorkspace(ActiveChat, Registry, Providers, ModelSelection, PromptLibrary, ModelTuning, textGenerationService ?? NullTextGenerationService.Instance, sceneTransitionService ?? new SceneTransitionService(), messageSpeechService, storyAssistantService, _entityNotifier, _storyCardCatalog, CurrentUser, loggerFactory);
 			liveStore.Changed += OnLiveStoreChanged;
 			await ModelSelection.LoadAsync();
 			await PromptLibrary.LoadAsync();
 			await ModelTuning.LoadAsync();
+			await ImageLibrary.LoadAsync();
 			await Chats.LoadAsync();
 			await Providers.LoadAsync();
 			var first = Chats.Items.FirstOrDefault();

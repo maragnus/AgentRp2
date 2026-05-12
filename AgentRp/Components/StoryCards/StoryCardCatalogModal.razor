@@ -110,7 +110,7 @@
     StoryCardTemplate SelectedBaseline = new();
     StatefulFormContext<StoryCardTemplate>? TemplateForm;
     string ErrorMessage = "";
-    string Title => PickerMode ? "Add Story Card" : "Story Cards";
+    string Title => PickerMode ? "Add Story Card" : "Card Library";
     bool CanEditSelected => Selected is not null && (Session.CurrentUser.IsAdmin || Selected.OwnerUserId == Session.CurrentUser.Id);
     bool CanApplySelected => Selected is not null && Selected.RetiredUtc is null && (Selected.IsShared || Selected.OwnerUserId == Session.CurrentUser.Id || Session.CurrentUser.IsAdmin);
     string SourceText => Selected is null

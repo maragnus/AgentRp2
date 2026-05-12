@@ -20,7 +20,7 @@ public sealed record ImageCropView(
     ImageAvatarCropView Crop);
 
 public sealed record UpdateImageCropRequest(
-    string ChatId,
+    Guid UserId,
     string ImageId,
     int FocusXPercent,
     int FocusYPercent,

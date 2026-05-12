@@ -3,6 +3,7 @@ using AgentRp.Data;
 using AgentRp.Models;
 using AgentRp.Serialization;
 using AgentRp.Session;
+using AgentRp.UserSystem;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Services;
@@ -32,22 +33,23 @@ public sealed record ImageDetailsReferenceView(string Kind, string Name, string 
 
 public interface IImageDetailsService
 {
-    Task<ImageDetailsView> GetAsync(RpChatDocument document, string imageId, CancellationToken cancellationToken = default);
+    Task<ImageDetailsView> GetAsync(CurrentAppUser user, string imageId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ImageDetailsService(IDbContextFactory<RpDbContext> dbContextFactory) : IImageDetailsService
 {
-    public async Task<ImageDetailsView> GetAsync(RpChatDocument document, string imageId, CancellationToken cancellationToken = default)
+    public async Task<ImageDetailsView> GetAsync(CurrentAppUser user, string imageId, CancellationToken cancellationToken = default)
     {
-        var galleryImage = document.Images.FirstOrDefault(image => image.Id == imageId);
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var row = await dbContext.ImageAssets
-            .AsNoTracking()
-            .Where(image => image.ChatId == document.Chat.Id && image.Id == imageId)
+        var row = await dbContext.ImageAssets.AsNoTracking()
+            .Where(image => image.UserId == user.Id && image.Id == imageId)
+            .OrderBy(image => image.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (row is null)
-            return FallbackView(galleryImage, imageId);
+            return FallbackView(null, imageId);
+
+        var galleryImage = StoryEntityPersistenceMapper.ToModel(row);
 
         var metadata = DeserializeMetadata(row.GenerationMetadataJson);
         return new(
@@ -68,7 +70,7 @@ public sealed class ImageDetailsService(IDbContextFactory<RpDbContext> dbContext
             metadata?.ReferenceDetail ?? "",
             metadata?.ArtStyleLabel ?? "",
             metadata?.Rationale ?? "",
-            BuildReferenceViews(document, metadata),
+            BuildReferenceViews(metadata),
             metadata is not null);
     }
 
@@ -108,32 +110,15 @@ public sealed class ImageDetailsService(IDbContextFactory<RpDbContext> dbContext
         }
     }
 
-    static IReadOnlyList<ImageDetailsReferenceView> BuildReferenceViews(RpChatDocument document, ImageAssetGenerationMetadata? metadata) =>
+    static IReadOnlyList<ImageDetailsReferenceView> BuildReferenceViews(ImageAssetGenerationMetadata? metadata) =>
         metadata?.References
             .Select(reference => new ImageDetailsReferenceView(
                 reference.Kind,
                 reference.Name,
                 reference.EntityType,
-                FirstNonEmpty(reference.ImageUrl, ResolveReferenceImageUrl(document, reference))))
+                FirstNonEmpty(reference.ImageUrl, reference.Kind == "image" ? ImageGenerationService.BuildImageUrl(reference.Id) : "")))
             .ToList()
         ?? [];
-
-    static string ResolveReferenceImageUrl(RpChatDocument document, ImageAssetReferenceMetadata reference)
-    {
-        if (reference.Kind == "image")
-            return document.Images.FirstOrDefault(image => image.Id == reference.Id)?.Url ?? "";
-
-        var imageId = reference.EntityType switch
-        {
-            "character" => document.Characters.FirstOrDefault(character => character.Id == reference.Id)?.ImageId,
-            "location" => document.Locations.FirstOrDefault(location => location.Id == reference.Id)?.ImageId,
-            "item" => document.Items.FirstOrDefault(item => item.Id == reference.Id)?.ImageId,
-            _ => ""
-        };
-        return string.IsNullOrWhiteSpace(imageId)
-            ? ""
-            : document.Images.FirstOrDefault(image => image.Id == imageId)?.Url ?? ImageGenerationService.BuildImageUrl(imageId);
-    }
 
     static string FormatDimensions(int? width, int? height) =>
         width is > 0 && height is > 0 ? $"{width} x {height}" : "";

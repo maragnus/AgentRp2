@@ -5,6 +5,7 @@ using AgentRp.Models;
 using AgentRp.Serialization;
 using AgentRp.Services;
 using AgentRp.Session;
+using AgentRp.UserSystem;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -13,6 +14,7 @@ namespace AgentRp.Tests;
 public sealed class ImageGenerationServiceTests
 {
     static readonly byte[] PngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=");
+    static readonly CurrentAppUser User = new(Guid.Empty, "user@test.local", "USER@TEST.LOCAL", "Test User", new HashSet<string>(StringComparer.Ordinal));
 
     [Fact]
     public async Task ImageOnlyModelUsesSameProviderResponsesHost()
@@ -286,7 +288,7 @@ public sealed class ImageGenerationServiceTests
                 "characters",
                 "c1"));
 
-        var details = await detailsService.GetAsync(document, generated.Image.Id);
+        var details = await detailsService.GetAsync(User, generated.Image.Id);
 
         Assert.True(details.HasGenerationMetadata);
         Assert.Contains(details.References, reference => reference.Kind == "entity" && reference.Name == "Gemma");
@@ -439,11 +441,15 @@ public sealed class ImageGenerationServiceTests
             NullLogger<StoredImageService>.Instance);
         await storedImageService.StoreAsync(new(
             chatId,
+            User.Id,
             imageId,
             PngBytes,
             "image/png",
             "reference.png",
             "Reference Pose",
+            "Reference Pose",
+            "character",
+            210,
             1,
             1,
             "",

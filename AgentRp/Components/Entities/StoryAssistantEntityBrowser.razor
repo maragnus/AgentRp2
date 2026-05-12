@@ -145,7 +145,7 @@
         Session.Chat.Locations.Changed += OnStoreChanged;
         Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Timeline.Changed += OnStoreChanged;
-        Session.Chat.Images.Changed += OnStoreChanged;
+        Session.ImageLibrary.Changed += OnStoreChanged;
         Session.Chat.NarratorProfile.Changed += OnStoreChanged;
         SelectedKey = AllEntries.FirstOrDefault()?.Key ?? "";
     }
@@ -171,7 +171,7 @@
             ? TimelineAvatarItems(entry)
             : [];
 
-    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+    GalleryImage? ImageFor(string imageId) => Session.ImageLibrary.Items.FirstOrDefault(image => image.Id == imageId);
 
     Task Attach(BrowserEntry entry) =>
         OnAttach.InvokeAsync(new(entry.Type, entry.Id, entry.Title));
@@ -206,7 +206,7 @@
         Session.Chat.Locations.Changed -= OnStoreChanged;
         Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Timeline.Changed -= OnStoreChanged;
-        Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.ImageLibrary.Changed -= OnStoreChanged;
         Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
     }
 

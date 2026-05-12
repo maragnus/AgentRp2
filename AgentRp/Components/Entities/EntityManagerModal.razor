@@ -241,7 +241,7 @@
     List<RpLocation> Locations => Session.Chat.Locations.Items;
     List<RpItem> Items => Session.Chat.Items.Items;
     List<RpTimelineEntry> Timeline => Session.Chat.Timeline.Items;
-    List<GalleryImage> Images => Session.Chat.Images.Items;
+    List<GalleryImage> Images => Session.ImageLibrary.Items;
     RpCharacter? SelectedCharacter => Draft.Character;
     RpLocation? SelectedLocation => Draft.Location;
     RpItem? SelectedItem => Draft.Item;
@@ -301,7 +301,7 @@
         Session.Chat.Locations.Changed += OnStoreChanged;
         Session.Chat.Items.Changed += OnStoreChanged;
         Session.Chat.Timeline.Changed += OnStoreChanged;
-        Session.Chat.Images.Changed += OnStoreChanged;
+        Session.ImageLibrary.Changed += OnStoreChanged;
         Session.Chat.NarratorProfile.Changed += OnStoreChanged;
         Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
@@ -515,7 +515,7 @@
         Session.Chat.Locations.Changed -= OnStoreChanged;
         Session.Chat.Items.Changed -= OnStoreChanged;
         Session.Chat.Timeline.Changed -= OnStoreChanged;
-        Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.ImageLibrary.Changed -= OnStoreChanged;
         Session.Chat.NarratorProfile.Changed -= OnStoreChanged;
         Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;

@@ -33,7 +33,7 @@
                             </span>
                             <span class="tiled-select-caption">
                                 <strong class="tiled-select-label">Generate Image</strong>
-                                <small>New gallery image</small>
+                                <small>New library image</small>
                             </span>
                         </button>
                     </LeadingContent>
@@ -93,8 +93,8 @@
     [Parameter] public EventCallback<GalleryImage> OnUseSelected { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
-    List<GalleryImage> Images => Session.Chat.Images.Items;
-    string Title => Mode == ImageGalleryMode.Select ? "Select Image" : "Image Gallery";
+    List<GalleryImage> Images => Session.ImageLibrary.Items;
+    string Title => Mode == ImageGalleryMode.Select ? "Select Image" : "Image Library";
     ISet<string> SelectedIds => Selected is null ? new HashSet<string>() : new HashSet<string> { Selected.Id };
 
     List<GalleryImage> Filtered => Images
@@ -104,7 +104,7 @@
 
     protected override void OnInitialized()
     {
-        Session.Chat.Images.Changed += OnImagesChanged;
+        Session.ImageLibrary.Changed += OnImagesChanged;
     }
 
     Task OnImagesChanged() => InvokeAsync(StateHasChanged);
@@ -130,7 +130,7 @@
         DetailImageId = image.Id;
     }
 
-    Task Delete(GalleryImage image) => Session.Chat.Images.DeleteAsync(image.Id);
+    Task Delete(GalleryImage image) => Session.ImageLibrary.DeleteAsync(image.Id);
 
     Task UseSelected(MouseEventArgs args) => Selected is null
         ? Task.CompletedTask
@@ -138,6 +138,6 @@
 
     public void Dispose()
     {
-        Session.Chat.Images.Changed -= OnImagesChanged;
+        Session.ImageLibrary.Changed -= OnImagesChanged;
     }
 }

@@ -1,0 +1,76 @@
+<Section Title="Studio" Compact="true">
+    <RightContent>
+        <AppButton Icon="@(AssistantExpanded ? "chevron-up" : "chevron-down")"
+                   TooltipText="@ToggleTooltip"
+                   Disabled="@(!HasActiveStory)"
+                   OnClick="@(_ => ToggleAssistant())" />
+    </RightContent>
+
+    <ChildContent>
+        <div class="@ToolsClass">
+            @if (Session.CurrentUser.IsAdmin)
+            {
+                <SidebarStudioToolButton Icon="feather"
+                                         Label="Prompts"
+                                         TooltipText="Prompt library"
+                                         OnClick="OpenPromptLibrary" />
+            }
+            <SidebarStudioToolButton Icon="cards"
+                                     Label="Cards"
+                                     TooltipText="Card library"
+                                     OnClick="OpenCardLibrary" />
+            <SidebarStudioToolButton Icon="image"
+                                     Label="Images"
+                                     TooltipText="Image library"
+                                     OnClick="OpenImageLibrary" />
+            <SidebarStudioToolButton Icon="story-assistant"
+                                     Label="Story Assistant"
+                                     TooltipText="@AssistantTooltip"
+                                     Disabled="@(!HasActiveStory)"
+                                     OnClick="OpenStoryAssistant" />
+        </div>
+
+        @if (AssistantExpanded && HasActiveStory)
+        {
+            <div class="sidebar-studio-assistant">
+                <SidebarStoryAssistantRow @key="@($"assistant:{ActiveStoryKey}")"
+                                          OnClick="OpenStoryAssistant" />
+            </div>
+        }
+    </ChildContent>
+</Section>
+
+@code {
+    [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
+    [Parameter] public EventCallback<string> OnOpenModal { get; set; }
+
+    bool AssistantExpanded;
+
+    bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
+    string ActiveStoryKey => Session.Chats.Active?.ChatId ?? "";
+    string ToolsClass => $"sidebar-studio-tools tool-count-{(Session.CurrentUser.IsAdmin ? 4 : 3)}";
+    string AssistantTooltip => HasActiveStory ? "Open Story Assistant" : "Select a story before opening Story Assistant";
+    string ToggleTooltip => AssistantExpanded ? "Hide assistant preview" : "Show assistant preview";
+
+    protected override void OnParametersSet()
+    {
+        if (!HasActiveStory)
+            AssistantExpanded = false;
+    }
+
+    Task OpenPromptLibrary(MouseEventArgs args) => OnOpenModal.InvokeAsync("promptLibrary");
+
+    Task OpenCardLibrary(MouseEventArgs args) => OnOpenModal.InvokeAsync("storyCards");
+
+    Task OpenImageLibrary(MouseEventArgs args) => OnOpenModal.InvokeAsync("gallery");
+
+    Task OpenStoryAssistant(MouseEventArgs args) => HasActiveStory
+        ? OnOpenModal.InvokeAsync("storyAssistant")
+        : Task.CompletedTask;
+
+    void ToggleAssistant()
+    {
+        if (HasActiveStory)
+            AssistantExpanded = !AssistantExpanded;
+    }
+}

@@ -45,7 +45,7 @@
                     <div class="providers-empty-state is-compact">
                         <ImagePlaceholder Label="@Image.Name" Hue="@Image.Hue" />
                         <strong>No image file to crop</strong>
-                        <span>This gallery item uses a placeholder, so the default centered crop will be used.</span>
+                        <span>This library item uses a placeholder, so the default centered crop will be used.</span>
                     </div>
                 }
             </ChildContent>
@@ -99,8 +99,7 @@
         await DisposeCropAsync();
         try
         {
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Loading the crop editor failed because no story is open.");
-            CropImage = await ImageCropService.GetAsync(document, Image.Id);
+            CropImage = await ImageCropService.GetAsync(Session.CurrentUser, Image, Image.Id);
             SetDraftCrop(CropImage.Crop);
         }
         catch (Exception exception)
@@ -156,10 +155,9 @@
         ErrorMessage = "";
         try
         {
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Saving the crop failed because no story is open.");
-            var crop = await ImageCropService.UpdateAsync(
-                new(document.Chat.Id, Image.Id, FocusXPercent, FocusYPercent, ZoomPercent),
-                CancellationToken.None);
+            var crop = await Session.ImageLibrary.SetCropAsync(
+                Image.Id,
+                ImageAvatarCropView.Normalize(FocusXPercent, FocusYPercent, ZoomPercent));
             if (OnSaved.HasDelegate)
                 await OnSaved.InvokeAsync(new(Image.Id, crop));
         }

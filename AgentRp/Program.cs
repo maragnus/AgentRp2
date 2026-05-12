@@ -55,6 +55,7 @@ builder.Services.AddSingleton<IGlobalModelTuningStore, GlobalModelTuningStore>()
 builder.Services.AddScoped<IImageGenerationService, ImageGenerationService>();
 builder.Services.AddSingleton<IAssetBlobStorage, AzureAssetBlobStorage>();
 builder.Services.AddScoped<IStoredImageService, StoredImageService>();
+builder.Services.AddScoped<IUserImageLibraryService, UserImageLibraryService>();
 builder.Services.AddScoped<IImageDetailsService, ImageDetailsService>();
 builder.Services.AddScoped<IImageCropService, ImageCropService>();
 builder.Services.AddScoped<DialogHelper>();

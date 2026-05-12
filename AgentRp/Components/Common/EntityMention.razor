@@ -164,7 +164,7 @@ else
     GalleryImage? ResolveImage(string imageId) =>
         string.IsNullOrWhiteSpace(imageId)
             ? null
-            : Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+            : Session.ImageLibrary.Items.FirstOrDefault(image => image.Id == imageId);
 
     public void Dispose()
     {

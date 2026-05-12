@@ -9,6 +9,7 @@ public sealed class StoredImageServiceTests
 {
     static readonly byte[] PngBytes = [1, 2, 3];
     static readonly byte[] AvifBytes = [4, 5, 6];
+    static readonly Guid UserId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Fact]
     public async Task StoreAsyncWithSuccessfulOptimizationStoresAvifBlobMetadata()
@@ -20,10 +21,10 @@ public sealed class StoredImageServiceTests
 
         await service.StoreAsync(BuildRequest());
 
-        Assert.True(blobStorage.Blobs.ContainsKey("images/chat-1/img-1.avif"));
+        Assert.True(blobStorage.Blobs.ContainsKey("images/users/11111111111111111111111111111111/stories/chat-1/img-1.avif"));
         await using var dbContext = await dbFactory.CreateDbContextAsync();
         var row = await dbContext.ImageAssets.SingleAsync();
-        Assert.Equal("images/chat-1/img-1.avif", row.BlobName);
+        Assert.Equal("images/users/11111111111111111111111111111111/stories/chat-1/img-1.avif", row.BlobName);
         Assert.Equal("image/avif", row.StoredContentType);
         Assert.Equal("img-1.avif", row.StoredFileName);
         Assert.Equal("image/png", row.OriginalContentType);
@@ -45,7 +46,7 @@ public sealed class StoredImageServiceTests
 
         await service.StoreAsync(BuildRequest());
 
-        Assert.True(blobStorage.Blobs.ContainsKey("images/chat-1/img-1.png"));
+        Assert.True(blobStorage.Blobs.ContainsKey("images/users/11111111111111111111111111111111/stories/chat-1/img-1.png"));
         await using var dbContext = await dbFactory.CreateDbContextAsync();
         var row = await dbContext.ImageAssets.SingleAsync();
         Assert.Equal("image/png", row.StoredContentType);
@@ -65,7 +66,7 @@ public sealed class StoredImageServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.StoreAsync(BuildRequest()));
 
-        Assert.Contains("images/chat-1/img-1.png", blobStorage.DeletedBlobNames);
+        Assert.Contains("images/users/11111111111111111111111111111111/stories/chat-1/img-1.png", blobStorage.DeletedBlobNames);
         Assert.Empty(blobStorage.Blobs);
     }
 
@@ -77,11 +78,15 @@ public sealed class StoredImageServiceTests
 
     static StoreImageAssetRequest BuildRequest() => new(
         "chat-1",
+        UserId,
         "img-1",
         PngBytes,
         "image/png",
         "image.png",
         "Image",
+        "Generated",
+        "scene",
+        210,
         1,
         1,
         "Prompt",

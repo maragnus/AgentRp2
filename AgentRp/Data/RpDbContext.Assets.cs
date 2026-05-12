@@ -27,6 +27,7 @@ public sealed partial class RpDbContext
             builder.Property(x => x.ProviderName).HasMaxLength(200);
             builder.Property(x => x.ProviderModelId).HasMaxLength(500);
             builder.HasIndex(x => x.UserId);
+            builder.HasIndex(x => new { x.UserId, x.CreatedUtc });
             builder.HasIndex(x => new { x.ChatId, x.CreatedUtc });
             builder.HasIndex(x => new { x.ChatId, x.EntityType, x.Entity });
         });

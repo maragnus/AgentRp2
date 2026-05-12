@@ -40,7 +40,7 @@ public sealed class UiCompositionPolicyTests
     }
 
     [Fact]
-    public async Task SidebarExposesStoryAssistantWhenStoryIsActive()
+    public async Task SidebarExposesStoryAssistantInStudioWhenStoryIsActive()
     {
         using var context = new BunitContext();
         context.Services.AddScoped<OverlayService>();
@@ -57,10 +57,16 @@ public sealed class UiCompositionPolicyTests
             .Add(item => item.OnOpenModal, _ => Task.CompletedTask)
             .Add(item => item.OnOpenEntities, _ => Task.CompletedTask));
 
-        var storyIndex = component.Markup.IndexOf("Switch current story", StringComparison.Ordinal);
+        var studioIndex = component.Markup.IndexOf("Studio", StringComparison.Ordinal);
         var assistantIndex = component.Markup.IndexOf("Story Assistant", StringComparison.Ordinal);
-        Assert.True(storyIndex >= 0);
-        Assert.True(assistantIndex > storyIndex);
+        var storyIndex = component.Markup.IndexOf("Switch current story", StringComparison.Ordinal);
+        Assert.True(studioIndex >= 0);
+        Assert.True(assistantIndex > studioIndex);
+        Assert.True(assistantIndex < storyIndex);
+        Assert.NotNull(component.Find(".sidebar-studio-tool[aria-label='Story Assistant']"));
+
+        await component.Find("[title='Show assistant preview']").ClickAsync(new());
+
         Assert.NotNull(component.Find(".sidebar-assistant-entry"));
     }
 

@@ -217,6 +217,9 @@ else
 
     async Task OpenStoryAssistant()
     {
+        if (Session.ActiveChat.Current is null)
+            return;
+
         await Overlays.CloseAllAsync("Opening Story Assistant");
         await Session.Chat.StoryAssistant.OpenLatestOrNewChatAsync();
         Modal = "storyAssistant";
@@ -297,10 +300,10 @@ else
         }
     }
 
-    async Task HandleCropSavedAsync(ImageCropSavedResult result)
+    Task HandleCropSavedAsync(ImageCropSavedResult result)
     {
-        await Session.Chat.Images.SetCropAsync(result.ImageId, result.Crop);
         CropImage = null;
+        return Task.CompletedTask;
     }
 
     Task CloseCropAsync()

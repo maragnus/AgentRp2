@@ -122,10 +122,10 @@
         CurrentImage = ResolveImage(document, entity.Value.ImageId);
     }
 
-    static GalleryImage? ResolveImage(RpChatDocument document, string? imageId) =>
+    GalleryImage? ResolveImage(RpChatDocument document, string? imageId) =>
         string.IsNullOrWhiteSpace(imageId)
             ? null
-            : document.Images.FirstOrDefault(image => image.Id == imageId);
+            : Session?.ImageLibrary.Items.FirstOrDefault(image => image.Id == imageId);
 
     static (string Name, string ImageId)? ResolveEntity(RpChatDocument document, string entityType, string entityId) =>
         entityType switch

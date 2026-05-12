@@ -191,7 +191,7 @@ public sealed class ImageGenerationService(
         var size = NormalizeSize(request.Size);
         var quality = NormalizeQuality(request.Quality);
         var referenceDetail = NormalizeReferenceDetail(request.ReferenceDetail);
-        var referenceImages = await LoadReferenceImagesAsync(document.Chat.Id, request.ReferenceImageIds, cancellationToken);
+        var referenceImages = await LoadReferenceImagesAsync(document.Chat.UserId, request.ReferenceImageIds, cancellationToken);
         GeneratedImage? finalImage = null;
         ResponseImageStreamingUpdate? finalUpdate = null;
         await foreach (var update in generationClient.GenerateStreamingImageAsync(new(
@@ -253,11 +253,15 @@ public sealed class ImageGenerationService(
             ?? throw new InvalidOperationException("Saving the generated image failed because image storage is not configured.");
         await imageStorage.StoreAsync(new(
             document.Chat.Id,
+            document.Chat.UserId,
             imageId,
             generated.Bytes,
             generated.ContentType,
             generated.FileName,
             title,
+            string.IsNullOrWhiteSpace(request.TargetEntityName) ? "Generated" : request.TargetEntityName.Trim(),
+            GalleryEntityType(request.TargetEntityType),
+            210,
             dimensions?.Width,
             dimensions?.Height,
             request.Prompt.Trim(),
@@ -356,14 +360,14 @@ public sealed class ImageGenerationService(
         throw new InvalidOperationException($"Generating an image with '{DisplayName(imageModel)}' failed because no {requirement} is enabled for {imageProvider.Name}.");
     }
 
-    async Task<IReadOnlyList<ResponseImageInput>> LoadReferenceImagesAsync(string chatId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken)
+    async Task<IReadOnlyList<ResponseImageInput>> LoadReferenceImagesAsync(Guid userId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken)
     {
         if (imageIds.Count == 0)
             return [];
 
         var imageStorage = storedImageService
             ?? throw new InvalidOperationException("Loading reference images failed because image storage is not configured.");
-        var contents = await imageStorage.LoadContentAsync(chatId, imageIds, cancellationToken);
+        var contents = await imageStorage.LoadContentAsync(userId, imageIds, cancellationToken);
         return contents
             .Select(image => new ResponseImageInput(image.Bytes, image.ContentType))
             .ToList();

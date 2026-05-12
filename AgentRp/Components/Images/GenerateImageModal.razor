@@ -56,7 +56,7 @@
                             }
                         </AppSelect>
                     </FieldRow>
-                    <FieldRow Label="Prompt" Hint="Entity context from checked entities will be woven into the prompt automatically.">
+                    <FieldRow Label="Prompt" Hint="Selected entities and reference images can be woven into the prompt.">
                         <AppTextarea Class="generate-prompt" Rows="2" @bind-Value="Prompt" Placeholder="Describe the scene you want to generate..." />
                     </FieldRow>
                     @if (!string.IsNullOrWhiteSpace(LastFinalPrompt) || !string.IsNullOrWhiteSpace(LastRationale))
@@ -68,19 +68,28 @@
                     }
                 </FormSection>
 
-                <Section Title="Entity Context" Class="generate-block">
-                    @if (TargetEntity is not null)
-                    {
-                        <div class="model-card generate-target-card">
-                            <EntityImage Name="@TargetEntity.Name" Image="@TargetEntity.Image" EntityType="@TargetEntity.EntityType" EntityId="@TargetEntity.EntityId" Size="28" />
-                            <strong>@TargetEntity.Name</strong>
-                            <small>@TargetEntity.EntityType</small>
-                        </div>
-                    }
-                    <ImageEntityContextPicker Entities="EntityOptions"
-                                              SelectedIds="SelectedEntities"
-                                              OnToggle="ToggleEntity" />
-                </Section>
+                @if (HasActiveStory)
+                {
+                    <Section Title="Entity Context" Class="generate-block">
+                        @if (TargetEntity is not null)
+                        {
+                            <div class="model-card generate-target-card">
+                                <EntityImage Name="@TargetEntity.Name" Image="@TargetEntity.Image" EntityType="@TargetEntity.EntityType" EntityId="@TargetEntity.EntityId" Size="28" />
+                                <strong>@TargetEntity.Name</strong>
+                                <small>@TargetEntity.EntityType</small>
+                            </div>
+                        }
+                        <ImageEntityContextPicker Entities="EntityOptions"
+                                                  SelectedIds="SelectedEntities"
+                                                  OnToggle="ToggleEntity" />
+                    </Section>
+                }
+                else
+                {
+                    <Section Title="Prompt Context" Class="generate-block">
+                        <EmptyState Icon="image" Title="No story selected" Message="Image generation will use your prompt and selected reference images." Class="is-compact" />
+                    </Section>
+                }
 
                 <Section Title="Reference Images" Class="generate-block">
                     <div class="generate-reference-toolbar">
@@ -126,7 +135,7 @@
 @if (ConfirmDiscard)
 {
     <ConfirmDialog Title="Discard unsaved images?"
-                   Body="Any generated images that have not been saved to the gallery will be discarded."
+                   Body="Any generated images that have not been saved to the library will be discarded."
                    Icon="x"
                    ConfirmText="Discard"
                    ConfirmVariant="rose"
@@ -163,7 +172,7 @@
     [Parameter] public EventCallback<GalleryImage> OnSaved { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
-    List<GalleryImage> Images => Session.Chat.Images.Items;
+    List<GalleryImage> Images => Session.ImageLibrary.Items;
     IReadOnlyList<ImageArtStyleOption> ArtStyleOptions => ImageGenerationService.GetArtStyleOptions();
     IReadOnlyList<ImageModelOption> ImageModels => ImageGenerationService.GetEnabledImageModels(Session.Providers.Items, Session.ModelSelection.State);
     IReadOnlyList<ImageEntityOption> EntityOptions => BuildEntityOptions();
@@ -171,12 +180,13 @@
     GeneratedImageOption? SelectedGenerated => Generated.FirstOrDefault(image => image.Id == SelectedGeneratedId);
     ISet<string> SelectedGeneratedIds => SelectedGeneratedId is null ? new HashSet<string>() : new HashSet<string> { SelectedGeneratedId };
     IReadOnlyList<GalleryImage> FilteredReferences => ShowAllReferences ? Images : Images.Where(ShouldShowReference).ToList();
+    bool HasActiveStory => Session.ActiveChat.Current is not null;
     bool HasPrompt => !string.IsNullOrWhiteSpace(Prompt);
-    bool HasEntityContext => SelectedEntities.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName);
+    bool HasEntityContext => HasActiveStory && (SelectedEntities.Count > 0 || !string.IsNullOrWhiteSpace(TargetEntityName));
     bool CanGenerate => !string.IsNullOrWhiteSpace(ModelKey) && (HasPrompt || HasEntityContext);
     bool HasUnsavedGeneratedImages => Generated.Any(image => !image.IsSaved);
     string GenerateButtonText => Generating ? "Generating..." : Generated.Count > 0 ? "Generate More" : "Generate";
-    string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Gallery" : AutoUseSavedImage ? "Use Generated" : "Save to Gallery";
+    string SaveButtonText => SelectedGenerated?.IsSaved == true ? "Saved to Library" : AutoUseSavedImage ? "Use Generated" : "Save to Library";
     string CurrentPreviewUrl => Generating && !string.IsNullOrWhiteSpace(PreviewImageDataUrl) ? PreviewImageDataUrl : SelectedGenerated?.Image.Url ?? "";
     string CurrentPreviewAlt => SelectedGenerated?.Image.Name ?? "Generated image preview";
     bool CanOpenSelectedDetails => !Generating && SelectedGenerated is not null;
@@ -187,7 +197,7 @@
         Session.Chat.Characters.Changed += OnStoreChanged;
         Session.Chat.Locations.Changed += OnStoreChanged;
         Session.Chat.Items.Changed += OnStoreChanged;
-        Session.Chat.Images.Changed += OnStoreChanged;
+        Session.ImageLibrary.Changed += OnStoreChanged;
         Session.ModelSelection.Changed += OnStoreChanged;
         Session.Providers.Changed += OnStoreChanged;
         await LoadDefaultsAsync();
@@ -255,9 +265,8 @@
         try
         {
             await ImageGenerationService.SaveSettingsAsync(new(ModelKey, Size, Quality, ReferenceDetail, ArtStyleKey), generationCancellation.Token);
-            var document = Session.ActiveChat.Current ?? throw new InvalidOperationException("Generating an image failed because no story is open.");
             await foreach (var update in ImageGenerationService.GenerateStreamingAsync(
-                document,
+                BuildGenerationDocument(),
                 Session.Providers.Items,
                 Session.ModelSelection.State,
                 new GenerateImageRequest(
@@ -308,8 +317,8 @@
                 Logger,
                 exception,
                 "Generating an image failed.",
-                "Generating an image failed for chat {ChatId} using model key {ModelKey}.",
-                Session.Chats.Active?.ChatId,
+                "Generating an image failed for user {UserId} using model key {ModelKey}.",
+                Session.CurrentUser.Id,
                 ModelKey);
         }
         finally
@@ -338,7 +347,7 @@
             return;
 
         var image = selected.Image;
-        await Session.Chat.Images.AddAsync(image);
+        await Session.ImageLibrary.AddGeneratedAsync(image);
         selected.SavedImageId = image.Id;
         await OnSaved.InvokeAsync(image);
     }
@@ -363,11 +372,26 @@
         await OnClose.InvokeAsync();
     }
 
-    IReadOnlyList<ImageEntityOption> BuildEntityOptions() =>
-        Session.Chat.Characters.Items.Select(character => BuildEntity("character", character.Id, character.Name, character.ImageId))
+    RpChatDocument BuildGenerationDocument()
+    {
+        var document = Session.ActiveChat.Current is null
+            ? new RpChatDocument { Chat = new RpChat { UserId = Session.CurrentUser.Id, Title = "Image Library" } }
+            : SessionCloner.Clone(Session.ActiveChat.Current);
+        document.Chat.UserId = document.Chat.UserId == Guid.Empty ? Session.CurrentUser.Id : document.Chat.UserId;
+        document.Images = Images.Select(SessionCloner.Clone).ToList();
+        return document;
+    }
+
+    IReadOnlyList<ImageEntityOption> BuildEntityOptions()
+    {
+        if (!HasActiveStory)
+            return [];
+
+        return Session.Chat.Characters.Items.Select(character => BuildEntity("character", character.Id, character.Name, character.ImageId))
             .Concat(Session.Chat.Locations.Items.Select(location => BuildEntity("location", location.Id, location.Name, location.ImageId)))
             .Concat(Session.Chat.Items.Items.Select(item => BuildEntity("item", item.Id, item.Name, item.ImageId)))
             .ToList();
+    }
 
     ImageEntityOption BuildEntity(string entityType, string entityId, string name, string imageId) =>
         new(BuildEntityKey(entityType, entityId), entityType, entityId, name, imageId, ImageFor(imageId));
@@ -378,7 +402,8 @@
             .Where(entity => SelectedEntities.Contains(entity.Key))
             .Select(entity => entity.ToSelection())
             .ToList();
-        if (!string.IsNullOrWhiteSpace(NormalizedTargetEntityType)
+        if (HasActiveStory
+            && !string.IsNullOrWhiteSpace(NormalizedTargetEntityType)
             && !string.IsNullOrWhiteSpace(TargetEntityId)
             && selections.All(entity => entity.EntityType != NormalizedTargetEntityType || entity.EntityId != TargetEntityId))
         {
@@ -390,7 +415,7 @@
 
     void PreselectTargetEntity()
     {
-        if (string.IsNullOrWhiteSpace(NormalizedTargetEntityType) || string.IsNullOrWhiteSpace(TargetEntityId))
+        if (!HasActiveStory || string.IsNullOrWhiteSpace(NormalizedTargetEntityType) || string.IsNullOrWhiteSpace(TargetEntityId))
             return;
 
         SelectedEntities.Add(BuildEntityKey(NormalizedTargetEntityType, TargetEntityId));
@@ -421,7 +446,7 @@
         Session.Chat.Characters.Changed -= OnStoreChanged;
         Session.Chat.Locations.Changed -= OnStoreChanged;
         Session.Chat.Items.Changed -= OnStoreChanged;
-        Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.ImageLibrary.Changed -= OnStoreChanged;
         Session.ModelSelection.Changed -= OnStoreChanged;
         Session.Providers.Changed -= OnStoreChanged;
     }

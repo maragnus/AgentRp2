@@ -2,6 +2,7 @@ using AgentRp.Data;
 using AgentRp.Models;
 using AgentRp.Services;
 using AgentRp.Session;
+using AgentRp.UserSystem;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Tests;
@@ -9,6 +10,8 @@ namespace AgentRp.Tests;
 public sealed class ImageCropServiceTests
 {
     static readonly byte[] PngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=");
+    static readonly Guid UserId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    static readonly CurrentAppUser User = new(UserId, "user@test.local", "USER@TEST.LOCAL", "Test User", new HashSet<string>(StringComparer.Ordinal));
 
     [Fact]
     public async Task GetAsyncUsesDefaultCropWhenNoCropHasBeenSaved()
@@ -16,16 +19,9 @@ public sealed class ImageCropServiceTests
         var dbFactory = new TestDbContextFactory();
         await SeedImageAssetAsync(dbFactory, "chat-1", "img-1");
         var service = new ImageCropService(dbFactory);
-        var document = new RpChatDocument
-        {
-            Chat = new() { Id = "chat-1" },
-            Images =
-            [
-                new() { Id = "img-1", Name = "Gemma", Url = "/story-images/img-1" }
-            ]
-        };
+        var image = new GalleryImage { Id = "img-1", Name = "Gemma", Url = "/story-images/img-1" };
 
-        var view = await service.GetAsync(document, "img-1");
+        var view = await service.GetAsync(User, image, "img-1");
 
         Assert.Equal(ImageAvatarCropView.Default, view.Crop);
         Assert.Equal("/story-images/img-1", view.ImageUrl);
@@ -38,7 +34,7 @@ public sealed class ImageCropServiceTests
         await SeedImageAssetAsync(dbFactory, "chat-1", "img-1");
         var service = new ImageCropService(dbFactory);
 
-        var crop = await service.UpdateAsync(new("chat-1", "img-1", -10, 120, 450));
+        var crop = await service.UpdateAsync(new(UserId, "img-1", -10, 120, 450));
 
         Assert.Equal(new ImageAvatarCropView(0, 100, 300), crop);
         await using var dbContext = await dbFactory.CreateDbContextAsync();
@@ -66,6 +62,7 @@ public sealed class ImageCropServiceTests
         {
             Id = imageId,
             ChatId = chatId,
+            UserId = UserId,
             BlobName = $"images/{chatId}/{imageId}.png",
             StoredContentType = "image/png",
             StoredFileName = "image.png",

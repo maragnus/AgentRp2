@@ -22,17 +22,15 @@
 
         <div class="divider"></div>
 
+        <SidebarStudioSection OnOpenModal="OnOpenModal" />
+
+        <div class="divider"></div>
+
         <Section Title="Story" Compact="true">
             <RightContent>
                 @if (HasActiveStory)
                 {
                     <AppButton Icon="book-open" TooltipText="Story direction" OnClick="@(_ => OnOpenModal.InvokeAsync("chatDirection"))" />
-                    <AppButton Icon="cards" TooltipText="Story cards" OnClick="@(_ => OnOpenModal.InvokeAsync("storyCards"))" />
-                    <AppButton Icon="image" TooltipText="Image gallery" OnClick="@(_ => OnOpenModal.InvokeAsync("gallery"))" />
-                    @if (Session.CurrentUser.IsAdmin)
-                    {
-                        <AppButton Icon="feather" TooltipText="Prompt library" OnClick="@(_ => OnOpenModal.InvokeAsync("promptLibrary"))" />
-                    }
                     <AppButton Icon="download" TooltipText="Export story" OnClick="@(_ => OnOpenModal.InvokeAsync("export"))" />
                 }
             </RightContent>
@@ -41,13 +39,6 @@
 
         @if (HasActiveStory)
         {
-            <Section Title="Story Assistant" Compact="true">
-                <SidebarStoryAssistantRow @key="@($"assistant:{ActiveStoryKey}")"
-                                          OnClick="@(_ => OnOpenModal.InvokeAsync("storyAssistant"))" />
-            </Section>
-
-            <div class="divider"></div>
-
             <Section Title="Location" Compact="true">
                 <RightContent>
                 <AppButton Icon="edit" TooltipText="Edit locations" OnClick="@(_ => OnOpenEntities.InvokeAsync(("locations", null)))" />
@@ -112,7 +103,7 @@
     string ActiveStoryKey => Session.Chats.Active?.ChatId ?? "";
     bool HasActiveStory => Session.ActiveChat.Current is not null && Session.Chats.Active is not null;
 
-    GalleryImage? ImageFor(string imageId) => Session.Chat.Images.Items.FirstOrDefault(image => image.Id == imageId);
+    GalleryImage? ImageFor(string imageId) => Session.ImageLibrary.Items.FirstOrDefault(image => image.Id == imageId);
 
     protected override void OnInitialized()
     {
@@ -121,7 +112,7 @@
         Session.Providers.Changed += OnSessionChanged;
         Session.Chat.Characters.Changed += OnSessionChanged;
         Session.Chat.Locations.Changed += OnSessionChanged;
-        Session.Chat.Images.Changed += OnSessionChanged;
+        Session.ImageLibrary.Changed += OnSessionChanged;
         Session.Chat.Items.Changed += OnSessionChanged;
     }
 
@@ -136,7 +127,7 @@
         Session.Providers.Changed -= OnSessionChanged;
         Session.Chat.Characters.Changed -= OnSessionChanged;
         Session.Chat.Locations.Changed -= OnSessionChanged;
-        Session.Chat.Images.Changed -= OnSessionChanged;
+        Session.ImageLibrary.Changed -= OnSessionChanged;
         Session.Chat.Items.Changed -= OnSessionChanged;
     }
 }

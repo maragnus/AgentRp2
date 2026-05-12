@@ -7,11 +7,15 @@ namespace AgentRp.Services;
 
 public sealed record StoreImageAssetRequest(
     string ChatId,
+    Guid UserId,
     string ImageId,
     byte[] Bytes,
     string ContentType,
     string FileName,
     string Title,
+    string Entity,
+    string EntityType,
+    int Hue,
     int? Width,
     int? Height,
     string UserPrompt,
@@ -27,7 +31,7 @@ public sealed record StoredImageContent(byte[] Bytes, string ContentType);
 public interface IStoredImageService
 {
     Task StoreAsync(StoreImageAssetRequest request, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<StoredImageContent>> LoadContentAsync(string chatId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StoredImageContent>> LoadContentAsync(Guid userId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken = default);
 }
 
 public sealed class StoredImageService(
@@ -40,23 +44,17 @@ public sealed class StoredImageService(
     {
         var optimization = await imageOptimizer.OptimizeAsync(new(request.Bytes, request.ContentType, request.FileName), cancellationToken);
         var storedFileName = BuildStoredFileName(request.ImageId, optimization.FileExtension);
-        var blobName = BuildBlobName(request.ChatId, request.ImageId, optimization.FileExtension);
+        var blobName = BuildBlobName(request.UserId, request.ChatId, request.ImageId, optimization.FileExtension);
 
         await blobStorage.UploadAsync(blobName, optimization.Bytes, optimization.ContentType, cancellationToken);
         try
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var userId = await dbContext.Chats
-                .AsNoTracking()
-                .Where(chat => chat.Id == request.ChatId)
-                .OrderBy(chat => chat.Id)
-                .Select(chat => chat.UserId)
-                .FirstOrDefaultAsync(cancellationToken);
             dbContext.ImageAssets.Add(new ImageAssetRow
             {
                 Id = request.ImageId,
                 ChatId = request.ChatId,
-                UserId = userId,
+                UserId = request.UserId,
                 BlobName = blobName,
                 StoredContentType = optimization.ContentType,
                 StoredFileName = storedFileName,
@@ -69,6 +67,9 @@ public sealed class StoredImageService(
                 OptimizationError = optimization.ErrorMessage,
                 OptimizedUtc = optimization.Succeeded ? request.CreatedUtc : null,
                 Title = request.Title,
+                Entity = request.Entity,
+                EntityType = request.EntityType,
+                Hue = request.Hue,
                 Width = request.Width,
                 Height = request.Height,
                 UserPrompt = request.UserPrompt,
@@ -88,7 +89,7 @@ public sealed class StoredImageService(
         }
     }
 
-    public async Task<IReadOnlyList<StoredImageContent>> LoadContentAsync(string chatId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StoredImageContent>> LoadContentAsync(Guid userId, IReadOnlyCollection<string> imageIds, CancellationToken cancellationToken = default)
     {
         if (imageIds.Count == 0)
             return [];
@@ -96,7 +97,7 @@ public sealed class StoredImageService(
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var rows = await dbContext.ImageAssets
             .AsNoTracking()
-            .Where(image => image.ChatId == chatId && imageIds.Contains(image.Id))
+            .Where(image => image.UserId == userId && imageIds.Contains(image.Id))
             .Select(image => new { image.Id, image.BlobName, image.StoredContentType })
             .ToListAsync(cancellationToken);
         var rowsById = rows.ToDictionary(row => row.Id, StringComparer.Ordinal);
@@ -126,8 +127,10 @@ public sealed class StoredImageService(
         }
     }
 
-    static string BuildBlobName(string chatId, string imageId, string extension) =>
-        $"images/{chatId}/{imageId}{extension}";
+    static string BuildBlobName(Guid userId, string chatId, string imageId, string extension) =>
+        string.IsNullOrWhiteSpace(chatId)
+            ? $"images/users/{userId:N}/{imageId}{extension}"
+            : $"images/users/{userId:N}/stories/{chatId}/{imageId}{extension}";
 
     static string BuildStoredFileName(string imageId, string extension) =>
         $"{imageId}{extension}";

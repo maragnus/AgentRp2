@@ -54,7 +54,7 @@
 
     List<RpCharacter> Characters => Session.Chat.Characters.Items;
     List<RpLocation> Locations => Session.Chat.Locations.Items;
-    IReadOnlyList<GalleryImage> Images => Session.Chat.Images.Items;
+    IReadOnlyList<GalleryImage> Images => Session.ImageLibrary.Items;
     ISet<string> SelectedCharacterIds => Entry.CharacterIds.ToHashSet(StringComparer.Ordinal);
     ISet<string> SelectedLocationIds => Entry.LocationIds.ToHashSet(StringComparer.Ordinal);
 

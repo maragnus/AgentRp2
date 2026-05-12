@@ -1,28 +1,28 @@
 using AgentRp.Data;
 using AgentRp.Models;
-using AgentRp.Session;
+using AgentRp.UserSystem;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentRp.Services;
 
 public interface IImageCropService
 {
-    Task<ImageCropView> GetAsync(RpChatDocument document, string imageId, CancellationToken cancellationToken = default);
+    Task<ImageCropView> GetAsync(CurrentAppUser user, GalleryImage? galleryImage, string imageId, CancellationToken cancellationToken = default);
     Task<ImageAvatarCropView> UpdateAsync(UpdateImageCropRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed class ImageCropService(IDbContextFactory<RpDbContext> dbContextFactory) : IImageCropService
 {
-    public async Task<ImageCropView> GetAsync(RpChatDocument document, string imageId, CancellationToken cancellationToken = default)
+    public async Task<ImageCropView> GetAsync(CurrentAppUser user, GalleryImage? galleryImage, string imageId, CancellationToken cancellationToken = default)
     {
-        var galleryImage = document.Images.FirstOrDefault(image => image.Id == imageId);
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var row = await dbContext.ImageAssets
-            .AsNoTracking()
-            .FirstOrDefaultAsync(image => image.ChatId == document.Chat.Id && image.Id == imageId, cancellationToken);
+        var row = await dbContext.ImageAssets.AsNoTracking()
+            .Where(image => image.UserId == user.Id && image.Id == imageId)
+            .OrderBy(image => image.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (row is null && galleryImage is null)
-            throw new InvalidOperationException("Cropping the image failed because the image could not be found in this story.");
+            throw new InvalidOperationException("Cropping the image failed because the image could not be found in your image library.");
 
         var crop = row is null
             ? ImageAvatarCropView.From(galleryImage!)
@@ -39,7 +39,7 @@ public sealed class ImageCropService(IDbContextFactory<RpDbContext> dbContextFac
         var crop = ImageAvatarCropView.Normalize(request.FocusXPercent, request.FocusYPercent, request.ZoomPercent);
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var row = await dbContext.ImageAssets
-            .FirstOrDefaultAsync(image => image.ChatId == request.ChatId && image.Id == request.ImageId, cancellationToken);
+            .FirstOrDefaultAsync(image => image.UserId == request.UserId && image.Id == request.ImageId, cancellationToken);
         if (row is not null)
         {
             row.AvatarFocusXPercent = crop.FocusXPercent;

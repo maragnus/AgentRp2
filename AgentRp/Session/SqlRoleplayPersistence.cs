@@ -37,12 +37,13 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 			List<ChatCharacterRow> characters = await (from row in dbContext.ChatCharacters.AsNoTracking()
 				where chatIds.Contains(row.ChatId)
 				select row).ToListAsync(cancellationToken);
+			HashSet<Guid> imageOwnerIds = chats.Select(chat => chat.UserId).ToHashSet<Guid>();
 			List<ImageAssetRow> images = await (from row in dbContext.ImageAssets.AsNoTracking()
-				where chatIds.Contains(row.ChatId)
+				where imageOwnerIds.Contains(row.UserId)
 				select row).ToListAsync(cancellationToken);
 			Dictionary<string, ChatLocationRow> locationsByKey = locations.ToDictionary<ChatLocationRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
 			Dictionary<string, ChatCharacterRow> charactersByKey = characters.ToDictionary<ChatCharacterRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
-			Dictionary<string, ImageAssetRow> imagesByKey = images.ToDictionary<ImageAssetRow, string>(row => row.ChatId + ":" + row.Id, StringComparer.Ordinal);
+			Dictionary<string, ImageAssetRow> imagesByKey = images.ToDictionary<ImageAssetRow, string>(row => row.Id, StringComparer.Ordinal);
 			result = chats.Select(chat => BuildPreview(chat, sceneCharacters.Where(row => row.ChatId == chat.Id), locationsByKey, charactersByKey, imagesByKey)).ToList();
 		}
 		return result;
@@ -91,7 +92,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 					where x.ChatId == chatId
 					orderby x.SortOrder
 					select x).ToListAsync(cancellationToken), await (from x in dbContext.ImageAssets.AsNoTracking()
-					where x.ChatId == chatId
+					where x.UserId == chat2.UserId
 					orderby x.SortOrder, x.CreatedUtc descending
 					select x).ToListAsync(cancellationToken), await StoryCardInstancePersistenceStore.LoadAsync(dbContext, chatId, cancellationToken), await (from x in dbContext.ChatTranscriptStates.AsNoTracking()
 					where x.ChatId == chatId
@@ -173,12 +174,12 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 	private static StoryPreview BuildPreview(RpChatRow chat, IEnumerable<ChatCurrentSceneCharacterRow> sceneCharacters, IReadOnlyDictionary<string, ChatLocationRow> locationsByKey, IReadOnlyDictionary<string, ChatCharacterRow> charactersByKey, IReadOnlyDictionary<string, ImageAssetRow> imagesByKey)
 	{
 		locationsByKey.TryGetValue(chat.Id + ":" + chat.ActiveLocationId, out var value);
-		var image = (value == null) ? null : ImageById(imagesByKey, chat.Id, value.ImageId);
+		var image = (value == null) ? null : ImageById(imagesByKey, value.ImageId);
 		List<StoryPreviewCharacter> characters = sceneCharacters.Select(row => charactersByKey.TryGetValue(row.ChatId + ":" + row.CharacterId, out var value2) ? new StoryPreviewCharacter
 		{
 			CharacterId = value2.Id,
 			Name = value2.Name,
-			Avatar = ChatPersistenceMapper.ToPreviewAvatar(ImageById(imagesByKey, row.ChatId, value2.ImageId))
+			Avatar = ChatPersistenceMapper.ToPreviewAvatar(ImageById(imagesByKey, value2.ImageId))
 		} : null).OfType<StoryPreviewCharacter>().ToList();
 		var location = value == null && string.IsNullOrWhiteSpace(chat.ActiveLocationName) ? null : new StoryPreviewLocation
 		{
@@ -189,9 +190,9 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 		return ChatPersistenceMapper.ToPreview(chat, location, characters);
 	}
 
-	private static ImageAssetRow? ImageById(IReadOnlyDictionary<string, ImageAssetRow> imagesByKey, string chatId, string imageId)
+	private static ImageAssetRow? ImageById(IReadOnlyDictionary<string, ImageAssetRow> imagesByKey, string imageId)
 	{
-		return (string.IsNullOrWhiteSpace(imageId) || !imagesByKey.TryGetValue(chatId + ":" + imageId, out var value)) ? null : value;
+		return (string.IsNullOrWhiteSpace(imageId) || !imagesByKey.TryGetValue(imageId, out var value)) ? null : value;
 	}
 
 	private static async Task SaveDocumentAsync(RpDbContext dbContext, CurrentAppUser user, RpChatDocument document, RoleplayStoreArea? area, CancellationToken cancellationToken)
@@ -456,9 +457,7 @@ public sealed class SqlRoleplayPersistence(IDbContextFactory<RpDbContext> dbCont
 
 	private static async Task SaveImagesAsync(RpDbContext dbContext, RpChatDocument document, CancellationToken cancellationToken)
 	{
-		Dictionary<string, ImageAssetRow> existing = await dbContext.ImageAssets.Where(x => x.ChatId == document.Chat.Id).ToDictionaryAsync(x => x.Id, cancellationToken);
-		HashSet<string> desiredIds = document.Images.Select(galleryImage => galleryImage.Id).ToHashSet<string>(StringComparer.Ordinal);
-		dbContext.ImageAssets.RemoveRange(existing.Values.Where(imageAssetRow => !desiredIds.Contains(imageAssetRow.Id)));
+		Dictionary<string, ImageAssetRow> existing = await dbContext.ImageAssets.Where(x => x.UserId == document.Chat.UserId).ToDictionaryAsync(x => x.Id, cancellationToken);
 		for (int index = 0; index < document.Images.Count; index++)
 		{
 			GalleryImage image = document.Images[index];

@@ -40,7 +40,7 @@
                                                 BadgeTone="blue"
                                                 Active="@(Mode == NewStoryStartMode.Blank)"
                                                 Disabled="@IsCreating"
-                                                Description="Start with no entities, direction, gallery, history, or messages."
+                                                Description="Start with no entities, direction, history, or messages."
                                                 Guidance="Best when the next story should not inherit the current setup."
                                                 OnClick="@(_ => SetMode(NewStoryStartMode.Blank))" />
                             <DecisionOptionCard Icon="sparkles"
@@ -212,7 +212,7 @@
         new(Timeline, "History / Timeline", "clock", "Chronological story events", CountText(Session.Chat.Timeline.Items.Count, "event")),
         new(Direction, "Story Direction", "flag", "Mood, shape, limits, and world guidance"),
         new(Narrator, "Narrator Profile", "book-open", "Narration style and narrator voice selections"),
-        new(Images, "Gallery Images", "image", "Saved gallery images and entity portraits", CountText(Session.Chat.Images.Items.Count, "image"))
+        new(Images, "Image Links", "image", "Entity portrait assignments", CountText(Session.ImageLibrary.Items.Count, "image"))
     ];
     IReadOnlyList<SummaryLine> SummaryLines => BuildSummaryLines();
 

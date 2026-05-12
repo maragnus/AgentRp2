@@ -45,7 +45,7 @@
     [CascadingParameter] public RoleplaySession Session { get; set; } = default!;
 
     IReadOnlyList<RpLocation> Locations => Session.Chat.Locations.Items;
-    IReadOnlyList<GalleryImage> Images => Session.Chat.Images.Items;
+    IReadOnlyList<GalleryImage> Images => Session.ImageLibrary.Items;
     RpLocation? ActiveLocation => Session.Chat.Locations.Active ?? Locations.FirstOrDefault();
     string ActiveLocationName => ActiveLocation?.Name ?? "No location";
 
@@ -54,7 +54,7 @@
     protected override void OnInitialized()
     {
         Session.Chat.Locations.Changed += OnStoreChanged;
-        Session.Chat.Images.Changed += OnStoreChanged;
+        Session.ImageLibrary.Changed += OnStoreChanged;
     }
 
     Task OnStoreChanged()
@@ -85,6 +85,6 @@
     public void Dispose()
     {
         Session.Chat.Locations.Changed -= OnStoreChanged;
-        Session.Chat.Images.Changed -= OnStoreChanged;
+        Session.ImageLibrary.Changed -= OnStoreChanged;
     }
 }
