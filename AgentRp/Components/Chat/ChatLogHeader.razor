@@ -1,0 +1,60 @@
+@{
+    var activeLocation = ActiveLocation;
+    var inSceneCharacters = InSceneCharacters;
+    var hasLocationFallback = activeLocation is null && !string.IsNullOrWhiteSpace(Chat.Location);
+    var hasSceneMeta = activeLocation is not null || hasLocationFallback || inSceneCharacters.Count > 0;
+}
+
+<header class="claude-chat-head">
+    <div class="chat-log-heading">
+        <h1>@Chat.Title</h1>
+        <div class="claude-chat-meta">
+            @if (activeLocation is not null)
+            {
+                <EntityMention EntityType="@EntityTypes.Location"
+                               EntityId="@activeLocation.Id"
+                               Name="@activeLocation.Name"
+                               Size="20"
+                               OnOpenEntities="OnOpenEntities" />
+            }
+            else if (hasLocationFallback)
+            {
+                <FaIcon Name="map-pin" />
+                <span>@Chat.Location</span>
+            }
+            @if ((activeLocation is not null || hasLocationFallback) && inSceneCharacters.Count > 0)
+            {
+                <span class="chat-meta-separator">&middot;</span>
+            }
+            @foreach (var character in inSceneCharacters)
+            {
+                <EntityMention @key="character.Id"
+                               EntityType="@EntityTypes.Character"
+                               EntityId="@character.Id"
+                               Name="@character.Name"
+                               Size="20"
+                               OnOpenEntities="OnOpenEntities" />
+            }
+            @if (hasSceneMeta)
+            {
+                <span class="chat-meta-separator">&middot;</span>
+            }
+            <span>@Chat.Messages messages</span>
+        </div>
+    </div>
+    @Actions
+</header>
+
+@code {
+    [Parameter] public RpChat Chat { get; set; } = new();
+    [Parameter] public IReadOnlyList<RpLocation> Locations { get; set; } = [];
+    [Parameter] public IReadOnlyList<RpCharacter> Characters { get; set; } = [];
+    [Parameter] public EventCallback<(string Type, string? Id)> OnOpenEntities { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    RpLocation? ActiveLocation => Locations.FirstOrDefault(location => location.IsActive);
+
+    IReadOnlyList<RpCharacter> InSceneCharacters => Characters
+        .Where(character => character.InScene)
+        .ToList();
+}

@@ -7,24 +7,16 @@
 <main class="chat claude-chat">
     @if (HasActiveStory)
     {
-    <header class="claude-chat-head">
-        <div>
-            <h1>@Chat.Title</h1>
-            <div class="claude-chat-meta">
-                @if (!string.IsNullOrWhiteSpace(Chat.Location))
-                {
-                    <FaIcon Name="map-pin" />
-                    <span>@Chat.Location</span>
-                    <span>&middot;</span>
-                }
-                <span>@Chat.Messages messages</span>
-            </div>
-        </div>
-        <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Class="menu-popover" CloseOnContentClick="false">
-            <Trigger Context="menu">
-                <AppButton Icon="more-h" TooltipText="Story menu" Active="@menu.IsOpen" OnClick="@(_ => menu.Toggle())" />
-            </Trigger>
-            <Content>
+    <ChatLogHeader Chat="Chat"
+                   Locations="Session.Chat.Locations.Items"
+                   Characters="Characters"
+                   OnOpenEntities="OnOpenEntities">
+        <Actions>
+            <AnchoredPopover Placement="OverlayPlacement.BottomEnd" Class="menu-popover" CloseOnContentClick="false">
+                <Trigger Context="menu">
+                    <AppButton Icon="more-h" TooltipText="Story menu" Active="@menu.IsOpen" OnClick="@(_ => menu.Toggle())" />
+                </Trigger>
+                <Content>
                     <div class="popover-label">Audio Tags</div>
                     <SelectableButton Class="toggle-row" OnClick="@(_ => ToggleInjectAudioTags())">
                         <FaIcon Name="sparkle" />
@@ -111,9 +103,10 @@
                     <div class="divider"></div>
                     <div class="popover-label">Theme</div>
                     <div class="popover-pad"><ThemeToggle /></div>
-            </Content>
-        </AnchoredPopover>
-    </header>
+                </Content>
+            </AnchoredPopover>
+        </Actions>
+    </ChatLogHeader>
 
     <InlineFooterScrollRegion Class="@TranscriptScrollClass"
                               ContentClass="chat-message-stack"

@@ -1166,13 +1166,35 @@
     color: var(--c-text);
 }
 
+.chat-log-heading {
+    min-width: 0;
+}
+
 .claude-chat-meta {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-row-gap);
+    min-width: 0;
     margin-top: var(--space-icon-gap);
     font-size: var(--text-control);
     color: var(--c-text3);
+}
+
+.claude-chat-meta .entity-mention {
+    max-width: 100%;
+    color: var(--c-text3);
+}
+
+.claude-chat-meta .entity-mention-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-meta-separator {
+    color: var(--c-text4);
 }
 
 .claude-chat-scroll {
